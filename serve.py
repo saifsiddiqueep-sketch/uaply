@@ -105,6 +105,7 @@ if api:
     import jobs_api, uaply_api, auth_api, chat_api, google_auth, setup_api, billing_api, employers_api, resume_parse
     uaply_api.init(os.path.basename(root))
     employers_api.init(os.path.basename(root))                    # Hiring mode: on for the sandbox only
+    jobs_api.ENV = os.path.basename(root)       # "sandbox" turns on job fields, licenses and the health care and legal employers (jobs_api.py)
     auth_api.init(os.path.basename(root))
     chat_api.init(os.path.basename(root))
     billing_api.PUBLIC = PUBLIC                                     # Plan and billing: buy buttons on a public server only when Stripe keys are set

@@ -180,6 +180,14 @@ _MONTHS = ["January", "February", "March", "April", "May", "June", "July", "Augu
 
 
 _COUNTRIES = {"US": "United States", "CA": "Canada", "GB": "United Kingdom", "other": "Outside the United States, Canada and the United Kingdom"}
+# licenses and certifications the applicant ticked in Profile setup (sandbox; the codes match jobs_api.LIC_RULES). Only the sandbox sends them.
+_LICS = {"rn": "Registered nurse (RN)", "lpn": "Licensed practical or vocational nurse (LPN, LVN)", "np": "Nurse practitioner (NP, APRN)",
+         "pa": "Physician assistant (PA-C)", "md": "Physician (MD or DO)", "pharm": "Pharmacist",
+         "bh": "Licensed therapist or counselor (LCSW, LPC, LMHC, LMFT, psychologist)", "pt": "Physical, occupational or speech therapist",
+         "cma": "Certified medical assistant (CMA, CCMA, RMA)", "phleb": "Certified phlebotomist", "emt": "EMT or paramedic",
+         "bls": "BLS or CPR", "acls": "ACLS", "dds": "Dentist (DDS or DMD)", "rdh": "Registered dental hygienist (RDH)",
+         "da": "Certified or expanded-function dental assistant (CDA, EFDA)", "bar": "Attorney admitted to a state bar",
+         "para": "Certified paralegal", "notary": "Notary public"}
 
 
 def _pick(v, allowed):
@@ -243,7 +251,8 @@ def _ext(raw):
             "country": _pick(x.get("country"), _COUNTRIES), "salary": salary,     # expected yearly pay: kept only when a form asked for it (see submit)
             "relocate": _pick(x.get("relocate"), ("yes", "no")), "office": _pick(x.get("office"), ("yes", "no")),
             "former": _pick(x.get("former"), ("no", "ask")), "govt": _pick(x.get("govt"), ("yes", "no")), "phd": _pick(x.get("phd"), ("yes", "no")),
-            "pronouns": _s(x.get("pronouns"), 30), "ack": x.get("ack") is True, "why": _s(x.get("why"), 600)}
+            "pronouns": _s(x.get("pronouns"), 30), "ack": x.get("ack") is True, "why": _s(x.get("why"), 600),
+            "lic": [c for c in dict.fromkeys(v for v in x.get("lic") if isinstance(v, str)) if c in _LICS] if isinstance(x.get("lic"), list) else []}
 
 
 def _detail_rows(c, note=""):
@@ -267,7 +276,8 @@ def _detail_rows(c, note=""):
             ("Willing to relocate", {"yes": "Yes", "no": "No"}.get(x.get("relocate"), "")),
             # expected pay is in the record only when the employer's own form asked for it (submit() leaves it out otherwise)
             ("Expected yearly pay", ("$%s" % format(x["salary"], ",")) if isinstance(x.get("salary"), int) and x["salary"] > 0 else ""),
-            ("Looking for", ", ".join(_TYPES[t] for t in x.get("types", [])))]
+            ("Looking for", ", ".join(_TYPES[t] for t in x.get("types", []))),
+            ("Licenses and certifications (as stated by the applicant)", ", ".join(_LICS[c] for c in x.get("lic", []) if c in _LICS))]
     return [(k, str(v)) for k, v in rows if v and str(v) not in note]
 
 

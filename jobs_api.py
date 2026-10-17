@@ -29,8 +29,10 @@ LEGAL STATUS OF EACH SOURCE (checked October 2026; this is not legal advice, hav
 
 get_jobs() returns {"fetched_at", "sources", "jobs"} where each job already matches the shape the app expects.
 """
+import bisect
 import datetime
 import hashlib
+import itertools
 import html
 import json
 import os
@@ -107,6 +109,200 @@ USAJOBS_QUERIES = {
 }
 USAJOBS_EMAIL = "uaplytechnologies@gmail.com"   # USAJOBS wants the email the key was requested with as the User-Agent (feed_keys.usajobs_email, else owner_copy, else this)
 
+# ---- Sandbox only. serve.py sets ENV to the instance's folder name; everything in this block is used only when it is "sandbox", so dev and prod
+# get exactly what they got before: the same employers, skills, education and fields on each job. ----
+ENV = ""
+
+
+def _sandbox():
+    return ENV == "sandbox"
+
+
+# Health care, dental and legal employers whose own public boards carried clinical, dental or legal roles when checked (October 2026). Same
+# rules as SOURCES: off unless the owner switches the kind on under "feeds", and link-out only. Philadelphia legal aid groups and the defenders
+# do not publish a board these readers can use (they use JazzHR, ADP or their own sites); two Philadelphia firms use Workable, not read yet.
+SANDBOX_PER_SOURCE = 24       # how many full-time roles each of these employers contributes
+SANDBOX_SCAN = 60             # how many of each employer's postings are read in full to find them
+SANDBOX_SOURCES = [
+    ("greenhouse", "onemedical", "One Medical"),     # physicians, nurse practitioners, physician assistants, medical assistants
+    ("greenhouse", "oscar", "Oscar Health"),         # physicians, pharmacists, nurse case managers
+    ("greenhouse", "twochairs", "Two Chairs"),       # licensed therapists (LCSW, LMHC), psychiatric nurse practitioners
+    ("greenhouse", "dental365", "Dental365"),        # dentists, hygienists, dental assistants (Philadelphia, Bala Cynwyd, across PA, NY, NJ)
+    ("greenhouse", "pcdm", "Premier Care Dental Management"),   # dentists, periodontists, hygienists (PA, NY)
+    ("lever", "appletreedental", "Apple Tree Dental"),          # dentists, dental therapists, hygienists, assistants (Minnesota)
+    ("greenhouse", "everlaw", "Everlaw"),            # counsel and legal-technology roles
+    ("ashby", "harvey", "Harvey"),                   # legal engineering and legal research
+    ("greenhouse", "wilsonelser", "Wilson Elser"),   # paralegals and attorneys (law firm with a Philadelphia office)
+]
+
+# A posting's field, from its title, first rule that matches. The app runs the same rules (shared/uaply-nav.js, FIELD_RULES) on listings that
+# arrive without a field, so keep the two lists the same. Sales roles at a dental or legal company are business roles, not clinical or legal ones.
+FIELD_RULES = [
+    ("business", r"\b(?:account executive|account manager|sales|business development|sdr|bdr|customer success|marketing|partnerships?|recruit(?:er|ing)|talent acquisition)\b"),
+    ("tech", r"\b(?:software|developer|programmer|devops|sre|front[- ]?end|back[- ]?end|full[- ]?stack|data engineer|machine learning)\b"),
+    ("dental", r"\bdent(?:al|ist|istry)\b|hygienist|orthodont|endodont|periodont|prosthodont|oral surgeon|\bdds\b|\bdmd\b|\brdh\b|\befda\b"),
+    ("health", r"\bnurs(?:e|es|ing)\b|\brn\b|\blpn\b|\blvn\b|\bcna\b|\baprn\b|physician|\bmd\b|doctor|\bmedical\b|pharmac|therap(?:ist|y)\b|counselor|psychiatr|psycholog|clinical|clinician|\bclinic\b|\blcsw\b|\blmhc\b|\blpc\b|\blmft\b|phlebotom|patient|\bemt\b|paramedic|radiolog|sonograph|surg(?:eon|ical)|dietitian|nutritionist|midwi|health coach|care (?:manager|coordinator)|case manager|caregiver|hospital"),
+    ("legal", r"attorney|lawyer|\bcounsel\b|paralegal|\blegal\b|litigation|law clerk|\bjd\b|e-?discovery|contracts? (?:manager|specialist|administrator)"),
+    ("edu", r"\bteach(?:er|ing)\b|tutor|instructor|professor|lecturer|curriculum|\beducat(?:or|ion)\b|\bschool\b"),
+    ("tech", r"engineer|developer|software|programmer|data scien|machine learning|\bml\b|\bai\b|\bdata\b|technolog|security|infrastructure|\bit\b|systems? admin|technical|architect|\bqa\b|cloud|network|firmware|hardware|robotics|\bmobile\b|\bweb\b"),
+    ("design", r"design|\bux\b|\bui\b|creative|art director|illustrat|animat|video|photograph"),
+    ("business", r"manag|director|analyst|operations|financ|account(?:ant|ing)|product|program|project|strateg|people|\bhr\b|human resources|support|customer|admin|assistant|coordinator|specialist|consultant|executive|associate|business"),
+]
+FIELD_RES = [(f, re.compile(p, re.I)) for f, p in FIELD_RULES]
+FIELD_CODES = ("health", "dental", "legal", "tech", "business", "design", "edu", "other")
+LICENSED_FIELDS = ("health", "dental", "legal")
+FIELD_FALLBACK = {"health": "Patient care", "dental": "Patient care", "legal": "Legal research"}   # a clinical or legal posting that names no skill we know
+
+# Skills for health care, dental and legal postings (SKILLS above is mostly technology and business). Used only on postings in those fields.
+FIELD_SKILLS = [
+    ("Patient care", r"patient care|direct patient|caring for patients"),
+    ("Electronic health records", r"\bEHR\b|\bEMR\b|electronic (?:health|medical) records?|Epic (?:EHR|EMR|Systems)|athenahealth|Cerner"),
+    ("Vital signs", r"vital signs"),
+    ("Phlebotomy", r"phlebotom|venipuncture|blood draws?"),
+    ("Triage", r"\btriage\b"),
+    ("Medication administration", r"medication administration|administer(?:ing)? medications?"),
+    ("Telehealth", r"telehealth|telemedicine|virtual (?:care|visits?)"),
+    ("Case management", r"case management|care coordination|care management"),
+    ("Utilization review", r"utilization (?:review|management)|prior authorization"),
+    ("HIPAA", r"\bHIPAA\b"),
+    ("Psychotherapy", r"psychotherapy|\bCBT\b|cognitive behavioral|\bDBT\b|evidence-based therap"),
+    ("Dental hygiene", r"dental hygiene|prophylax|scaling and root planing|periodontal (?:charting|therapy|maintenance)"),
+    ("Dental radiography", r"dental (?:x-?rays?|radiograph\w*)|intraoral (?:x-?rays?|scan\w*|images?)"),
+    ("Chairside assisting", r"chairside|four-handed"),
+    ("Orthodontics", r"orthodont"),
+    ("Legal research", r"legal research|case law|\bWestlaw\b|LexisNexis"),
+    ("Contracts", r"contract (?:drafting|review|negotiation|management)|negotiat\w* (?:commercial )?(?:contracts|agreements)|commercial (?:contracts|agreements)"),
+    ("Litigation", r"\blitigat"),
+    ("eDiscovery", r"e-?discovery|document review"),
+    ("Regulatory compliance", r"regulatory compliance|regulatory (?:requirements|matters|counsel)"),
+    ("Legal writing", r"legal writing|draft(?:ing)? (?:briefs|motions|pleadings|memos)|pleadings"),
+    ("Privacy law", r"privacy (?:law|counsel|program)|data protection|\bGDPR\b|\bCCPA\b"),
+]
+FIELD_SKILL_RES = [(n, re.compile(p, re.I)) for n, p in FIELD_SKILLS]
+
+# Licenses and certifications a posting requires (codes match the app's LICS list). A title that names a licensed job counts. In the text only
+# wording about holding the license counts, and not when it sits next to "preferred", "a plus" or similar, or under a "Preferred qualifications"
+# heading. Checked only on health care, dental and legal postings. Columns: code, title words, text words (any case), text abbreviations (exact case).
+LIC_RULES = [
+    ("rn", r"\brn\b|registered nurse|nurse (?:case|care) manager|charge nurse|staff nurse|nurse navigator|clinical nurse",
+     r"\brn licen[sc]e|registered nurse licen[sc]e|licen[sc]ed (?:as an? )?registered nurse",
+     r"\b(?:[Aa]ctive|[Cc]urrent|[Vv]alid|[Uu]nrestricted|[Cc]ompact|[Mm]ultistate)\s+(?:[A-Za-z]+\s+){0,3}RN\b"),
+    ("lpn", r"\blpn\b|\blvn\b|licensed (?:practical|vocational) nurse", r"\b(?:lpn|lvn) licen[sc]e|licensed (?:practical|vocational) nurse", None),
+    ("np", r"nurse practitioner|\baprn\b|\bfnp\b|\bpmhnp\b|\bnp\b", r"nurse practitioner licen[sc]e|\baprn licen[sc]e|board[- ]certified (?:\w+ )?nurse practitioner", None),
+    ("pa", r"physician assistant|\bpa-c\b", r"physician assistant licen[sc]e", r"\bPA-C\b"),
+    ("md", r"physician(?!\s+assistant)|psychiatrist|surgeon|hospitalist|\bmd\b|medical director|medical officer",
+     r"medical licen[sc]e|licen[sc]e to practice medicine|board[- ]certified (?:in |physician)|board certification in",
+     r"\b(?:M\.?D\.?|D\.?O\.?)\s*(?:or|/)\s*(?:M\.?D\.?|D\.?O\.?)\s+(?:degree|licen[sc]e)"),   # "MD or DO degree" counts; "supervised by an MD/DO" does not
+    ("pharm", r"pharmacist|\bpharm\.?d\b", r"pharmacist licen[sc]e|licen[sc]ed pharmacist", r"\bR\.?Ph\b"),
+    ("bh", r"\blcsw\b|\blicsw\b|\blmhc\b|\blpc\b|\blcpc\b|\blmft\b|psychologist|psychotherapist|mental health (?:therapist|counselor|clinician)|behavioral health (?:therapist|clinician)|licensed (?:clinical|professional|mental health|marriage)",
+     r"independent(?:ly)? licen[sc]ed|licen[sc]ed (?:clinical social worker|professional counselor|mental health counselor|marriage and family therapist|psychologist)",
+     r"\b(?:LCSW|LICSW|LMHC|LPC|LCPC|LMFT|LPCC)\b"),
+    ("pt", r"physical therapist|occupational therapist|speech(?:-language)? pathologist|\bdpt\b|physical therapy assistant",
+     r"(?:physical|occupational) therap\w* licen[sc]e|licen[sc]ed (?:physical|occupational) therapist", r"\bDPT\b"),
+    ("cma", r"certified medical assistant|\bcma\b|\bccma\b|\brma\b", r"medical assistant certification|certified medical assistant", r"\b(?:CMA|CCMA|RMA|NCMA)\b"),
+    ("phleb", r"phlebotomist|phlebotomy", r"phlebotomy certif|certified phlebotomist", None),
+    ("emt", r"\bemt\b|paramedic", r"paramedic licen[sc]e|emergency medical technician", r"\b(?:EMT|NREMT)\b"),
+    ("bls", None, r"basic life support", r"\b(?:BLS|CPR)\b"),
+    ("acls", None, r"advanced cardi(?:ac|ovascular) life support", r"\bACLS\b"),
+    ("dds", r"\bdentist\b|\bdds\b|\bdmd\b|orthodontist|endodontist|periodontist|prosthodontist|oral surgeon",
+     r"dental licen[sc]e to practice|licen[sc]e to practice dentistry|licen[sc]ed dentist",
+     r"\b(?:D\.?D\.?S\.?|D\.?M\.?D\.?)\s*(?:or|/)\s*(?:D\.?D\.?S\.?|D\.?M\.?D\.?)\s+degree|\b(?:DDS|DMD) degree"),   # "DDS or DMD degree" counts; "assist our DDS" does not
+    ("rdh", r"hygienist|\brdh\b", r"registered dental hygienist|dental hygien\w* licen[sc]e", r"\bRDH\b"),
+    ("da", r"\befda\b|\bcda\b|certified dental assistant|expanded[- ]function",
+     r"expanded[- ]function dental|certified dental assistant|registered dental assistant|dental radiograph\w* certif|radiology certif", r"\b(?:CDA|EFDA|RDA)\b"),
+    ("bar", r"attorney|lawyer|\bcounsel\b",
+     r"admitted to (?:practice|the bar)|member (?:in good standing )?of (?:the |a |at least one )?(?:state )?bar|bar admission|licen[sc]ed to practice law|active (?:bar|law) licen[sc]e|good standing (?:with|in) (?:the |a )?(?:state )?bar", None),
+    ("para", None, r"paralegal certif\w*|certified paralegal", None),
+    ("notary", None, r"notary public|notary commission", None),
+]
+LIC_RES = [(c, re.compile(t, re.I) if t else None, re.compile(ci, re.I) if ci else None, re.compile(cs) if cs else None) for c, t, ci, cs in LIC_RULES]
+LIC_CODES = [r[0] for r in LIC_RULES]
+PREF_RE = re.compile(r"prefer|a plus|nice to have|bonus|desired|desirable|helpful|\bideal|advantage", re.I)
+PREF_HEAD = re.compile(r"preferred (?:qualifications|skills|experience|requirements)|nice[- ]to[- ]haves?|bonus points|pluses", re.I)
+REQ_HEAD = re.compile(r"(?:minimum|basic|required) (?:qualifications|requirements|skills)|(?<!preferred )\brequirements\b|what you(?:'ll| will)? need|must[- ]haves?", re.I)
+
+# The least education a licensed title implies (law, medicine and dentistry need a doctorate; NPs, PAs and licensed therapists a master's).
+EDU_RULES = [
+    ("Doctorate", r"attorney|lawyer|\bcounsel\b|physician(?!\s+assistant)|psychiatrist|surgeon|hospitalist|\bdentist\b|orthodontist|endodontist|periodontist|prosthodontist|oral surgeon|pharmacist|psychologist|physical therapist|medical director|medical officer"),
+    ("Master", r"nurse practitioner|\baprn\b|physician assistant|\bpa-c\b|\blcsw\b|\blicsw\b|\blmhc\b|\blpc\b|\blmft\b|mental health (?:therapist|counselor|clinician)|psychotherapist|occupational therapist|speech(?:-language)? pathologist"),
+    ("Associate", r"registered nurse|\brn\b|hygienist|\brdh\b|radiolog\w* technologist|sonographer"),
+]
+EDU_RES = [(lvl, re.compile(p, re.I)) for lvl, p in EDU_RULES]
+EDU_LEVELS = ["High school", "Associate", "Bachelor", "Master", "Doctorate"]
+
+# Public transit: a commuter benefit the posting mentions (a "transit" perk for the Benefits filter), and an office it says is near transit.
+PERK_TRANSIT = re.compile(r"commuter benefits?|transit (?:benefits?|subsid\w+|pass(?:es)?|stipend|reimbursement)|pre-?tax (?:transit|commut\w+)|commuter (?:stipend|reimbursement|subsid\w+)|SEPTA Key|MetroCard|SmarTrip|Clipper card|Ventra|CharlieCard", re.I)
+TRANSIT_NEAR = re.compile(r"accessible by (?:public )?transit|near (?:public )?transit|close to public transportation|walking distance (?:to|from) (?:the )?(?:train|subway|metro|station|transit)|steps (?:from|to) (?:the )?(?:subway|metro|train|station)|transit[- ]accessible", re.I)
+
+
+def _field(title):
+    for f, rx in FIELD_RES:
+        if rx.search(title or ""):
+            return f
+    return "other"
+
+
+def _optional_at(text, start, end, heads):
+    """True when the words at text[start:end] are a preference, not a requirement: "preferred" or similar in the same clause, or under a
+    "Preferred qualifications" heading with no requirements heading since. heads = (preferred heading starts, requirement heading starts)."""
+    back = text[max(0, start - 40):start]
+    cut = max(back.rfind("."), back.rfind(";"), back.rfind("•"))
+    back = back[cut + 1:] if cut >= 0 else back
+    fwd = text[end:end + 60]
+    stops = [i for i in (fwd.find("."), fwd.find(";"), fwd.find(","), fwd.find("•")) if i >= 0]
+    fwd = fwd[:min(stops)] if stops else fwd
+    if PREF_RE.search(back + " " + fwd):
+        return True
+    prefs, reqs = heads
+    i, j = bisect.bisect_left(prefs, start), bisect.bisect_left(reqs, start)
+    return (prefs[i - 1] if i else -1) > (reqs[j - 1] if j else -1)
+
+
+def _lic(title, text):
+    """License codes a posting requires (see LIC_RULES). The headings are found once per posting, and at most 8 mentions of each license are
+    looked at, so a long posting stays fast."""
+    text = text or ""
+    out, heads = [], []
+    for code, t_rx, ci_rx, cs_rx in LIC_RES:
+        if t_rx and t_rx.search(title or ""):
+            out.append(code)
+            continue
+        hit = False
+        for rx in (ci_rx, cs_rx):
+            if not rx:
+                continue
+            for m in itertools.islice(rx.finditer(text), 8):
+                if not heads:
+                    heads.append(([h.start() for h in PREF_HEAD.finditer(text)], [h.start() for h in REQ_HEAD.finditer(text)]))
+                if not _optional_at(text, m.start(), m.end(), heads[0]):
+                    hit = True
+                    break
+            if hit:
+                break
+        if hit:
+            out.append(code)
+    return out
+
+
+def _edu_for(title, edu):
+    """The posting's education level, raised to what its licensed title implies (never lowered)."""
+    for lvl, rx in EDU_RES:
+        if rx.search(title or ""):
+            return lvl if EDU_LEVELS.index(lvl) > EDU_LEVELS.index(edu if edu in EDU_LEVELS else "High school") else edu
+    return edu
+
+
+def _partner_extras(j, role, job):
+    """Sandbox: a partner employer may give a job's "field" and "licenses" (codes); otherwise they are read from its title and blurb."""
+    blurb = job.get("blurb") or ""
+    field = j.get("field") if j.get("field") in FIELD_CODES else _field(role)
+    given = j.get("licenses")
+    lic = [c for c in given if c in LIC_CODES][:8] if isinstance(given, list) else (_lic(role, blurb) if field in LICENSED_FIELDS else [])
+    perks = list(job.get("perks") or [])
+    if ("transit" in (j.get("perks") or []) or PERK_TRANSIT.search(blurb)) and "transit" not in perks:
+        perks.append("transit")
+    return {"field": field, "lic": lic, "perks": perks, "tacc": bool(TRANSIT_NEAR.search(blurb))}
+
 SKILLS = [
     ("JavaScript", r"javascript|\bjs\b"), ("TypeScript", r"typescript"), ("React", r"\breact(?:\.js|js)?\b"),
     ("Node", r"\bnode(?:\.js|js)?\b"), ("Python", r"\bpython\b"), ("Java", r"\bjava\b"), ("SQL", r"\bsql\b"),
@@ -169,7 +365,8 @@ CACHE_VERSION = 8                # raise this whenever the rules for keeping or 
 def _cache_file():
     """Where the last good postings are kept, so a restart or a new deploy shows jobs at once instead of waiting
     for every employer board (UAPLY_DATA_DIR on a host, ./data on this computer; never committed)."""
-    return os.path.join(os.environ.get("UAPLY_DATA_DIR") or os.path.join(ROOT, "data"), "jobs-cache.json")
+    # the sandbox labels postings differently (fields, licenses), so it keeps its own copy and never writes into the one dev reads on this computer
+    return os.path.join(os.environ.get("UAPLY_DATA_DIR") or os.path.join(ROOT, "data"), "jobs-cache.sandbox.json" if _sandbox() else "jobs-cache.json")
 
 
 def _load_disk():
@@ -523,9 +720,11 @@ def _normalize(raw, kind, name, board=None):
         raw = dict(raw, url="https://" + raw["url"][len("http://"):])
     if not raw["url"].startswith("https://"):
         return None
+    sb = _sandbox()
+    field = _field(title) if sb else ""
     hay = (title + " ") * 2 + text
     found = []
-    for skill, rx in SKILL_RES:
+    for skill, rx in SKILL_RES + (FIELD_SKILL_RES if field in LICENSED_FIELDS else []):
         if skill in TITLE_GATED and not TITLE_GATED[skill].search(title):
             continue
         n = len(rx.findall(hay))
@@ -535,6 +734,8 @@ def _normalize(raw, kind, name, board=None):
         skills = [s for _, s in sorted(found, key=lambda x: -x[0])[:4]]
     elif raw.get("fallback"):
         skills = [raw["fallback"]]      # no known skill in the text: score on the posting's own category
+    elif field in FIELD_FALLBACK:
+        skills = [FIELD_FALLBACK[field]]   # sandbox: a clinical or legal posting that names no skill we know is scored on its field
     else:
         return None
     mode = "remote" if remote else ("hybrid" if re.search(r"hybrid", loc + " " + text[:600], re.I) else "onsite")
@@ -542,6 +743,11 @@ def _normalize(raw, kind, name, board=None):
     m = YRS_RE.search(text)
     yrs = min(int(m.group(1)), 15) if m else 0
     edu = "Bachelor" if re.search(r"bachelor|\bB\.?S\.? degree", text, re.I) else "High school"
+    if sb:
+        edu = _edu_for(title, edu)
+    perks = _perks(text)
+    if sb and PERK_TRANSIT.search(text):
+        perks.append("transit")
     blurb = text[:170].rsplit(" ", 1)[0] + "…" if len(text) > 170 else text
     desc = _role_summary(text)                                                    # what the emails show about the job
     jid = 100000 + int(hashlib.sha1(("%s:%s" % (kind, raw["id"])).encode()).hexdigest()[:6], 16)
@@ -555,16 +761,19 @@ def _normalize(raw, kind, name, board=None):
     out = dict(id=jid, co=raw["company"], role=title, loc=_place(loc, mode), mode=mode,
                sal=raw.get("sal") or _salary(raw["salary_text"], text), yrs=yrs, edu=edu, skills=skills, blurb=blurb, desc=desc,
                type=typ, url=raw["url"], source=src, contact="", apply="link", live=True, ats=ats,
-               posted=raw.get("posted", 0), perks=_perks(text), comm=bool(COMM_RE.search(text)))
+               posted=raw.get("posted", 0), perks=perks, comm=bool(COMM_RE.search(text)))
     # Credit every feed, on the card ("via ...") and in the application record ("credit"): each free feed asks for it, and an employer board is the employer's own
     out["via"] = VIA.get(kind, "%s").replace("%s", name)
     out["credit"] = "via USAJOBS; apply on the official announcement" if kind == "usajobs" else "via " + out["via"]
     if (raw.get("announcement") or "").startswith("https://"):
         out["announcement"] = raw["announcement"]                 # USAJOBS: the official announcement, kept next to the apply link
+    if sb:      # sandbox: the field, the licenses it requires, and whether it says the office is near public transit
+        out.update(field=field, lic=_lic(title, text) if field in LICENSED_FIELDS else [], tacc=bool(TRANSIT_NEAR.search(text)))
     return out
 
 
 _refreshing = set()
+_inflight = {}       # sandbox: source -> Event while its first fetch runs (see _load_source)
 
 
 def known_webhook(job_id):
@@ -622,6 +831,24 @@ def _load_source(src):
             threading.Thread(target=_refresh_in_background, args=(src,), daemon=True).start()
     if c:
         return c["jobs"], c["status"]
+    if _sandbox():
+        # the first fetch of a source is shared: visitors who arrive while it runs wait for it instead of each downloading every board again
+        with _lock:
+            ev = _inflight.get(src)
+            mine = ev is None
+            if mine:
+                ev = _inflight[src] = threading.Event()
+        if not mine:
+            ev.wait(90)
+            with _lock:
+                c = _cache.get(src)
+            return (c["jobs"], c["status"]) if c else ([], "still loading")
+        try:
+            return _fetch_source(src)
+        finally:
+            with _lock:
+                _inflight.pop(src, None)
+            ev.set()
     return _fetch_source(src)
 
 
@@ -634,12 +861,19 @@ def _fetch_source(src):
         return [], "no key"                     # skipped, nothing fetched or cached: the source starts the moment the owner adds the key
     try:
         student, other = [], []
-        for raw in _fetch_raw(kind, token, name):
+        raws = _fetch_raw(kind, token, name)
+        if _sandbox() and src in SANDBOX_SOURCES:
+            # choose candidates by title before the slow part (reading each posting's text): clinical and legal roles first. One Medical alone
+            # lists about 400 roles, and reading all of them held up the first page load for minutes.
+            raws = sorted(raws, key=lambda r: 0 if _field(r.get("title")) in LICENSED_FIELDS else 1)[:SANDBOX_SCAN]
+        for raw in raws:
             # only the first STUDENT_PER_SOURCE student roles and PER_SOURCE others can be kept below, so a posting past those is not worked
             # through at all (a big board lists hundreds; reading every one cost about 35 CPU seconds, a minute or more on a small host)
             bucket, cap = (other, PER_SOURCE) if _type(raw) == "job" else (student, STUDENT_PER_SOURCE)
             if kind in KEEP:                                     # the City and USAJOBS keep up to 120 (student roles first), so read them all
                 cap = KEEP[kind]
+            elif _sandbox() and src in SANDBOX_SOURCES:          # sandbox health care and legal boards keep more (see SANDBOX_PER_SOURCE below)
+                cap = max(cap, SANDBOX_PER_SOURCE)
             if len(bucket) >= cap:
                 continue
             j = _normalize(raw, kind, name, token)
@@ -650,6 +884,11 @@ def _fetch_source(src):
             jobs = (student + other)[:KEEP[kind]]
         else:
             jobs = student[:STUDENT_PER_SOURCE] + other[:max(OTHER_PER_SOURCE, PER_SOURCE - len(student[:STUDENT_PER_SOURCE]))]
+        if _sandbox() and src in SANDBOX_SOURCES:
+            # a health care or legal employer lists its clinical and legal roles first, and keeps more of them (One Medical alone lists ~400,
+            # alphabetically, so the first 14 would all be front-desk roles)
+            pick = lambda js: sorted(js, key=lambda j: 0 if j.get("field") in LICENSED_FIELDS else 1)
+            jobs = pick(student)[:STUDENT_PER_SOURCE] + pick(other)[:SANDBOX_PER_SOURCE]
         status = "%d jobs" % len(jobs)
     except Exception as e:                      # keep serving the last good copy if the feed is down
         c = _cache.get(src)
@@ -832,6 +1071,8 @@ def _file_partner_jobs():
                 posted=_ts(j.get("posted")),
                 perks=sorted(set([p for p in (j.get("perks") or []) if p in PERK_KEYS] + _perks(j.get("blurb") or ""))),
                 comm=j.get("commission_only") is True or bool(COMM_RE.search(j.get("blurb") or ""))))
+            if _sandbox():
+                out[-1].update(_partner_extras(j, role, out[-1]))
     _partners.update(path=path, mtime=mtime, jobs=out)
     _hooks.clear()
     _hooks.update(new_hooks)
@@ -881,7 +1122,7 @@ def known_ats(job_id):
 def get_jobs():
     _load_disk()
     allowed = feeds_allowed()
-    sources = [s for s in SOURCES if s[0] in allowed]
+    sources = [s for s in SOURCES + (SANDBOX_SOURCES if _sandbox() else []) if s[0] in allowed]
     with ThreadPoolExecutor(max_workers=16) as ex:
         results = list(ex.map(_load_source, sources))
     jobs, seen, summary = [], set(), {}
