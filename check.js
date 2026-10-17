@@ -107,6 +107,14 @@ try {
   /consentFirst:\s*true/.test(dev) ? ok("dev asks for the agreement before the first swipe (consentFirst)") : bad("dev/index.html lost consentFirst:true");
   const devErr = build(P.concat(NEEDS.submit));
   devErr ? bad("the release build does not assemble: " + devErr) : ok("the release build (dev's PROMOTED list) assembles and parses");
+  /* the sandbox as it opens: its own options (transit, fields...) switch on extra patches that the builds above never try */
+  const sbx = fs.readFileSync("sandbox/index.html", "utf8");
+  const sbOpts = new Function("return " + /window\.UAplyOpts=(\{[\s\S]*?\});/.exec(sbx)[1])();
+  const sbOn = Object.keys(new Function("return " + /var on=(\{[^}]*\});/.exec(sbx)[1])());
+  W.UAplyOpts = sbOpts;
+  const sbErr = build(sbOn.concat(NEEDS.submit));
+  delete W.UAplyOpts;
+  sbErr ? bad("the sandbox as it opens (options " + Object.keys(sbOpts).join(", ") + ") does not assemble: " + sbErr) : ok("the sandbox as it opens, with its options on (" + Object.keys(sbOpts).filter((k) => sbOpts[k] === true).join(", ") + "), assembles and parses");
   /* "Take me there" under an assistant answer: each article's destination must be a real menu item or Profile setup step, reached
      directly (the old names "preferences" and "resume" are only shortcuts and land on the wrong step) */
   const navSrc = fs.readFileSync("shared/uaply-nav.js", "utf8"), items = {};
