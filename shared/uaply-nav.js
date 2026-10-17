@@ -63,6 +63,8 @@ function patch(s){
   s=once(s,'var have=S.profile.skills.map(norm);','var have=S.profile.skills.map(norm).concat(window.__uaplyTextSkills?window.__uaplyTextSkills(j,S.profile).map(norm):[]);');
   /* saving inside the guided setup stays on the same screen; saving from anywhere else still shows the matches */
   s=once(s,'save();renderAll();show("swipe");toast("Profile saved. Matches updated.","OK",clearToast);','save();renderAll();if(!(window.__uaplyAfterSave&&window.__uaplyAfterSave()))show("swipe");if(!window.__uaplyAutoSave)toast("Profile saved. Matches updated.","OK",clearToast);');
+  /* no minimum pay set (a new profile has 0): the Salary line said "You want $0k+" */
+  s=once(s,'have:"You want "+money(p.salary)+"+"}','have:p.salary>0?"You want "+money(p.salary)+"+":"No minimum set"}');
   /* subscription gate: the page (apply) defines window.__uaplyGate; false means "not allowed, a paywall was shown" */
   s=once(s,'var job=JOB_BY_ID[id];','var job=JOB_BY_ID[id];if(dir==="applied"&&window.__uaplyGate&&window.__uaplyGate(job)===false){busy=false;renderAll();return}');
   s=once(s,'function show(t,focusPane){','function show(t,focusPane){if(window.__uaplyOnShow)window.__uaplyOnShow(t);');
@@ -93,6 +95,11 @@ var CSS=`
 .nitem .c{font:500 12px var(--mono);color:var(--muted)}
 .toast{bottom:var(--toast-at,var(--above-nav,calc(88px + env(safe-area-inset-bottom,0px))));pointer-events:none}.toast button{pointer-events:auto}
 body{padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
+/* Pass / Undo / Apply always in sight, just above the bottom bar. The deck scrolls inside #main, and on first open the tips, the
+   example-profile notice, the location box, the filters and the card's 430 px minimum pushed the row below the bottom of #main,
+   under the bar (Oct 17 audit, "Start does not work"). Sticky to the bottom of #main the row stays where it is when everything
+   fits and holds the bottom edge when it does not; its own space stays in the flow, so scrolled to the end the card ends above it. */
+#pane-swipe .actions{position:sticky;bottom:0;z-index:3;background:var(--bg);box-shadow:0 -10px 12px -2px var(--bg)}
 #pane-track .stats{grid-template-columns:repeat(4,1fr)}
 #pane-track .row{flex-wrap:wrap}
 #pane-track .acts{display:flex;gap:6px;flex-wrap:wrap;flex-basis:100%}
@@ -279,6 +286,12 @@ function apply(w,host){
     settings:"Your details. Every card is scored against them, and they fill in your application note and the email address recruiters reply to.",
     filters:"Choose which opportunities appear in your feed."
   };
+  /* a server without email (the live site until the owner adds the mail key) sends no receipts, so its Account screen must not promise
+     them; the owner's computer (test inbox) and a server with email keep the line above */
+  function leadOf(v){
+    if(v==="account"&&SRV.up&&SRV.mailKnown&&!(SRV.canEmail||SRV.testInbox))return "Sign in to keep a record of your applications with your account and to apply directly to employers that take applications through UAply. Email receipts start once email is switched on for this site. Your profile stays on this device.";
+    return LEADS[v];
+  }
   var FIELDS={settings:["pName","pEmail","pTitle","pYears","pEdu","pSkills","pLoc"],preferences:["pSalary","pm-remote"]};
   var nameField=d.getElementById("pName").closest(".field"),emailField=d.createElement("div");
   emailField.className="field";
@@ -508,7 +521,7 @@ function apply(w,host){
     form.classList.toggle("wz",isWiz);
     d.getElementById("pPhone").value=acct.phone;d.getElementById("pPhoneErr").textContent="";
     meter.hidden=true;   /* the guided setup has its own progress bar */
-    if(!isWiz){secTitle.textContent=label("prof",v);lead.textContent=LEADS[v]}
+    if(!isWiz){secTitle.textContent=label("prof",v);lead.textContent=leadOf(v)}
     if(ACCT[v])renderAcct(v);
     if(w.__uaplySyncPrefs)w.__uaplySyncPrefs();
     Object.keys(FIELDS).forEach(function(key){FIELDS[key].forEach(function(id){var e=d.getElementById(id),f=e&&e.closest(".field");if(f)f.hidden=false})});
@@ -672,7 +685,16 @@ function apply(w,host){
   if(NEAR){
     w.__uaplyNearScore=function(job,p){var me=devPos(),there=me&&geo(job.loc);if(!there)return null;var mi=miles(me,there);return mi<=25?1:(mi<=60?0.6:(p&&p.reloc?0.6:0))};
     w.__uaplyNearLabel=function(job){var me=devPos(),there=me&&geo(job.loc);if(!there)return "";var mi=Math.round(miles(me,there));return mi<3?"In your area":"About "+mi+" miles from you"};
-    setTimeout(function(){
+    /* with the agreement asked first (consentFirst), the location card and the browser's own location prompt come only after Agree:
+       two questions on top of each other at first open, the browser's one before the person has agreed to anything, was the audit's
+       finding. Checked twice a second until this browser has agreed; a build without the agreement box (no kit) asks after 3 seconds */
+    var nearWait=0,nearGo=function(){
+      var info=w.__uaplyConsentInfo,c=info&&info();
+      if(OPTS.consentFirst&&!(c&&c.current)&&(info||nearWait<6)){nearWait++;setTimeout(nearGo,500);return}
+      nearStart();
+    };
+    setTimeout(nearGo,400);
+    var nearStart=function(){
       permState(function(st){
         if(DEV&&DEV.skipped)return;                     /* they chose Not now, or turned it off in Filters */
         if(st==="granted"){if(!devPos()||Date.now()-DEV.at>216e5)askDevice();return}   /* already allowed: refresh quietly */
@@ -683,7 +705,7 @@ function apply(w,host){
         if(DEV&&DEV.denied){DEV=null;saveDev()}         /* they unblocked it in the browser since: ask again */
         var c=nearBox("ask");if(c)nearAsk(c);           /* first visit: the browser's own prompt, with the card saying why */
       });
-    },400);
+    };
   }
   function miles(a,b){var R=3958.8,r=Math.PI/180,dl=(b[0]-a[0])*r,dn=(b[1]-a[1])*r,x=Math.sin(dl/2)*Math.sin(dl/2)+Math.cos(a[0]*r)*Math.cos(b[0]*r)*Math.sin(dn/2)*Math.sin(dn/2);return 2*R*Math.asin(Math.sqrt(x))}
   /* target titles: the main title plus up to four more. Words must appear in the job's role name (plurals allowed). */
@@ -1476,7 +1498,7 @@ function apply(w,host){
     fill();
   })();
   function renderAcct(v){
-    var h='<h3>'+label("prof",v)+'</h3><p class="lead">'+(v==="plan"&&earlyAccess()?EARLY:LEADS[v])+'</p>';
+    var h='<h3>'+label("prof",v)+'</h3><p class="lead">'+(v==="plan"&&earlyAccess()?EARLY:leadOf(v))+'</p>';
     /* preview: the release build shows only the preview note; the sandbox keeps its simulated sign-in below it */
     if(v==="account"){acctSec.innerHTML=h+(preview()?previewHTML()+(REL?"":accountHTML()):accountHTML())+'<p class="note" id="aMsg" role="status"></p>';paintHeader();setTimeout(mountGoogle,0);return}
     if(v==="plan"&&preview()&&REL){
@@ -1656,8 +1678,8 @@ function apply(w,host){
   }).catch(function(){SRV.up=false;paintHeader()});
   w.fetch("/api/apply/config").then(function(r){return r.ok?r.json():null}).then(function(j){if(j&&j.mode)SRV.mode=j.mode;if(j)SRV.testInbox=j.testInbox||"";if(!acctSec.hidden&&sub.prof==="account"&&!SRV.user&&SRV.up)redrawAcct()}).catch(function(){});
   w.fetch("/api/auth/providers").then(function(r){return r.ok?r.json():null}).then(function(j){
-    SRV.google=!!(j&&j.google);SRV.googleClientId=(j&&j.googleClientId)||"";SRV.googleRedirect=!!(j&&j.googleRedirect);SRV.canEmail=!!(j&&j.canEmail);
-    if(SRV.google&&!acctSec.hidden&&sub.prof==="account")redrawAcct();
+    SRV.google=!!(j&&j.google);SRV.googleClientId=(j&&j.googleClientId)||"";SRV.googleRedirect=!!(j&&j.googleRedirect);SRV.canEmail=!!(j&&j.canEmail);SRV.mailKnown=!!j;
+    if((SRV.google||!SRV.canEmail)&&!acctSec.hidden&&sub.prof==="account")redrawAcct();
   }).catch(function(){});
   var GERR={agree:"Tick the box to confirm you are 18 or older and agree to the Terms and Privacy Policy, then try Google again.",cancelled:"Google sign-in was cancelled.",expired:"That Google sign-in expired or could not be checked. Try again.",failed:"Google sign-in did not work. Try again, or use your email and password.",unverified:"Google says that email address is not verified, so UAply cannot use it.",off:"Google sign-in is not switched on.",email_in_use:"That email already has a UAply account. Log in with your email and password instead."};
   function googleReturn(){

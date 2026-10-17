@@ -177,6 +177,15 @@ try:
     chat_api.HELP_PATH = bad_file
     t("a broken help file keeps the last good articles instead of leaving the assistant empty", len(chat_api.articles()) > 10, True)
     chat_api.HELP_PATH, chat_api.RELEASE, chat_api._help["mtime"] = real_path, False, None
+
+    # 12. pricing questions, however they are put, reach Plans and billing; in the release build the answer leads with the price
+    chat_api.RELEASE, chat_api._help["mtime"] = True, None
+    asks = ["How much does it cost?", "pricing", "fees", "Is it expensive?", "Do you charge?", "monthly fee", "how much money", "Is UAply free?"]
+    t("every way of asking about price finds Plans and billing", [q for q in asks if not (chat_api.search(q) and chat_api.search(q)[0]["id"] == "plans")], [])
+    ans = chat_api._from_articles("pricing")["answer"]
+    t("the release build's pricing answer starts with what it costs today and names the coming prices",
+      (ans.startswith("UAply is free during early access"), "$9.99" in ans and "$19.99" in ans), (True, True))
+    chat_api.RELEASE, chat_api._help["mtime"] = False, None
 finally:
     proc.terminate()
 
