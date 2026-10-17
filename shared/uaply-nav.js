@@ -246,6 +246,7 @@ input[type=range]{accent-color:var(--accent);min-height:44px}
 #locAsk{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:100%;max-width:620px}
 #locAsk p{margin:0;color:var(--muted);font-size:13.5px}
 #locAsk .acts{display:flex;gap:8px;flex-wrap:wrap}
+@media (max-height:740px){.swipecol{gap:8px}.tips{padding:6px 10px!important;font-size:12.5px!important;line-height:1.35}.banner{padding:4px 10px!important;font-size:12px!important;line-height:1.3}.banner button{padding:4px 0!important;min-height:32px}#locAsk{padding:8px 12px;gap:4px;border-radius:12px}#locAsk b{font-size:13.5px}#locAsk p{font-size:12px;line-height:1.35}#locAsk .acts .btn{min-height:34px;padding:5px 14px;font-size:13.5px}.filters button{padding:4px 2px!important;min-height:32px}}
 #fMilesWrap.nearbox{display:flex;flex-direction:column;gap:6px;margin-top:8px}
 #fMilesWrap .rngrow{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
 #fMilesWrap .rngrow b{font-size:15px}

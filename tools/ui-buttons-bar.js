@@ -62,6 +62,18 @@ module.exports = async ({ ev, sleep, nav, shot }) => {
   check(size + " after Agree: a tap anywhere on Pass, Undo and Apply reaches the button", !cov, cov);
   if (process.env.SHOTS) await shot(process.env.SHOTS + "-" + size + "-2-agreed.png");
 
+  // 2b. on a short phone with the notices and the location card up, the useful top of the card (title, company, pay) shows
+  //     above the buttons without scrolling (before: only the card's top edge did, at 375x667)
+  if (+(process.env.W || 1100) <= 430 && +(process.env.H || 900) <= 700) {   // short phones only (375x667, 360x640)
+    for (let i = 0; i < 12 && !(await ev("!!(" + F + ").getElementById('locAsk')")); i++) await sleep(250);
+    const T = JSON.parse(await ev(`JSON.stringify((()=>{const d=${F},m=d.getElementById('main').getBoundingClientRect(),a=d.querySelector('#pane-swipe .actions').getBoundingClientRect(),c=d.querySelector('.card.top');
+      const r=s=>{const e=c&&c.querySelector(s);if(!e)return null;const b=e.getBoundingClientRect();return [Math.round(b.top),Math.round(b.bottom)]};
+      return {loc:!!d.getElementById('locAsk'),top:Math.round(m.top),lim:Math.round(a.top),h2:r('.chead h2'),co:r('.chead p'),pay:r('.pay')}})())`));
+    const inView = (x) => !!x && x[0] >= T.top - 0.5 && x[1] <= T.lim + 0.5;
+    check(size + " after Agree" + (T.loc ? " with the location card open" : "") + ": the card's title, company" + (+(process.env.H || 900) < 667 ? "" : " and pay") + " sit above the buttons without scrolling",
+      inView(T.h2) && inView(T.co) && (!T.pay || +(process.env.H || 900) < 667 || inView(T.pay)), "title " + T.h2 + ", company " + T.co + ", pay " + T.pay + ", visible " + T.top + "-" + T.lim);
+  }
+
   // 3. the buttons never sit on the card's own controls
   let cc = await cardCovered();
   check(size + " the buttons cover none of the job card's controls on screen", !cc, cc);
