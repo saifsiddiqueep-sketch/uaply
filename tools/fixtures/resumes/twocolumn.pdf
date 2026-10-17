@@ -1,0 +1,65 @@
+%PDF-1.4
+%ту╧╙
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<< /Length 1743 >>
+stream
+BT /F1 11 Tf 40 750 Td (CONTACT) Tj ET
+BT /F1 8 Tf 40 733 Td (sam.okafor@example.com) Tj ET
+BT /F1 8 Tf 40 719 Td (\(312\) 555-0148) Tj ET
+BT /F1 8 Tf 40 705 Td (Chicago, IL 60607) Tj ET
+BT /F1 8 Tf 40 691 Td (linkedin.com/in/samokafor-example) Tj ET
+BT /F1 11 Tf 40 663 Td (SKILLS) Tj ET
+BT /F1 8 Tf 40 646 Td (TypeScript) Tj ET
+BT /F1 8 Tf 40 632 Td (Node.js) Tj ET
+BT /F1 8 Tf 40 618 Td (PostgreSQL) Tj ET
+BT /F1 8 Tf 40 604 Td (AWS) Tj ET
+BT /F1 8 Tf 40 590 Td (Kubernetes) Tj ET
+BT /F1 8 Tf 40 576 Td (GraphQL) Tj ET
+BT /F1 11 Tf 40 548 Td (EDUCATION) Tj ET
+BT /F1 8 Tf 40 531 Td (University of Illinois) Tj ET
+BT /F1 8 Tf 40 517 Td (Urbana-Champaign) Tj ET
+BT /F1 8 Tf 40 503 Td (Bachelor of Science in) Tj ET
+BT /F1 8 Tf 40 489 Td (Computer Engineering) Tj ET
+BT /F1 8 Tf 40 475 Td (2014 - 2018) Tj ET
+BT /F1 18 Tf 220 750 Td (Sam Okafor) Tj ET
+BT /F1 12 Tf 220 726 Td (Backend Engineer) Tj ET
+BT /F1 11 Tf 220 693 Td (SUMMARY) Tj ET
+BT /F1 9 Tf 220 676 Td (Backend engineer with six years of experience building payment) Tj ET
+BT /F1 9 Tf 220 661 Td (and logistics APIs that handle millions of requests a day.) Tj ET
+BT /F1 11 Tf 220 631 Td (EXPERIENCE) Tj ET
+BT /F1 10 Tf 220 614 Td (Senior Software Engineer) Tj ET
+BT /F1 9 Tf 220 598 Td (Lakeshore Payments, Chicago, IL) Tj ET
+BT /F1 9 Tf 220 583 Td (March 2022 - Present) Tj ET
+BT /F1 9 Tf 220 568 Td (Х Moved card authorization to Kubernetes with zero downtime) Tj ET
+BT /F1 9 Tf 220 553 Td (Х Cut p99 latency from 900 ms to 180 ms) Tj ET
+BT /F1 10 Tf 220 523 Td (Software Engineer) Tj ET
+BT /F1 9 Tf 220 507 Td (Midway Freight Technologies) Tj ET
+BT /F1 9 Tf 220 492 Td (July 2018 - February 2022) Tj ET
+BT /F1 9 Tf 220 477 Td (Х Built the shipment tracking API in Node.js) Tj ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000121 00000 n 
+0000000247 00000 n 
+0000000344 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+2139
+%%EOF

@@ -261,7 +261,8 @@ var FEATURES={
 };
 FEATURES.chat={name:"Assistant and feedback",note:"A Help button (bottom right) opens UAply Assistant: answers from UAply's help articles (written by AI when an API key is set on the server, and labeled AI or Automated either way), one-question-at-a-time feedback, problem reports, a way to reach a person, and a one-tap rating after the third application in a visit. Needs this server's back end.",apply:function(w,host){window.UAplyChat.apply(w,host)}};
 FEATURES.learn={name:"Learns from your swipes",note:"UAply learns what you like from your own swipes (work style, type, role, company, pay, years asked, city, skills, where the job came from) and reorders the deck, starting from the match score. Each card says what it learned (\"Learned from your swipes: +9. You've liked 7 of 8 remote jobs.\"), 1 in 5 cards is something different, your filters still decide what you see, and Profile, Filters has Reset what UAply learned. Stays on this device; never uses voluntary answers, work authorization or GPA. Sandbox only.",patch:function(s){return window.UAplyLearn.patch(s)},apply:function(w,host){window.UAplyLearn.apply(w,host)}};
-var ORDER=["glide","easy","confirm","axis","caps","smart","top2","nav","profile","live","kit","submit","fit","guide","notice","tap","dates","hint","anim","a11y","backend","chat","learn"];   /* chat after kit: it wraps the apply hook set by kit. learn last: it reorders the deck the other features built */
+FEATURES.resume={name:"Fill from your resume",note:"Profile setup, Background and links gets a Fill from your resume box: choose a PDF, Word or text resume and UAply fills every empty profile field it finds (name, email, phone, links, headline, summary, school, major, graduation, GPA, most recent job, skills, city, state, ZIP). Fields you already typed are never changed; a Replace button appears where the resume differs. Each answer shows the line it came from. The file is read on this server for a moment and not kept, and also becomes the resume sent with applications if you have none. Needs Bottom navigation and this server's back end. Sandbox only.",apply:function(w,host){if(!window.UAplyResume)throw new Error("needs uaply-resume.js");window.UAplyResume.apply(w,host)}};
+var ORDER=["glide","easy","confirm","axis","caps","smart","top2","nav","profile","resume","live","kit","submit","fit","guide","notice","tap","dates","hint","anim","a11y","backend","chat","learn"];   /* chat after kit: it wraps the apply hook set by kit. learn last: it reorders the deck the other features built */
 
 function build(on,key){
   return fetch("prod-index.html",{cache:"no-store"}).then(function(r){return r.text()}).then(function(src){
@@ -276,6 +277,7 @@ function build(on,key){
 function run(frame,on,key,done){
   if(on.submit)on=Object.assign({},on,{nav:true,live:true,kit:true});   /* sending applications needs these three */
   if(on.profile)on=Object.assign({},on,{nav:true});                     /* the profile fields live in the navigation's Profile sections */
+  if(on.resume)on=Object.assign({},on,{nav:true});                      /* Fill from your resume sits on Profile setup's Background and links step */
   return build(on,key).then(function(b){
     frame.onload=function(){
       var w=frame.contentWindow;w.__uaplyKey=key;

@@ -112,9 +112,13 @@ def init(instance):
             salt TEXT NOT NULL,
             expires_at INTEGER NOT NULL,
             attempts INTEGER NOT NULL DEFAULT 0)""")
+        c.execute("""CREATE TABLE IF NOT EXISTS stripe_events(
+            id TEXT PRIMARY KEY,
+            at INTEGER NOT NULL)""")                     # Stripe event ids already handled (billing_api.webhook), so a resent event is done once
         for col in ("terms_at INTEGER", "has_password INTEGER NOT NULL DEFAULT 1", "email_verified INTEGER NOT NULL DEFAULT 0",
                     "plan TEXT NOT NULL DEFAULT 'free'", "plan_status TEXT NOT NULL DEFAULT ''", "plan_renews INTEGER NOT NULL DEFAULT 0",
-                    "plan_cancel INTEGER NOT NULL DEFAULT 0", "stripe_customer TEXT NOT NULL DEFAULT ''", "stripe_sub TEXT NOT NULL DEFAULT ''"):      # databases made before these columns existed
+                    "plan_cancel INTEGER NOT NULL DEFAULT 0", "stripe_customer TEXT NOT NULL DEFAULT ''", "stripe_sub TEXT NOT NULL DEFAULT ''",
+                    "plan_failed INTEGER NOT NULL DEFAULT 0"):      # databases made before these columns existed
             try:
                 c.execute("ALTER TABLE users ADD COLUMN " + col)
             except sqlite3.OperationalError:
@@ -188,8 +192,25 @@ def public_user(row):
 def billing_row(user_id):
     """The stored subscription of one account, or None."""
     with _db() as c:
-        r = c.execute("SELECT id, email, plan, plan_status, plan_renews, plan_cancel, stripe_customer, stripe_sub FROM users WHERE id=?", (user_id,)).fetchone()
+        r = c.execute("SELECT id, email, plan, plan_status, plan_renews, plan_cancel, plan_failed, stripe_customer, stripe_sub FROM users WHERE id=?", (user_id,)).fetchone()
     return dict(r) if r else None
+
+
+EVENT_DAYS = 30          # Stripe resends an event for up to 3 days; ids are kept ten times that long, then forgotten
+
+
+def stripe_event_seen(event_id):
+    """True if this Stripe event id was already handled."""
+    with _db() as c:
+        return c.execute("SELECT 1 FROM stripe_events WHERE id=?", (str(event_id)[:255],)).fetchone() is not None
+
+
+def remember_stripe_event(event_id):
+    """Record a handled Stripe event id (and forget ids older than EVENT_DAYS)."""
+    now = int(time.time())
+    with _db() as c:
+        c.execute("INSERT OR IGNORE INTO stripe_events(id, at) VALUES(?,?)", (str(event_id)[:255], now))
+        c.execute("DELETE FROM stripe_events WHERE at<?", (now - EVENT_DAYS * 86400,))
 
 
 def find_billing(customer="", sub=""):
@@ -201,7 +222,7 @@ def find_billing(customer="", sub=""):
 
 def set_billing(user_id, **fields):
     """Update the subscription fields of one account (only the known columns)."""
-    allowed = ("plan", "plan_status", "plan_renews", "plan_cancel", "stripe_customer", "stripe_sub")
+    allowed = ("plan", "plan_status", "plan_renews", "plan_cancel", "plan_failed", "stripe_customer", "stripe_sub")
     pairs = [(k, v) for k, v in fields.items() if k in allowed]
     if not pairs:
         return
@@ -267,15 +288,17 @@ def user_for(token):
     if not isinstance(token, str) or not (20 <= len(token) <= 100):
         return None
     with _lock, _db() as c:
-        row = c.execute("SELECT u.id, u.email, u.has_password, u.email_verified FROM sessions s JOIN users u ON u.id=s.user_id "
+        row = c.execute("SELECT u.id, u.email, u.has_password, u.email_verified, u.plan FROM sessions s JOIN users u ON u.id=s.user_id "
                         "WHERE s.token_hash=? AND s.expires_at>?",
                         (hashlib.sha256(token.encode()).hexdigest(), int(time.time()))).fetchone()
     return public_user(row) if row else None
 
 
-def delete_account(token, password, ip, confirm=""):
+def delete_account(token, password, ip, confirm="", before_delete=None):
     """Delete the signed-in account after re-checking the password (or, for an account made with Google that has no
-    password, after typing DELETE). Returns (status, body, deleted_user_id_or_None)."""
+    password, after typing DELETE). Returns (status, body, deleted_user_id_or_None).
+    before_delete(user_id), if given, runs once the password is right and before anything is removed (serve.py passes the Stripe
+    cancellation, billing_api.cancel_on_delete). If it returns an error sentence, the account is kept and the person is told why."""
     user = user_for(token)
     if not user:
         return 401, {"error": "You are not signed in."}, None
@@ -291,6 +314,11 @@ def delete_account(token, password, ip, confirm=""):
         elif not row or not isinstance(password, str) or not hmac.compare_digest(_hash(password, bytes(row["salt"])), bytes(row["hash"])):
             _fails[key].append(time.time())
             return 401, {"error": "That password is not right."}, None
+    if before_delete:                                    # outside the lock: it may wait on Stripe for a few seconds
+        problem = before_delete(user["id"])
+        if problem:
+            return 409, {"error": problem, "code": "billing"}, None
+    with _lock:
         with _db() as c:
             c.execute("DELETE FROM users WHERE id=?", (user["id"],))      # sessions and receipts go with it (ON DELETE CASCADE)
     return 200, {"ok": True}, user["id"]

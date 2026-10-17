@@ -80,9 +80,9 @@ console.log("Wiring between files");
 try {
   /* a fresh copy of every shared script, so this does not depend on the section above */
   const W = {}, fakeDoc = { getElementById() { return null; } };
-  ["nav", "live", "profile", "chat", "envs", "employers", "learn"].forEach((f) => new Function("window", "localStorage", "document", fs.readFileSync("shared/uaply-" + f + ".js", "utf8"))(W, localStorage, fakeDoc));
+  ["nav", "live", "profile", "chat", "envs", "employers", "learn", "resume"].forEach((f) => new Function("window", "localStorage", "document", fs.readFileSync("shared/uaply-" + f + ".js", "utf8"))(W, localStorage, fakeDoc));
   const E = W.UAplyEnv, prod = fs.readFileSync("prod/index.html", "utf8");
-  const NEEDS = { submit: ["nav", "live", "kit"], profile: ["nav"], employers: ["nav"] };   /* the same rule as run() in uaply-envs.js */
+  const NEEDS = { submit: ["nav", "live", "kit"], profile: ["nav"], employers: ["nav"], resume: ["nav"] };   /* the same rule as run() in uaply-envs.js */
   const build = (keys) => {
     let s = prod, err = "";
     E.ORDER.forEach((k) => { if (keys.includes(k) && E.FEATURES[k].patch) { try { s = E.FEATURES[k].patch(s); } catch (e) { err += k + ": " + e.message + ". "; } } });

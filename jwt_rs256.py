@@ -1,9 +1,11 @@
 """Checks a signed token (JWT, RS256) the way Google's documentation says a server must, using only the Python standard library.
 
 What "Continue with Google" gives a website is an ID token: three base64 parts (header, claims, signature). Trusting it means:
-  1. the signature is valid for one of the public keys Google publishes (they rotate, so keys are cached for as long as Google says);
+  1. the signature is valid for one of the public keys Google publishes at https://www.googleapis.com/oauth2/v3/certs (they rotate,
+     so the list is cached for as long as Google's Cache-Control max-age says, and fetched again for a key id we do not know yet);
   2. the token was issued for THIS app (the audience is our client ID), or a token Google made for some other app could log in here;
-  3. the issuer is Google, the token has not expired, and was not issued in the future;
+  3. the issuer is Google (Google uses both accounts.google.com and https://accounts.google.com), the token has not expired (a minute
+     of clock difference is forgiven), does not claim to last more than a day, and was not issued in the future;
   4. only the algorithm we expect is accepted (never "none", never a shared-secret algorithm).
 RS256 is RSA PKCS#1 v1.5 with SHA-256: the signature is raised to the public exponent and must equal a fixed padded layout of the digest.
 The check compares the whole padded block, so a forged signature with extra data cannot pass.
@@ -19,8 +21,11 @@ import urllib.request
 # DER prefix that says "this is a SHA-256 digest" inside an RSA PKCS#1 v1.5 signature block
 _SHA256_PREFIX = bytes.fromhex("3031300d060960864801650304020105000420")
 GOOGLE_CERTS = "https://www.googleapis.com/oauth2/v3/certs"
+SKEW = 60                 # seconds of clock difference forgiven at the expiry (Google's own Node.js library forgives 300; a minute is plenty)
+MAX_LIFETIME = 86400      # Google's ID tokens last one hour; one that claims to last more than a day is refused, as Google's libraries do
+REFETCH_GAP = 60          # an unknown key id fetches the list again at most once a minute, so made-up ids cannot make us hammer Google
 _lock = threading.Lock()
-_keys = {"url": "", "until": 0.0, "by_kid": {}}
+_keys = {"url": "", "until": 0.0, "by_kid": {}, "tried": 0.0}
 
 
 def b64url_decode(text):
@@ -65,14 +70,26 @@ def _fetch_keys(url):
 
 
 def public_key(kid, url=GOOGLE_CERTS):
-    """The (n, e) public key with this id, from the published list. The list is cached for as long as the publisher says, and fetched
-    again once if the id is unknown (keys rotate)."""
+    """The (n, e) public key with this id, from the published list, or None.
+    The list is kept for as long as the publisher says and fetched again when it is out of date or the id is unknown (keys rotate),
+    but at most once a minute for unknown ids. If Google cannot be reached when the list is out of date, a key we already had is still
+    used: Google publishes each new key before signing with it and keeps old ones for a while, so a short outage at Google does not
+    stop everyone signing in, and a key that was never Google's is still never accepted."""
     now = time.time()
     with _lock:
-        fresh = _keys["url"] == url and _keys["until"] > now
-        if fresh and kid in _keys["by_kid"]:
-            return _keys["by_kid"][kid]
-    by_kid, ttl = _fetch_keys(url)
+        same = _keys["url"] == url
+        known = _keys["by_kid"].get(kid) if same else None
+        if known and _keys["until"] > now:
+            return known
+        if same and not known and _keys["until"] > now and now - _keys["tried"] < REFETCH_GAP:
+            return None                                  # an id we looked for a moment ago and Google did not have
+        _keys["tried"] = now
+    try:
+        by_kid, ttl = _fetch_keys(url)
+    except Exception:
+        if known:
+            return known
+        raise
     with _lock:
         _keys.update(url=url, until=time.time() + ttl, by_kid=by_kid)
         return by_kid.get(kid)
@@ -110,8 +127,10 @@ def verify(token, audience, issuers, certs_url=GOOGLE_CERTS, now=None):
     if claims.get("iss") not in issuers:
         raise TokenError("wrong issuer")
     exp, iat = claims.get("exp"), claims.get("iat", t)
-    if not isinstance(exp, (int, float)) or exp <= t:
+    if not isinstance(exp, (int, float)) or exp + SKEW <= t:
         raise TokenError("expired")
+    if exp > t + MAX_LIFETIME:
+        raise TokenError("lasts too long")
     if not isinstance(iat, (int, float)) or iat > t + 300:
         raise TokenError("issued in the future")
     return claims

@@ -657,7 +657,11 @@ function apply(w,host){
   function nearAsk(c){   /* shows the browser's own "Allow location?" prompt; the card says what is happening and what came of it */
     var yes=c.querySelector('[data-near="yes"]'),was=c.querySelector("b").textContent;
     yes.disabled=true;yes.textContent="Waiting for your browser…";
+    /* a browser that never answers (its prompt ignored, hidden behind another window, or not shown at all) used to leave this button
+       greyed out for good: after 20 seconds give the button back, and a late answer still counts */
+    var answered=false,guard=w.setTimeout(function(){if(!answered&&c.isConnected){nearBox("again")}},20000);
     askDevice(function(ok,why){
+      answered=true;w.clearTimeout(guard);
       if(ok||!c.isConnected)return;
       var mode=why==="denied"?"blocked":why==="nofix"?"nofix":"again";
       nearBox(mode);
@@ -1332,7 +1336,11 @@ function apply(w,host){
       '<small>Nothing is charged and no card is ever asked for. Before any paid plan starts, you will see its price here first.</small></div>';
     var keys=["free","plus","pro"],cur=BILL.plan||"free",P=BILL.plans;
     var h='<div class="plan" style="display:flex;flex-direction:column;gap:6px">'+(testMode()?'<span class="tag">Test mode: no real charges</span>':'')+'<b>Current plan: '+E(P[cur].name)+(BILL.canceling?' (ends '+new Date(BILL.renews*1000).toLocaleDateString()+')':'')+'</b>'+
-      (BILL.signedIn?'<small>'+(P[cur].cap?(BILL.used||0)+' of '+P[cur].cap+' applications used this week':(BILL.used||0)+' applications this week, no limit')+(cur!=="free"&&BILL.renews&&!BILL.canceling?' · renews '+new Date(BILL.renews*1000).toLocaleDateString():'')+'</small>'+(P[cur].cap?'<div class="bar"><i style="width:'+Math.min(100,Math.round((BILL.used||0)/P[cur].cap*100))+'%"></i></div>':''):'<small>Sign in to choose a plan. Your plan is saved to your account.</small>')+'</div><div class="plans">';
+      (BILL.signedIn?'<small>'+(P[cur].cap?(BILL.used||0)+' of '+P[cur].cap+' applications used this week':(BILL.used||0)+' applications this week, no limit')+(cur!=="free"&&BILL.renews&&!BILL.canceling?' · renews '+new Date(BILL.renews*1000).toLocaleDateString():'')+'</small>'+(P[cur].cap?'<div class="bar"><i style="width:'+Math.min(100,Math.round((BILL.used||0)/P[cur].cap*100))+'%"></i></div>':''):'<small>Sign in to choose a plan. Your plan is saved to your account.</small>')+
+      /* a renewal failed (billing_api._problem): Stripe retries the card; after the third failed try the plan is paused until a payment works */
+      (BILL.problem==="retrying"?'<small role="alert"><b>Your last payment did not go through.</b> Stripe will try your card again. To keep your plan, update your card in Manage billing.</small><div class="acts"><button type="button" class="btn ghost" data-bill="portal">Update card</button></div>':
+       BILL.problem==="paused"?'<small role="alert"><b>Your plan is paused because your card was declined.</b> Update your card in Manage billing and it comes back as soon as the payment goes through. Nothing extra is charged.</small><div class="acts"><button type="button" class="btn" data-bill="portal">Update card</button></div>':'')+
+      '</div><div class="plans">';
     keys.forEach(function(k){
       var p=PLANS[k==="free"?"trial":k==="plus"?"starter":"pro"],isCur=cur===k;
       var btn=k==="free"?(isCur?'<small>Your current plan</small>':''):
@@ -1340,7 +1348,7 @@ function apply(w,host){
           (!BILL.enabled&&BILL.buttons&&PAYLINK[LINKOF[k]]?'<button type="button" class="btn" data-bill="'+k+'">Choose '+p.name+'</button>':
           !BILL.enabled?'<small>Payments are not switched on yet.'+(SRV.testInbox?' Connect Stripe in <a href="/setup#billing" target="_blank" rel="noopener noreferrer">setup</a>.':'')+'</small>':
           (!BILL.signedIn?'<button type="button" class="btn" data-bill="signin">Sign in to choose '+p.name+'</button>':
-          (cur!=="free"?'<button type="button" class="btn ghost" data-bill="portal">Switch in Manage billing</button>':'<button type="button" class="btn" data-bill="'+k+'">Choose '+p.name+'</button>'))));
+          (cur!=="free"||BILL.problem?'<button type="button" class="btn ghost" data-bill="portal">Switch in Manage billing</button>':'<button type="button" class="btn" data-bill="'+k+'">Choose '+p.name+'</button>'))));
       h+='<div class="plan" data-cur="'+isCur+'"><b>'+p.name+'</b><span class="pr">'+(p.price?"$"+p.price.toFixed(2)+'<small>/month</small>':"$0")+'</span><ul>'+p.perks.map(function(x){return '<li>'+E(x)+'</li>'}).join("")+'</ul>'+btn+'</div>';
     });
     return h+'</div><p class="note">Payments are handled by Stripe on its own secure page. UAply never sees or stores your card number. Cancel any time in Manage billing; the plan stays until the end of the paid month.</p>';
@@ -1371,14 +1379,26 @@ function apply(w,host){
     var b=q.get("billing");if(!b)return;
     try{w.top.history.replaceState(null,"",w.top.location.pathname)}catch(e){}
     var pk=q.get("plan");
-    if(b==="success"&&pk!=="trial"&&PLANS[pk]&&PAYLINK[pk]){   /* hosted sandbox: a Stripe Payment Link sent the person back after paying */
-      acct.plan=pk;acct.since=Date.now();acct.renews=acct.since+30*DAY;acct.canceled=false;
-      acct.pay.push({at:acct.since,plan:pk,amt:PLANS[pk].price,stripe:true});saveA();
-      setTimeout(function(){sub.prof="plan";cur="prof";go("prof");renderAcct("plan");msg("Payment received by Stripe (test mode). "+PLANS[pk].name+" is active.")},300);
-      return;
-    }
-    setTimeout(function(){sub.prof="plan";cur="prof";go("prof");BILL._note=b==="success"?"Thank you! Your plan is being activated; it shows here in a few seconds.":b==="cancel"?"Checkout canceled. Nothing was charged.":"Billing updated.";renderAcct("plan");msg(BILL._note);
-      var n=0,t=setInterval(function(){loadBilling();if(++n>=5)clearInterval(t)},2000)},300);
+    loadBilling().then(function(){
+      /* only a server WITHOUT Stripe keys uses the Payment Links simulation (nothing is saved on a server, and a typed ?billing=success&plan=pro
+         address must never look like a paid plan where real payments are on) */
+      if(b==="success"&&!BILL.enabled&&pk!=="trial"&&PLANS[pk]&&PAYLINK[pk]){   /* a Stripe Payment Link (test mode) sent the person back after paying */
+        acct.plan=pk;acct.since=Date.now();acct.renews=acct.since+30*DAY;acct.canceled=false;
+        acct.pay.push({at:acct.since,plan:pk,amt:PLANS[pk].price,stripe:true});saveA();
+        setTimeout(function(){sub.prof="plan";cur="prof";go("prof");renderAcct("plan");msg("Payment received by Stripe (test mode). "+PLANS[pk].name+" is active.")},300);
+        return;
+      }
+      var was=BILL.plan||"free";
+      function say(t){BILL._note=t;if(!acctSec.hidden&&sub.prof==="plan")renderAcct("plan");msg(t)}
+      setTimeout(function(){sub.prof="plan";cur="prof";go("prof");renderAcct("plan");
+        say(b==="success"?(was!=="free"?"Thank you! "+((BILL.plans[was]||{}).name||"Your plan")+" is active.":"Thank you! Stripe is confirming the payment; your plan shows here in a few seconds."):b==="cancel"?"Checkout canceled. Nothing was charged.":"Billing updated.");
+        if(b!=="success"||was!=="free")return;
+        /* the plan switches on only when Stripe's signed message reaches the server (billing_api.webhook), usually within seconds */
+        var n=0,t=setInterval(function(){loadBilling().then(function(){
+          if(BILL.plan&&BILL.plan!=="free"){clearInterval(t);say("Thank you! "+((BILL.plans[BILL.plan]||{}).name||"Your plan")+" is active.");return}
+          if(++n>=10){clearInterval(t);say("Stripe has not confirmed the payment yet. If your card was declined, nothing was charged and you are still on Free; otherwise your plan appears here within a few minutes.")}
+        })},3000)},300);
+    });
   })();
   /* message to the hiring manager on swipe right: opt-in (off by default), Plus and Pro only. It goes out with the
      application, so only to employers that agreed to receive applications through UAply (the server decides that).
@@ -1387,7 +1407,7 @@ function apply(w,host){
   function autoAllowed(){if(REL||(typeof SRV!=="undefined"&&SRV&&SRV.up))return BILL.plan!=="free"||!BILL.enabled;var s=planState();return s.plan!==PLANS.trial&&s.ok}
   w.__uaplyAutoMsg=function(){return autoAllowed()&&!!acct.fAuto};
   /* what the application sends besides the profile: the details saved in Profile setup, Background and links (phone, LinkedIn, portfolio, About you, resume link) win over the optional profile form */
-  w.__uaplyApplyExt=function(){var x=Object.assign({},XV());var ph=phoneOf(),li=linkOf("linkedin"),pf=linkOf("portfolio"),su=summaryOf(),rs=resumeLinkOf();if(ph)x.phone=ph;if(li)x.linkedin=li;if(pf)x.portfolio=pf;if(su)x.summary=su;if(rs)x.resume=rs;var ad=acct.addr||{};if(ad.zip)x.zip=ad.zip;if(A.S.profile&&A.S.profile.reloc)x.relocate="yes";if(ad.state)x.state=ad.state;x.ack=x.ack==="yes";return x};
+  w.__uaplyApplyExt=function(){var x=Object.assign({},XV());var ph=phoneOf(),li=linkOf("linkedin"),pf=linkOf("portfolio"),su=summaryOf(),rs=resumeLinkOf();if(ph)x.phone=ph;if(li)x.linkedin=li;if(pf)x.portfolio=pf;if(su)x.summary=su;if(rs)x.resume=rs;var ad=acct.addr||{};if(ad.zip)x.zip=ad.zip;if(A.S.profile&&A.S.profile.reloc&&x.relocate!=="no")x.relocate="yes";if(ad.state)x.state=ad.state;x.ack=x.ack==="yes";return x};
   w.__uaplyResume=function(){return acct.resumeData&&DATA_URL.test(acct.resumeData)?{name:acct.resumeName,size:acct.resumeSize,data:acct.resumeData}:null};   /* the file uploaded in Profile setup, Background and links */
   w.__uaplyMessage=function(job,m,p){
     var skills=(m.matched||[]).slice(0,3),name=p.name||"[Your name]",sumv=summaryOf();
@@ -1663,7 +1683,8 @@ function apply(w,host){
      so the phone apps hide the Google button until a native Google sign-in is added. Phone and computer browsers keep it. */
   function noGoogle(){if(iosShell())return true;try{var c=w.top.Capacitor;return !!(c&&c.isNativePlatform&&c.isNativePlatform())}catch(e){return false}}
   /* iPhone and iPad (every browser there is Safari underneath): Google says its button needs the full-page sign-in there, because
-     Safari's tracking protection breaks the pop-up. iPadOS reports itself as a Mac, so a touch screen gives it away. */
+     Safari's tracking protection breaks the pop-up. iPadOS reports itself as a Mac, so a touch screen gives it away. Only matters when
+     the server has no client secret (otherwise every device already uses the full-page sign-in). */
   function iosWeb(){var n=w.navigator||{};return /iPhone|iPad|iPod/.test(n.userAgent||"")||(n.platform==="MacIntel"&&n.maxTouchPoints>1)}
   var GBTN='<button type="button" class="btn" data-auth="gsign" style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;background:#fff;color:#1f1f1f;border:1px solid #747775">'+
     '<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>'+
@@ -1702,7 +1723,12 @@ function apply(w,host){
     function fallback(){
       box.innerHTML=SRV.googleRedirect?GBTN:'<small>Google sign-in could not load. Use your email and password.</small>';
     }
-    if(iosWeb()&&SRV.googleRedirect){box.innerHTML=GBTN;return}      /* iPhone and iPad: the full-page sign-in (needs the client secret on the server) */
+    /* With the client secret on the server, every device uses Google's full-page sign-in: a plain page change that needs no third-party
+       cookies, pop-ups or FedCM prompt, works on iPhone and iPad (where Google says its button needs it anyway) and is not affected by this
+       app running inside a srcdoc frame, whose location.origin is "null" (Google's button script reads it). Google's own button is only
+       used when just the public client ID is set (the owner's own computer). */
+    if(SRV.googleRedirect){box.innerHTML=GBTN;return}
+    if(iosWeb()){box.innerHTML='<small>Google sign-in on iPhone and iPad needs the full-page sign-in, which is not switched on here yet. Use your email and password.</small>';return}
     function draw(){
       try{
         var g=w.google.accounts.id;
@@ -1758,6 +1784,8 @@ function apply(w,host){
       return '<div class="svform"><b>Delete your account</b>'+
         '<div class="field"><label for="sDelPw">'+(nopw?'Type DELETE to confirm':'Enter your password to confirm')+'</label><input type="'+(nopw?'text':'password')+'" id="sDelPw" autocomplete="'+(nopw?'off':'current-password')+'" maxlength="128"></div>'+
         '<p class="note" style="margin:0">This removes your account, your receipts and your application records from UAply\'s server. It cannot be undone. Your profile on this device stays until you delete it in Data and privacy.</p>'+
+        /* billing_api.cancel_on_delete: the subscription is cancelled with Stripe first; if Stripe refuses, the account is kept */
+        (BILL.enabled&&BILL.signedIn&&(BILL.plan!=="free"||BILL.problem)?'<p class="note" id="delPlan" style="margin:0"><b>Your '+E((BILL.plans[BILL.plan]||{}).name||"paid")+' plan is cancelled right away</b> when the account is deleted, so your card is never charged again. The current month is not refunded automatically; ask support if you want it back.</p>':'')+
         '<div class="checks"><label><input type="checkbox" id="sDelAck"> I understand this cannot be undone</label></div>'+
         '<div class="acts"><button type="button" class="btn danger" data-auth="sdelgo">Delete my account</button><button type="button" class="btn ghost" data-auth="sdelno">Keep my account</button></div></div>';
     }
@@ -1779,7 +1807,7 @@ function apply(w,host){
       (up?'<div class="field"><label for="sPw2">Confirm password</label><input type="password" id="sPw2" autocomplete="new-password" maxlength="128"></div>'+
         '<div class="checks"><label><input type="checkbox" id="sAgree"> I am 18 or older and agree to the <a href="'+LB+'terms.html" target="_blank" rel="noopener noreferrer">Terms</a> and <a href="'+LB+'privacy.html" target="_blank" rel="noopener noreferrer">Privacy Policy</a></label></div>':'')+
       '<div class="acts"><button type="button" class="btn" data-auth="ssubmit">'+(up?"Create account":"Log in")+'</button><button type="button" class="btn ghost" data-auth="smode">'+(up?"I already have an account":"Create an account")+'</button>'+(up?'':'<button type="button" class="btn ghost" data-auth="sforgot">Forgot password?</button>')+'</div>'+
-      '<small>Your account is stored on UAply\'s server. Passwords are scrambled (hashed) and never stored as typed. Once you are signed in, each swipe right emails you a receipt.</small>'+
+      '<small>Your account is stored on UAply\'s server. Passwords are scrambled (hashed) and never stored as typed. '+(SRV.canEmail||SRV.testInbox?'Once you are signed in, each swipe right emails you a receipt.':'Email is not switched on for this site yet, so receipts start once it is; your account and swipes work now.')+'</small>'+
       (SRV.testInbox&&!SRV.canEmail&&up?'<small>No real email is connected on this computer yet, so the verification code and receipts go to the <a href="/outbox" target="_blank" rel="noopener noreferrer">test inbox</a>. <a href="/setup#gmail" target="_blank" rel="noopener noreferrer">Connect Gmail</a> to send real ones.</small>':'')+
       (SRV.google&&!noGoogle()?'<p class="note" style="text-align:center;margin:0">or</p><div class="checks"><label><input type="checkbox" id="gAgree"> I am 18 or older and agree to the <a href="'+LB+'terms.html" target="_blank" rel="noopener noreferrer">Terms</a> and <a href="'+LB+'privacy.html" target="_blank" rel="noopener noreferrer">Privacy Policy</a> (needed the first time)</label></div><div id="gBtn" style="min-height:44px"></div><small>Google handles the sign-in. UAply never sees your Google password, only your verified email.</small>'
         :(SRV.testInbox&&!noGoogle()?'<p class="note" style="text-align:center;margin:0">or</p><button type="button" class="btn" data-auth="gsetup" style="width:100%">Continue with Google</button><small>Google sign-in is not connected on this computer yet. Press the button to open setup (about 5 minutes). Only you see this button until it is connected; visitors never do.</small>':''))+'</div>';
@@ -1839,7 +1867,7 @@ function apply(w,host){
       return;
     }
     if(a==="sout"){apiPost("/api/auth/logout",{}).then(function(){SRV.user=null;AUI.delOpen=false;AUI.survey=false;paintHeader();renderAcct("account");msg("Signed out.")});return}
-    if(a==="sdel"){AUI.survey=true;AUI.delOpen=false;renderAcct("account");var f1=d.querySelector("#acctSec .svform input");if(f1)f1.focus();return}
+    if(a==="sdel"){loadBilling();AUI.survey=true;AUI.delOpen=false;renderAcct("account");var f1=d.querySelector("#acctSec .svform input");if(f1)f1.focus();return}
     if(a==="sdelno"){AUI.delOpen=false;AUI.survey=false;renderAcct("account");return}
     if(a==="sdelskip"){AUI.survey=false;AUI.delOpen=true;renderAcct("account");var dp=d.getElementById("sDelPw");if(dp)dp.focus();return}
     if(a==="sdelsend"){
@@ -1862,11 +1890,12 @@ function apply(w,host){
       if(!dpw){msg(nopw?"Type DELETE to confirm.":"Enter your password.");return}
       if(!(d.getElementById("sDelAck")||{}).checked){msg("Tick the box to confirm you understand this cannot be undone.");return}
       b.disabled=true;msg("Deleting your account…");
+      var hadPlan=!!(BILL.enabled&&BILL.signedIn&&BILL.plan!=="free");
       apiPost("/api/auth/delete",nopw?{confirm:dpw}:{password:dpw}).then(function(r){
         b.disabled=false;
         if(!r.ok){msg((r.j&&r.j.error)||"Could not delete the account. Try again.");return}
-        SRV.user=null;AUI.delOpen=false;AUI.survey=false;paintHeader();renderAcct("account");
-        msg("Your account was deleted"+(r.j.applicationsRemoved?", along with "+r.j.applicationsRemoved+" application record"+(r.j.applicationsRemoved===1?"":"s")+" on the server":"")+".");
+        SRV.user=null;AUI.delOpen=false;AUI.survey=false;paintHeader();renderAcct("account");loadBilling();
+        msg("Your account was deleted"+(r.j.applicationsRemoved?", along with "+r.j.applicationsRemoved+" application record"+(r.j.applicationsRemoved===1?"":"s")+" on the server":"")+"."+(hadPlan?" Your plan was cancelled with Stripe; you will not be charged again.":""));
       });
       return;
     }
@@ -1993,8 +2022,8 @@ function apply(w,host){
   var STEPS=[
     {k:"about",t:"About you",s:"About you",q:"Who should employers contact?",use:"These details go on every application you send, so an employer can reply to you.",anchors:["pName","pEmail","pPhone","px-phone","px-headline"]},
     {k:"jobs",t:"Jobs you want",s:"Jobs",q:"What kind of work are you looking for?",use:"This is the core of your matches. Titles, skills, experience and education change every score and decide which jobs show. The opportunity types you pick open first in Services.",anchors:["pTitle","px-types-fulltime","pSkills","pYears","pEdu"]},
-    {k:"where",t:"Where and pay",s:"Where and pay",q:"Where, how, and for how much?",use:"City, work style, distance, willingness to relocate and minimum pay all change your match score and which jobs show. Your state and ZIP code also fill in employer forms and help find your location for distance. Your street stays on this device.",anchors:["aAddr","pm-remote","aMilesF","pSalary","px-start","aNoticeF"]},
-    {k:"back",t:"Background and links",s:"Background",q:"Show employers who you are.",use:"Sent with your applications. Your headline, summary and major also count as skills when a job asks for them. GPA is optional and never changes a match.",anchors:["px-school","px-major","px-grad","px-gpa","px-employer","px-summary","px-resume","px-linkedin","px-portfolio","aResF","aSummaryF","aLinkedF","aSiteF","aCoverF"]},
+    {k:"where",t:"Where and pay",s:"Where and pay",q:"Where, how, and for how much?",use:"City, work style, distance, willingness to relocate and minimum pay all change your match score and which jobs show. Your state, ZIP code and country also fill in employer forms, and your state and ZIP code help find your location for distance. Your street stays on this device.",anchors:["aAddr","pm-remote","aMilesF","pSalary","px-start","aNoticeF"]},
+    {k:"back",t:"Background and links",s:"Background",q:"Show employers who you are.",use:"Sent with your applications. Your headline, summary and major also count as skills when a job asks for them. GPA is optional and never changes a match.",anchors:["px-school","px-major","px-grad","px-gpa","px-employer","px-job_title","px-job_start","px-job_end","px-summary","px-resume","px-linkedin","px-portfolio","aResF","aSummaryF","aLinkedF","aSiteF","aCoverF"]},
     {k:"final",t:"Eligibility and extras",s:"Eligibility",q:"Last details.",use:"Work authorization is added to applications only. It never changes a match or hides a job. The optional section at the bottom is yours to skip.",anchors:["px-auth","px-sponsor","aElig","aAutoF","aEeo"]}
   ];
   var wz={i:0,want:null,opened:false,dirty:false,pending:null};
@@ -2028,13 +2057,15 @@ function apply(w,host){
     var types=px?[["fulltime","Full-time"],["parttime","Part-time"],["internship","Internship"],["coop","Co-op"]].filter(function(t){var e=d.getElementById("px-types-"+t[0]);return e&&e.checked}).map(function(t){return t[1]}).join(", "):"";
     var edu=px?[fv("px-school"),fv("px-major"),fv("px-grad"),fv("px-gpa")?"GPA "+fv("px-gpa"):""].filter(Boolean).join(", "):"";
     var auth=px?[selText("px-auth"),selText("px-sponsor")?"sponsorship: "+selText("px-sponsor").toLowerCase():""].filter(Boolean).join("; "):"";
+    function mon(id){var m=/^(\d{4})-(\d{2})$/.exec(fv(id));return m?new Date(+m[1],m[2]-1,1).toLocaleDateString(undefined,{month:"long",year:"numeric"}):""}
+    var job=px?[fv("px-employer"),[fv("px-job_title"),mon("px-job_start")?mon("px-job_start")+" to "+(mon("px-job_end")||"present"):""].filter(Boolean).join(", ")].filter(Boolean).join(": "):"";
     var rows=[["Email",fv("pEmail")],["Location",loc],["Experience",yrs?yrs+(+yrs===1?" year":" years"):""]];
     function site(u){try{var x=new w.URL(u);return x.hostname.replace(/^www\./,"")+(x.pathname.length>1?"/…":"")}catch(e){return u}}
-    if(px)rows.push(["Phone",fv("px-phone")],["Resume link",fv("px-resume")&&site(fv("px-resume"))],["LinkedIn",fv("px-linkedin")&&site(fv("px-linkedin"))],["Portfolio",fv("px-portfolio")&&site(fv("px-portfolio"))],["Education",edu],["Most recent employer",fv("px-employer")],["Work authorization",auth],["Earliest start",selText("px-start")],["Looking for",types]);
+    if(px)rows.push(["Phone",fv("px-phone")],["Resume link",fv("px-resume")&&site(fv("px-resume"))],["LinkedIn",fv("px-linkedin")&&site(fv("px-linkedin"))],["Portfolio",fv("px-portfolio")&&site(fv("px-portfolio"))],["Education",edu],["Most recent employer",job],["Country",selText("px-country")],["Work authorization",auth],["Earliest start",selText("px-start")],["Willing to relocate",fv("px-relocate")&&selText("px-relocate")],["Looking for",types]);
     wzPrev.innerHTML='<div class="pvh">What employers see</div><div class="pv"><div class="pvTop"><span class="pvAv" aria-hidden="true">'+E(ini)+'</span><div><b>'+E(name||"Your name")+'</b><span>'+E(head||"Your title or headline")+'</span></div></div>'+
       (skills.length?'<div class="chips">'+skills.slice(0,8).map(function(s){return '<span class="chip">'+E(s)+'</span>'}).join("")+(skills.length>8?'<span class="chip">+'+(skills.length-8)+' more</span>':"")+'</div>':'<div class="pvMeta">No skills added yet</div>')+
       '<ul>'+rows.map(function(r){return '<li class="'+(r[1]?"":"no")+'"><span>'+r[0]+'</span><span>'+(r[1]?E(r[1]):"Not added yet")+'</span></li>'}).join("")+'</ul></div>'+
-      '<p class="note">This is what an employer receives when you swipe right on a listing from an employer that accepts applications through UAply. Never sent: your street address, your resume file (it stays on this device, so add a link above), and your voluntary answers.</p>';
+      '<p class="note">This is what an employer receives when you swipe right on a listing from an employer that accepts applications through UAply. Never sent: your street address, your resume file (it stays on this device, so add a link above), and your voluntary answers. Your expected pay goes only to an employer whose own form requires it.</p>';
   }
   function wzPaint(){
     var S=STEPS[wz.i],cl=checklist(),done=cl.filter(function(c){return c[1]}).length,pct=Math.round(done/cl.length*100);

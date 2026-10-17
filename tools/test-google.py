@@ -116,6 +116,23 @@ deny = h["Location"] + "&deny=1"
 g, h2, _ = get(c, deny)
 t("cancelling on Google's page is handled", get(c, h2["Location"])[1].get("Location"), "/?auth_error=cancelled")
 t("callback with no parameters is refused", get(client()[1], B + "/api/auth/google/callback")[1].get("Location"), "/?auth_error=expired")
+s, h, _ = get(c, B + "/api/auth/google/start?agree=1")
+g, h2, _ = get(c, h["Location"] + "&deny=1&err=admin_policy_enforced")
+t("Google sending back a setup error (not Cancel) says sign-in did not work, not 'cancelled'", get(c, h2["Location"])[1].get("Location"), "/?auth_error=failed")
+
+# what UAply asks Google for (Google's own best practice for a sign-in-only web app)
+s, h, _ = get(client()[1], B + "/api/auth/google/start")
+q = urllib.parse.parse_qs(urllib.parse.urlparse(h["Location"]).query)
+t("the request to Google uses PKCE with S256, a state and a nonce", (q.get("code_challenge_method"), len(q.get("code_challenge", [""])[0]), bool(q.get("state")), bool(q.get("nonce"))), (["S256"], 43, True, True))
+t("...asks only for openid and email, with the account chooser and no long-lived access", (q.get("scope"), q.get("prompt"), q.get("access_type"), q.get("response_type")),
+  (["openid email"], ["select_account"], ["online"], ["code"]))
+t("...and names this very address as the way back (Google compares it letter for letter)", q.get("redirect_uri"), [B + "/api/auth/google/callback"])
+t("the state cookie is HttpOnly, SameSite=Lax, limited to the Google paths and to 10 minutes",
+  all(x in h.get("Set-Cookie", "") for x in ("HttpOnly", "SameSite=Lax", "Path=/api/auth/google", "Max-Age=600")), True)
+jar5, f = client()
+t("a wrong client secret on the server (Google answers invalid_client) ends in a clear failure, nobody signed in",
+  (sign_in(f, True, {"email": "badsecret@example.com", "sub": "701", "verified": "1", "token_error": "invalid_client"}), me(f)), ("/?auth_error=failed", None))
+t("...and the next try, once the secret is right, works", sign_in(f, True, {"email": "badsecret@example.com", "sub": "701", "verified": "1"}), "/?signed_in=google")
 
 # deleting a Google-only account
 jar4, e = client()

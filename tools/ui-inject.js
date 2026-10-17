@@ -36,11 +36,11 @@ module.exports = async ({ ev, sleep, nav }) => {
   await goto("nb-prof", "Profile setup");
   await set("pName", P1); await set("pEmail", "inject.tester@example.com"); await set("pSkills", P1 + ", " + P4 + ", Python"); await set("pLoc", P4);
   await set("px-phone", "+1 555 123 4567");                  // a phone box rightly refuses markup, so it gets a valid number; every free-text box gets the payload
-  for (const id of ["px-school", "px-major", "px-employer", "px-headline", "px-gpa"]) await set(id, P1);
+  for (const id of ["px-school", "px-major", "px-employer", "px-job_title", "px-headline", "px-gpa"]) await set(id, P1);
   await ev(F + ".getElementById('saveBtn').click()"); await sleep(800);
   await goto("nb-prof", "Profile setup");   // Settings, Resume and Preferences are now steps of Profile setup: every field is on this one form
   await set("px-phone", "+1 555 123 4567");
-  for (const id of ["px-school", "px-major", "px-employer", "px-headline", "px-gpa"]) await set(id, P1);
+  for (const id of ["px-school", "px-major", "px-employer", "px-job_title", "px-headline", "px-gpa"]) await set(id, P1);
   for (const id of ["px-linkedin", "px-portfolio", "px-resume"]) await set(id, P3);
   await set("px-summary", P1 + P2 + P4);
   for (const id of ["px-cover", "px-note"]) await set(id, P1 + P2);

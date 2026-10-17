@@ -21,5 +21,7 @@ change someone else should review.
     python tools/audit-files.py     # every file: JSON, Python, JS, HTML, links, XML, images, secrets, line endings, git hygiene
     bash tools/run-all-tests.sh     # servers, accounts, emails, jobs, Google, public server, and every screen at iPhone size
 
+The browser tests find Chrome by themselves (Windows, Mac, Linux, a Playwright Chromium); set `UAPLY_CHROME=/path/to/chrome` to pick another one.
+
 ## Things that must never be committed
 `uaply-config.json` (keys, passwords), `uaply-partners.json`, and the `data/` folder. `tools/audit-files.py` fails if they are.

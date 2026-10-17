@@ -2,14 +2,17 @@
 
   python tools/mock-google.py [port]        (default 8790)
 
-Redirect flow (the older "Continue with Google" link):
-  GET  /mock/next?email=a@b.com&sub=123&verified=1   choose who "signs in" next
-  GET  /auth?...                                      like accounts.google.com: immediately "approves" and redirects back
+Full-page flow ("Continue with Google" whenever the server has the client secret):
+  GET  /mock/next?email=a@b.com&sub=123&verified=1   choose who "signs in" next (&token_error=invalid_client: the next code swap fails that way)
+  GET  /auth?...                                      like accounts.google.com: checks the request (S256, openid, select_account, online),
+                                                      immediately "approves" and redirects back (&deny=1&err=WORD: comes back with error=WORD)
   POST /token                                         like oauth2.googleapis.com/token: checks code, secret and PKCE verifier
+  GET  /mock/stats                                    how many times the key list was fetched
 
 Google's button flow (the page gets a signed token and posts it to UAply):
   GET  /certs                                         like googleapis.com/oauth2/v3/certs: the public key list
-  GET  /mock/idtoken?email=&sub=&verified=1           a correctly signed ID token {"credential": "..."}; add &bad=aud|iss|expired|tamper|none|hs256|kid|future, and &hd=example.com for a Workspace account
+  GET  /mock/idtoken?email=&sub=&verified=1           a correctly signed ID token {"credential": "..."}; add &bad=aud|iss|expired|tamper|none|hs256|kid|future|longlife
+                                                      (or &bad=skew: expired 20 seconds ago, which must still be accepted), and &hd=example.com for a Workspace account
                                                       to get a token that must be refused
 
 Point UAply at it with this in uaply-config.json:
@@ -32,6 +35,7 @@ SECRET = "test-secret"
 CLIENT = "test.apps.googleusercontent.com"
 NEXT = {"email": "google.user@example.com", "sub": "1001", "verified": True}
 CODES = {}
+STATS = {"certs": 0, "token_error": ""}                 # how often the key list was fetched; an error the next code swap answers with
 PREFIX = bytes.fromhex("3031300d060960864801650304020105000420")
 
 
@@ -101,7 +105,11 @@ def id_token(email, sub, verified=True, bad="", hd=""):
     elif bad == "iss":
         claims["iss"] = "https://evil.example"
     elif bad == "expired":
-        claims["exp"] = now - 10
+        claims["exp"] = now - 600                          # well past the minute of clock difference UAply forgives
+    elif bad == "skew":
+        claims["exp"] = now - 20                           # just expired: within the forgiven clock difference, so accepted
+    elif bad == "longlife":
+        claims["exp"] = now + 3 * 86400                    # Google's tokens last an hour; one claiming three days is refused
     elif bad == "future":
         claims["iat"] = now + 7200
         claims["exp"] = now + 10800
@@ -137,10 +145,14 @@ class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         u = urllib.parse.urlparse(self.path)
         q = {k: v[0] for k, v in urllib.parse.parse_qs(u.query).items()}
+        if u.path == "/mock/stats":
+            return self._json(200, STATS)
         if u.path == "/mock/next":
+            STATS["token_error"] = q.get("token_error", "")
             NEXT.update({"email": q.get("email", NEXT["email"]), "sub": q.get("sub", NEXT["sub"]), "verified": q.get("verified", "1") == "1"})
             return self._json(200, NEXT)
         if u.path == "/certs":
+            STATS["certs"] += 1
             key = {"kty": "RSA", "kid": "mock-key-1", "use": "sig", "alg": "RS256", "n": b64(N.to_bytes((N.bit_length() + 7) // 8, "big")), "e": b64(E.to_bytes(3, "big"))}
             return self._json(200, {"keys": [key]}, [("Cache-Control", "public, max-age=3600")])
         if u.path == "/mock/idtoken":
@@ -149,7 +161,9 @@ class H(http.server.BaseHTTPRequestHandler):
             if q.get("client_id") != CLIENT or q.get("code_challenge_method") != "S256" or not q.get("redirect_uri"):
                 return self._json(400, {"error": "bad request"})
             if q.get("deny"):
-                return self._redirect(q["redirect_uri"] + "?error=access_denied&state=" + q.get("state", ""))
+                return self._redirect(q["redirect_uri"] + "?error=" + urllib.parse.quote(q.get("err", "access_denied")) + "&state=" + q.get("state", ""))
+            if q.get("access_type") != "online" or q.get("prompt") != "select_account" or "openid" not in q.get("scope", "").split():
+                return self._json(400, {"error": "UAply should ask for openid, prompt=select_account and access_type=online"})
             code = secrets.token_urlsafe(16)
             CODES[code] = {"challenge": q["code_challenge"], "nonce": q.get("nonce"), "redirect": q["redirect_uri"], "who": dict(NEXT)}
             return self._redirect(q["redirect_uri"] + "?" + urllib.parse.urlencode({"code": code, "state": q.get("state", "")}))
@@ -165,6 +179,9 @@ class H(http.server.BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length") or 0)
         f = {k: v[0] for k, v in urllib.parse.parse_qs(self.rfile.read(n).decode()).items()}
         rec = CODES.pop(f.get("code", ""), None)          # a code works once
+        if STATS["token_error"]:                          # like Google when the client secret is wrong (invalid_client) or the code was reused
+            err, STATS["token_error"] = STATS["token_error"], ""
+            return self._json(401 if err == "invalid_client" else 400, {"error": err})
         if (self.path != "/token" or not rec or f.get("client_secret") != SECRET or f.get("client_id") != CLIENT
                 or f.get("redirect_uri") != rec["redirect"] or f.get("grant_type") != "authorization_code"
                 or b64(hashlib.sha256((f.get("code_verifier") or "").encode()).digest()) != rec["challenge"]):

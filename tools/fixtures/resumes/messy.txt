@@ -1,0 +1,17 @@
+resume
+
+   jordan   o'neil-reyes
+jordan.oneil.reyes@example.com   ||   cell: 267.555.0199
+Austin, Texas 78701
+
+about me:
+i am a hard working person who likes customers and computers and is looking for a full time job helping people with technology.
+
+work history
+  * 2022 - now    help desk technician at Lone Star Credit Union, austin tx
+      -   reset passwords, set up laptops for 80 staff
+  * 2019 - 2022   cashier, H-E-B grocery
+      - handled the register and the self checkout
+
+Skills: windows, active directory, customer service, Excel, office 365 ,  networking
+Education: Austin Community College — A.A.S. Network Administration (2021)

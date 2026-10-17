@@ -149,5 +149,45 @@ for i in range(35):
     last = call(client(), "/api/auth/google/token", {"credential": "junk.junk.junk"})[0]
 t("hammering the endpoint is limited", last, 429)
 
+# straight on jwt_rs256 (no server, so the limit above does not apply): the expiry rules and an outage at Google
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+import jwt_rs256  # noqa: E402
+CERTS, AUD, ISS = M + "/certs", "test.apps.googleusercontent.com", ("https://accounts.google.com", "accounts.google.com")
+
+
+def check(cred):
+    try:
+        return jwt_rs256.verify(cred, AUD, ISS, CERTS)["email"]
+    except jwt_rs256.TokenError as e:
+        return str(e)
+
+
+t("a token that expired 20 seconds ago is still accepted (a minute of clock difference is forgiven, as Google's libraries do)", check(token(email="skew@gmail.com", sub="1", bad="skew")), "skew@gmail.com")
+t("a token that expired 10 minutes ago is refused", check(token(email="old@gmail.com", sub="1", bad="expired")), "expired")
+t("a token that claims to last three days is refused (Google's last an hour)", check(token(email="long@gmail.com", sub="1", bad="longlife")), "lasts too long")
+before = json.loads(urllib.request.urlopen(M + "/mock/stats").read())["certs"]
+for i in range(6):
+    check(token(email="k%d@example.com" % i, sub="1", bad="kid"))
+for i in range(3):
+    check(token(email="ok%d@gmail.com" % i, sub="1"))
+after = json.loads(urllib.request.urlopen(M + "/mock/stats").read())["certs"]
+t("six tokens with made-up key ids and three good ones fetch Google's key list at most twice (once fresh, once for the unknown id)", after - before <= 2, True)
+good = token(email="unit@gmail.com", sub="9060")
+real_fetch = jwt_rs256._fetch_keys
+
+
+def down(url):
+    raise OSError("Google is unreachable")
+
+
+jwt_rs256._fetch_keys = down
+jwt_rs256._keys["until"] = 0                                 # the cached list is out of date and Google cannot be reached
+t("when Google cannot be reached, a key already known still checks the token", check(good), "unit@gmail.com")
+jwt_rs256._keys.update(url="", by_kid={}, until=0, tried=0)
+t("...but with no key known at all the token is refused (never accepted unchecked)", check(good), "could not get the public keys")
+jwt_rs256._fetch_keys = real_fetch
+import google_auth  # noqa: E402
+t("both of Google's issuer spellings are accepted (with and without https://)", set(google_auth.ISSUERS), {"https://accounts.google.com", "accounts.google.com"})
+
 print(sum(R), "/", len(R))
 sys.exit(0 if all(R) else 1)

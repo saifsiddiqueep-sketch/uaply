@@ -1,3 +1,6 @@
 # Optional. The server runs on the Python standard library alone.
 # Install this only to switch on AI-written answers in UAply Assistant (chat_api.py).
 anthropic
+# Reads the text of PDF resumes for "Fill from your resume" (resume_parse.py). Pure Python. Without it, Word and text resumes still work
+# and a PDF gets a plain "use a Word or text file for now" message.
+pypdf>=4.0

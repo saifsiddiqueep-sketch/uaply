@@ -70,6 +70,17 @@ module.exports = async ({ ev, sleep, nav, logs, send }) => {
     check("in the " + platform + " app the Google button is hidden", !(await ev("!!" + F + ".getElementById('gBtn')")) && !(await ev("!!" + F + ".querySelector('[data-auth=gsign]')")));
     check("...and password sign-up is still there", await ev("!!" + F + ".getElementById('sEmail')"));
   }
+  // a computer (Chrome on Windows): with the client secret set, the same full-page sign-in is used, so neither third-party cookies,
+  // Chrome's FedCM prompt nor the srcdoc frame (location.origin "null") can get in the way; Google's pop-up script is not even loaded
+  await send("Emulation.setUserAgentOverride", { userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36", platform: "Win32" });
+  await nav(BASE + "/"); await sleep(2500);
+  await openAccount();
+  check("on a computer the Google area is the same full-page Continue with Google button", await ev("!!" + F + ".querySelector('#gBtn [data-auth=gsign]')"));
+  check("...and Google's pop-up script (accounts.google.com/gsi/client) is not loaded", !(await ev("!!" + F + ".querySelector('script[src*=\"gsi/client\"]')")));
+  check("the app frame really is a srcdoc frame whose location.origin is 'null' (why Google's pop-up button is not used)", await ev("(document.querySelector('iframe').contentWindow.location.origin)==='null'"));
+  const desk = "desk." + stamp + "@gmail.com";
+  await googleFlow({ email: desk, sub: "desk-" + stamp, verified: "1" }, true);
+  check("on a computer, pressing it goes to Google and back signed in", await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>!!j.user&&j.user.email==='" + desk + "')"));
   check("no script errors", logs.length === 0, logs.join(" / ").slice(0, 160));
-  console.log(bad ? "\n" + bad + " check(s) failed" : "\nAll iPhone Google sign-in checks passed");
+  console.log(bad ? "\n" + bad + " check(s) failed" : "\nAll iPhone and computer Google sign-in checks passed");
 };

@@ -1,0 +1,26 @@
+MAYA PATEL
+Philadelphia, PA 19104 | (215) 555-0134 | maya.patel@example.edu
+linkedin.com/in/maya-patel-example | github.com/mayapatel-example
+
+EDUCATION
+Temple University, Philadelphia, PA
+B.S. in Computer Science, Minor in Mathematics          Expected May 2027
+GPA: 3.72/4.00
+Relevant coursework: Data Structures, Algorithms, Databases
+
+EXPERIENCE
+Software Engineering Intern                              Jun 2025 – Aug 2025
+Brightline Labs, Philadelphia, PA
+• Built a React dashboard used by 40 internal analysts
+• Wrote Python scripts that cut a weekly report from 3 hours to 10 minutes
+
+Teaching Assistant                                       Jan 2025 – May 2025
+Temple University Department of Computer Science
+• Held office hours for 60 students in Intro to Programming
+
+PROJECTS
+Campus Eats – a Flask app that lists late-night food near campus
+
+SKILLS
+Languages: Python, Java, JavaScript, SQL
+Tools: React, Flask, Git, Docker, Figma

@@ -1,0 +1,24 @@
+Aarav Sharma
+Data Analyst | Python · SQL · Tableau
+London, United Kingdom  •  +44 20 7946 0958  •  aarav.sharma@example.co.uk
+www.aaravsharma-example.dev
+
+PROFILE
+Data analyst with three years of experience turning messy operational data into dashboards that finance and operations teams use every
+day. Looking for an analytics role in the United States; authorised to work there from 2027.
+
+WORK EXPERIENCE
+Data Analyst — Northwind Logistics Ltd, London                      Sept 2023 – Present
+- Built Tableau dashboards for 12 regional managers
+- Automated monthly reconciliation in Python (pandas), saving 2 days a month
+
+Junior Analyst — Harbour Analytics Group, Manchester                 07/2021 – 08/2023
+- Cleaned and joined shipment data in SQL
+
+EDUCATION
+University of Manchester
+MSc Business Analytics, 2021
+BSc Economics, 2020
+
+SKILLS
+Python; SQL; Tableau; Excel; Power BI; Statistics

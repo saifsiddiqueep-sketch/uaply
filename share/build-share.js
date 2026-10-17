@@ -13,7 +13,7 @@ const employers = read("shared/uaply-employers.js");     // Hiring mode: sandbox
 const learn = read("shared/uaply-learn.js");             // Learns from your swipes: sandbox and dev (envs asks for it only when it is on)
 let envs = read("shared/uaply-envs.js");
 
-const NEEDS_SERVER = ["live", "kit", "submit"];
+const NEEDS_SERVER = ["live", "kit", "submit", "resume"];   // Fill from your resume reads the file on the server
 envs = envs.replace(/fetch\("prod-index\.html",\{cache:"no-store"\}\)\.then\(function\(r\)\{return r\.text\(\)\}\)/, "Promise.resolve(window.__PROD_SRC)");
 envs = envs.replace(/var ORDER=\[([^\]]*)\];/, (m, list) => {
   const kept = list.split(",").map((s) => s.trim()).filter((s) => !NEEDS_SERVER.includes(s.replace(/"/g, "")));

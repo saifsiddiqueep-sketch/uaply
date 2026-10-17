@@ -16,19 +16,24 @@ How it works:
   5. auth_api.oauth_login() finds or creates the account and the caller starts the normal session cookie.
 
 Two ways in, both switched on by the same OAuth client (Google Auth Platform, Clients, "Web application"; step by step in
-DEPLOY.md, "Google sign-in"):
+DEPLOY.md, "Google sign-in", and on /setup#google):
+  * This full-page redirect needs the client ID and the client secret, and each address + /api/auth/google/callback under
+    Authorized redirect URIs. Whenever the secret is set it is the ONLY way the page offers, on every device: it is a plain
+    top-level page change, so it does not depend on third-party cookies, pop-ups, Safari's tracking protection or Chrome's FedCM
+    prompt, and it works even though the app runs inside a srcdoc frame (where location.origin is "null", which Google's button
+    script reads, so its button could be refused there as "origin not allowed").
   * Google's own button (verify_credential below) needs only the public client ID and each site address under Authorized
-    JavaScript origins. Used on computers and Android phones.
-  * This full-page redirect needs the client secret too, and each address + /api/auth/google/callback under Authorized redirect
-    URIs. Used on iPhone and iPad, where Google says its button needs a full-page flow (Safari blocks the pop-up's cookies).
-  "google": {"client_id": "...apps.googleusercontent.com", "client_secret": "..."}   (uaply-config.json, or UAPLY_CONFIG_JSON on a host)
-Without a client ID the button is hidden.
+    JavaScript origins. The page uses it only when no secret is set (the owner's own computer after the /setup Connect box).
+  "google": {"client_id": "...apps.googleusercontent.com", "client_secret": "GOCSPX-..."}   (uaply-config.json, or UAPLY_CONFIG_JSON on a host)
+Without a client ID the button is hidden. Why a sign-in failed is written to the server log ("[uaply] Google sign-in: ...") with what
+to change in Google's console, because Google's own error pages (redirect_uri_mismatch, origin not allowed) are shown to the visitor.
 For tests only, "auth_url", "token_url" and "issuers" can point at a stand-in provider (tools/mock-google.py).
 """
 import base64
 import hashlib
 import json
 import secrets
+import sys
 import threading
 import time
 import urllib.error
@@ -46,6 +51,25 @@ MAX_PENDING = 2000
 
 _lock = threading.Lock()
 _pending = {}      # state -> {verifier, nonce, agree, exp}
+
+# what the owner changes when Google answers with one of its error words (written to the server log next to the word)
+FIXES = {
+    "invalid_client": "The client ID or client secret in UAPLY_CONFIG_JSON is wrong or was deleted: in Google Auth Platform, Clients, open "
+                      "UAply web, press Add secret, and paste the new GOCSPX-... secret into UAPLY_CONFIG_JSON (google, client_secret).",
+    "unauthorized_client": "This client is not a Web application client. Create one of type Web application and use its ID and secret.",
+    "invalid_grant": "The one-time code was used twice, expired, or the redirect address did not match the one Google was given. "
+                     "Usually a double click or the back button; if it keeps happening, check the server clock and the redirect URIs.",
+    "redirect_uri_mismatch": "Add this site's address followed by /api/auth/google/callback under Authorized redirect URIs.",
+    "admin_policy_enforced": "The person's Google Workspace administrator blocks this app. Nothing to fix on UAply's side.",
+    "org_internal": "Google Auth Platform, Audience: the app is set to Internal. Change the user type to External.",
+    "access_denied": "",
+}
+
+
+def log(text):
+    """A setup problem goes to the server log (Render, Logs) where the owner can read it; the visitor sees a plain sentence."""
+    sys.stderr.write("[uaply] Google sign-in: %s\n" % text)
+    sys.stderr.flush()
 
 
 def _settings():
@@ -69,6 +93,18 @@ def enabled():
 def button_enabled():
     """True when Google's own button can be shown: it needs only the public client ID, no secret."""
     return _settings()["gis"]
+
+
+def summary():
+    """One phrase for the server's start line in the log, so the owner sees at a glance whether his paste worked."""
+    s = _settings()
+    if s["on"]:
+        warn = "" if s["secret"].startswith("GOCSPX-") or s["auth_url"] != AUTH_URL else " (the client secret does not start with GOCSPX-: check it)"
+        return "on (full-page sign-in on every device)" + warn
+    if s["gis"]:
+        return "button only (no client secret: add it to UAPLY_CONFIG_JSON for the full-page sign-in)"
+    g = uaply_api.config().get("google")
+    return "OFF: the client ID in UAPLY_CONFIG_JSON does not end in .apps.googleusercontent.com" if isinstance(g, dict) and g.get("client_id") else "off"
 
 
 def redirect_uri(host, proto="http"):
@@ -107,7 +143,7 @@ def start(host, proto, agree):
         _pending[state] = {"verifier": verifier, "nonce": nonce, "agree": bool(agree), "exp": now + STATE_SECONDS}
     q = {"client_id": s["id"], "redirect_uri": redirect_uri(host, proto), "response_type": "code", "scope": "openid email",
          "state": state, "nonce": nonce, "code_challenge": _b64(hashlib.sha256(verifier.encode()).digest()),
-         "code_challenge_method": "S256", "prompt": "select_account"}
+         "code_challenge_method": "S256", "prompt": "select_account", "access_type": "online"}      # online: no refresh token, UAply never calls Google for the person later
     return s["auth_url"] + ("&" if "?" in s["auth_url"] else "?") + urllib.parse.urlencode(q), state
 
 
@@ -125,8 +161,11 @@ def finish(query, cookie_state, host, proto):
     state = (query.get("state") or [""])[0]
     with _lock:
         rec = _pending.pop(state, None)
-    if (query.get("error") or [""])[0]:
-        return "cancelled", None, False
+    err = (query.get("error") or [""])[0]
+    if err:
+        if err != "access_denied":                       # access_denied is the person pressing Cancel; anything else is a setup problem
+            log("Google sent the person back with error=%s. %s" % (err[:60], FIXES.get(err, "Check the OAuth client in Google Auth Platform.")))
+        return ("cancelled" if err == "access_denied" else "failed"), None, False
     if not s["on"] or not rec or rec["exp"] < time.time() or not cookie_state or not secrets.compare_digest(state, cookie_state):
         return "expired", None, False
     code = (query.get("code") or [""])[0]
@@ -138,15 +177,24 @@ def finish(query, cookie_state, host, proto):
         req = urllib.request.Request(s["token_url"], data=body, headers={"Content-Type": "application/x-www-form-urlencoded"})
         with urllib.request.urlopen(req, timeout=10) as r:
             tok = json.loads(r.read(200000).decode("utf-8"))
-    except (urllib.error.URLError, ValueError, OSError):
+    except urllib.error.HTTPError as e:
+        try:
+            why = str((json.loads(e.read(20000).decode("utf-8")) or {}).get("error") or e.code)
+        except Exception:
+            why = str(e.code)
+        log("Google refused to swap the sign-in code (%s). %s" % (why[:60], FIXES.get(why, "")))
+        return "failed", None, False
+    except (urllib.error.URLError, ValueError, OSError) as e:
+        log("could not reach Google's token address: %s" % type(e).__name__)
         return "failed", None, False
     c = _claims(tok.get("id_token") if isinstance(tok, dict) else None)
     if not isinstance(c, dict):
         return "failed", None, False
     aud = c.get("aud")
     if (c.get("iss") not in s["issuers"] or (aud != s["id"] and not (isinstance(aud, list) and s["id"] in aud))
-            or not isinstance(c.get("exp"), (int, float)) or c["exp"] < time.time() or c.get("nonce") != rec["nonce"]
+            or not isinstance(c.get("exp"), (int, float)) or c["exp"] + jwt_rs256.SKEW < time.time() or c.get("nonce") != rec["nonce"]
             or not c.get("sub") or not isinstance(c.get("email"), str)):
+        log("Google's answer did not pass the checks (issuer, client ID, expiry or nonce)")
         return "failed", None, False
     if c.get("email_verified") not in (True, "true"):
         return "unverified", None, False
@@ -183,7 +231,9 @@ def verify_credential(credential, ip):
         _tries[ip] = recent
     try:
         c = jwt_rs256.verify(credential, s["id"], s["issuers"], s["certs_url"])
-    except jwt_rs256.TokenError:
+    except jwt_rs256.TokenError as e:
+        if str(e) in ("could not get the public keys", "issued for another app"):
+            log("a token from Google's button was refused: %s%s" % (e, " (the page and the server use different client IDs?)" if "another" in str(e) else ""))
         return "failed", None
     if not isinstance(c.get("sub"), str) or not c["sub"] or not isinstance(c.get("email"), str):
         return "failed", None

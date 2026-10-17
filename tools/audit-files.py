@@ -28,7 +28,7 @@ def git(*a):
 
 
 files = [f for f in git("ls-files", "--cached", "--others", "--exclude-standard").split("\n") if f and os.path.isfile(f)]
-BINARY = (".png", ".jpg", ".jpeg", ".webp", ".ico", ".pdf", ".jar", ".gif", ".ttf", ".woff", ".woff2")
+BINARY = (".png", ".jpg", ".jpeg", ".webp", ".ico", ".pdf", ".jar", ".gif", ".ttf", ".woff", ".woff2", ".docx")
 
 
 def bump(k):

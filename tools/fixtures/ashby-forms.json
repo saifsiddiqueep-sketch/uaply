@@ -1,0 +1,55 @@
+{
+  "note": "Ashby application forms for the stand-in hiring system (tools/mock-ats.py) and tools/test-ats-ashby.py. Shaped like the 'results' of POST https://api.ashbyhq.com/jobPosting.info: applicationFormDefinition.sections[].fields[] with field {id, type, path, humanReadablePath, title, isNullable, selectableValues} and isRequired, as in Ashby's guide 'Creating a custom careers page' and its API reference (field types String, Email, File, Date, Number, Boolean, LongText, ValueSelect, MultiValueSelect, Phone, Score, SocialLink). Written by hand from that documentation, not recorded from a live employer: reading a real form needs the employer's key.",
+  "forms": {
+    "11111111-1111-4111-8111-111111111111": {
+      "title": "Software Engineer Intern",
+      "applicationFormDefinition": {"sections": [{"title": "", "fields": [
+        {"isRequired": true, "field": {"id": "f-name", "type": "String", "path": "_systemfield_name", "humanReadablePath": "Name", "title": "Name", "isNullable": false}},
+        {"isRequired": true, "field": {"id": "f-email", "type": "Email", "path": "_systemfield_email", "humanReadablePath": "Email", "title": "Email", "isNullable": false}},
+        {"isRequired": false, "field": {"id": "f-phone", "type": "Phone", "path": "_systemfield_phone", "humanReadablePath": "Phone", "title": "Phone", "isNullable": true}},
+        {"isRequired": true, "field": {"id": "f-resume", "type": "File", "path": "_systemfield_resume", "humanReadablePath": "Resume", "title": "Resume", "isNullable": false}},
+        {"isRequired": false, "field": {"id": "f-li", "type": "SocialLink", "path": "a1b2c3d4-linkedin", "humanReadablePath": "LinkedIn", "title": "LinkedIn profile", "isNullable": true}}
+      ]}]}
+    },
+    "22222222-2222-4222-8222-222222222222": {
+      "title": "Backend Engineer",
+      "applicationFormDefinition": {"sections": [
+        {"title": "", "fields": [
+          {"isRequired": true, "field": {"id": "f-name", "type": "String", "path": "_systemfield_name", "title": "Name", "isNullable": false}},
+          {"isRequired": true, "field": {"id": "f-email", "type": "Email", "path": "_systemfield_email", "title": "Email", "isNullable": false}},
+          {"isRequired": true, "field": {"id": "f-resume", "type": "File", "path": "_systemfield_resume", "title": "Resume", "isNullable": false}}
+        ]},
+        {"title": "A few questions", "fieldEntries": [
+          {"isRequired": true, "field": {"id": "q-auth", "type": "ValueSelect", "path": "q_work_auth", "title": "Are you legally authorized to work in the United States?",
+                                         "selectableValues": [{"label": "Yes", "value": "auth_yes"}, {"label": "No", "value": "auth_no"}]}},
+          {"isRequired": true, "field": {"id": "q-spon", "type": "Boolean", "path": "q_sponsor", "title": "Will you now or in the future require visa sponsorship?"}},
+          {"isRequired": true, "field": {"id": "q-heard", "type": "ValueSelect", "path": "q_heard", "title": "How did you hear about this role?",
+                                         "selectableValues": [{"label": "Referral", "value": "ref"}, {"label": "Job board", "value": "board"}, {"label": "Other", "value": "other"}]}},
+          {"isRequired": true, "field": {"id": "q-why", "type": "LongText", "path": "q_why", "title": "Why do you want to work here?"}},
+          {"isRequired": false, "field": {"id": "q-years", "type": "Number", "path": "q_years", "title": "How many years of professional experience do you have?"}},
+          {"isRequired": false, "field": {"id": "q-langs", "type": "MultiValueSelect", "path": "q_relocate", "title": "Are you open to relocation?",
+                                          "selectableValues": [{"label": "Yes", "value": "reloc_yes"}, {"label": "No", "value": "reloc_no"}]}},
+          {"isRequired": false, "field": {"id": "q-gender", "type": "ValueSelect", "path": "q_gender", "title": "What is your gender?",
+                                          "selectableValues": [{"label": "Woman", "value": "w"}, {"label": "Man", "value": "m"}, {"label": "Decline to self-identify", "value": "d"}]}}
+        ]}
+      ]}
+    },
+    "33333333-3333-4333-8333-333333333333": {
+      "title": "Odd Question Role",
+      "applicationFormDefinition": {"sections": [{"fields": [
+        {"isRequired": true, "field": {"id": "f-name", "type": "String", "path": "_systemfield_name", "title": "Name"}},
+        {"isRequired": true, "field": {"id": "f-email", "type": "Email", "path": "_systemfield_email", "title": "Email"}},
+        {"isRequired": true, "field": {"id": "f-resume", "type": "File", "path": "_systemfield_resume", "title": "Resume"}},
+        {"isRequired": true, "field": {"id": "q-color", "type": "LongText", "path": "q_color", "title": "What is your favorite color and why?"}}
+      ]}]}
+    },
+    "77777777-7777-4777-8777-777777777777": {
+      "title": "Unknown Field Role",
+      "applicationFormDefinition": {"sections": [{"fields": [
+        {"isRequired": true, "field": {"id": "f-name", "type": "String", "path": "_systemfield_name", "title": "Name"}},
+        {"isRequired": true, "field": {"id": "f-email", "type": "Email", "path": "_systemfield_email", "title": "Email"}},
+        {"isRequired": true, "field": {"id": "q-score", "type": "Score", "path": "q_self_score", "title": "Rate your Python from 1 to 4"}}
+      ]}]}
+    }
+  }
+}

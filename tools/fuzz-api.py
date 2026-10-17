@@ -14,7 +14,8 @@ PROBLEMS = []
 counter = [0]
 
 POSTS = ["/api/apply", "/api/decision", "/api/auth/signup", "/api/auth/login", "/api/auth/logout", "/api/auth/delete", "/api/auth/forgot",
-         "/api/auth/reset", "/api/auth/change-password", "/api/auth/google/token", "/api/auth/verify", "/api/auth/resend", "/api/chat", "/api/feedback"]
+         "/api/auth/reset", "/api/auth/change-password", "/api/auth/google/token", "/api/auth/verify", "/api/auth/resend", "/api/chat", "/api/feedback",
+         "/api/profile/resume"]
 GETS = ["/", "/api/jobs", "/api/apply/config", "/api/outbox", "/outbox", "/api/auth/me", "/api/auth/providers", "/api/auth/google/start",
         "/api/auth/google/callback?code=x&state=y", "/api/auth/google/callback?error=access_denied", "/api/chat/config", "/feedback", "/setup", "/healthz",
         "/?reset=%00", "/?reset=" + "a" * 5000, "/legal/", "/legal/terms.html", "/help/articles.json", "/nope", "/%", "/%zz", "/api/jobs?x=" + "b" * 9000]

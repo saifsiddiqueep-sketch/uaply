@@ -25,6 +25,9 @@ import jobs_api
 import uaply_api
 
 CLIENT_RE = re.compile(r"^\d+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$")
+# the live site's addresses, which Google must be told about (Render's own address keeps working next to the custom domain)
+LIVE_ORIGINS = ["https://uaply.net", "https://www.uaply.net", "https://uaply.onrender.com"]
+CALLBACK = "/api/auth/google/callback"
 
 
 URL_RE = re.compile(r"https://[A-Za-z0-9./_?=&#%-]+[A-Za-z0-9/_-]")
@@ -73,14 +76,19 @@ def checks(host, proto):
     smtp_ok = bool(s.get("host") and s.get("from_addr") and _real(s.get("password"), ("a gmail app password", "the-sending")))
     return [
         {"name": "Sign in with Google", "ok": g_ok,
-         "detail": (("On. Google's own button shows on the sign-in screen, including accounts already signed in on that browser." +
-                     ("" if google_auth.enabled() else " iPhone and iPad also need the client secret (they use Google's full-page sign-in): add it to UAPLY_CONFIG_JSON on the host.")) if g_ok else
+         "detail": (("On. Continue with Google opens Google's own sign-in page on every device and comes back signed in." if google_auth.enabled() else
+                     "Half on: only the client ID is set, so Google's pop-up button is used, which iPhones and iPads cannot use. Add the client secret "
+                     "(python tools/setup-config.py here, UAPLY_CONFIG_JSON on the host) for the full-page sign-in on every device.") if g_ok else
                     ("The client ID does not look right (it should end in .apps.googleusercontent.com)." if g_id and not CLIENT_RE.match(g_id) and not g.get("auth_url") else
-                     "Off. Add your Google client ID (the public one). The client secret is only needed on the hosted site, for iPhone and iPad.")),
-         "todo": ["Open https://console.cloud.google.com/auth/overview (Google Auth Platform) and press Get started: app name UAply, your Gmail as the support email, Audience External, your Gmail as the contact. Then on the Audience page press Publish app so anyone can sign in (sign-in only uses openid, email and profile, which need no review).",
-                  "Open https://console.cloud.google.com/auth/clients and press Create client, type Web application, name UAply web.",
-                  "Under Authorized JavaScript origins add each of these, exactly as written: " + "  and  ".join(origins(host, proto)) + ". Open this app at localhost, not 127.0.0.1, because Google treats them as different addresses. For the live site add https://uaply.net, https://www.uaply.net and https://uaply-dev.onrender.com, and under Authorized redirect URIs the same three addresses followed by /api/auth/google/callback.",
-                  "Press Create. Copy the Client ID (it ends in .apps.googleusercontent.com) and paste it in the Connect Google box below. Google shows the client secret only this once: keep it for the hosted site (UAPLY_CONFIG_JSON), never paste it into a page or chat."] if not g_ok else []},
+                     "Off. Add your Google client ID and client secret (the steps below; DEPLOY.md, section 3).")),
+         "todo": ["Open https://console.cloud.google.com/auth/overview (Google Auth Platform), signed in with the Google account that should own UAply, and press Get started (create a project named UAply if asked): App name UAply, User support email your Gmail, Audience External, Contact email your Gmail, agree, Create.",
+                  "Branding ( https://console.cloud.google.com/auth/branding ): App home page https://uaply.net , Privacy policy https://uaply.net/legal/privacy.html , Terms of service https://uaply.net/legal/terms.html , Authorized domains uaply.net and uaply.onrender.com (onrender.com itself is a public suffix, so Google takes the full Render address; it also adds the domains of your redirect URIs by itself). Save.",
+                  "Audience ( https://console.cloud.google.com/auth/audience ): press Publish app, then Confirm. Sign-in asks only for openid and email, which Google counts as non-sensitive, so there is no review and no 100-user limit. Left in Testing, only the test users you list there could sign in.",
+                  "Clients ( https://console.cloud.google.com/auth/clients ): Create client, Application type Web application, Name UAply web.",
+                  "Authorized JavaScript origins (no path, no slash at the end): " + "  ".join(LIVE_ORIGINS + [o for o in origins(host, proto) if o not in LIVE_ORIGINS]) + " . Google treats localhost and 127.0.0.1 as different addresses, so open this app at localhost.",
+                  "Authorized redirect URIs (exactly, with the path): " + "  ".join(o + CALLBACK for o in LIVE_ORIGINS + [o for o in origins(host, proto) if o not in LIVE_ORIGINS and not o.endswith("://localhost")]) + " .",
+                  "Press Create and copy the Client ID (ends in .apps.googleusercontent.com) and the Client secret (starts with GOCSPX-). Google shows the secret in full only now: download the JSON or keep it somewhere safe. Never paste the secret into a chat or a page.",
+                  "On Render (uaply-dev, Environment, UAPLY_CONFIG_JSON) add the google part with the client ID and the secret inside the existing { } (the exact line to copy is in DEPLOY.md, section 3), then Save, rebuild and deploy. The log line must say Google sign-in: on. On this computer, run python tools/setup-config.py to save both, or paste only the client ID in the Connect Google box below."] if not g_ok else []},
         {"name": "Email sending (password resets, receipts, copies)", "ok": smtp_ok,
          "detail": ("An email login is set. Use the button below to send yourself a test." if smtp_ok else
                     "Off. Until this is set, emails go only to the simulated test inbox (/outbox) and password reset links cannot reach real people."),
@@ -98,9 +106,11 @@ def checks(host, proto):
          "todo": ["Create a Stripe account at https://dashboard.stripe.com/register (start in test mode).",
                   "Product catalog: add a product Plus with a monthly price of 9.99 USD and a product Pro at 19.99 USD. Copy both price ids (price_...).",
                   "Developers, API keys: copy the secret key (sk_test_...).",
-                  "Developers, Webhooks: add an endpoint " + proto + "://" + host + "/api/billing/webhook with the events checkout.session.completed and customer.subscription.updated, created and deleted; copy its signing secret (whsec_...). On this computer use the Stripe CLI: stripe listen --forward-to " + host + "/api/billing/webhook.",
-                  "Settings, Billing, Customer portal: turn it on so people can switch plans and cancel.",
-                  "Paste the four values in the Connect Stripe box below."] if not billing_api.settings()["on"] else []},
+                  "Developers, Webhooks: Add destination, Your account, the events " + ", ".join(billing_api.EVENTS) + ", Webhook endpoint, URL " + proto + "://" + host + "/api/billing/webhook ; copy its signing secret (whsec_...). On this computer use the Stripe CLI: stripe listen --forward-to " + host + "/api/billing/webhook.",
+                  "Settings, Billing, Customer portal: turn it on so people can update their card, switch between Plus and Pro, see invoices and cancel at the end of the period.",
+                  "Paste the four values in the Connect Stripe box below. The full go-live checklist (live keys, Radar rules, test cards) is in DEPLOY.md, section 4."] if not billing_api.settings()["on"] else
+                 (["The webhook signing secret is missing: people could pay and never get their plan. Add STRIPE_WEBHOOK_SECRET (whsec_...)."] if not billing_api.settings().get("webhook_secret") else []) +
+                 (["TEST keys on a public server: anyone can get a plan with Stripe's test card 4242 4242 4242 4242. Use live keys on the real site (DEPLOY.md, section 4)."] if billing_api.settings()["test"] and billing_api.PUBLIC else [])},
         {"name": "Copy of every application to you", "ok": bool(owner),
          "detail": ("Every swipe right is also emailed to " + owner + (" once email sending is on." if not smtp_ok else ".")) if owner else "Off. Set owner_copy to your email.",
          "todo": [] if owner else ["Run: python tools/setup-config.py and enter your email when it asks."]},
@@ -165,14 +175,14 @@ def save_ats(payload):
     board = str(payload.get("board") or "").strip()
     key = str(payload.get("api_key") or "").strip()
     if not ats_api.valid_connection(kind, board, key):
-        return 400, {"ok": False, "message": "Choose Greenhouse or Lever, give the board name from the employer's job-board address (letters, numbers, - and _), and paste the key they created."}
+        return 400, {"ok": False, "message": "Choose Greenhouse, Lever, Ashby or SmartRecruiters, give the board name from the employer's job-board address (letters, numbers, - and _), and paste the key they created."}
     path = jobs_api.partners_file(for_writing=True)
     data = _read_partners(path)
     keep = [c for c in (data.get("ats_connections") or []) if isinstance(c, dict) and (c.get("kind"), c.get("board")) != (kind, board)]
     keep.append({"kind": kind, "board": board, "api_key": key})
     data["ats_connections"] = keep
     _write_partners(path, data)
-    return 200, {"ok": True, "saved": True, "message": "Connected. Real %s postings from %s now say Apply instantly, and a swipe right sends the application into their system." % (kind.capitalize(), board)}
+    return 200, {"ok": True, "saved": True, "message": "Connected. Real %s postings from %s now say Apply instantly, and a swipe right sends the application into their system." % (ats_api.NAMES[kind], board)}
 
 
 def remove_ats(payload):
@@ -356,7 +366,7 @@ def page(host, proto):
         rows.insert(0, '<article><b>Why you still see the test inbox and a test sign-in</b><p class="m">Until the first two items below are connected, this computer cannot show Google\'s real account chooser '
                        'and cannot send real email, so sign-up codes and receipts are saved in the <a href="/outbox">test inbox</a> instead. Connect both and the app behaves like the live site: '
                        'Google\'s own "Continue with Google" button, and real emails in real inboxes.</p></article>')
-    conn_html = "".join('<p class="m">%s / %s <button type="button" class="rm" data-k="%s" data-b="%s">Disconnect</button></p>' % (e(k.capitalize()), e(b), e(k), e(b)) for k, b in connections()).replace("%", "%%")
+    conn_html = "".join('<p class="m">%s / %s <button type="button" class="rm" data-k="%s" data-b="%s">Disconnect</button></p>' % (e(ats_api.NAMES.get(k, k)), e(b), e(k), e(b)) for k, b in connections()).replace("%", "%%")
     fs = feed_status()
     feeds_html = ("".join('<p class="m">%s: <b>%s</b>%s</p>' % (e(label), "saved" if fs[n] else "not added yet",
                                                                  (' <button type="button" class="fx" data-n="%s">Remove</button>' % n) if fs[n] else "")
@@ -365,7 +375,11 @@ def page(host, proto):
                           "(it arrives by email; give the email you used below). The Muse asks every app to register: get a key at https://www.themuse.com/developers/api/v2 . "
                           "Keys are saved only in uaply-config.json on this computer and are never shown again. On a hosted server, put them in UAPLY_CONFIG_JSON "
                           "as feed_keys instead.").replace("%", "%%")
-    origin_html = "".join('<p><code>%s</code> <button type="button" class="cp" data-v="%s">Copy</button></p>' % (e(o), e(o)) for o in origins(host, proto)).replace("%", "%%")
+    here = origins(host, proto)
+    every = here + [o for o in LIVE_ORIGINS if o not in here]
+    copy = '<p><code>%s</code> <button type="button" class="cp" data-v="%s">Copy</button></p>'
+    origin_html = (''.join(copy % (e(o), e(o)) for o in every) + '<p class="m">Authorized redirect URIs:</p>' +
+                   ''.join(copy % (e(o + CALLBACK), e(o + CALLBACK)) for o in every if not o.endswith("://localhost"))).replace("%", "%%")
     try:
         n = auth_api.counts()
     except Exception:
@@ -383,8 +397,8 @@ button{font:inherit;padding:8px 14px;border-radius:10px;border:1px solid var(--l
 code{background:var(--bg);padding:1px 5px;border-radius:5px}
 </style></head><body><main><h1>UAply setup</h1><p class="m">What is switched on, and what still needs a key. Secrets are never shown here.</p>
 %s
-<article id="google"><b>Connect Google sign-in</b><p class="m">Google needs to be told which addresses may show its button. Add each of these under Authorized JavaScript origins:</p>@@ORIGINS@@
-<p class="m">Then paste the Client ID from Google Cloud Console (the long address ending in .apps.googleusercontent.com). It is public, so it is safe to paste here. It is saved only on this computer. The client secret is not needed here; on the hosted site it goes into UAPLY_CONFIG_JSON so iPhones and iPads can sign in.</p>
+<article id="google"><b>Connect Google sign-in</b><p class="m">Google needs to be told which addresses may use sign-in. Add each of these under Authorized JavaScript origins (and the same followed by /api/auth/google/callback under Authorized redirect URIs):</p>@@ORIGINS@@
+<p class="m">Then paste the Client ID from Google Auth Platform, Clients (the long address ending in .apps.googleusercontent.com). It is public, so it is safe to paste here. It is saved only on this computer. The client secret (GOCSPX-...) never goes in a page: on this computer run python tools/setup-config.py, and on the hosted site put it in UAPLY_CONFIG_JSON. With the secret, every device uses Google's full-page sign-in.</p>
 <p><input id="gi" type="text" placeholder="123456789-abc.apps.googleusercontent.com" style="width:340px;max-width:90vw;padding:8px;border:1px solid var(--line);border-radius:8px"></p>
 <p><button id="gs" type="button">Save Google client ID</button> <span id="gr" class="m" role="status"></span></p></article>
 <article id="gmail"><b>Connect email (Brevo or Gmail)</b><p class="m">How UAply sends sign-up codes, receipts and applications. <b>Brevo</b> sends from your own domain (for example uaplytechnologies@uaply.net): paste that address, Brevo's SMTP login and an SMTP key from Brevo, SMTP &amp; API, SMTP tab. <b>Gmail</b>: paste the Gmail address and its App Password (a 16-letter code from myaccount.google.com/apppasswords, not your normal password). It is saved only in uaply-config.json on this computer, which is never uploaded, and a test email is sent right away.</p>
@@ -394,8 +408,9 @@ code{background:var(--bg);padding:1px 5px;border-radius:5px}
 <p><input id="gp" type="password" placeholder="Brevo SMTP key or Gmail App Password" autocomplete="off" style="width:280px;max-width:90vw;padding:8px;border:1px solid var(--line);border-radius:8px"></p>
 <p><input id="gc" type="email" placeholder="Send copies and tests to (optional)" style="width:280px;max-width:90vw;padding:8px;border:1px solid var(--line);border-radius:8px"></p>
 <p><button id="sv" type="button">Save and send a test email</button> <span id="sr" class="m" role="status"></span></p></article>
-<article id="ats"><b>Connect an employer's hiring system</b><p class="m">For an employer that uses Greenhouse or Lever and gave you the key they created. Their real postings then say <b>Apply instantly</b>. The key is saved only in uaply-partners.json on this computer and is never shown again.</p>
-<p><select id="ak" style="padding:8px;border:1px solid var(--line);border-radius:8px"><option value="greenhouse">Greenhouse</option><option value="lever">Lever</option></select>
+<article id="ats"><b>Connect an employer's hiring system</b><p class="m">For an employer that uses Greenhouse, Lever, Ashby or SmartRecruiters and gave you the key they created. Their real postings then say <b>Apply instantly</b>. The key is saved only in uaply-partners.json on this computer and is never shown again.</p>
+<p class="m">Where the employer makes the key: <b>Greenhouse</b> Configure, Dev Center, API Credential Management (a Job Board API key). <b>Lever</b> Settings, Integrations and API (a Postings API key, made by a Super Admin). <b>Ashby</b> Admin, Integrations, API Keys (a key with the Candidates write and Jobs read permissions). <b>SmartRecruiters</b> Settings, Admin, Credential Manager (an Application API key). The board name is the one in the employer's job-board address: boards.greenhouse.io/<i>board</i>, jobs.lever.co/<i>site</i>, jobs.ashbyhq.com/<i>board</i> or jobs.smartrecruiters.com/<i>company</i>.</p>
+<p><select id="ak" aria-label="Hiring system" style="padding:8px;border:1px solid var(--line);border-radius:8px"><option value="greenhouse">Greenhouse</option><option value="lever">Lever</option><option value="ashby">Ashby</option><option value="smartrecruiters">SmartRecruiters</option></select>
 <input id="ab" type="text" placeholder="Board name, e.g. acme" style="width:200px;max-width:50vw;padding:8px;border:1px solid var(--line);border-radius:8px"></p>
 <p><input id="aa" type="password" placeholder="The employer's API key" autocomplete="off" style="width:280px;max-width:90vw;padding:8px;border:1px solid var(--line);border-radius:8px"></p>
 <p><button id="as" type="button">Connect</button> <span id="ar" class="m" role="status"></span></p>

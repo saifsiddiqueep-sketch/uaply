@@ -86,7 +86,8 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot }) => {
   for (const [nb, list] of Object.entries(items)) {
     for (const it of list) {
       const opened = await menu(nb, it);
-      const label = await ev("(()=>{const b=" + F + ".getElementById('" + nb + "');return b?b.innerText.replace(/\\s+/g,' ').trim():''})()");
+      // textContent, not innerText: with one-word bottom tabs (simpleTabs, the release build) the open item's name is in the tab's hidden sub-label
+      const label = await ev("(()=>{const b=" + F + ".getElementById('" + nb + "');return b?b.textContent.replace(/\\s+/g,' ').trim():''})()");
       const want = it.toLowerCase().slice(0, 4);
       check("tapping " + nb.replace("nb-", "") + " › " + it + " on the phone opens it", opened && label.toLowerCase().includes(want), label);
       screens.push([nb.replace("nb-", "") + " › " + it, await coverage(it)]);

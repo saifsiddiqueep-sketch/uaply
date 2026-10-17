@@ -124,6 +124,102 @@ t("...and the answer the person gives fills the map position", "latitude" in dic
 no_resume = plan("waymo", cand_with(summary="", headline=""), resume=(None, None))
 t("no resume file and none pasted: the resume question is asked", any(m["q"].startswith("Resume") for m in no_resume["missing"]), True)
 
+# ---- the answers that most often stop an application: relocation, expected pay, country, location, current job ----------------------------
+YN = [{"label": "Yes", "value": 1}, {"label": "No", "value": 0}]
+LOCQ = [{"required": True, "label": "Location", "fields": [{"name": "location", "type": "input_text", "values": []}]},
+        {"required": True, "label": "Latitude", "fields": [{"name": "latitude", "type": "input_hidden", "values": []}]},
+        {"required": True, "label": "Longitude", "fields": [{"name": "longitude", "type": "input_hidden", "values": []}]}]
+READY = {"company_name": "Acme", "title": "Analyst", "location_questions": LOCQ, "questions": [
+    {"required": True, "label": "Are you willing to relocate?", "fields": [{"name": "question_1", "type": "multi_value_single_select", "values": YN}]},
+    {"required": True, "label": "What are your salary expectations?", "fields": [{"name": "question_2", "type": "input_text", "values": []}]},
+    {"required": True, "label": "Which country do you currently live in?", "fields": [{"name": "question_3", "type": "multi_value_single_select", "values": [
+        {"label": "United States of America", "value": 11}, {"label": "Canada", "value": 12}, {"label": "Other", "value": 13}]}]},
+    {"required": True, "label": "What is your current job title?", "fields": [{"name": "question_4", "type": "input_text", "values": []}]},
+    {"required": False, "label": "Dates of employment at your most recent employer", "fields": [{"name": "question_5", "type": "input_text", "values": []}]},
+    {"required": True, "label": "Are you currently employed?", "fields": [{"name": "question_6", "type": "multi_value_single_select", "values": YN}]},
+    {"required": False, "label": "Are you comfortable with the salary range for this role?", "fields": [{"name": "question_7", "type": "multi_value_single_select", "values": YN}]}]}
+JOB = {"employer": "Acme Robotics", "job_title": "Support Engineer", "job_start": "2024-06", "country": "US", "salary": "85000"}
+
+
+def ready(**ext):
+    c = cand_with(**dict(JOB, **ext))
+    return autofill.plan_greenhouse(READY, c, {"co": "Acme", "role": "Analyst"})
+
+
+full = ready()
+fd = dict(full["fields"])
+t("relocation, expected pay, country, job title and 'currently employed' all come from the profile: nothing is asked", full["missing"], [])
+t("...with the right answers", [fd.get("question_%d" % i) for i in (1, 2, 3, 4, 5, 6)],
+  ["1", "85000", "11", "Support Engineer", "June 2024 to present", "1"])
+t("a yes/no question that only mentions pay is never given a number", "question_7" in fd, False)
+t("the plan says expected pay went to this employer (for the receipt)", full["salary_sent"], True)
+bare = ready(relocate="", salary="", country="", zip="", state="", job_title="", job_start="", employer="")
+asked = sorted(m["q"] for m in bare["missing"])
+t("without those profile answers, each one is asked instead (and the ZIP code for the location)",
+  [q for q in asked if not q.startswith("What is your current job title")],
+  ["Are you currently employed?", "Are you willing to relocate?", "What are your salary expectations?", "Which country do you currently live in?",
+   "Your ZIP code (the employer's form uses it for your location)"])
+t("'current job title' falls back to the title the person is looking for", dict(ready(job_title="")["fields"]).get("question_4"), "Software Engineer Intern")
+opt_pay = json.loads(json.dumps(READY))
+opt_pay["questions"][1]["required"] = False
+op = autofill.plan_greenhouse(opt_pay, cand_with(**JOB), {"co": "Acme"})
+t("an optional pay question is left blank even when the profile has an amount", ("question_2" in dict(op["fields"]), op["salary_sent"]), (False, False))
+t("a profile that left expected pay blank never sends an amount", ("question_2" in dict(ready(salary="")["fields"]), ready(salary="")["salary_sent"]), (False, False))
+t("a country question for someone in Canada picks Canada", dict(ready(country="CA")["fields"]).get("question_3"), "12")
+
+
+def geo_fields(p):
+    d = dict(p["fields"])
+    return {k: d[k] for k in ("country_short_name", "location", "latitude", "longitude") if k in d}
+
+
+g = geo_fields(full)
+t("hidden fields: country, location and its map position are all sent", (g.get("country_short_name"), g.get("location"), round(float(g["latitude"])), round(float(g["longitude"]))),
+  ("US", "Philadelphia, Pennsylvania, United States", 40, -75))
+t("...even on a form with no location box (Dropbox): all three location fields together", sorted(geo_fields(plan("dropbox", cand_with(**JOB)))),
+  ["country_short_name", "latitude", "location", "longitude"])
+t("no ZIP code: no location at all (Greenhouse ignores one without coordinates), the country still goes", sorted(geo_fields(ready(zip=""))), ["country_short_name"])
+t("...and the ZIP code the person types when asked brings all three back",
+  sorted(geo_fields(autofill.plan_greenhouse(READY, cand_with(**dict(JOB, zip="")), {"co": "Acme"}, answers={"zip": "94103"}))),
+  ["country_short_name", "latitude", "location", "longitude"])
+t("someone in Canada: the country is CA and a US ZIP code is not turned into a location", geo_fields(ready(country="CA")), {"country_short_name": "CA"})
+t("country 'Other': no country code is guessed and no US location is made from the ZIP code", geo_fields(ready(country="other")), {})
+t("an older profile with a US state but no country counts as the United States", geo_fields(ready(country="")).get("country_short_name"), "US")
+for b in FORMS:                                                      # on every saved real form, the location fields go together or not at all
+    for c in (CAND, cand_with(zip=""), cand_with(zip="", country="other")):
+        n = len({"location", "latitude", "longitude"} & set(dict(plan(b, c)["fields"])))
+        if n not in (0, 3):
+            t("location fields together on %s" % b, n, 3)
+t("on every saved form, location, latitude and longitude are sent together or not at all", True, True)
+
+emp = {k: v for k, v in full["fields"] if k.startswith("employments")}
+t("the most recent job goes in Greenhouse's employments list: company, title, start and 'current'", emp,
+  {"employments[0][company_name]": "Acme Robotics", "employments[0][title]": "Support Engineer", "employments[0][start_date][month]": "6",
+   "employments[0][start_date][year]": "2024", "employments[0][current]": "true"})
+ended = {k: v for k, v in ready(job_end="2025-03")["fields"] if k.startswith("employments")}
+t("...a job that ended has its end month instead of 'current'", (ended.get("employments[0][end_date][month]"), ended.get("employments[0][end_date][year]"),
+                                                                  "employments[0][current]" in ended), ("3", "2025", False))
+t("...and nothing is sent without a title or a start month", [any(k.startswith("employments") for k, _ in ready(**x)["fields"]) for x in ({"job_title": ""}, {"job_start": ""})],
+  [False, False])
+t("'currently employed' is No once the job has an end month", dict(ready(job_end="2025-03")["fields"]).get("question_6"), "0")
+t("voluntary questions stay unanswered with the new profile answers too", all(not i["a"] for i in plan("dropbox", cand_with(**JOB))["items"] if i.get("skip") == "voluntary"), True)
+
+# what the server keeps from the browser, and what the employer and the receipt see
+x = uaply_api._ext(dict(CAND["ext"], **dict(JOB, job_end="2023-01")))
+t("dates that cannot be right (an end before the start) are dropped, so a job never reads as current by mistake", (x["job_start"], x["job_end"]), ("", ""))
+x = uaply_api._ext(dict(CAND["ext"], **dict(JOB, salary="lots", country="FR")))
+t("expected pay must be a number and the country one of the listed ones", (x["salary"], x["country"]), ("", ""))
+x = uaply_api._ext(dict(CAND["ext"], **JOB))
+rows = dict(uaply_api._detail_rows({"name": "Sam", "email": "s@example.com", "ext": x}))
+t("the receipt lists the country, the job title and dates there, relocation and (when sent) expected pay",
+  [rows.get(k) for k in ("Country", "Most recent employer", "Job title there", "Dates there", "Willing to relocate", "Expected yearly pay")],
+  ["United States", "Acme Robotics", "Support Engineer", "June 2024 to present", "Yes", "$85,000"])
+hook = uaply_api._webhook_payload({"id": "a1", "at": 0, "job": {"id": 1, "role": "R", "co": "C", "loc": "", "url": "https://x"}, "candidate":
+                                   {"name": "Sam", "email": "s@example.com", "ext": dict(x, salary="")}}, None)["applicant"]
+t("the webhook carries the country, relocation and the most recent job, and no expected pay unless a form asked",
+  (hook["country"], hook["willing_to_relocate"], hook["most_recent_job"], "expected_yearly_pay_usd" in hook),
+  ("US", "yes", {"employer": "Acme Robotics", "title": "Support Engineer", "start": "2024-06", "end": "", "current": True}, False))
+
 # ---- saved answers ---------------------------------------------------------------------------------------------------------------------------
 first = plan("coinbase")
 asked = {m["key"]: (m.get("opts") or ["yes"])[0] for m in first["missing"]}
@@ -161,6 +257,16 @@ try:
     key = autofill.norm("What is your favorite color and why?", "")
     st_, why = ats_api.submit("greenhouse", "acme", "1003", "gh-secret-key-123", dict(CAND, answers={key: "Blue, it is calm."}), "", *RESUME)
     t("...and once the person answers it, the application goes in with that answer", st_, "sent")
+    st_, why = ats_api.submit("greenhouse", "acme", "1006", "gh-secret-key-123", cand_with(**JOB), "", *RESUME)
+    t("relocation, expected pay, country and the location box: answered from the profile, sent without asking", (st_, why), ("sent", ""))
+    got = json.loads(urllib.request.urlopen("http://127.0.0.1:%d/__received" % PORT, timeout=5).read())[-1]
+    f = got["fields"]
+    t("...the employer's system received those answers, the country, the location with its map position and the job",
+      ([f.get(k) for k in ("question_300", "question_301", "question_302", "country_short_name", "location")], "latitude" in f and "longitude" in f, got["employments"]),
+      (["1", "85000", "11", "US", "Philadelphia, Pennsylvania, United States"], True,
+       [{"[company_name]": "Acme Robotics", "[title]": "Support Engineer", "[start_date][month]": "6", "[start_date][year]": "2024", "[current]": "true"}]))
+    st_, why = ats_api.submit("greenhouse", "acme", "1006", "gh-secret-key-123", cand_with(**dict(JOB, salary="", relocate="")), "", *RESUME)
+    t("...without expected pay and relocation in the profile, nothing is sent and those two are asked", (st_, "salary expectations" in why, "relocate" in why), ("needs_manual", True, True))
 
     # the sandbox's preview: a real (public) posting whose employer has not connected, in test mode
     jid = 4242001
@@ -169,7 +275,7 @@ try:
                                                                           "mode": "remote", "type": "internship", "sal": [0, 0], "apply": "link", "live": True, "contact": "",
                                                                           "ats": {"kind": "greenhouse", "board": "openboard", "id": "1003"}}]}
     body = {"consent": True, "job": {"id": jid, "co": "Acme", "role": "Intern", "url": "https://acme.example/j/1003"},
-            "profile": {"name": "Sam Rivera", "email": "sam@example.com", "loc": "Philadelphia, PA", "ext": CAND["ext"]},
+            "profile": {"name": "Sam Rivera", "email": "sam@example.com", "loc": "Philadelphia, PA", "ext": dict(CAND["ext"], **JOB)},
             "resume": {"name": "resume.pdf", "data": "data:application/pdf;base64,JVBERi0xLjQgYSBzbWFsbCB0ZXN0IHJlc3VtZSBmb3IgdGhlIGF1dG9maWxsIHRlc3Rz"}}
     uaply_api.init("sandbox")
     code, out = uaply_api.submit(dict(body))
@@ -179,10 +285,22 @@ try:
     code, out = uaply_api.submit(dict(body, answers={key: "Blue"}))
     t("sandbox: with the answer, it is applied (to the test inbox, never the employer)", (code, out.get("status"), out.get("simulated")), (200, "delivered_test", True))
     t("...and the reply says how much was filled in for the person", (out.get("plan") or {}).get("filled", 0) >= 5, True)
+    rec = uaply_api.APPS[-1]
+    t("a form that never asked for pay: expected pay is not kept or listed, the rest of the new answers are",
+      (rec["candidate"]["ext"]["salary"], "Expected yearly pay" in dict(uaply_api._detail_rows(rec["candidate"])),
+       dict(uaply_api._detail_rows(rec["candidate"])).get("Job title there")), ("", False, "Support Engineer"))
     page = uaply_api.outbox_html().decode("utf-8")
     t("the test inbox page shows the employer's form as UAply filled it in", ("filled in by UAply" in page, "Blue" in page), (True, True))
     code, out = uaply_api.submit(dict(body, answers={key: "Blue"}))
     t("sandbox: a second swipe on the same job is a duplicate, not a second application", out.get("status"), "duplicate")
+    with jobs_api._lock:
+        jobs_api._cache["autofill-test"]["jobs"].append(dict(jobs_api._cache["autofill-test"]["jobs"][0], id=jid + 1, url="https://acme.example/j/1006",
+                                                             ats={"kind": "greenhouse", "board": "openboard", "id": "1006"}))
+    body6 = dict(body, job=dict(body["job"], id=jid + 1, url="https://acme.example/j/1006"))
+    code, out = uaply_api.submit(body6)
+    rec = uaply_api.APPS[-1]
+    t("sandbox: a form that requires expected pay gets it from the profile, and the record and receipt list it",
+      (out.get("status"), rec["candidate"]["ext"]["salary"], dict(uaply_api._detail_rows(rec["candidate"])).get("Expected yearly pay")), ("delivered_test", 85000, "$85,000"))
     uaply_api.init("dev")
     code, out = uaply_api.submit(dict(body))
     t("dev (no preview): the same posting is a hand-off, with the filled answers ready for the employer's page", (out.get("status"), bool(out.get("plan"))), ("handoff", True))

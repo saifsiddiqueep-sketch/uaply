@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -109,6 +110,125 @@ try:
     sub = add_sub("sub_1", "cus_1", "price_pro1", status="canceled", end=int(time.time()) - 10)
     billing_api.webhook(*signed({"id": "evt_7", "type": "customer.subscription.deleted", "data": {"object": sub}}))
     t("a signed event that is not an object is refused, not a crash", billing_api.webhook(*signed(["not", "an", "object"]))[0], 400)
+
+    # ---- real cards, fake cards and scams: a second person goes through Stripe's page with Stripe's own test card numbers ----
+    def mock(path, **params):
+        req = urllib.request.Request("http://127.0.0.1:%d%s" % (PORT, path), data=urllib.parse.urlencode(params).encode())
+        try:
+            r = urllib.request.urlopen(req)
+            return r.status, json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            return e.code, json.loads(e.read() or b"{}")
+
+    def deliver(events):
+        """Stripe sends each event to the webhook, signed. Returns the answers."""
+        return [billing_api.webhook(*signed(ev)) for ev in events]
+
+    def fresh_checkout(u, plan="plus"):
+        code, out = billing_api.checkout(u, plan, "https://uaply.net")
+        return code, json.loads(urllib.request.urlopen("http://127.0.0.1:%d/__sessions" % PORT).read())[-1]["id"]
+
+    s2, out2, tok2 = auth_api.signup("card.tester@example.com", "correct horse 99", "10.0.0.2", True)
+    auth_api.verify_code(tok2, auth_api.issue_code_for_token(tok2)[2], "10.0.0.2")
+    u2 = auth_api.user_for(tok2)
+    code, cs = fresh_checkout(u2)
+    sess = json.loads(urllib.request.urlopen("http://127.0.0.1:%d/__sessions" % PORT).read())[-1]
+    t("checkout leaves 3D Secure to Stripe's automatic rule and lets Stripe collect the billing address it needs",
+      (sess.get("payment_method_options[card][request_three_d_secure]"), sess.get("billing_address_collection")), ("automatic", "auto"))
+    versions = json.loads(urllib.request.urlopen("http://127.0.0.1:%d/__versions" % PORT).read())
+    t("every call to Stripe names the pinned API version", (len(versions) > 0, set(versions)), (True, {billing_api.API_VERSION}))
+    for label, card in (("a made-up card number (fails the check digit)", "4242424242424241"), ("a number that is too short", "42424242"),
+                        ("a card the bank declines", "4000000000000002"), ("a card with no money on it", "4000000000009995"),
+                        ("a wrong CVC", "4000000000000127"), ("a card that fails the CVC check (Radar's CVC rule)", "4000000000000101"),
+                        ("a card Radar blocks as highest risk", "4100000000000019")):
+        code, out = mock("/__pay", session=cs, card=card)
+        t("%s: Stripe refuses it, sends no event, and the account stays on Free" % label, (code, out.get("events"), billing_api.plan_of(u2)), (402, [], "free"))
+    code, out = mock("/__pay", session=cs, card="4000000000000341")
+    answers = deliver(out["events"])
+    st2 = billing_api.status(u2)
+    t("a card that is saved but whose first charge fails: every event is accepted, yet no plan (the subscription is incomplete)",
+      ([a[0] for a in answers], st2["plan"], st2["status"]), ([200, 200, 200], "free", "incomplete"))
+    code, cs = fresh_checkout(u2)
+    t("after a failed first payment the person can try again with another card", code, 200)
+    code, out = mock("/__pay", session=cs, card="4242 4242 4242 4242")
+    sub2 = out["subscription"]
+    before = billing_api.plan_of(u2)
+    deliver(out["events"])
+    t("a real successful payment (4242 4242 4242 4242) makes the account Plus, and only after Stripe's signed events", (before, billing_api.plan_of(u2)), ("free", "plus"))
+
+    # forged, replayed and old events
+    fake = {"id": "evt_forged_1", "type": "customer.subscription.updated", "livemode": False,
+            "data": {"object": {"id": sub2, "customer": "cus_x", "status": "active", "items": {"data": [{"price": {"id": "price_pro1"}}]}, "metadata": {"uaply_user": str(u2["id"])}}}}
+    t("a forged signature (someone without our webhook secret) is refused and changes nothing",
+      (billing_api.webhook(*signed(fake, secret="whsec_guessed"))[0], billing_api.plan_of(u2)), (400, "plus"))
+    raw_f, sig_f = signed(fake)
+    t("a correctly signed event whose body was changed afterwards is refused", billing_api.webhook(raw_f.replace(b"price_pro1", b"price_pro2"), sig_f)[0], 400)
+    t("no signature at all is refused", billing_api.webhook(raw_f, "")[0], 400)
+    t("a signature header with junk in it is refused", billing_api.webhook(raw_f, "t=abc,v1=zz")[0], 400)
+    t("an event signed 6 minutes ago (older than Stripe's 5-minute window) is refused", billing_api.webhook(*signed(fake, ts=time.time() - 360))[0], 400)
+    t("an event stamped 10 minutes in the future is refused", billing_api.webhook(*signed(fake, ts=time.time() + 600))[0], 400)
+    t("an event signed 4 minutes ago is still accepted (Stripe's own tolerance is 5 minutes)", billing_api.webhook(*signed(dict(fake, id="evt_recent_1"), ts=time.time() - 240))[0], 200)
+    t("...and a signed event whose copy says Pro cannot switch Pro on: the plan is read from Stripe, which says Plus", billing_api.plan_of(u2), "plus")
+    t("the same event sent again is recognised and handled once", billing_api.webhook(*signed(dict(fake, id="evt_recent_1")))[1].get("duplicate"), True)
+    t("handled event ids are kept in the database, so a restart does not forget them", auth_api.stripe_event_seen("evt_recent_1"), True)
+    cfg["stripe"]["secret_key"] = "sk_live_mockkey123456"
+    t("a server with LIVE keys ignores a test-mode event (a test card can never unlock a plan on the real site)",
+      billing_api.webhook(*signed(dict(fake, id="evt_testmode_1")))[1].get("ignored"), "mode")
+    cfg["stripe"]["secret_key"] = "sk_test_mockkey123456"
+    t("a server with test keys ignores a live-mode event", billing_api.webhook(*signed(dict(fake, id="evt_livemode_1", livemode=True)))[1].get("ignored"), "mode")
+    cheap = add_sub("sub_cheap", "cus_cheap", "price_somethingelse")
+    cheap["metadata"] = {"uaply_user": str(u2["id"]), "plan": "pro"}
+    urllib.request.urlopen(urllib.request.Request("http://127.0.0.1:%d/__subscription" % PORT, data=urllib.parse.urlencode({"id": "sub_cheap", "json": json.dumps(cheap)}).encode()))
+    t("an active subscription on any other price (not our exact Plus or Pro price) never unlocks a plan, whatever its notes say",
+      (billing_api.webhook(*signed({"id": "evt_cheap", "type": "customer.subscription.updated", "data": {"object": cheap}}))[0], billing_api.plan_of(u2)), (200, "free"))
+    deliver(mock("/__renew_paid", sub=sub2)[1]["events"])          # puts u2 back on its own Plus subscription after the cheap one above
+    t("(back on the real Plus subscription)", billing_api.plan_of(u2), "plus")
+
+    # a renewal fails: Stripe retries; the plan stays for two failed tries and is paused after the third, then comes back when a payment works
+    deliver(mock("/__renew_fail", sub=sub2, attempt="1")[1]["events"])
+    st2 = billing_api.status(u2)
+    t("first failed renewal: still Plus, and the person is told the payment is being retried", (st2["plan"], st2["problem"]), ("plus", "retrying"))
+    deliver(mock("/__renew_fail", sub=sub2, attempt="2")[1]["events"])
+    t("second failed renewal: still Plus", billing_api.plan_of(u2), "plus")
+    deliver(mock("/__renew_fail", sub=sub2, attempt="3")[1]["events"])
+    st2 = billing_api.status(u2)
+    t("third failed renewal: the plan is paused (back to Free limits) and the person is told to update the card", (st2["plan"], st2["problem"], st2["cap"]), ("free", "paused", 50))
+    t("...a new checkout is refused; Manage billing is where the card is updated", billing_api.checkout(u2, "plus", "https://uaply.net")[1].get("code"), "has_plan")
+    t("...and Manage billing opens", billing_api.portal(u2, "https://uaply.net")[0], 200)
+    deliver(mock("/__renew_paid", sub=sub2)[1]["events"])
+    st2 = billing_api.status(u2)
+    t("the card is updated and the retry succeeds: Plus is back and the warning is gone", (st2["plan"], st2["problem"]), ("plus", ""))
+
+    # cancelled in the portal: kept until the paid month ends, then Free
+    deliver(mock("/__portal_cancel", sub=sub2)[1]["events"])
+    st2 = billing_api.status(u2)
+    t("cancelled in Stripe's portal: still Plus until the paid month ends, and the page says when it ends", (st2["plan"], st2["canceling"]), ("plus", True))
+    deliver(mock("/__period_end", sub=sub2)[1]["events"])
+    st2 = billing_api.status(u2)
+    t("the paid month ends: back on Free, nothing more to cancel", (st2["plan"], st2["canceling"], st2["problem"]), ("free", False, ""))
+
+    # deleting the account cancels the subscription at Stripe, so a deleted account is never charged again
+    code, cs = fresh_checkout(u2, "pro")
+    code, out = mock("/__pay", session=cs, card="4242424242424242")
+    deliver(out["events"])
+    t("subscribed again, to Pro", billing_api.plan_of(u2), "pro")
+    sub_status = lambda: billing_api._stripe("GET", "/v1/subscriptions/" + out["subscription"])[1]["status"]     # noqa: E731
+    t("a wrong password deletes nothing and cancels nothing", (auth_api.delete_account(tok2, "wrong password 1", "10.0.0.2", before_delete=billing_api.cancel_on_delete)[0], sub_status()), (401, "active"))
+    mock("/__fail_cancel")
+    code, body, gone = auth_api.delete_account(tok2, "correct horse 99", "10.0.0.2", before_delete=billing_api.cancel_on_delete)
+    t("if Stripe refuses to cancel the plan, the account is KEPT and the person is told to cancel in Manage billing first",
+      (code, body.get("code"), gone, "Manage billing" in body.get("error", ""), bool(auth_api.user_for(tok2)), sub_status()), (409, "billing", None, True, True, "active"))
+    code, body, gone = auth_api.delete_account(tok2, "correct horse 99", "10.0.0.2", before_delete=billing_api.cancel_on_delete)
+    t("deleting the account with an active plan cancels the subscription at Stripe immediately, then removes the account",
+      (code, gone == u2["id"], sub_status(), auth_api.user_for(tok2)), (200, True, "canceled", None))
+    t("...and Stripe's later event about it is accepted without error", billing_api.webhook(*signed({"id": "evt_after_delete", "type": "customer.subscription.deleted", "data": {"object": {"id": out["subscription"]}}}))[0], 200)
+    s3, _, tok3 = auth_api.signup("never.paid@example.com", "correct horse 99", "10.0.0.3", True)
+    t("an account that never paid is deleted without asking Stripe anything", auth_api.delete_account(tok3, "correct horse 99", "10.0.0.3", before_delete=billing_api.cancel_on_delete)[0], 200)
+    saved = dict(cfg["stripe"])
+    cfg["stripe"] = {"webhook_secret": WH}
+    t("with the keys removed, an event is answered 503 so Stripe sends it again later (not lost)",
+      (billing_api.webhook(*signed({"id": "evt_while_off", "type": "invoice.paid", "data": {"object": {}}}))[0], auth_api.stripe_event_seen("evt_while_off")), (503, False))
+    cfg["stripe"] = saved
 
     # weekly limits, enforced by the server
     for i in range(50):

@@ -32,6 +32,14 @@ services:
         sync: false
       - key: UAPLY_CONFIG_JSON        # optional: the rest of uaply-config.json as one line of JSON (smtp, public_url, google, delivery); see DEPLOY.md
         sync: false
+      - key: STRIPE_SECRET_KEY        # LIVE mode only on dev (the real site): sk_live_..., or none until payments start (DEPLOY.md, section 4)
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET    # whsec_... of the live webhook endpoint https://uaply.onrender.com/api/billing/webhook
+        sync: false
+      - key: STRIPE_PRICE_PLUS        # the live UAply Plus price, $9.99 a month (price_...)
+        sync: false
+      - key: STRIPE_PRICE_PRO         # the live UAply Pro price, $19.99 a month (price_...)
+        sync: false
     disk:
       name: uaply-dev-data
       mountPath: /var/data

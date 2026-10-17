@@ -1,0 +1,51 @@
+{
+  "about": "What a person reading each made-up resume would fill in. tools/test-resume.py compares resume_parse.py against it. A list means any of those answers is right; skills lists the ones that must be found (others may be added); summary is compared on its first 40 characters. A field missing here is not in that resume, so finding one is counted as a wrong answer.",
+  "student.txt": {
+    "name": "Maya Patel", "email": "maya.patel@example.edu", "phone": "(215) 555-0134",
+    "linkedin": "https://www.linkedin.com/in/maya-patel-example", "portfolio": "https://github.com/mayapatel-example",
+    "school": "Temple University", "major": "Computer Science", "grad": "2027-05", "gpa": "3.72",
+    "employer": "Brightline Labs", "job_title": "Software Engineering Intern", "job_start": "2025-06", "job_end": "2025-08",
+    "skills": ["Python", "Java", "JavaScript", "SQL", "React", "Flask", "Git", "Docker", "Figma"],
+    "location": {"city": "Philadelphia", "state": "PA", "zip": "19104"}
+  },
+  "newgrad.docx": {
+    "name": "Elena Rossi", "email": "elena.rossi@example.com", "phone": "617-555-0110", "headline": "Marketing Coordinator",
+    "summary": "Recent marketing graduate who has run social campaigns",
+    "school": "Northeastern University", "major": "Marketing", "grad": "2025-05", "gpa": "3.5",
+    "employer": "Harborview Community Foundation", "job_title": "Marketing Intern", "job_start": "2024-06", "job_end": "present",
+    "skills": ["HubSpot", "Canva", "Google Analytics", "Copywriting", "Mailchimp", "Excel"],
+    "location": {"city": "Boston", "state": "MA", "zip": "02115"}
+  },
+  "twocolumn.pdf": {
+    "name": "Sam Okafor", "email": "sam.okafor@example.com", "phone": "(312) 555-0148", "linkedin": "https://www.linkedin.com/in/samokafor-example",
+    "headline": "Backend Engineer", "summary": "Backend engineer with six years of experience",
+    "school": ["University of Illinois", "University of Illinois Urbana-Champaign"], "major": "Computer Engineering", "grad": "2018-05",
+    "employer": "Lakeshore Payments", "job_title": "Senior Software Engineer", "job_start": "2022-03", "job_end": "present",
+    "skills": ["TypeScript", "Node.js", "PostgreSQL", "AWS", "Kubernetes", "GraphQL"],
+    "location": {"city": "Chicago", "state": "IL", "zip": "60607"}
+  },
+  "datesfirst.pdf": {
+    "name": "Chris Nakamura", "email": "chris.nakamura@example.com", "phone": "(206) 555-0172", "portfolio": "https://chrisnakamura-example.design",
+    "headline": "Product Designer", "summary": "Product designer who has shipped mobile banking",
+    "school": "University of Washington", "major": "Interaction Design", "grad": "2020-05",
+    "employer": ["Evergreen Health Inc", "Evergreen Health Inc."], "job_title": "Senior Product Designer", "job_start": "2023", "job_end": "present",
+    "skills": ["Figma", "Prototyping", "User Research", "Accessibility", "HTML", "CSS"],
+    "location": {"city": "Seattle", "state": "WA", "zip": "98101"}
+  },
+  "international.txt": {
+    "name": "Aarav Sharma", "email": "aarav.sharma@example.co.uk", "phone": "+44 20 7946 0958", "portfolio": "https://aaravsharma-example.dev",
+    "headline": ["Data Analyst", "Data Analyst | Python · SQL · Tableau"], "summary": "Data analyst with three years of experience",
+    "school": "University of Manchester", "major": "Business Analytics", "grad": "2021-05",
+    "employer": "Northwind Logistics Ltd", "job_title": "Data Analyst", "job_start": "2023-09", "job_end": "present",
+    "skills": ["Python", "SQL", "Tableau", "Excel", "Power BI"],
+    "location": {"city": "London", "state": "", "zip": ""}
+  },
+  "messy.txt": {
+    "name": "Jordan O'Neil-Reyes", "email": "jordan.oneil.reyes@example.com", "phone": "267.555.0199",
+    "summary": "i am a hard working person who likes customers",
+    "school": "Austin Community College", "major": "Network Administration", "grad": "2021-05",
+    "employer": "Lone Star Credit Union", "job_title": ["Help Desk Technician", "help desk technician"], "job_start": "2022", "job_end": "present",
+    "skills": ["Windows", "Active Directory", "Excel", "Networking"],
+    "location": {"city": "Austin", "state": "TX", "zip": "78701"}
+  }
+}

@@ -449,7 +449,8 @@ def _smartrecruiters(token, name):
         out.append(dict(id=p["id"], title=(p.get("name") or "").strip(), company=(p.get("company") or {}).get("name") or name,
                         loc=loc or "Not listed", remote=True if L.get("remote") else None,
                         text=_text(text) or (p.get("name") or ""), url="https://jobs.smartrecruiters.com/%s/%s" % (token, p["id"]),
-                        salary_text="", sal=sal, posted=_ts(p.get("releasedDate")), fallback=fallback, force_type=force))
+                        salary_text="", sal=sal, posted=_ts(p.get("releasedDate")), fallback=fallback, force_type=force,
+                        ats_id=str(p.get("uuid") or "")))     # the Application API addresses a posting by its uuid, not by its number
     return [r for r in out if r["title"]]
 
 
@@ -547,7 +548,8 @@ def _normalize(raw, kind, name, board=None):
     src = name if kind in ("remotive", "jobicy", "muse", "usajobs") else "%s's careers page" % raw["company"]
     # Where this posting lives in the employer's own hiring system. It is only an address (not a credential): it is used when, and only when, the
     # employer has connected with their own key (see ats_connections); otherwise it is never used and apply stays "link".
-    pid = str(raw["id"])
+    # Ashby: the job board's own posting id is the jobPostingId its API takes. SmartRecruiters: the posting's uuid (see _smartrecruiters).
+    pid = str(raw.get("ats_id") or raw["id"])
     ats = {"kind": kind, "board": board, "id": pid} if (kind in ats_api.KINDS and board and ats_api.TOKEN_RE.match(board) and ats_api.ID_RE.match(pid)) else None
     # contact is deliberately empty and apply is "link": a third-party feed never gets an application emailed to anyone
     out = dict(id=jid, co=raw["company"], role=title, loc=_place(loc, mode), mode=mode,
@@ -728,7 +730,7 @@ def _file_stamp(path):
 
 
 def ats_connections():
-    """{(kind, board): api_key} for employers who connected their own hiring system (Greenhouse or Lever) with a key they created. Read from the
+    """{(kind, board): api_key} for employers who connected their own hiring system (Greenhouse, Lever, Ashby or SmartRecruiters) with a key they created. Read from the
     UAPLY_ATS_JSON setting (a host's dashboard) and from 'ats_connections' in the employer list. Anything malformed is skipped."""
     env, path = os.environ.get("UAPLY_ATS_JSON") or "", partners_file()
     try:
@@ -788,7 +790,7 @@ def _file_partner_jobs():
         name, consent = _clean(e.get("name"), 100), _clean(e.get("consent"), 300)
         if not name or not consent or consent.lower().startswith("placeholder"):
             continue                                   # no recorded consent (or the example text still in place), no listing
-        # the employer's own hiring system (Greenhouse or Lever) and the key they created for it: applications to their jobs go straight in
+        # the employer's own hiring system (Greenhouse, Lever, Ashby or SmartRecruiters) and the key they created for it: applications to their jobs go straight in
         a = e.get("ats") if isinstance(e.get("ats"), dict) else {}
         ats_cfg = a if ats_api.valid_connection(a.get("kind"), a.get("board"), a.get("api_key")) else None
         contact = _clean(e.get("contact"), 120)

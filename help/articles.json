@@ -85,8 +85,9 @@
    "id": "resume",
    "title": "Adding my resume",
    "tags": "resume cv upload file pdf word link document",
-   "body": "Open Profile, then Profile setup, step 4 (Background and links). Upload your resume file (PDF, Word or text, up to 1 MB), or add a link to it, such as a Google Drive link anyone can open. The file is saved on your device and goes along with each application UAply sends to an employer; UAply's server does not keep a copy. For jobs you finish on the employer's own site, upload it there.",
-   "go": "prof:back"
+   "body": "Open Profile, then Profile setup, step 4 (Background and links). Upload your resume file (PDF, Word or text, up to 1 MB), or add a link to it, such as a Google Drive link anyone can open. The file is saved on your device and goes along with each application UAply sends to an employer; UAply's server does not keep a copy. For jobs you finish on the employer's own site, upload it there. To fill in your profile from it, choose your resume under Fill from your resume at the top of that step: UAply fills in the fields that are still empty, never changes what you typed (it offers Replace where your resume differs), and shows the line each answer came from so you can check it. The file is read on UAply's server for a moment and not kept.",
+   "go": "prof:back",
+   "release": {"body": "Open Profile, then Profile setup, step 4 (Background and links). Upload your resume file (PDF, Word or text, up to 1 MB), or add a link to it, such as a Google Drive link anyone can open. The file is saved on your device and goes along with each application UAply sends to an employer; UAply's server does not keep a copy. For jobs you finish on the employer's own site, upload it there."}
   },
   {
    "id": "dashboard",
@@ -153,7 +154,7 @@
   {
    "id": "privacy",
    "title": "What data does UAply keep, and does it sell my data?",
-   "tags": "privacy data personal information stored keep share sell cookies",
+   "tags": "privacy data personal information stored keep share sell sold selling sells cookies",
    "body": "Your profile is saved on your device. Each time you swipe right, UAply's server keeps a record of that application (the job and the details sent with it) so it can deliver it and show what happened. If you create an account, your email, a scrambled form of your password and your receipts are kept too; deleting your account removes them and the applications you made while signed in. Employers only receive your details when you apply to one that agreed to receive applications. UAply does not sell your information. The Privacy Policy, linked at the bottom of the app, has the details.",
    "go": "prof:data"
   },

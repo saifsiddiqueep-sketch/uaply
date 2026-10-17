@@ -63,12 +63,13 @@ body.app iframe{border:0;border-radius:0;width:100%!important}
 <script src="uaply-learn.js"></script>
 <script src="uaply-envs.js"></script>
 <script src="uaply-employers.js"></script>
+<script src="uaply-resume.js"></script>
 <script>
 (function(){
 var KEY="hireswipe.sandbox.v1",E=window.UAplyEnv,
     _ci=E.ORDER.indexOf("confirm");if(_ci>-1)E.ORDER.splice(_ci,1);   /* a swipe right is the whole action here: no "Save to Applied?" question, not even with All on */
 /* glide (Phone swipe) decides every swipe when on; easy and axis stay on so switching glide off in the controls falls back to them */
-var on={glide:true,learn:true,easy:true,axis:true,nav:true,profile:true,live:true,kit:true,submit:true,smart:true,fit:true,anim:true,guide:true,tap:true,dates:true,hint:true,chat:true,employers:true};
+var on={glide:true,learn:true,easy:true,axis:true,nav:true,profile:true,live:true,kit:true,submit:true,smart:true,fit:true,anim:true,guide:true,tap:true,dates:true,hint:true,chat:true,employers:true,resume:true};
 var frame=document.getElementById("app"),noteEl=document.getElementById("note"),logEl=document.getElementById("log");
 function load(){logEl.classList.remove("on");logEl.innerHTML="";E.run(frame,on,KEY,function(err){if(err)noteEl.textContent="Problem: "+err})}
 function paint(n){document.querySelectorAll("#feats button").forEach(function(b){b.setAttribute("aria-pressed",on[b.dataset.k]?"true":"false")});if(n)noteEl.textContent=n}

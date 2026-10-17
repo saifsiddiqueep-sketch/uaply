@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs every check on this computer with throwaway data and its own servers, then prints one summary.
 #   bash tools/run-all-tests.sh
-# Needs Node, Python 3 and Google Chrome. It never touches your real data/ folder or uaply-config.json secrets
+# Needs Node, Python 3 and Google Chrome or Chromium (found by tools/cdp.js; set UAPLY_CHROME=/path/to/chrome to choose one). It never touches your real data/ folder or uaply-config.json secrets
 # (it ignores uaply-config.json by pointing UAPLY_CONFIG_JSON at its own settings).
 cd "$(dirname "$0")/.." || exit 1
 TMP="${TMPDIR:-/tmp}/uaply-tests-$$"
@@ -56,12 +56,15 @@ step "Swipe-right emails (content, test label, safety, real send)"
 run "receipt and owner copy emails" python tools/test-emails.py
 run "help requests from the assistant reach the support inbox" python tools/test-support.py
 run "applications go straight into employers' hiring systems (Greenhouse, Lever)" python tools/test-ats.py
+run "applications go straight into an employer's Ashby" python tools/test-ats-ashby.py
+run "applications go straight into an employer's SmartRecruiters" python tools/test-ats-smartrecruiters.py
 run "swipe right to apply instantly, end to end" python tools/test-ats-flow.py
 run "paid plans: Stripe checkout, signed webhook, limits" python tools/test-billing.py
 run "autofill: real employers' forms answered from the profile, questions asked once" python tools/test-autofill.py
 run "Hiring mode: company, postings, feed, applicants (sandbox only)" python tools/test-employers.py
 run "job feeds: USAJOBS, City of Philadelphia, keys, feeds_off, via credit" python tools/test-feeds.py 18784
 run "swipe learning: the math, the worked example, the replay test" python tools/test-learn.py
+run "fill from your resume: six resumes, layouts, dates, refused files, the endpoint" python tools/test-resume.py 18798
 run "the server as Render runs it: start, stop mid-request, restart on the same disk" python tools/test-render.py 18782
 run "every path from swipe right to inbox, replayed in a browser" python tools/ui-apply-paths.py
 
@@ -88,6 +91,7 @@ run "sandbox: the setup page's script runs, and Connect email switches between B
 run "dev on a big iPhone (440x956): every menu item tapped by touch, nothing covers a button, 7 kinds of real swipes" env W=440 H=956 PORT=18767 node tools/cdp.js tools/ui-phone.js
 run "dev on a small iPhone (375x667): the same" env W=375 H=667 PORT=18767 node tools/cdp.js tools/ui-phone.js
 run "sandbox: learns from swipes (remote first, explore card, reset)" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-learn.js
+run "sandbox: fill from your resume (fills empty fields, keeps typed ones, Replace, errors, fits the phone)" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-resume.js
 
 step "Google sign-in (against a stand-in Google)"
 PIDS="$PIDS $(start python tools/mock-google.py 8790)"
@@ -119,6 +123,23 @@ step "Hostile input (every endpoint, wrong types, injection strings, odd headers
 PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/fuzz" HOST=0.0.0.0 OWNER_PASSWORD=ownerpw UAPLY_CONFIG_JSON='{"feeds":[],"smtp":{},"owner_copy":""}' start python serve.py 18775 dev --api)"
 wait_port 18775
 run "no crash, hang or leaked error text across every endpoint" python tools/fuzz-api.py 18775
+
+step "The after-deploy checks (live-check.py, ui-live.js), against local servers only: this suite never touches the live site"
+# one server with everything off (as the live site was before the owner's keys) and one with email, Google and payments on through stand-ins
+LP="${LIVE_CHECK_PORT:-18810}"                 # uses LP to LP+4
+mkdir -p "$TMP/lc-off" "$TMP/lc-on"
+PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/lc-off" HOST=0.0.0.0 OWNER_PASSWORD=ownerpw UAPLY_CONFIG_JSON="$FEEDS" start python serve.py "$LP" dev --api)"
+PIDS="$PIDS $(start python tools/mock-google.py $((LP+2)))"
+PIDS="$PIDS $(start python tools/fake-smtp.py $((LP+3)) "$TMP/lc-on/mail.jsonl")"
+PIDS="$PIDS $(start python tools/mock-stripe.py $((LP+4)))"
+LC_ON='{"feeds":["greenhouse","lever","ashby"],"delivery":"test","owner_copy":"","anthropic_api_key":"","smtp":{"host":"127.0.0.1","port":'$((LP+3))',"starttls":false,"from_addr":"uaply@example.com"},"google":{"client_id":"test.apps.googleusercontent.com","client_secret":"test-secret","auth_url":"http://127.0.0.1:'$((LP+2))'/auth","token_url":"http://127.0.0.1:'$((LP+2))'/token","certs_url":"http://127.0.0.1:'$((LP+2))'/certs"}}'
+PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/lc-on" HOST=0.0.0.0 OWNER_PASSWORD=ownerpw UAPLY_STRIPE_BASE="http://127.0.0.1:$((LP+4))" STRIPE_SECRET_KEY=sk_test_mockkey123456 STRIPE_WEBHOOK_SECRET=whsec_testsecret STRIPE_PRICE_PLUS=price_plus1 STRIPE_PRICE_PRO=price_pro1 UAPLY_CONFIG_JSON="$LC_ON" start python serve.py $((LP+1)) dev --api)"
+wait_port "$LP" && wait_port $((LP+1))
+for _ in $(seq 1 120); do n=$(curl -s "http://127.0.0.1:$LP/api/jobs" | python -c "import sys,json; print(len(json.load(sys.stdin)['jobs']))" 2>/dev/null); m=$(curl -s "http://127.0.0.1:$((LP+1))/api/jobs" | python -c "import sys,json; print(len(json.load(sys.stdin)['jobs']))" 2>/dev/null); [ "${n:-0}" -gt 100 ] && [ "${m:-0}" -gt 100 ] && break; sleep 1; done
+run "live-check.py, everything off: every PASS/FAIL/SKIP line as the live site gets it" python tools/live-check.py --base "http://127.0.0.1:$LP"
+run "live-check.py, email, Google and payments on (stand-ins), all of them required" python tools/live-check.py --base "http://127.0.0.1:$((LP+1))" --expect email,google,payments --google-host "127.0.0.1:$((LP+2))"
+run "ui-live.js, everything off: agreement, Got it, a swipe, Account says email is off, no Google, early access, help" node tools/cdp.js tools/ui-live.js --base "http://127.0.0.1:$LP"
+run "ui-live.js, all on: Google button and redirect, buy buttons, sign-up by email code, Applied list" node tools/cdp.js tools/ui-live.js --base "http://127.0.0.1:$((LP+1))" --google-host "127.0.0.1:$((LP+2))" --email live.check+one@example.com --code-file "$TMP/lc-on/mail.jsonl"
 
 printf "\n"
 if [ "$FAILS" -eq 0 ]; then echo "ALL TESTS PASSED"; else echo "$FAILS test group(s) FAILED"; fi

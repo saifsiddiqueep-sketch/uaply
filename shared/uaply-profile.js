@@ -1,8 +1,8 @@
 /* "profile" experiment: an application-ready profile, modeled on what LinkedIn Easy Apply, Indeed Apply,
    ZipRecruiter 1-Click Apply and Handshake collect so a person can apply quickly and completely.
    Adds to Profile setup: phone, headline, resume link, about you, LinkedIn, portfolio, school, major,
-   graduation month, GPA (optional), most recent employer, work authorization, sponsorship, earliest start,
-   opportunity types and the questions employers' own forms ask. uaply-nav.js puts each field on its step (STEPS there);
+   graduation month, GPA (optional), most recent employer with your title and dates there, country, work authorization,
+   sponsorship, earliest start, opportunity types and the questions employers' own forms ask (relocation, expected pay...). uaply-nav.js puts each field on its step (STEPS there);
    the group headings below ("sec", "title") only sort the fields and are not shown in the guided setup.
    Shows an "application readiness" score with one-tap links to whatever is missing, validates links and phone,
    and warns when the authorization and sponsorship answers contradict each other.
@@ -24,6 +24,7 @@ var EMAIL=/^[^@\s]{1,64}@[^@\s]+\.[A-Za-z]{2,}$/;
 function urlOk(v){return !v||/^https:\/\/[^\s.]+\.[^\s]+$/i.test(v)?"":"Use a full link that starts with https://"}
 function phoneOk(v){return !v||(/^[+()\d\s.-]{7,25}$/.test(v)&&v.replace(/\D/g,"").length>=7)?"":"Enter a phone number with at least 7 digits"}
 function gpaOk(v){return v===""||(+v>=0&&+v<=4.5)?"":"GPA is between 0 and 4.5"}
+function payOk(v){return v===""||(/^\d{1,8}$/.test(v)&&+v>0&&+v<=10000000)?"":"Enter a yearly amount in whole dollars, like 85000"}
 
 var START=[["","Choose"],["now","Right away"],["2w","Within 2 weeks"],["1m","Within a month"],["grad","After I graduate"],["flex","Flexible"]];
 var SPEC=[
@@ -40,17 +41,23 @@ var SPEC=[
   {k:"major",label:"Major",type:"text",max:100},
   {k:"grad",label:"Graduation (month and year)",type:"month"},
   {k:"gpa",label:"GPA (optional)",type:"number",min:0,max:4.5,step:0.01,hint:"Add it only if it helps you.",val:gpaOk},
-  {k:"employer",label:"Most recent employer",type:"text",max:100}]},
+  {k:"employer",label:"Most recent employer",type:"text",max:100},
+  {k:"job_title",label:"Your job title there",type:"text",max:100,ph:"Sales associate"},
+  {k:"job_start",label:"Started (month and year)",type:"month"},
+  {k:"job_end",label:"Ended (month and year)",type:"month",hint:"Leave it blank if you still work there."}]},
  {sec:"preferences",title:"Eligibility and availability",items:[
   {k:"auth",label:"Work authorization (United States)",type:"select",full:1,opts:[["","Choose"],["citizen","US citizen or permanent resident"],["authorized","Authorized to work (visa, OPT or similar)"],["none","Not currently authorized"]]},
   {k:"sponsor",label:"Will you now or in the future need visa sponsorship?",type:"select",full:1,hint:"Answer this the same way on every application.",opts:[["","Choose"],["no","No"],["yes","Yes"]]},
+  {k:"country",label:"Country you live in",type:"select",opts:[["US","United States"],["CA","Canada"],["GB","United Kingdom"],["other","Other"]],hint:"Employers' forms ask for it with your city, state and ZIP code."},
   {k:"start",label:"Earliest start",type:"select",opts:START}]},
  {sec:"preferences",title:"What you are looking for",items:[
   {k:"types",label:"Opportunity types",type:"checks",full:1,opts:[["fulltime","Full-time"],["parttime","Part-time"],["internship","Internship"],["coop","Co-op"]]}]},
  /* the questions most employers' own application forms ask; answered once here, UAply fills them in on every application
-    (relocation comes from "Willing to relocate" under Work style) */
+    ("Willing to relocate" here and the box under Work style are the same answer: changing one changes the other) */
  {sec:"preferences",title:"Questions employers ask",items:[
   {k:"office",label:"Willing to work from the job's office (hybrid or on-site)?",type:"select",opts:[["","Choose"],["yes","Yes"],["no","No"]]},
+  {k:"relocate",label:"Willing to relocate for the right job?",type:"select",opts:[["","Choose"],["yes","Yes"],["no","No"]]},
+  {k:"salary",label:"Expected yearly pay in US dollars (optional)",type:"number",min:0,max:10000000,step:1,ph:"85000",hint:"Only used when a form requires it. Leave it blank to be asked each time.",val:payOk},
   {k:"former",label:"Have you worked at the companies you apply to?",type:"select",full:1,hint:"Choose No only if you have never worked at any company you swipe right on.",opts:[["","Ask me each time"],["no","No, never"]]},
   {k:"govt",label:"Are you, or a close relative, a government official?",type:"select",opts:[["","Choose"],["no","No"],["yes","Yes"]]},
   {k:"phd",label:"Currently in a PhD program?",type:"select",opts:[["","Choose"],["no","No"],["yes","Yes"]]},
@@ -95,6 +102,16 @@ function apply(w){
   });
 
   function el(k){return d.getElementById(id(k))}
+
+  /* the country belongs with the home address (city, state and ZIP code), so it is asked right after the ZIP code */
+  var zipF=d.getElementById("adZip");if(zipF&&zipF.closest(".field"))zipF.closest(".field").after(el("country").closest(".field"));
+  /* "Willing to relocate" is also a box under Work style (it changes which jobs show); the two always give the same answer */
+  var relBox=d.getElementById("pReloc"),relSel=el("relocate");
+  if(relBox){
+    relSel.addEventListener("change",function(){if(relSel.value)relBox.checked=relSel.value==="yes"});
+    relBox.addEventListener("change",function(){relSel.value=relBox.checked?"yes":"no"});
+  }
+  function relSync(){if(relBox&&!relSel.value&&relBox.checked)relSel.value="yes"}
   function readItem(it){
     if(it.type==="checks")return it.opts.filter(function(o){return d.getElementById(id(it.k,o[0])).checked}).map(function(o){return o[0]});
     return (el(it.k).value||"").trim();
@@ -103,10 +120,10 @@ function apply(w){
   function fill(o){
     ALL.forEach(function(it){
       if(it.type==="checks"){var a=Array.isArray(o[it.k])?o[it.k]:[];it.opts.forEach(function(x){d.getElementById(id(it.k,x[0])).checked=a.indexOf(x[0])>-1})}
-      else el(it.k).value=typeof o[it.k]==="string"||typeof o[it.k]==="number"?o[it.k]:"";
+      else{el(it.k).value=typeof o[it.k]==="string"||typeof o[it.k]==="number"?o[it.k]:"";if(it.type==="select"&&el(it.k).selectedIndex<0)el(it.k).selectedIndex=0}   /* a list with no "Choose" (country) starts on its first answer */
     });
     ALL.forEach(validate);update();
-    setTimeout(update,0);   /* the app fills its own fields (like email) right after this, so recount once it is done */
+    setTimeout(function(){relSync();update()},0);   /* the app fills its own fields (like email and Work style) right after this, so recount once it is done */
   }
   w.__uaplyExtRead=read;w.__uaplyExtFill=fill;
 
@@ -114,6 +131,7 @@ function apply(w){
   function validate(it){
     var msg="",v=readItem(it);
     if(it.val)msg=it.val(v);
+    if(it.k==="job_end"&&v){var s0=readItem(ALL.filter(function(x){return x.k==="job_start"})[0]);msg=!s0?"Add the month you started too.":v<s0?"This is before the month you started.":""}
     if(it.k==="sponsor"||it.k==="auth"){
       var a=readItem(ALL.filter(function(x){return x.k==="auth"})[0]),s=readItem(ALL.filter(function(x){return x.k==="sponsor"})[0]);
       if(it.k==="sponsor"&&a&&s&&((a==="citizen"&&s==="yes")||(a==="none"&&s==="no")))msg="This does not match your work authorization answer. Employers often flag that.";
@@ -153,7 +171,7 @@ function apply(w){
     box.innerHTML=miss.length?miss.map(function(r,i){return '<button type="button" data-i="'+READY.indexOf(r)+'">Add '+r.label.toLowerCase()+' (+'+r.w+')</button>'}).join(""):'<span class="done">Ready: you can apply in one swipe with everything an employer asks for.</span>';
   }
   d.getElementById("px-miss").addEventListener("click",function(e){var b=e.target.closest("button[data-i]");if(b){var r=READY[+b.getAttribute("data-i")];goTo(r.sec,r.id)}});
-  form.addEventListener("input",function(e){var it=ALL.filter(function(x){return e.target.id===id(x.k)||e.target.id.indexOf(id(x.k)+"-")===0})[0];if(it){validate(it);if(it.k==="auth")validate(ALL.filter(function(x){return x.k==="sponsor"})[0])}update()});
+  form.addEventListener("input",function(e){var it=ALL.filter(function(x){return e.target.id===id(x.k)||e.target.id.indexOf(id(x.k)+"-")===0})[0];if(it){validate(it);if(it.k==="auth")validate(ALL.filter(function(x){return x.k==="sponsor"})[0]);if(it.k==="job_start")validate(ALL.filter(function(x){return x.k==="job_end"})[0])}update()});
   form.addEventListener("change",function(){update()});
 
   /* a link or phone that fails its check blocks Save and takes you to the first problem */

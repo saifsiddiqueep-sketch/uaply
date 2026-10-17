@@ -1,0 +1,31 @@
+{
+  "note": "SmartRecruiters posting configurations for the stand-in hiring system (tools/mock-ats.py) and tools/test-ats-smartrecruiters.py. Shaped like GET https://api.smartrecruiters.com/postings/{uuid}/configuration in SmartRecruiters' Application API reference: questions[] {id, label, repeatable, fields[] {id, label, type, required, complianceType, values[] {id, label}}}, consentSettings {scopes[] {scope, required, label}}, privacyPolicies[] {url, orgName}. Written by hand from that reference, not recorded from a live employer: the configuration needs the employer's key.",
+  "configurations": {
+    "aaaaaaaa-0000-4000-8000-000000000001": {"questions": [], "settings": {"avatarUploadAvailable": false}, "privacyPolicies": []},
+    "aaaaaaaa-0000-4000-8000-000000000002": {
+      "questions": [
+        {"id": "q-auth", "label": "Are you legally authorized to work in the United States?", "repeatable": false, "aiGenerated": false,
+         "fields": [{"id": "f-auth", "label": "", "type": "RADIO", "required": true, "values": [{"id": "v-yes", "label": "Yes"}, {"id": "v-no", "label": "No"}]}]},
+        {"id": "q-spon", "label": "Will you now or in the future require sponsorship for employment visa status?", "repeatable": false, "aiGenerated": false,
+         "fields": [{"id": "f-spon", "label": "", "type": "SINGLE_SELECT", "required": true, "values": [{"id": "s-yes", "label": "Yes"}, {"id": "s-no", "label": "No"}]}]},
+        {"id": "q-info", "label": "About this employer", "repeatable": false, "aiGenerated": false,
+         "fields": [{"id": "f-info", "label": "The City of Philadelphia is an equal opportunity employer.", "type": "INFORMATION", "required": false, "values": []}]},
+        {"id": "q-li", "label": "LinkedIn profile", "repeatable": false, "aiGenerated": false,
+         "fields": [{"id": "f-li", "label": "", "type": "INPUT_TEXT", "required": false, "values": []}]},
+        {"id": "q-eeo", "label": "Voluntary self-identification", "repeatable": false, "aiGenerated": false,
+         "fields": [{"id": "f-eeo-g", "label": "Gender", "type": "SINGLE_SELECT", "required": false, "complianceType": "DIVERSITY", "values": [{"id": "g-w", "label": "Woman"}, {"id": "g-m", "label": "Man"}]},
+                    {"id": "f-eeo-v", "label": "Protected veteran status", "type": "SINGLE_SELECT", "required": false, "complianceType": "DIVERSITY", "values": [{"id": "pv-n", "label": "I am not a protected veteran"}]}]}
+      ],
+      "settings": {"avatarUploadAvailable": false},
+      "privacyPolicies": [{"url": "https://example.org/privacy", "orgName": "City of Philadelphia"}],
+      "consentSettings": {"scopes": [{"scope": "SINGLE", "required": true, "label": "I agree to the privacy policy"}, {"scope": "SMART_CRM", "required": false, "label": "Keep me in the talent pool"}]}
+    },
+    "aaaaaaaa-0000-4000-8000-000000000003": {
+      "questions": [
+        {"id": "q-color", "label": "What is your favorite color and why?", "repeatable": false, "aiGenerated": false,
+         "fields": [{"id": "f-color", "label": "", "type": "TEXTAREA", "required": true, "values": []}]}
+      ],
+      "settings": {}, "privacyPolicies": []
+    }
+  }
+}

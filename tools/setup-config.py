@@ -37,9 +37,9 @@ def ask(label, current, secret=False, check=None, hint=""):
 
 
 print("UAply setup. Press Enter to keep a value. Secrets are hidden as you type.\n")
-print("-- Sign in with Google (Google Cloud Console > APIs and Services > Credentials > OAuth client ID, Web application)")
+print("-- Sign in with Google (Google Auth Platform > Clients > UAply web, a Web application client; DEPLOY.md section 3)")
 g["client_id"] = ask("Google client ID", g.get("client_id", ""), check=lambda v: bool(CLIENT_RE.match(v)), hint="(ends in .apps.googleusercontent.com)")
-g["client_secret"] = ask("Google client secret (optional: only for the older redirect sign-in)", g.get("client_secret", ""), secret=True)
+g["client_secret"] = ask("Google client secret (GOCSPX-...: the full-page sign-in used on every device)", g.get("client_secret", ""), secret=True)
 url = ask("Public site address (leave empty on this computer)", g.get("public_url", ""), check=lambda v: v.startswith(("http://", "https://")))
 if url:
     g["public_url"] = url.rstrip("/")

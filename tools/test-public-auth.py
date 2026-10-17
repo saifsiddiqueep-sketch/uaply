@@ -1,5 +1,5 @@
 """Sign-in on a server run the way the live site runs it: public (any address but 127.0.0.1), behind Render's HTTPS proxy, which sends
-X-Forwarded-Proto: https and X-Forwarded-For, for the addresses uaply.net, www.uaply.net and uaply-dev.onrender.com. Starts its own throwaway
+X-Forwarded-Proto: https and X-Forwarded-For, for the addresses uaply.net, www.uaply.net and the onrender.com addresses. Starts its own throwaway
 servers (a stand-in Google on PORT+1 and UAply on PORT) and stops them at the end, so it needs nothing running:
   python tools/test-public-auth.py [port]          (default 18780; uses that port and the next one)
 Checks: the cookies, the same-site check for each real address, Google tokens (good, wrong and forged), linking a Google account to a
@@ -140,7 +140,7 @@ try:
       all(x in oc for x in ("HttpOnly", "Secure", "SameSite=Lax", "Path=/api/auth/google", "Max-Age=600")), True)
 
     # ---------- the same-site check, for every real address ----------
-    for host in ("uaply.net", "www.uaply.net", "uaply-dev.onrender.com"):
+    for host in ("uaply.net", "www.uaply.net", "uaply.onrender.com", "uaply-dev.onrender.com"):
         s = req("POST", "/api/auth/login", {"email": "nobody@example.com", "password": "whatever 123"}, host=host)[0]
         t("a request from the site's own page at https://%s is accepted (401 = it reached the password check)" % host, s, 401)
     for label, host, origin in (("another website", SITE, "https://evil.example"),
@@ -154,7 +154,7 @@ try:
     # ---------- Google's button: tokens ----------
     s, prov, _, _ = req("GET", "/api/auth/providers")
     t("the page is told the Google button is on, with the client ID", (prov["google"], prov["googleClientId"]), (True, "test.apps.googleusercontent.com"))
-    for host in ("uaply.net", "www.uaply.net", "uaply-dev.onrender.com"):
+    for host in ("uaply.net", "www.uaply.net", "uaply.onrender.com", "uaply-dev.onrender.com"):
         t("the full-page Google sign-in returns to the address the person is on (%s)" % host,
           (req("GET", "/api/auth/providers", host=host)[1] or {}).get("googleRedirectUri"), "https://%s/api/auth/google/callback" % host)
     s, out, gck, _ = req("POST", "/api/auth/google/token", {"credential": gtoken(email="brand.new@gmail.com", sub="7001"), "agree": True})
@@ -165,7 +165,7 @@ try:
     t("a brand-new Google account: verified Gmail, no password, free plan", (u["emailVerified"], u["hasPassword"], u["plan"]), (True, False, "free"))
     st = req("GET", "/api/billing/status", cookie=jar(gck))[1] or {}
     t("...and nothing on file yet (signed in, free plan, no applications counted)", (st.get("signedIn"), st.get("plan"), st.get("used")), (True, "free", 0))
-    for bad in ("aud", "iss", "expired", "future", "tamper", "none", "hs256", "kid"):
+    for bad in ("aud", "iss", "expired", "future", "tamper", "none", "hs256", "kid", "longlife"):
         s, out, ck5, _ = req("POST", "/api/auth/google/token", {"credential": gtoken(email="evil@gmail.com", sub="6666", bad=bad), "agree": True},
                              xff="198.51.100.%d" % (len(bad) + 10))
         t("a Google token that is wrong (%s) is refused and sets no session" % bad, (s, (out or {}).get("code"), session_of(ck5)), (400, "failed", ""))
