@@ -336,6 +336,89 @@ def _label_of(values, value):
     return str(value)
 
 
+# how a question the profile cannot answer is asked on screen. A text box whose label asks for a date, a month or a number is asked with the
+# matching control, and the answer is written back the way the label asks for it ("06/2027", "06/30/2027"), since the form takes text there.
+_DATE_Q = re.compile(r"\b(mm\s*/\s*dd\s*/\s*yyyy|dd\s*/\s*mm\s*/\s*yyyy|yyyy-mm-dd)\b", re.I)
+_MONTH_Q = re.compile(r"\bmm\s*/\s*yyyy\b|month (and|/) year|month/year|graduation date|expected graduation|(start|end) month", re.I)
+_NUM_Q = re.compile(r"\bhow many\b|\bnumber of (years|months|weeks|days|hours)\b", re.I)
+_UNITS = ((r"\$|\busd\b|salary|compensation|\bpay\b|wage|hourly rate|\brate\b", "USD"), (r"\bpercent|%", "%"), (r"\byears?\b", "years"),
+          (r"\bmonths?\b", "months"), (r"\bweeks?\b", "weeks"), (r"\bdays?\b", "days"), (r"\bhours?\b|\bhrs\b", "hours"))
+# how many options a choice list may send to the browser (a country or office list can be long: the app makes it searchable)
+MAX_OPTS = 300
+
+
+def unit(label):
+    """The unit a number question is in, from its label ("years", "hours", "USD", "%"), or "" when it does not say. Money and percent first;
+    otherwise the first unit the label names ("hours per week" is in hours)."""
+    found = [(m.start(), i, u) for i, (rx, u) in enumerate(_UNITS) for m in [re.search(rx, label or "", re.I)] if m]
+    money = [f for f in found if f[2] in ("USD", "%")]
+    return (min(money, key=lambda f: f[1]) if money else min(found))[2] if found else ""
+
+
+def sheet_kind(kind, label, role=""):
+    """How the app asks a question: text, textarea, select, multi, number, date, month, file (the resume) or other (cannot be asked on
+    screen: a file other than the resume, or a field type UAply does not know)."""
+    if role == "resume":
+        return "file"
+    if kind in ("file", "other"):
+        return "other"
+    if kind == "boolean":
+        return "select"
+    if kind in ("select", "multi", "number", "date", "textarea"):
+        return kind
+    if _DATE_Q.search(label or ""):
+        return "date"
+    if _MONTH_Q.search(label or ""):
+        return "month"
+    if _NUM_Q.search(label or ""):
+        return "number"
+    return "text"
+
+
+def _agree_option(labels, label):
+    """For a required notice the person must accept (a privacy notice, an acknowledgment): the option that means "I agree", or None."""
+    if not _ACK.search(label or ""):
+        return None
+    for w in ("acknowledge", "agree", "consent", "understand", "confirm", "accept", "yes"):
+        for lb in labels:
+            if re.search(r"\b%s" % w, lb, re.I) and not re.search(r"\b(not|don.?t|disagree|decline)\b", lb, re.I):
+                return lb
+    return labels[0] if len(labels) == 1 else None
+
+
+def ask_item(item, kind, label, values, link=""):
+    """Add what the app needs to ask one missing question: the options (all of them, up to MAX_OPTS), the unit of a number, and for a notice
+    the person must accept, the option that accepts it and the employer's link to read."""
+    sheet = item["kind"]
+    if sheet in ("select", "multi"):
+        item["opts"] = ["Yes", "No"] if kind == "boolean" else [str(o.get("label", "")) for o in (values or [])[:MAX_OPTS] if isinstance(o, dict)]
+        agree = _agree_option(item["opts"], label)
+        if agree and item.get("req"):
+            item["consent"], item["agree"] = True, agree
+            if isinstance(link, str) and re.match(r"^https://[^\s\"'<>]{4,300}$", link):
+                item["link"] = link
+    elif sheet == "number":
+        u = unit(label)
+        if u:
+            item["unit"] = u
+    return item
+
+
+def _as_text(w, label):
+    """A date or month typed in the app, written the way a text question's label asks for it."""
+    m = re.match(r"^(\d{4})-(\d{2})(?:-(\d{2}))?$", w)
+    if not m or not 1 <= int(m.group(2)) <= 12:
+        return w
+    y, mo, dd = m.groups()
+    if dd and re.search(r"dd\s*/\s*mm\s*/\s*yyyy", label, re.I):
+        return "%s/%s/%s" % (dd, mo, y)
+    if dd and re.search(r"mm\s*/\s*dd\s*/\s*yyyy", label, re.I):
+        return "%s/%s/%s" % (mo, dd, y)
+    if not dd and _MONTH_Q.search(label):
+        return "%s/%s" % (mo, y) if re.search(r"mm\s*/\s*yyyy", label, re.I) else "%s %s" % (_MONTHS[int(mo) - 1], y)
+    return w
+
+
 def _answer(label, key, kind, values, answers, rules, ext, req=True):
     """One question answered from the person's saved answer to it, or else from the profile (legal notices only with "acknowledge for me").
     kind: select or multi (values are [{label, value}] and the option's value is returned), boolean, number, date, or anything else for text.
@@ -359,6 +442,11 @@ def _answer(label, key, kind, values, answers, rules, ext, req=True):
     if want in (None, "", []):
         return None
     tries = want if isinstance(want, list) else [want]
+    if kind == "multi" and saved and "\n" in str(want):           # several choices, one per line: every one must be an option, never a near guess
+        vals = [_option(values, p.strip()) for p in str(want).split("\n") if p.strip()]
+        if not vals or any(v is None for v in vals):
+            return None
+        return vals, ", ".join(_label_of(values, v) for v in vals), saved, pay
     if kind in ("select", "multi"):
         val = None
         for w in tries:
@@ -368,17 +456,21 @@ def _answer(label, key, kind, values, answers, rules, ext, req=True):
         if val is None and tries[0] == "yes" and _ACK.search(label):      # "I acknowledge", "I agree", or a single box to tick
             val = (_option(values, "acknowledge") or _option(values, "agree") or _option(values, "understand") or _option(values, "consent")
                    or (values[0].get("value") if len(values) == 1 and isinstance(values[0], dict) else None))
-        return None if val is None else (val, _label_of(values, val), saved, pay)
+        if val is None:
+            return None
+        return ([val] if kind == "multi" else val), _label_of(values, val), saved, pay
     w = str(tries[0]).strip()
     if kind == "boolean":                       # a yes/no box: only a plain yes or no counts, never a sentence that happens to start with one
         yn = {"yes": True, "true": True, "no": False, "false": False}.get(w.lower())
         return None if yn is None else (yn, "Yes" if yn else "No", saved, pay)
     if kind == "number":
+        w = re.sub(r"(?<=\d),(?=\d{3}\b)|[\s$]", "", w)       # "85,000" and "$ 40" are numbers too
         if not re.match(r"^-?\d+(\.\d+)?$", w):
             return None
         return (float(w) if "." in w else int(w)), w, saved, pay
     if kind == "date":                          # only a whole date is sent; "June 2027" is not one, so the person is asked
         return (w, w, saved, pay) if re.match(r"^\d{4}-\d{2}-\d{2}$", w) else None
+    w = _as_text(w, label) if saved else w
     text = ("UAply" if w == "uaply" else "Yes" if w == "yes" else "No" if w == "no" else w)[:2000]
     return text, (text if len(text) < 80 else text[:77] + "..."), saved, pay
 
@@ -427,8 +519,6 @@ def plan_questions(questions, cand, job, note="", resume_meta=None, answers=None
             got = _answer(label, key, kind, opts, answers, rules, ext, req)
             if got is not None:
                 val, shown, saved, pay = got
-                if kind == "multi":
-                    val = [val]
                 if saved:
                     shown = shown + "  (your saved answer)"
                 elif pay:
@@ -439,15 +529,11 @@ def plan_questions(questions, cand, job, note="", resume_meta=None, answers=None
                 shown = str(val) if len(str(val)) < 80 else str(val)[:77] + "..."
         ok = shown is not None
         need = req and not ok
-        # how the app asks it: "file" tells the person to upload a resume; "other" cannot be asked in the app at all (a file other than the
-        # resume, or a type UAply cannot fill), so the person finishes on the employer's page
-        sheet = ("file" if role == "resume" else "other" if kind in ("file", "other") else kind if kind in ("text", "textarea", "select", "multi")
-                 else "select" if kind == "boolean" else "text")
-        item = {"q": label, "key": key, "req": req, "a": shown if ok else "", "need": need, "kind": sheet}
+        # how the app asks it (see sheet_kind): "file" tells the person to upload a resume; "other" cannot be asked in the app at all (a file
+        # other than the resume, or a type UAply cannot fill), so the person finishes on the employer's page
+        item = {"q": label, "key": key, "req": req, "a": shown if ok else "", "need": need, "kind": sheet_kind(kind, label, role)}
         if need:
-            if sheet in ("select", "multi"):
-                item["opts"] = ["Yes", "No"] if kind == "boolean" else [str(o.get("label", "")) for o in opts[:60] if isinstance(o, dict)]
-            missing.append(item)
+            missing.append(ask_item(item, kind, label, opts, q.get("link") or ""))
         items.append(item)
     total = sum(1 for i in items if not i.get("skip"))
     return {"values": values, "resume": resume, "items": items, "missing": missing, "total": total, "salary_sent": salary_sent,
@@ -470,9 +556,10 @@ def plan_greenhouse(form, cand, job, note="", resume_meta=None, resume_bytes=Non
     place = _place(cand, dict(ext, zip=zip_code)) if geo else ""
 
     def put(name, value):
-        if value in (None, "") or name in done:
+        if value in (None, "", []) or name in done:
             return False
-        fields.append((name, str(value)))
+        for v in (value if isinstance(value, list) else [value]):    # a multi-select sends one field per choice, all under the same name
+            fields.append((name, str(v)))
         done.add(name)
         return True
 
@@ -551,11 +638,10 @@ def plan_greenhouse(form, cand, job, note="", resume_meta=None, resume_bytes=Non
             items.append({"q": label, "key": key, "req": req, "a": shown, "need": False, "skip": "hidden"} if hidden else
                          {"q": label, "key": key, "req": req, "a": "", "need": True, "kind": kind})
             continue
-        item = {"q": label, "key": key, "req": req, "a": shown if ok else "", "need": need, "kind": kind}
+        item = {"q": label, "key": key, "req": req, "a": shown if ok else "", "need": need,
+                "kind": sheet_kind(kind, label, "resume" if f0.get("name") == "resume" else "")}
         if need:
-            if kind in ("select", "multi"):
-                item["opts"] = [str(v.get("label", "")) for v in (f0.get("values") or [])[:60] if isinstance(v, dict)]
-            missing.append(item)
+            missing.append(ask_item(item, kind, label, f0.get("values") or []))
         items.append(item)
     # what Greenhouse's own careers page sends without asking: the country, the location with its map position (all three or none,
     # since Greenhouse ignores a location without coordinates) and the most recent job
@@ -586,7 +672,7 @@ def public_plan(plan):
     """What the browser may see: the questions and answers, never the raw field names or files."""
     return {"filled": plan["filled"], "total": plan["total"], "required": plan["required"],
             "items": [{k: i[k] for k in ("q", "key", "req", "a", "need", "kind", "opts", "skip") if k in i} for i in plan["items"]],
-            "missing": [{k: i[k] for k in ("q", "key", "req", "kind", "opts") if k in i} for i in plan["missing"]]}
+            "missing": [{k: i[k] for k in ("q", "key", "req", "kind", "opts", "unit", "consent", "agree", "link") if k in i} for i in plan["missing"]]}
 
 
 def clean_answers(raw):

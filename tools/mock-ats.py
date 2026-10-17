@@ -7,12 +7,16 @@ Greenhouse keys: board 'acme' uses 'gh-secret-key-123'. Lever keys: site 'acme' 
 may read forms but not submit: HTTP 403). SmartRecruiters: 'sr-smarttoken-012'.
 Greenhouse job ids choose the scenario: 1001 only the standard fields, 1002 also a work-authorization question and 'how did you hear', 1003 a required question that
 no profile can answer, 1004 a job that does not exist, 1005 an employer system that returns an error, 1006 the questions that most often stop an
-application (willing to relocate, expected pay, country) plus Greenhouse's location box (location with its hidden latitude and longitude).
+application (willing to relocate, expected pay, country) plus Greenhouse's location box (location with its hidden latitude and longitude), 1007 and
+1008 every kind of question the app asks on screen (long text, a long single-choice list, a multi-select, a month, a date and a number asked in
+text boxes, a yes/no, a notice to acknowledge, and a voluntary question that must stay unanswered; 1008 is the same form for a second employer),
+1009 a required file other than the resume (the app cannot ask it, so the person finishes on the employer's page).
 Like Greenhouse, it also takes country_short_name and one employments[0][...] entry; it refuses a location without its map position, an
 employment entry with a missing part and a country that is not a two-letter code, so a test sees a half-sent field. Lever posting id 'slow' answers 429.
 Ashby posting ids are the forms in fixtures/ashby-forms.json; 4444... refuses the form (success false), 5555... answers with a hostile body, 6666... is
 blocked by the employer's application limit, 8888... answers 429 (these four use the 1111... form). SmartRecruiters uuids are the configurations in
-fixtures/smartrecruiters-configurations.json; ...0004 answers 429 and ...0005 a hostile body (both use the ...0001 configuration)."""
+fixtures/smartrecruiters-configurations.json; ...0004 answers 429 and ...0005 a hostile body (both use the ...0001 configuration). The Ashby form
+12121212-... and the SmartRecruiters configuration ...0006 below carry every field kind those systems publish (except files other than the resume)."""
 import base64
 import binascii
 import email
@@ -31,6 +35,44 @@ RECEIVED = []
 FIX = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
 ASHBY_FORMS = json.load(open(os.path.join(FIX, "ashby-forms.json"), encoding="utf-8"))["forms"]
 SR_CONFIGS = json.load(open(os.path.join(FIX, "smartrecruiters-configurations.json"), encoding="utf-8"))["configurations"]
+OFFICES = ["Austin", "Boston", "Chicago", "Dallas", "Denver", "Detroit", "Houston", "Los Angeles", "Miami", "Minneapolis", "Nashville", "New York",
+           "Philadelphia", "Phoenix", "Pittsburgh", "Portland", "Raleigh", "San Diego", "San Francisco", "Seattle"]
+TOOLS = ["Python", "SQL", "Excel", "Tableau", "R", "Spark", "dbt", "Looker", "Airflow", "Git"]
+NOTICE = ("Applicant privacy notice. We collect the information in this application to consider you for this job and for no other purpose. "
+          "We keep it for two years, then delete it. You can ask us to see, correct or delete it at any time by writing to privacy@example.org. "
+          "We share it only with the people who decide on this hiring, and with the hiring system that stores it for us. "
+          "We do not sell it. If you live in the European Union or the United Kingdom, you also have the rights the GDPR gives you. ") * 2
+# every field kind Ashby publishes that a candidate fills in, except a file other than the resume (see EVERY_KIND_GH for Greenhouse)
+ASHBY_FORMS["12121212-1212-4121-8121-121212121212"] = {"title": "Data Analyst", "applicationFormDefinition": {"sections": [{"fields": [
+    {"isRequired": True, "field": {"path": "_systemfield_name", "type": "String", "title": "Name"}},
+    {"isRequired": True, "field": {"path": "_systemfield_email", "type": "Email", "title": "Email"}},
+    {"isRequired": True, "field": {"path": "_systemfield_resume", "type": "File", "title": "Resume"}},
+    {"isRequired": True, "field": {"path": "q_project", "type": "LongText", "title": "Tell us about a project you are proud of"}},
+    {"isRequired": True, "field": {"path": "q_office", "type": "ValueSelect", "title": "Which office would you like to work from?",
+                                   "selectableValues": [{"label": o, "value": "off-" + o.lower().replace(" ", "-")} for o in OFFICES]}},
+    {"isRequired": True, "field": {"path": "q_tools", "type": "MultiValueSelect", "title": "Which of these tools have you used?",
+                                   "selectableValues": [{"label": o, "value": "tool-" + o.lower()} for o in TOOLS]}},
+    {"isRequired": True, "field": {"path": "q_start", "type": "Date", "title": "What is the earliest date you could join us?"}},
+    {"isRequired": True, "field": {"path": "q_hours", "type": "Number", "title": "How many hours per week can you work?"}},
+    {"isRequired": True, "field": {"path": "q_notice", "type": "Boolean", "title": "I have read and acknowledge the applicant privacy notice. " + NOTICE}},
+    {"isRequired": False, "field": {"path": "q_vet", "type": "ValueSelect", "title": "Are you a protected veteran?",
+                                    "selectableValues": [{"label": "Yes", "value": "y"}, {"label": "No", "value": "n"}]}}]}]}}
+# every field kind SmartRecruiters publishes for screening questions (INFORMATION is text to read, DIVERSITY is voluntary and never answered)
+SR_CONFIGS["aaaaaaaa-0000-4000-8000-000000000006"] = {"questions": [
+    {"id": "q-project", "label": "Tell us about a project you are proud of", "fields": [{"id": "f-project", "type": "TEXTAREA", "required": True}]},
+    {"id": "q-office", "label": "Which office would you like to work from?", "fields": [{"id": "f-office", "type": "SINGLE_SELECT", "required": True,
+                                                                                        "values": [{"id": "o%d" % i, "label": o} for i, o in enumerate(OFFICES)]}]},
+    {"id": "q-tools", "label": "Which of these tools have you used?", "fields": [{"id": "f-tools", "type": "MULTI_SELECT", "required": True,
+                                                                                 "values": [{"id": "t%d" % i, "label": o} for i, o in enumerate(TOOLS)]}]},
+    {"id": "q-hours", "label": "How many hours per week can you work?", "fields": [{"id": "f-hours", "type": "INPUT_TEXT", "required": True}]},
+    {"id": "q-grad", "label": "Expected graduation date (MM/YYYY)", "fields": [{"id": "f-grad", "type": "INPUT_TEXT", "required": True}]},
+    {"id": "q-info", "label": "About this employer", "fields": [{"id": "f-info", "type": "INFORMATION", "required": False}]},
+    {"id": "q-ack", "label": "I acknowledge that the information I provide is accurate and complete. " + NOTICE,
+     "fields": [{"id": "f-ack", "type": "CHECKBOX", "required": True, "values": [{"id": "ack-yes", "label": "I acknowledge"}]}]},
+    {"id": "q-eeo", "label": "Voluntary self-identification", "fields": [{"id": "f-eeo-g", "type": "SINGLE_SELECT", "required": False, "complianceType": "DIVERSITY",
+                                                                          "values": [{"id": "w", "label": "Woman"}, {"id": "m", "label": "Man"}]}]}],
+    "consentSettings": {"scopes": [{"scope": "SINGLE", "required": True, "label": "I agree to the privacy policy"}]},
+    "privacyPolicies": [{"url": "https://example.org/privacy", "orgName": "Every Kind Co"}]}
 HOSTILE = {"message": "<script>alert(1)</script>\x00\x07 bad key ashby-key-789 sr-smarttoken-012 " + "x" * 5000, "errors": [{"code": "<b>boom</b>"}]}
 
 
@@ -143,8 +185,51 @@ def std(required_phone=False):
     ]
 
 
+def every_kind():
+    """Greenhouse's question types are input_text, textarea, multi_value_single_select, multi_value_multi_select and input_file. A text box whose label
+    asks for a month, a date or a number is asked with the matching control in the app."""
+    return [
+        {"required": True, "label": "Tell us about a project you are proud of", "fields": [{"name": "question_400", "type": "textarea", "values": []}]},
+        {"required": True, "label": "Which office would you like to work from?",
+         "fields": [{"name": "question_401", "type": "multi_value_single_select", "values": [{"label": o, "value": 500 + i} for i, o in enumerate(OFFICES)]}]},
+        {"required": True, "label": "Which of these tools have you used?",
+         "fields": [{"name": "question_402", "type": "multi_value_multi_select", "values": [{"label": o, "value": 600 + i} for i, o in enumerate(TOOLS)]}]},
+        {"required": True, "label": "Expected graduation date (MM/YYYY)", "fields": [{"name": "question_403", "type": "input_text", "values": []}]},
+        {"required": True, "label": "Earliest date you could start (MM/DD/YYYY)", "fields": [{"name": "question_404", "type": "input_text", "values": []}]},
+        {"required": True, "label": "How many hours per week can you work?", "fields": [{"name": "question_405", "type": "input_text", "values": []}]},
+        {"required": True, "label": "Do you have a valid driver's license?",
+         "fields": [{"name": "question_406", "type": "multi_value_single_select", "values": [{"label": "Yes", "value": 1}, {"label": "No", "value": 0}]}]},
+        {"required": True, "label": "Please read our applicant privacy notice and acknowledge it. " + NOTICE,
+         "fields": [{"name": "question_407", "type": "multi_value_single_select", "values": [{"label": "I acknowledge", "value": 1}]}]},
+        {"required": False, "label": "What is your gender?",
+         "fields": [{"name": "question_408", "type": "multi_value_single_select", "values": [{"label": "Woman", "value": 1}, {"label": "Man", "value": 2}]}]},
+    ]
+
+
+def gh_check(job_id, fields):
+    """For the every-kind forms: every required question answered, every choice one of its options, the voluntary one left empty."""
+    errs = []
+    for q in questions_for(job_id):
+        f = q["fields"][0]
+        name = f["name"] + ("[]" if f["type"] == "multi_value_multi_select" else "")
+        got = fields.get(name)
+        if q["required"] and got in (None, "", []) and f["type"] != "input_file" and f["name"] not in ("resume", "cover_letter", "resume_text", "cover_letter_text", "phone"):
+            errs.append("missing required %s" % name)
+        if got not in (None, "") and f["type"].startswith("multi_value"):
+            ids = [str(v["value"]) for v in f["values"]]
+            if any(v not in ids for v in (got if isinstance(got, list) else [got])):
+                errs.append("not an option of %s" % name)
+        if got not in (None, "") and "gender" in q["label"].lower():
+            errs.append("a voluntary question was answered")
+    return errs
+
+
 def questions_for(job_id):
     q = std()
+    if job_id in ("1007", "1008"):
+        q += every_kind()
+    if job_id == "1009":
+        q += [{"required": True, "label": "Writing sample", "fields": [{"name": "question_450", "type": "input_file", "values": []}]}]
     if job_id == "1002":
         q += [{"required": False, "label": "LinkedIn Profile", "fields": [{"name": "question_100", "type": "input_text", "values": []}]},
               {"required": True, "label": "Are you legally authorized to work in the United States?",
@@ -202,6 +287,8 @@ def parse_multipart(ctype, body):
         fn = part.get_filename()
         if fn:
             files[name] = {"filename": fn, "type": part.get_content_type(), "bytes": len(part.get_payload(decode=True) or b"")}
+        elif name in fields:                       # a multi-select sends one part per choice, all with the same name
+            fields[name] = (fields[name] if isinstance(fields[name], list) else [fields[name]]) + [part.get_content()]
         else:
             fields[name] = part.get_content()
     return fields, files
@@ -254,7 +341,7 @@ class H(http.server.BaseHTTPRequestHandler):
             fields, files = parse_multipart(ctype, body)
             if not fields.get("first_name") or not fields.get("email"):
                 return self._json(422, {"error": "first_name and email are required"})
-            why = check_extras(fields)
+            why = check_extras(fields) or "; ".join(gh_check(parts[4], fields) if parts[4] in ("1007", "1008") else [])
             if why:
                 return self._json(422, {"error": why})
             RECEIVED.append({"system": "greenhouse", "board": parts[2], "job": parts[4], "fields": fields, "files": files, "employments": employments(fields)})

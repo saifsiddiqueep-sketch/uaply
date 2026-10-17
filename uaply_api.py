@@ -726,8 +726,11 @@ def submit(p, user=None, site=""):
         # connected (never in test mode, which must not use an employer's key). A question the app cannot ask (a file other than the resume, a
         # type UAply cannot fill) is not asked: the send then reports it and the person finishes on the employer's page.
         plan = ats_api.plan(ats["kind"], ats["id"], ats["key"], cand, job, note, resume_meta if resume_bytes else None, answers)
-        if plan and any(m.get("kind") == "other" for m in plan["missing"]):
-            plan = dict(plan, missing=[])
+    if plan and any(m.get("kind") == "other" for m in plan["missing"]):
+        # a required question the app cannot ask on screen (a file other than the resume, a field type UAply does not know): nothing is
+        # asked, the send reports it, and the person finishes on the employer's page (for every hiring system)
+        plan = dict(plan, missing=[])
+        preview = False                                    # the sandbox's simulated send would claim a form that cannot be finished here
     if plan and plan["missing"] and (preview or (policy == "direct" and ats)):
         pub = autofill.public_plan(plan)
         return 200, {"status": "needs_answers", "mode": mode, "questions": pub["missing"], "filled": pub["filled"], "total": pub["total"]}

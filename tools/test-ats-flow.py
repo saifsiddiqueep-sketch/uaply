@@ -93,10 +93,17 @@ try:
       srj["id"], jobs_api._normalize(dict(id="744000146469759", title="Junior Cloud Engineer", company="City of Philadelphia", loc="Philadelphia, PA", remote=None,
                                           text="Python and AWS required.", url="https://jobs.smartrecruiters.com/CityofPhiladelphia/744000146469759", salary_text="",
                                           posted=0), "smartrecruiters", "City of Philadelphia", "CityofPhiladelphia")["id"])
+    # the stand-in forms with every field kind Ashby and SmartRecruiters publish (tools/mock-ats.py)
+    ash9 = jobs_api._normalize(dict(id="12121212-1212-4121-8121-121212121212", title="Data Analyst", company="Acme Ashby", loc="Remote - USA", remote=True,
+                                    text="Python and SQL required.", url="https://jobs.ashbyhq.com/acmeashby/12121212-1212-4121-8121-121212121212", salary_text="",
+                                    posted=0), "ashby", "Acme Ashby", "acmeashby")
+    sr6 = jobs_api._normalize(dict(id="744000146469766", ats_id="aaaaaaaa-0000-4000-8000-000000000006", title="Data Analyst", company="City of Philadelphia",
+                                   loc="Philadelphia, PA", remote=None, text="Python and SQL required.", salary_text="", posted=0,
+                                   url="https://jobs.smartrecruiters.com/CityofPhiladelphia/744000146469766"), "smartrecruiters", "City of Philadelphia", "CityofPhiladelphia")
     jobs_api._cache[("lever", "acme", "Acme")] = {"at": time.time(), "jobs": [feed], "status": "1 jobs"}
     jobs_api._cache[("greenhouse", "other", "Other")] = {"at": time.time(), "jobs": [other], "status": "1 jobs"}
-    jobs_api._cache[("ashby", "acmeashby", "Acme Ashby")] = {"at": time.time(), "jobs": [ash], "status": "1 jobs"}
-    jobs_api._cache[("smartrecruiters", "CityofPhiladelphia", "City of Philadelphia")] = {"at": time.time(), "jobs": [srj], "status": "1 jobs"}
+    jobs_api._cache[("ashby", "acmeashby", "Acme Ashby")] = {"at": time.time(), "jobs": [ash, ash9], "status": "2 jobs"}
+    jobs_api._cache[("smartrecruiters", "CityofPhiladelphia", "City of Philadelphia")] = {"at": time.time(), "jobs": [srj, sr6], "status": "2 jobs"}
     jobs_api.SOURCES = [("lever", "acme", "Acme"), ("greenhouse", "other", "Other"), ("ashby", "acmeashby", "Acme Ashby"),
                         ("smartrecruiters", "CityofPhiladelphia", "City of Philadelphia")]
     jobs_api.feeds_allowed = lambda: {"lever", "greenhouse", "ashby", "smartrecruiters"}
@@ -182,6 +189,44 @@ try:
     code, out = apply_to(srj, email="srtest@example.com")
     cfg["delivery"] = "live"
     t("test mode never uses an employer's key: it is simulated without asking or sending anything", (out["status"], len(received())), ("delivered_test", before))
+
+    # every field kind Ashby publishes (except files other than the resume), asked once on screen, then sent
+    before = len(received())
+    code, out = apply_to(ash9, email="kinds@example.com")
+    qs = {q["q"][:20]: q for q in out.get("questions", [])}
+    t("Ashby: every kind of required question the profile cannot answer is asked, each with its own control, the voluntary one never",
+      (out["status"], [(q["kind"], len(q.get("opts") or []), q.get("unit"), q.get("consent")) for q in out.get("questions", [])], len(received())),
+      ("needs_answers", [("textarea", 0, None, None), ("select", 20, None, None), ("multi", 10, None, None), ("date", 0, None, None),
+                         ("number", 0, "hours", None), ("select", 2, None, True)], before))
+    t("...the notice to accept is asked as a box to tick, with the option that accepts it", (qs["I have read and ackn"]["agree"], "Are you a protected" in json.dumps(out)),
+      ("Yes", False))
+    typed = {qs["Tell us about a proj"]["key"]: "I built a bus-times app.", qs["Which office would y"]["key"]: "Philadelphia",
+             qs["Which of these tools"]["key"]: "Python\nSQL", qs["What is the earliest"]["key"]: "2027-07-01", qs["How many hours per w"]["key"]: "20",
+             qs["I have read and ackn"]["key"]: "Yes"}
+    code, out = uaply_api.submit(dict(apply_to.last, answers=typed), apply_to.user)
+    got = received()[-1] if len(received()) > before else {}
+    t("...with the answers it goes into their Ashby, each value in the type Ashby's form takes",
+      (out["status"], [got.get("values", {}).get(k) for k in ("q_office", "q_tools", "q_start", "q_hours", "q_notice")], "q_vet" in got.get("values", {})),
+      ("sent", ["off-philadelphia", ["tool-python", "tool-sql"], "2027-07-01", 20, True], False))
+
+    # the same questions at another employer, in another hiring system: answered from what the person typed above
+    before = len(received())
+    code, out = apply_to(sr6, email="kinds2@example.com")
+    code, out = uaply_api.submit(dict(apply_to.last, answers=typed), apply_to.user)       # the browser sends every answer saved on the device
+    t("SmartRecruiters: the questions already answered for another employer are not asked again; only the new ones are",
+      (out["status"], [(q["q"][:30], q["kind"], q.get("consent")) for q in out.get("questions", [])]),
+      ("needs_answers", [("Expected graduation date (MM/Y", "month", None), ("I acknowledge that the informa", "multi", True),
+                         (ats_api._SR_CONSENT[:30], "select", True)]))
+    sq = {q["q"][:12]: q for q in out["questions"]}
+    t("...the employer's privacy policy comes with its consent, to read before ticking", sq[ats_api._SR_CONSENT[:12]].get("link"), "https://example.org/privacy")
+    more = dict(typed, **{sq["Expected gra"]["key"]: "2027-06", sq["I acknowledg"]["key"]: sq["I acknowledg"]["agree"],
+                          sq[ats_api._SR_CONSENT[:12]]["key"]: sq[ats_api._SR_CONSENT[:12]]["agree"]})
+    code, out = uaply_api.submit(dict(apply_to.last, answers=more), apply_to.user)
+    got = received()[-1] if len(received()) > before else {}
+    t("...then it goes into their SmartRecruiters with every answer as the form takes it, and the consent",
+      (out["status"], [got.get("answered", {}).get(k) for k in ("f-office", "f-tools", "f-hours", "f-grad", "f-ack")], got.get("body", {}).get("consentDecisions")),
+      ("sent", [["o12"], ["t0", "t1"], ["20"], ["06/2027"], ["ack-yes"]], {"SINGLE": True}))
+    t("...and the voluntary question there was never answered", "f-eeo-g" in got.get("answered", {}), False)
 
     # an employer system that fails
     uaply_api.hide_errors = True

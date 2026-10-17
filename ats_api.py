@@ -311,7 +311,9 @@ def _sr_questions(form):
     scopes = [s for s in ((form.get("consentSettings") or {}).get("scopes") or []) if isinstance(s, dict) and s.get("required") is True and s.get("scope")]
     if scopes:          # a required consent is a question like any other: ticked only with "acknowledge for me" or the person's own answer
         out.append({"id": "consent", "label": _SR_CONSENT, "req": True, "kind": "select",
-                    "options": [{"label": "I consent", "value": "yes"}, {"label": "No", "value": "no"}], "scopes": [s["scope"] for s in scopes]})
+                    "options": [{"label": "I consent", "value": "yes"}, {"label": "No", "value": "no"}], "scopes": [s["scope"] for s in scopes],
+                    # the employer's own privacy policy, so the app can offer it to read before the person ticks the box
+                    "link": next((str(p.get("url")) for p in (form.get("privacyPolicies") or []) if isinstance(p, dict) and p.get("url")), "")})
     return out
 
 

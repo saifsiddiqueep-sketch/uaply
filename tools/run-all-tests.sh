@@ -67,6 +67,7 @@ run "swipe learning: the math, the worked example, the replay test" python tools
 run "fill from your resume: six resumes, layouts, dates, refused files, the endpoint" python tools/test-resume.py 18798
 run "the server as Render runs it: start, stop mid-request, restart on the same disk" python tools/test-render.py 18782
 run "every path from swipe right to inbox, replayed in a browser" python tools/ui-apply-paths.py
+run "the one-time question box: every kind of question, phone and computer" python tools/ui-questions.py
 
 step "Accounts, applying, reset and setup (back end)"
 run "sandbox reset/setup/accounts" python tools/test-reset.py 18766
