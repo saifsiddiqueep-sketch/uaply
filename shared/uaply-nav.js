@@ -22,6 +22,20 @@ var EXTRA=`,
  {id:22,type:"parttime",co:"Brightpath Tutoring",role:"Part-time Math Tutor",loc:"Remote (US)",mode:"remote",sal:[28000,40000],yrs:1,edu:"Associate",skills:["Math","Communication","Teaching"],blurb:"Evening sessions with middle school students, ten to fifteen hours a week."},
  {id:20,type:"coop",co:"Lumen Labs",role:"Web Co-op",loc:"Remote (US)",mode:"remote",sal:[46000,56000],yrs:0,edu:"Associate",skills:["React","TypeScript","CSS","JavaScript"],blurb:"Full-semester co-op building customer-facing pages for a lighting startup."}`;
 
+/* sandbox only (window.UAplyOpts.fields): example health care, dental and legal listings, so matching on fields and licenses can be tried
+   without the live feeds. Each names its field and the licenses it requires (`lic`, codes as in LICS below). */
+var FIELD_EXAMPLES=`,
+ {id:31,co:"Willowbrook Family Practice",role:"Registered Nurse (RN), Primary Care",loc:"Philadelphia",mode:"onsite",sal:[78000,96000],yrs:1,edu:"Associate",skills:["Patient care","Electronic health records","Triage","Medication administration"],blurb:"Day shifts in a busy primary care office near City Hall. Active Pennsylvania RN license and BLS required.",field:"health",lic:["rn","bls"]},
+ {id:32,type:"parttime",co:"Schuylkill Urgent Care",role:"Certified Medical Assistant",loc:"Philadelphia",mode:"onsite",sal:[38000,46000],yrs:0,edu:"High school",skills:["Patient care","Vital signs","Phlebotomy","Electronic health records"],blurb:"Twenty-four hours a week rooming patients, taking vitals and drawing blood. CMA or CCMA certification required.",field:"health",lic:["cma"]},
+ {id:33,co:"Quietwater Telehealth",role:"Psychiatric Nurse Practitioner",loc:"Remote (US)",mode:"remote",sal:[130000,160000],yrs:2,edu:"Master",skills:["Telehealth","Psychotherapy","Electronic health records"],blurb:"See adult patients by video four days a week. Board-certified PMHNP with an active license in your state.",field:"health",lic:["np"]},
+ {id:34,co:"Elmwood Dental Studio",role:"Registered Dental Hygienist",loc:"Philadelphia",mode:"onsite",sal:[72000,88000],yrs:1,edu:"Associate",skills:["Dental hygiene","Dental radiography","Patient care"],blurb:"Four days a week in a calm two-chair practice. Pennsylvania RDH license and current CPR required.",field:"dental",lic:["rdh","bls"]},
+ {id:35,co:"Larchmont Smiles",role:"Dental Assistant (EFDA)",loc:"Cherry Hill",mode:"onsite",sal:[42000,52000],yrs:1,edu:"High school",skills:["Chairside assisting","Dental radiography","Patient care"],blurb:"Expanded-function dental assistant for a two-dentist office, a short walk from the PATCO station. EFDA certification required.",field:"dental",lic:["da"],tacc:true},
+ {id:36,co:"Cedar Row Family Dentistry",role:"General Dentist (DDS or DMD)",loc:"King of Prussia",mode:"onsite",sal:[170000,220000],yrs:2,edu:"Doctorate",skills:["Patient care","Dental radiography","Orthodontics"],blurb:"Join a three-dentist practice with its own lab. A Pennsylvania dental license is required.",field:"dental",lic:["dds"]},
+ {id:37,co:"Northbridge Legal Aid",role:"Staff Attorney, Housing",loc:"Philadelphia",mode:"hybrid",sal:[68000,82000],yrs:0,edu:"Doctorate",skills:["Litigation","Legal research","Legal writing"],blurb:"Represent tenants facing eviction in municipal court. Admission to the Pennsylvania bar is required. Transit pass included.",field:"legal",lic:["bar"],perks:["transit","health","pto"],tacc:true},
+ {id:38,co:"Market Street Law Partners",role:"Litigation Paralegal",loc:"Philadelphia",mode:"hybrid",sal:[55000,68000],yrs:2,edu:"Associate",skills:["Litigation","eDiscovery","Legal research"],blurb:"Support a four-attorney team through discovery and trial preparation. A paralegal certificate is preferred, not required.",field:"legal",lic:[]},
+ {id:39,type:"internship",co:"Penn Square Legal Clinic",role:"Summer Law Clerk",loc:"Philadelphia",mode:"onsite",sal:[30000,36000],yrs:0,edu:"Bachelor",skills:["Legal research","Legal writing"],blurb:"Ten weeks for law students: research memos and client intake. No bar admission needed.",field:"legal",lic:[]},
+ {id:40,type:"coop",co:"Northbridge Hospital",role:"Clinical Research Co-op",loc:"Philadelphia",mode:"onsite",sal:[40000,48000],yrs:0,edu:"Associate",skills:["Patient care","Electronic health records","Excel"],blurb:"Six-month co-op helping a research team screen patients for studies. No license needed.",field:"health",lic:[]}`;
+
 var API=`
 window.__uaply={S:S,JOBS:JOBS,save:save,renderAll:renderAll,show:show,setFilter:setFilter,esc:esc,hue:hue,money:money,tone:tone,cap:cap,evaluate:evaluate,
  setType:function(t){TYPE=t;renderDeck();renderDash()},getType:function(){return TYPE},
@@ -72,6 +86,16 @@ function patch(s){
   /* hosted preview without the Real jobs experiment (it is left out there): a swipe right only saves the job on this device, so say that */
   if(window.UAplyOpts&&window.UAplyOpts.preview&&!window.UAplyLive)
     s=once(s,'"Applied to "+job.co+" · "+m.pct+"% match"','"Saved "+job.co+" to Applied on this device · "+m.pct+"% match. '+PREVIEW_TEXT+'"');
+  /* sandbox only. fields: example health care, dental and legal listings, and a hook that adds the Field and License rows to the score (and caps
+     a job whose license you do not have). fields or transit: a hook that adds field, license and travel-time notes to each card. */
+  var O=window.UAplyOpts||{};
+  if(O.fields){
+    s=once(s,'customer-facing pages for a lighting startup."}','customer-facing pages for a lighting startup."}'+FIELD_EXAMPLES);
+    s=once(s,'var total=0;rows.forEach(function(r){total+=r.w*r.s;r.st=r.s>=0.99?2:(r.s>0?1:0)});',
+             'if(window.__uaplyRows)rows=window.__uaplyRows(job,p,rows)||rows;var total=0;rows.forEach(function(r){total+=r.w*r.s;r.st=r.s>=0.99?2:(r.s>0?1:0)});if(window.__uaplyCapTo){var capTo=window.__uaplyCapTo(job,p,rows);if(capTo!=null&&total>capTo)total=capTo}');
+  }
+  /* after the "via ..." credit that the line above the card tags gained on sandbox (October 17) */
+  if(O.fields||O.transit)s=once(s,"(j.live&&j.via?'<span class=\"via\">via '+esc(j.via)+'</span>':'')+'","(j.live&&j.via?'<span class=\"via\">via '+esc(j.via)+'</span>':'')+(window.__uaplyFacts?window.__uaplyFacts(j):'')+'");
   return s;
 }
 
@@ -251,6 +275,12 @@ input[type=range]{accent-color:var(--accent);min-height:44px}
 #fMilesWrap .rngrow b{font-size:15px}
 #fMilesWrap .rngrow .m{color:var(--muted);font-size:12px}
 #fLoc{display:flex;flex-direction:column;gap:6px;align-items:flex-start;margin-top:4px}
+#fHow{display:flex;gap:6px;flex-wrap:wrap}#fHow button{flex:1 1 auto;min-height:44px}
+#fTimeBox,#fDistBox{display:flex;flex-direction:column;gap:6px}#fTimeBox[hidden],#fDistBox[hidden]{display:none}
+#fTimeBox .rngrow{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}#fTimeBox .rngrow b{font-size:15px}#fTimeBox .rngrow .m{color:var(--muted);font-size:12px}
+.facts .licno{color:var(--no);font-weight:700}.facts .licok{color:var(--yes);font-weight:600}
+#aLicF>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:600;color:var(--muted)}#aLicF[open]>summary{color:var(--ink)}
+#aLicF .licBody{display:flex;flex-direction:column;gap:10px;padding-top:6px}#aLicF .checks,#aFieldsF .checks{flex-wrap:wrap}
 @media (max-width:480px){.hdrbtn .em{display:none}.hdrbtn{padding:5px;max-width:none}}
 `;
 
@@ -269,6 +299,8 @@ function apply(w,host){
   function noServer(r){return r.status===404||(r.ok&&/text\/html/i.test((r.headers&&r.headers.get("content-type"))||""))}
   var SRV={up:false,user:null,mode:"test"};   /* declared early: the plan and auto-message checks read it while the screens are built */
   var NEAR=!!OPTS.nearMe;   /* sandbox only for now: ask for device location, commute slider in Filters, nearby jobs score higher */
+  var TRN=NEAR&&!!OPTS.transit;   /* sandbox only: "How you get to work" (drive, public transit, bike, walk). Transit, bike and walk turn the commute filter into estimated travel time */
+  var FLD=!!OPTS.fields;          /* sandbox only: fields (health care, dental, legal...) and licenses in Profile setup, in the match score and in Filters */
   var NK=w.__uaplyKey+".nav";
   var SECS={
     svc:{label:"Services",items:[["job","Full-time"],["parttime","Part-time"],["internship","Internships"],["coop","Coop"]]},
@@ -545,6 +577,22 @@ function apply(w,host){
   };
   var PERKS=[["health","Health insurance"],["dental","Dental insurance"],["vision","Vision insurance"],["k401","401(k)"],["match","401(k) with employer match"],["loan","Student loan repayment"],["stock","Stock options"],["pto","Paid time off (PTO)"],["maternity","Paid maternity leave"],["paternity","Paid paternity leave"],["tuition","Tuition assistance"]];
   var PERK_KEYS=PERKS.map(function(p){return p[0]});
+  if(TRN){PERKS.push(["transit","Commuter or transit benefits"]);PERK_KEYS.push("transit")}
+  /* fields and licenses (sandbox). The codes match the server (jobs_api.py: FIELD_RULES, LIC_RULES) and uaply_api.py (_LICS). */
+  var JFIELDS=[["health","Health care and medical"],["dental","Dental"],["legal","Legal"],["tech","Technology and engineering"],["business","Business, sales and operations"],["design","Design and creative"],["edu","Education and teaching"],["other","Other"]];
+  var FLD_KEYS=JFIELDS.map(function(f){return f[0]});
+  /* [group, code, what Profile setup says, the short name on cards] */
+  var LICS=[["health","rn","Registered nurse (RN)","RN license"],["health","lpn","Licensed practical or vocational nurse (LPN, LVN)","LPN/LVN license"],["health","np","Nurse practitioner (NP, APRN)","NP license"],
+    ["health","pa","Physician assistant (PA-C)","PA-C"],["health","md","Physician (MD or DO)","MD/DO license"],["health","pharm","Pharmacist","pharmacist license"],
+    ["health","bh","Licensed therapist or counselor (LCSW, LPC, LMHC, LMFT, psychologist)","therapy license"],["health","pt","Physical, occupational or speech therapist","PT/OT/SLP license"],
+    ["health","cma","Certified medical assistant (CMA, CCMA, RMA)","CMA certificate"],["health","phleb","Certified phlebotomist","phlebotomy certificate"],["health","emt","EMT or paramedic","EMT certificate"],
+    ["health","bls","BLS or CPR","BLS/CPR"],["health","acls","ACLS","ACLS"],
+    ["dental","dds","Dentist (DDS or DMD)","dental license"],["dental","rdh","Registered dental hygienist (RDH)","RDH license"],["dental","da","Certified or expanded-function dental assistant (CDA, EFDA)","CDA/EFDA"],
+    ["legal","bar","Attorney admitted to a state bar","bar admission"],["legal","para","Certified paralegal","paralegal certificate"],["legal","notary","Notary public","notary commission"]];
+  var LIC_KEYS=LICS.map(function(l){return l[1]});
+  var LIC_SUPPORT=["bls","acls","notary"];   /* certificates that go with a job but are not the job itself: missing one never hides or caps a job */
+  var LIC_CAP=40;                             /* a job that needs a license you have not added never shows above this match */
+  var HOWS=[["drive","Drive"],["transit","Public transit"],["bike","Bike"],["walk","Walk"]];
   var LEVELS=["High school","Associate","Bachelor","Master","Doctorate"];
   var XP=[["entry","Entry-level (0-2 years)",0,2],["mid","Mid-level (3-5 years)",3,5],["senior","Senior (6-9 years)",6,9],["exec","Lead or executive (10+ years)",10,99]];
   var LEVEL_KEYS=XP.map(function(x){return x[0]});
@@ -575,10 +623,20 @@ function apply(w,host){
     a.eeo=ok;
     var ad=(a.addr&&typeof a.addr==="object")?a.addr:{},str=function(v,n){return typeof v==="string"?v.replace(/[\r\n\t]+/g," ").trim().slice(0,n):""};
     a.addr={street:str(ad.street,120),unit:str(ad.unit,30),state:US_STATES.indexOf(ad.state)>-1?ad.state:"",zip:/^\d{5}(-\d{4})?$/.test(ad.zip||"")?ad.zip:""};
+    if(TRN){   /* how you get to work, and the travel-time limit in minutes (0 = remote only, "any" = no limit) */
+      if(HOWS.map(function(h){return h[0]}).indexOf(a.fHow)<0)a.fHow="drive";
+      if(!(a.fMin==="any"||(/^\d{1,3}$/.test(String(a.fMin))&&+a.fMin<=120&&+a.fMin%5===0)))a.fMin="any";a.fMin=String(a.fMin);
+    }
+    if(FLD){
+      a.fields=(Array.isArray(a.fields)?a.fields:[]).filter(function(k,i,l){return FLD_KEYS.indexOf(k)>-1&&l.indexOf(k)===i});
+      a.lics=(Array.isArray(a.lics)?a.lics:[]).filter(function(k,i,l){return LIC_KEYS.indexOf(k)>-1&&l.indexOf(k)===i});
+      a.fFieldOnly=a.fFieldOnly!==false;a.fLic=a.fLic!==false;
+    }
     return a;
   }
   var DAY=864e5,DATA_URL=/^data:[\w\/+.\-]+;base64,[A-Za-z0-9+\/=]+$/,URL_OK=/^https?:\/\//i;
-  function defAcct(){return {phone:"",linkedin:"",portfolio:"",summary:"",auth:"",notice:"",cover:"",resumeName:"",resumeSize:0,resumeData:"",plan:"trial",since:Date.now(),renews:0,canceled:false,enforce:false,pay:[],apps:{},fSal:false,fYrs:"any",fCo:"",fKw:"",fPosted:"any",fApp:false,fPerks:[],fMiles:"any",fStrict:false,fAuto:false,titles:[],fTitleOnly:true,fNoComm:false,fLevels:[],fEdu:false,fWs:true,eeo:{auth:"",sponsor:"",veteran:"",hisp:"",race:[],disability:"",gender:""},addr:{street:"",unit:"",state:"",zip:""},resumeUrl:""}}
+  function defAcct(){var a=defAcct0();if(TRN){a.fHow="drive";a.fMin="any"}if(FLD){a.fields=[];a.lics=[];a.fFieldOnly=true;a.fLic=true}return a}   /* the sandbox adds commute, field and license settings */
+  function defAcct0(){return {phone:"",linkedin:"",portfolio:"",summary:"",auth:"",notice:"",cover:"",resumeName:"",resumeSize:0,resumeData:"",plan:"trial",since:Date.now(),renews:0,canceled:false,enforce:false,pay:[],apps:{},fSal:false,fYrs:"any",fCo:"",fKw:"",fPosted:"any",fApp:false,fPerks:[],fMiles:"any",fStrict:false,fAuto:false,titles:[],fTitleOnly:true,fNoComm:false,fLevels:[],fEdu:false,fWs:true,eeo:{auth:"",sponsor:"",veteran:"",hisp:"",race:[],disability:"",gender:""},addr:{street:"",unit:"",state:"",zip:""},resumeUrl:""}}
   function loadA(){
     var a=defAcct();
     try{var r=JSON.parse(w.localStorage.getItem(AK));if(r&&typeof r==="object"){Object.keys(a).forEach(function(k){if(r[k]!==undefined&&typeof r[k]===typeof a[k])a[k]=r[k]})}}catch(e){}
@@ -683,8 +741,12 @@ function apply(w,host){
     });
   }
   if(NEAR){
-    w.__uaplyNearScore=function(job,p){var me=devPos(),there=me&&geo(job.loc);if(!there)return null;var mi=miles(me,there);return mi<=25?1:(mi<=60?0.6:(p&&p.reloc?0.6:0))};
-    w.__uaplyNearLabel=function(job){var me=devPos(),there=me&&geo(job.loc);if(!there)return "";var mi=Math.round(miles(me,there));return mi<3?"In your area":"About "+mi+" miles from you"};
+    w.__uaplyNearScore=function(job,p){
+      if(howMode()!=="drive"){var t=tripMin(job);if(t==null)return null;var lim=minLimit();return t<=lim?1:(t<=lim*1.5?0.5:(p&&p.reloc?0.6:0))}   /* transit, bike or walk: travel time against your limit (60 minutes when it is Any) */
+      var me=devPos(),there=me&&geo(job.loc);if(!there)return null;var mi=miles(me,there);return mi<=25?1:(mi<=60?0.6:(p&&p.reloc?0.6:0))};
+    w.__uaplyNearLabel=function(job){
+      if(howMode()!=="drive"){var t=tripMin(job);return t==null?"":tripText(t)}
+      var me=devPos(),there=me&&geo(job.loc);if(!there)return "";var mi=Math.round(miles(me,there));return mi<3?"In your area":"About "+mi+" miles from you"};
     /* with the agreement asked first (consentFirst), the location card and the browser's own location prompt come only after Agree:
        two questions on top of each other at first open, the browser's one before the person has agreed to anything, was the audit's
        finding. Checked twice a second until this browser has agreed; a build without the agreement box (no kit) asks after 3 seconds */
@@ -708,6 +770,97 @@ function apply(w,host){
     };
   }
   function miles(a,b){var R=3958.8,r=Math.PI/180,dl=(b[0]-a[0])*r,dn=(b[1]-a[1])*r,x=Math.sin(dl/2)*Math.sin(dl/2)+Math.cos(a[0]*r)*Math.cos(b[0]*r)*Math.sin(dn/2)*Math.sin(dn/2);return 2*R*Math.asin(Math.sqrt(x))}
+
+  /* ---- travel time by public transit, bike or on foot (sandbox). An estimate, not a trip planner: the straight-line distance plus a quarter for
+     streets, at typical door-to-door speeds. Cities with rail transit (subway, light rail, regional rail, PATCO) average about 13 mph plus 12 minutes
+     of walking and waiting; bus-only places about 8 mph plus 15. Places are known only to the city, so short trips get a floor. ---- */
+  var RAIL=/\b(?:philadelphia|philly|camden|cherry hill|wilmington|trenton|princeton|new york|nyc|brooklyn|manhattan|newark|jersey city|boston|washington|baltimore|pittsburgh|chicago|cleveland|buffalo|atlanta|miami|charlotte|dallas|houston|denver|phoenix|salt lake city|los angeles|san diego|san francisco|oakland|san jose|seattle|portland|minneapolis|st\.? louis|new orleans)\b/i;
+  function howMode(){return TRN?acct.fHow:"drive"}
+  function tripMin(j){
+    var home=homeGeo(),there=geo(j.loc);if(!home||!there)return null;
+    var mi=miles(home,there)*1.25,how=howMode();
+    if(how==="walk")return Math.max(15,Math.round(mi/3*60));
+    if(how==="bike")return Math.max(10,Math.round(3+mi/10*60));
+    var rail=!!RAIL&&RAIL.test(String(j.loc||""));
+    return Math.max(20,Math.round((rail?12:15)+mi/(rail?13:8)*60));
+  }
+  function tripText(t){return "About "+(t>=90?Math.round(t/15)*15:t)+" min "+({transit:"by transit",bike:"by bike",walk:"on foot"}[howMode()]||"")}
+  function minLimit(){return acct.fMin==="any"?60:+acct.fMin}
+
+  /* ---- fields and licenses (sandbox). Real postings arrive labeled by the server (jobs_api.py), example listings carry their own labels, and
+     anything else (an older saved copy) is labeled here from its title with the same rules as the server. ---- */
+  var FIELD_RULES=[
+    ["business","\\b(?:account executive|account manager|sales|business development|sdr|bdr|customer success|marketing|partnerships?|recruit(?:er|ing)|talent acquisition)\\b"],
+    ["tech","\\b(?:software|developer|programmer|devops|sre|front[- ]?end|back[- ]?end|full[- ]?stack|data engineer|machine learning)\\b"],
+    ["dental","\\bdent(?:al|ist|istry)\\b|hygienist|orthodont|endodont|periodont|prosthodont|oral surgeon|\\bdds\\b|\\bdmd\\b|\\brdh\\b|\\befda\\b"],
+    ["health","\\bnurs(?:e|es|ing)\\b|\\brn\\b|\\blpn\\b|\\blvn\\b|\\bcna\\b|\\baprn\\b|physician|\\bmd\\b|doctor|\\bmedical\\b|pharmac|therap(?:ist|y)\\b|counselor|psychiatr|psycholog|clinical|clinician|\\bclinic\\b|\\blcsw\\b|\\blmhc\\b|\\blpc\\b|\\blmft\\b|phlebotom|patient|\\bemt\\b|paramedic|radiolog|sonograph|surg(?:eon|ical)|dietitian|nutritionist|midwi|health coach|care (?:manager|coordinator)|case manager|caregiver|hospital"],
+    ["legal","attorney|lawyer|\\bcounsel\\b|paralegal|\\blegal\\b|litigation|law clerk|\\bjd\\b|e-?discovery|contracts? (?:manager|specialist|administrator)"],
+    ["edu","\\bteach(?:er|ing)\\b|tutor|instructor|professor|lecturer|curriculum|\\beducat(?:or|ion)\\b|\\bschool\\b"],
+    ["tech","engineer|developer|software|programmer|data scien|machine learning|\\bml\\b|\\bai\\b|\\bdata\\b|technolog|security|infrastructure|\\bit\\b|systems? admin|technical|architect|\\bqa\\b|cloud|network|firmware|hardware|robotics|\\bmobile\\b|\\bweb\\b"],
+    ["design","design|\\bux\\b|\\bui\\b|creative|art director|illustrat|animat|video|photograph"],
+    ["business","manag|director|analyst|operations|financ|account(?:ant|ing)|product|program|project|strateg|people|\\bhr\\b|human resources|support|customer|admin|assistant|coordinator|specialist|consultant|executive|associate|business"]
+  ].map(function(r){return [r[0],new w.RegExp(r[1],"i")]});
+  /* licensed titles (the title half of the server's LIC_RULES), for listings that arrive without the server's list */
+  var LIC_TITLE=[["rn","\\brn\\b|registered nurse|nurse (?:case|care) manager|charge nurse|staff nurse|nurse navigator|clinical nurse"],["lpn","\\blpn\\b|\\blvn\\b|licensed (?:practical|vocational) nurse"],
+    ["np","nurse practitioner|\\baprn\\b|\\bfnp\\b|\\bpmhnp\\b|\\bnp\\b"],["pa","physician assistant|\\bpa-c\\b"],["md","physician(?!\\s+assistant)|psychiatrist|surgeon|hospitalist|\\bmd\\b|medical director|medical officer"],
+    ["pharm","pharmacist|\\bpharm\\.?d\\b"],["bh","\\blcsw\\b|\\blicsw\\b|\\blmhc\\b|\\blpc\\b|\\blcpc\\b|\\blmft\\b|psychologist|psychotherapist|mental health (?:therapist|counselor|clinician)|behavioral health (?:therapist|clinician)|licensed (?:clinical|professional|mental health|marriage)"],
+    ["pt","physical therapist|occupational therapist|speech(?:-language)? pathologist|\\bdpt\\b|physical therapy assistant"],["cma","certified medical assistant|\\bcma\\b|\\bccma\\b|\\brma\\b"],["phleb","phlebotomist|phlebotomy"],["emt","\\bemt\\b|paramedic"],
+    ["dds","\\bdentist\\b|\\bdds\\b|\\bdmd\\b|orthodontist|endodontist|periodontist|prosthodontist|oral surgeon"],["rdh","hygienist|\\brdh\\b"],["da","\\befda\\b|\\bcda\\b|certified dental assistant|expanded[- ]function"],
+    ["bar","attorney|lawyer|\\bcounsel\\b"]].map(function(r){return [r[0],new w.RegExp(r[1],"i")]});
+  function jobField(j){
+    if(j&&FLD_KEYS.indexOf(j.field)>-1)return j.field;
+    var t=String(j&&j.role||"");for(var i=0;i<FIELD_RULES.length;i++)if(FIELD_RULES[i][1].test(t))return FIELD_RULES[i][0];
+    return "other";
+  }
+  function jobLics(j){
+    if(!j)return [];
+    if(Array.isArray(j.lic))return j.lic.filter(function(c){return LIC_KEYS.indexOf(c)>-1});
+    var f=jobField(j);if(f!=="health"&&f!=="dental"&&f!=="legal")return [];
+    var t=String(j.role||"");return LIC_TITLE.filter(function(r){return r[1].test(t)}).map(function(r){return r[0]});
+  }
+  function licShort(c){for(var i=0;i<LICS.length;i++)if(LICS[i][1]===c)return LICS[i][3];return c}
+  function fieldName(f){for(var i=0;i<JFIELDS.length;i++)if(JFIELDS[i][0]===f)return JFIELDS[i][1];return "Other"}
+  /* how your licenses fit a job: the license that is the job itself (RN, bar admission...) and the extras that go with it (BLS, notary).
+     Holding any one of the job's own licenses counts (a job open to "NP or PA" needs one of them). null = the job needs none. */
+  function licFit(j){
+    if(!FLD)return null;
+    var need=jobLics(j);if(!need.length)return null;
+    var mine=acct.lics||[],prim=need.filter(function(c){return LIC_SUPPORT.indexOf(c)<0}),sup=need.filter(function(c){return LIC_SUPPORT.indexOf(c)>-1});
+    var pOk=!prim.length||prim.some(function(c){return mine.indexOf(c)>-1}),sOk=sup.every(function(c){return mine.indexOf(c)>-1});
+    return {need:need,prim:prim,sup:sup,pOk:pOk,sOk:sOk,miss:need.filter(function(c){return mine.indexOf(c)<0}),s:!pOk?0:(sOk?1:(prim.length?0.75:0.5))};
+  }
+  if(FLD){
+    /* the score gets a Field row (10 points, when you picked fields) and a License row (10 points, when the job needs one). The points come out of
+       Skills, Title and Experience, so the total stays 100. A job whose own license you have not added is capped at LIC_CAP. */
+    w.__uaplyRows=function(job,p,rows){
+      function take(k,n){for(var i=0;i<rows.length;i++)if(rows[i].k===k){rows[i].w=Math.max(0,rows[i].w-n);return}}
+      var picked=acct.fields,lf=licFit(job);
+      if(picked.length){
+        var f=jobField(job),ok=picked.indexOf(f)>-1;
+        take("Skills",5);take("Title",5);
+        rows.push({k:"Field",w:10,s:ok?1:0,ask:fieldName(f),have:ok?"One of your fields":"Not one of your fields"});
+      }
+      if(lf){
+        take("Skills",5);take("Experience",5);
+        rows.push({k:"License",w:10,s:lf.s,ask:lf.need.map(licShort).join(", "),have:!lf.pOk?"Not in your profile (match capped at "+LIC_CAP+"%)":(lf.miss.length?"Missing "+lf.miss.map(licShort).join(", "):"In your profile")});
+      }
+      return rows;
+    };
+    w.__uaplyCapTo=function(job){var lf=licFit(job);return lf&&!lf.pOk?LIC_CAP:null};
+  }
+  if(FLD||TRN){
+    /* notes on each card: the field and the license a health care, dental or legal job needs, the trip time, and "near transit" when the posting says so */
+    w.__uaplyFacts=function(j){
+      var out="";
+      if(FLD){
+        var f=jobField(j);if(f==="health"||f==="dental"||f==="legal")out+='<span>'+E(fieldName(f))+'</span>';
+        var lf=licFit(j);if(lf)out+='<span class="'+(lf.pOk&&lf.sOk?"licok":(lf.pOk?"":"licno"))+'">'+E("Requires "+lf.need.map(licShort).join(", ")+(lf.pOk?(lf.sOk?" (you have it)":""):" (not in your profile)"))+'</span>';
+      }
+      if(TRN&&howMode()!=="drive"&&j.mode!=="remote"){var t=tripMin(j);if(t!=null)out+='<span>'+E(tripText(t))+'</span>'}
+      if(TRN&&j.tacc&&j.mode!=="remote")out+='<span>Near transit (per posting)</span>';
+      return out;
+    };
+  }
   /* target titles: the main title plus up to four more. Words must appear in the job's role name (plurals allowed). */
   function titleList(){return [A.S.profile.title].concat(acct.titles).map(function(t){return String(t||"").trim()}).filter(Boolean)}
   var SALES_RE=/\b(sales|account executive|business development|sdr|bdr|closer|setter)\b/i;
@@ -719,6 +872,9 @@ function apply(w,host){
     executive:["exec"],manager:["mgr","lead"],administrator:["admin"],admin:["administrator"],specialist:["analyst"],
     coordinator:["coord"],assistant:["asst"],technician:["tech"],tech:["technician"],marketing:["marketer"],marketer:["marketing"],
     designer:["design"],design:["designer"],sales:["selling"],closer:["closing"]};
+  /* sandbox: health care, dental and legal titles often say the same thing in different words */
+  if(FLD)[["nurse",["rn"]],["rn",["nurse"]],["attorney",["lawyer","counsel"]],["lawyer",["attorney","counsel"]],["counsel",["attorney","lawyer"]],["physician",["doctor"]],["doctor",["physician"]],
+    ["hygienist",["rdh"]],["rdh",["hygienist"]],["therapist",["counselor","clinician"]],["counselor",["therapist"]],["clinician",["therapist"]]].forEach(function(x){SAME[x[0]]=(SAME[x[0]]||[]).concat(x[1])});
   function canon(s){return String(s).toLowerCase().replace(/front[\s-]?end/g,"frontend").replace(/back[\s-]?end/g,"backend").replace(/full[\s-]?stack/g,"fullstack").replace(/e[\s-]?commerce/g,"ecommerce")}
   function tokens(t){var all=canon(t).split(/[^a-z0-9+#.]+/).filter(function(x){return x.length>1}),core=all.filter(function(x){return SOFT.indexOf(x)<0});return core.length?core:all}
   function hasWord(role,x){return [x].concat(SAME[x]||[]).some(function(y){return new w.RegExp("(^|[^a-z0-9])"+y.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"s?([^a-z0-9]|$)").test(role)})}
@@ -800,10 +956,20 @@ function apply(w,host){
     var pm=A.S.profile.modes||{};
     /* work styles you did not pick in your profile (nothing picked means no preference) */
     if(acct.fWs&&A.S.profile.custom&&(pm.remote||pm.hybrid||pm.onsite)&&!pm[j.mode])return true;
-    if(acct.fMiles!=="any"&&j.mode!=="remote"&&(NEAR||pm.hybrid||pm.onsite)){
+    if(howMode()!=="drive"){   /* sandbox: by public transit, bike or on foot the limit is travel time, not miles */
+      if(acct.fMin!=="any"&&j.mode!=="remote"){
+        if(+acct.fMin===0)return true;   /* 0 minutes means remote only */
+        var tm=tripMin(j);
+        if(tm==null){if(strict)return true}else if(tm>+acct.fMin)return true;
+      }
+    }else if(acct.fMiles!=="any"&&j.mode!=="remote"&&(NEAR||pm.hybrid||pm.onsite)){
       if(NEAR&&+acct.fMiles===0)return true;   /* 0 miles means remote only */
       var home=homeGeo(),there=geo(j.loc);
       if(!home||!there){if(strict)return true}else if(miles(home,there)>+acct.fMiles)return true;
+    }
+    if(FLD){   /* sandbox: fields you did not pick, and jobs whose own license you have not added */
+      if(acct.fFieldOnly&&acct.fields.length&&acct.fields.indexOf(jobField(j))<0)return true;
+      if(acct.fLic){var lf=licFit(j);if(lf&&!lf.pOk)return true}
     }
     return false;
   }
@@ -1044,10 +1210,16 @@ function apply(w,host){
     var f=d.createElement("div");f.className="field";f.id="fMeta";
     f.innerHTML='<label for="fPosted">Posted</label><select id="fPosted"><option value="any">Any time</option><option value="24h">Past 24 hours</option><option value="7d">Past week</option><option value="30d">Past month</option></select>'+
       '<div class="checks" style="margin-top:8px"><label><input type="checkbox" id="fApp"> Under 10 applicants</label><label><input type="checkbox" id="fInstant"> Only jobs I can apply to instantly</label></div><small id="fAppNote">Applicant counts come from UAply. Listings from outside feeds do not have one yet.</small>'+
-      (NEAR?'<div id="fMilesWrap" class="nearbox"><label for="fMiles">Commute distance</label><input type="range" id="fMiles" min="0" max="105" step="5" value="105" aria-describedby="fMilesV"><div class="rngrow"><b id="fMilesV" aria-live="polite"></b><span class="m">Left end: remote only. Right end: any distance.</span></div><small id="fMilesNote"></small><div id="fLoc"><small id="fLocState"></small><button type="button" class="btn ghost" id="fLocBtn">Use my location</button></div></div>'
+      (NEAR?'<div id="fMilesWrap" class="nearbox">'+
+        (TRN?'<span class="l" id="fHowL">How you get to work</span><div id="fHow" class="filters" role="group" aria-labelledby="fHowL">'+HOWS.map(function(h){return '<button type="button" data-how="'+h[0]+'" aria-pressed="false">'+h[1]+'</button>'}).join("")+'</div>':'')+
+        '<div id="fDistBox"><label for="fMiles">Commute distance</label><input type="range" id="fMiles" min="0" max="105" step="5" value="105" aria-describedby="fMilesV"><div class="rngrow"><b id="fMilesV" aria-live="polite"></b><span class="m">Left end: remote only. Right end: any distance.</span></div></div>'+
+        (TRN?'<div id="fTimeBox" hidden><label for="fMin">Commute time</label><input type="range" id="fMin" min="0" max="125" step="5" value="125" aria-describedby="fMinV"><div class="rngrow"><b id="fMinV" aria-live="polite"></b><span class="m">Left end: remote only. Right end: any time.</span></div></div>':'')+
+        '<small id="fMilesNote"></small><div id="fLoc"><small id="fLocState"></small><button type="button" class="btn ghost" id="fLocBtn">Use my location</button></div></div>'
         :'<div id="fMilesWrap"><label for="fMiles">Distance from your city</label><select id="fMiles"><option value="any">Any distance</option><option value="10">Within 10 miles</option><option value="20">Within 20 miles</option><option value="50">Within 50 miles</option><option value="100">Within 100 miles</option></select><small id="fMilesNote"></small></div>')+
       '<div class="checks" style="margin-top:8px"><label><input type="checkbox" id="fTitleOnly"> Hide roles that do not match my target titles</label></div><small>Uses your target titles in Profile setup. Off if you have not set your own details.</small>'+
       '<div class="checks" style="margin-top:8px"><label><input type="checkbox" id="fWsPick"> Hide work styles I did not pick</label></div><small>Uses the work styles ticked in Profile setup, under Where and pay. If none are ticked, every style shows.</small>'+
+      (FLD?'<div class="checks" style="margin-top:8px"><label><input type="checkbox" id="fFieldOnly"> Hide fields I did not pick</label></div><small>Uses the fields picked in Profile setup, under Jobs you want. If none are picked, every field shows.</small>'+
+        '<div class="checks" style="margin-top:8px"><label><input type="checkbox" id="fLic"> Hide jobs that need a license I have not added</label></div><small>For health care, dental and legal jobs that require one, like an RN license or bar admission. Add yours in Profile setup, under Jobs you want.</small>':'')+
       '<div id="fCommWrap"><div class="checks" style="margin-top:8px"><label><input type="checkbox" id="fNoComm"> Remove commission-only roles</label></div><small>Shown because your titles are in sales. Based on what the posting says.</small></div>'+
       '<span class="l" style="margin-top:8px;display:block">Experience level</span><div class="checks" id="fLevels">'+XP.map(function(x){return '<label><input type="checkbox" data-lvl="'+x[0]+'"> '+x[1]+'</label>'}).join("")+'</div><small>Pick none to see every level.</small>'+
       '<details id="fPerks" style="margin-top:8px"><summary style="cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:600" id="fPerksSum">Benefits</summary><div class="checks" style="flex-direction:column;align-items:flex-start;gap:6px">'+
@@ -1063,6 +1235,12 @@ function apply(w,host){
     function sync(){
       d.getElementById("fPosted").value=acct.fPosted;d.getElementById("fApp").checked=acct.fApp;d.getElementById("fInstant").checked=acct.fInstant;d.getElementById("fMiles").value=NEAR?(acct.fMiles==="any"?105:+acct.fMiles):acct.fMiles;d.getElementById("fStrict").checked=acct.fStrict;d.getElementById("fTitleOnly").checked=acct.fTitleOnly;d.getElementById("fWsPick").checked=acct.fWs;d.getElementById("fNoComm").checked=acct.fNoComm;
       d.getElementById("fCommWrap").hidden=!isSales();
+      if(FLD){d.getElementById("fFieldOnly").checked=acct.fFieldOnly;d.getElementById("fLic").checked=acct.fLic}
+      if(TRN){
+        d.getElementById("fMin").value=acct.fMin==="any"?125:+acct.fMin;
+        f.querySelectorAll("#fHow [data-how]").forEach(function(b){b.setAttribute("aria-pressed",b.getAttribute("data-how")===acct.fHow?"true":"false")});
+        d.getElementById("fDistBox").hidden=acct.fHow!=="drive";d.getElementById("fTimeBox").hidden=acct.fHow==="drive";
+      }
       f.querySelectorAll("[data-lvl]").forEach(function(c){c.checked=acct.fLevels.indexOf(c.getAttribute("data-lvl"))>-1});
       f.querySelectorAll("[data-perk]").forEach(function(c){c.checked=acct.fPerks.indexOf(c.getAttribute("data-perk"))>-1});
       d.getElementById("fPerksSum").textContent="Benefits"+(acct.fPerks.length?" ("+acct.fPerks.length+" selected)":"");
@@ -1071,6 +1249,8 @@ function apply(w,host){
     }
     function changed(){
       acct.fPosted=d.getElementById("fPosted").value;acct.fApp=d.getElementById("fApp").checked;acct.fInstant=d.getElementById("fInstant").checked;acct.fMiles=milesVal();acct.fStrict=d.getElementById("fStrict").checked;acct.fTitleOnly=d.getElementById("fTitleOnly").checked;acct.fWs=d.getElementById("fWsPick").checked;acct.fNoComm=d.getElementById("fNoComm").checked;
+      if(FLD){acct.fFieldOnly=d.getElementById("fFieldOnly").checked;acct.fLic=d.getElementById("fLic").checked}
+      if(TRN)acct.fMin=minVal();
       acct.fLevels=[].slice.call(f.querySelectorAll("[data-lvl]")).filter(function(c){return c.checked}).map(function(c){return c.getAttribute("data-lvl")});
       acct.fPerks=[].slice.call(f.querySelectorAll("[data-perk]")).filter(function(c){return c.checked}).map(function(c){return c.getAttribute("data-perk")});
       cleanF(acct);saveA();A.renderAll();sync();
@@ -1081,12 +1261,32 @@ function apply(w,host){
       var el=d.getElementById("fMilesV");if(!el)return;var v=+d.getElementById("fMiles").value;
       el.textContent=v>=105?"Any distance":(v===0?"Remote only":"Within "+v+" miles");
     }
+    /* commute time (sandbox, by transit, bike or on foot): 0 = remote only, 5 to 120 minutes, far right = any time */
+    function minVal(){var v=+d.getElementById("fMin").value;return v>=125?"any":String(v)}
+    function minWord(){return {transit:"by public transit",bike:"by bike",walk:"on foot"}[acct.fHow]||""}
+    function paintMin(){
+      var el=d.getElementById("fMinV");if(!el)return;var v=+d.getElementById("fMin").value;
+      el.textContent=v>=125?"Any travel time":(v===0?"Remote only":"Up to "+v+" minutes "+minWord());
+    }
     function nearNote(){
       paintMiles();syncLocUI();
+      if(TRN&&acct.fHow!=="drive"){
+        paintMin();var mv=+d.getElementById("fMin").value;
+        if(mv>=125)return "Every job shows. In-person cards say about how long the trip takes "+minWord()+".";
+        if(mv===0)return "Only remote jobs show.";
+        return homeGeo()?"Remote jobs always show. In-person jobs more than about "+mv+" minutes away "+minWord()+" are hidden. Times are estimates from the distance and typical speeds, not a trip planner, so check the route before you apply.":"We cannot tell where you are yet. Tap Use my location, or add your city and ZIP in Profile setup.";
+      }
       var v=+d.getElementById("fMiles").value;
       if(v>=105)return "Every job shows, near or far. Remote jobs always show except at Remote only.";
       if(v===0)return "Only remote jobs show.";
       return homeGeo()?"Remote jobs always show. In-person jobs farther than "+v+" miles (straight line) are hidden."+(A.S.profile.reloc?" You said you would relocate: slide to Any distance to see far-away jobs too.":""):"We cannot tell where you are yet. Tap Use my location, or add your city and ZIP in Profile setup.";
+    }
+    if(TRN){
+      d.getElementById("fMin").addEventListener("input",paintMin);
+      d.getElementById("fHow").addEventListener("click",function(e){
+        var b=e.target.closest("[data-how]");if(!b)return;
+        acct.fHow=b.getAttribute("data-how");cleanF(acct);saveA();A.renderAll();sync();if(w.__uaplySyncPrefs)w.__uaplySyncPrefs();
+      });
     }
     if(NEAR){
       d.getElementById("fMiles").addEventListener("input",function(){paintMiles()});
@@ -1099,6 +1299,7 @@ function apply(w,host){
     f.addEventListener("change",changed);
     d.getElementById("fClear").onclick=function(){
       acct.fPosted="any";acct.fApp=false;acct.fInstant=false;acct.fPerks=[];acct.fMiles="any";acct.fStrict=false;acct.fTitleOnly=false;acct.fWs=false;acct.fNoComm=false;acct.fLevels=[];acct.fEdu=false;acct.fSal=false;acct.fYrs="any";acct.fCo="";acct.fKw="";
+      if(TRN)acct.fMin="any";if(FLD){acct.fFieldOnly=false;acct.fLic=false}
       saveA();A.setMin(0);A.setFilter("all");A.renderAll();sync();if(w.__uaplySyncPrefsBase)w.__uaplySyncPrefsBase();savePrefs();syncFilters();
     };
     var base=w.__uaplySyncPrefs;w.__uaplySyncPrefsBase=base;
@@ -1207,8 +1408,42 @@ function apply(w,host){
     }
     function vis(){if(mf)mf.classList.toggle("nomiles",!(d.getElementById("pm-hybrid").checked||d.getElementById("pm-onsite").checked))}
     ["pm-hybrid","pm-onsite"].forEach(function(id){d.getElementById(id).addEventListener("change",vis)});
+    /* sandbox: how you get to work (Where and pay), and fields and licenses (Jobs you want). Saved the moment they change, like target titles. */
+    var grid0=d.querySelector("#form .grid");
+    if(TRN){
+      var hf=d.createElement("div");hf.className="field full";hf.id="aHowF";
+      hf.innerHTML='<label for="pHow">How you get to work</label><select id="pHow">'+HOWS.map(function(h){return '<option value="'+h[0]+'">'+h[1]+'</option>'}).join("")+'</select>'+
+        '<small>Public transit, bike or walking turns the commute filter from miles into travel time, and each in-person job shows about how long the trip takes. Set your limit in Profile, Filters.</small>';
+      grid0.appendChild(hf);
+      d.getElementById("pHow").addEventListener("change",function(){acct.fHow=this.value;cleanF(acct);saveA();A.renderAll();syncMeta()});
+    }
+    if(FLD){
+      var ff=d.createElement("div");ff.className="field full";ff.id="aFieldsF";
+      ff.innerHTML='<span class="l" id="aFieldsL">Fields you want to work in</span><div class="checks" role="group" aria-labelledby="aFieldsL">'+
+        JFIELDS.map(function(f){return '<label><input type="checkbox" data-fld="'+f[0]+'"> '+E(f[1])+'</label>'}).join("")+'</div><small>Jobs in these fields score higher, and Filters can hide the rest. Pick none to see every field.</small>';
+      grid0.appendChild(ff);
+      var lc=d.createElement("details");lc.className="field full";lc.id="aLicF";
+      lc.innerHTML='<summary id="aLicSum">Licenses and certifications</summary><div class="licBody"><small>For jobs that require one, like an RN license or bar admission. A job that needs a license you have not added is never shown as a strong match. Employers see what you tick here, so tick only what you hold now.</small>'+
+        [["health","Health care"],["dental","Dental"],["legal","Legal"]].map(function(g){return '<span class="l">'+g[1]+'</span><div class="checks">'+LICS.filter(function(l){return l[0]===g[0]}).map(function(l){return '<label><input type="checkbox" data-lic="'+l[1]+'"> '+E(l[2])+'</label>'}).join("")+'</div>'}).join("")+'</div>';
+      grid0.appendChild(lc);
+      var fldChanged=function(){
+        acct.fields=[].slice.call(ff.querySelectorAll("[data-fld]")).filter(function(c){return c.checked}).map(function(c){return c.getAttribute("data-fld")});
+        acct.lics=[].slice.call(lc.querySelectorAll("[data-lic]")).filter(function(c){return c.checked}).map(function(c){return c.getAttribute("data-lic")});
+        cleanF(acct);saveA();paintLicSum();A.renderAll();syncMeta();
+      };
+      ff.addEventListener("change",fldChanged);lc.addEventListener("change",fldChanged);
+    }
+    function paintLicSum(){var s=d.getElementById("aLicSum");if(s)s.textContent="Licenses and certifications"+(acct.lics&&acct.lics.length?" ("+acct.lics.length+" added)":"")}
+    function fillFld(){
+      if(TRN&&d.getElementById("pHow"))d.getElementById("pHow").value=acct.fHow;
+      if(FLD){
+        d.querySelectorAll("#aFieldsF [data-fld]").forEach(function(c){c.checked=acct.fields.indexOf(c.getAttribute("data-fld"))>-1});
+        d.querySelectorAll("#aLicF [data-lic]").forEach(function(c){c.checked=acct.lics.indexOf(c.getAttribute("data-lic"))>-1});
+        paintLicSum();
+      }
+    }
     var base=w.__uaplySyncPrefs;
-    w.__uaplySyncPrefs=function(){if(base)base();paintTitles();fillEeo();fillAddr();paintLevel();vis();setTimeout(function(){paintLevel();vis()},0)};
+    w.__uaplySyncPrefs=function(){if(base)base();paintTitles();fillEeo();fillAddr();paintLevel();vis();fillFld();setTimeout(function(){paintLevel();vis()},0)};
     paintTitles();fillEeo();fillAddr();paintLevel();vis();A.renderAll();
   })();
 
@@ -1429,7 +1664,7 @@ function apply(w,host){
   function autoAllowed(){if(REL||(typeof SRV!=="undefined"&&SRV&&SRV.up))return BILL.plan!=="free"||!BILL.enabled;var s=planState();return s.plan!==PLANS.trial&&s.ok}
   w.__uaplyAutoMsg=function(){return autoAllowed()&&!!acct.fAuto};
   /* what the application sends besides the profile: the details saved in Profile setup, Background and links (phone, LinkedIn, portfolio, About you, resume link) win over the optional profile form */
-  w.__uaplyApplyExt=function(){var x=Object.assign({},XV());var ph=phoneOf(),li=linkOf("linkedin"),pf=linkOf("portfolio"),su=summaryOf(),rs=resumeLinkOf();if(ph)x.phone=ph;if(li)x.linkedin=li;if(pf)x.portfolio=pf;if(su)x.summary=su;if(rs)x.resume=rs;var ad=acct.addr||{};if(ad.zip)x.zip=ad.zip;if(A.S.profile&&A.S.profile.reloc&&x.relocate!=="no")x.relocate="yes";if(ad.state)x.state=ad.state;x.ack=x.ack==="yes";return x};
+  w.__uaplyApplyExt=function(){var x=Object.assign({},XV());var ph=phoneOf(),li=linkOf("linkedin"),pf=linkOf("portfolio"),su=summaryOf(),rs=resumeLinkOf();if(ph)x.phone=ph;if(li)x.linkedin=li;if(pf)x.portfolio=pf;if(su)x.summary=su;if(rs)x.resume=rs;var ad=acct.addr||{};if(ad.zip)x.zip=ad.zip;if(A.S.profile&&A.S.profile.reloc&&x.relocate!=="no")x.relocate="yes";if(ad.state)x.state=ad.state;x.ack=x.ack==="yes";if(FLD&&acct.lics.length)x.lic=acct.lics.slice();return x};
   w.__uaplyResume=function(){return acct.resumeData&&DATA_URL.test(acct.resumeData)?{name:acct.resumeName,size:acct.resumeSize,data:acct.resumeData}:null};   /* the file uploaded in Profile setup, Background and links */
   w.__uaplyMessage=function(job,m,p){
     var skills=(m.matched||[]).slice(0,3),name=p.name||"[Your name]",sumv=summaryOf();
@@ -2043,8 +2278,8 @@ function apply(w,host){
      built above and by the Application profile experiment; each is assigned to a step by the ids listed in `anchors`. */
   var STEPS=[
     {k:"about",t:"About you",s:"About you",q:"Who should employers contact?",use:"These details go on every application you send, so an employer can reply to you.",anchors:["pName","pEmail","pPhone","px-phone","px-headline"]},
-    {k:"jobs",t:"Jobs you want",s:"Jobs",q:"What kind of work are you looking for?",use:"This is the core of your matches. Titles, skills, experience and education change every score and decide which jobs show. The opportunity types you pick open first in Services.",anchors:["pTitle","px-types-fulltime","pSkills","pYears","pEdu"]},
-    {k:"where",t:"Where and pay",s:"Where and pay",q:"Where, how, and for how much?",use:"City, work style, distance, willingness to relocate and minimum pay all change your match score and which jobs show. Your state, ZIP code and country also fill in employer forms, and your state and ZIP code help find your location for distance. Your street stays on this device.",anchors:["aAddr","pm-remote","aMilesF","pSalary","px-start","aNoticeF"]},
+    {k:"jobs",t:"Jobs you want",s:"Jobs",q:"What kind of work are you looking for?",use:"This is the core of your matches. Titles, skills, experience and education change every score and decide which jobs show. The opportunity types you pick open first in Services.",anchors:["pTitle","px-types-fulltime","pSkills","pYears","pEdu","aFieldsF","aLicF"]},
+    {k:"where",t:"Where and pay",s:"Where and pay",q:"Where, how, and for how much?",use:"City, work style, distance, willingness to relocate and minimum pay all change your match score and which jobs show. Your state, ZIP code and country also fill in employer forms, and your state and ZIP code help find your location for distance. Your street stays on this device.",anchors:["aAddr","pm-remote","aMilesF","aHowF","pSalary","px-start","aNoticeF"]},
     {k:"back",t:"Background and links",s:"Background",q:"Show employers who you are.",use:"Sent with your applications. Your headline, summary and major also count as skills when a job asks for them. GPA is optional and never changes a match.",anchors:["px-school","px-major","px-grad","px-gpa","px-employer","px-job_title","px-job_start","px-job_end","px-summary","px-resume","px-linkedin","px-portfolio","aResF","aSummaryF","aLinkedF","aSiteF","aCoverF"]},
     {k:"final",t:"Eligibility and extras",s:"Eligibility",q:"Last details.",use:"Work authorization is added to applications only. It never changes a match or hides a job. The optional section at the bottom is yours to skip.",anchors:["px-auth","px-sponsor","aElig","aAutoF","aEeo"]}
   ];
@@ -2084,6 +2319,7 @@ function apply(w,host){
     var rows=[["Email",fv("pEmail")],["Location",loc],["Experience",yrs?yrs+(+yrs===1?" year":" years"):""]];
     function site(u){try{var x=new w.URL(u);return x.hostname.replace(/^www\./,"")+(x.pathname.length>1?"/…":"")}catch(e){return u}}
     if(px)rows.push(["Phone",fv("px-phone")],["Resume link",fv("px-resume")&&site(fv("px-resume"))],["LinkedIn",fv("px-linkedin")&&site(fv("px-linkedin"))],["Portfolio",fv("px-portfolio")&&site(fv("px-portfolio"))],["Education",edu],["Most recent employer",job],["Country",selText("px-country")],["Work authorization",auth],["Earliest start",selText("px-start")],["Willing to relocate",fv("px-relocate")&&selText("px-relocate")],["Looking for",types]);
+    if(FLD)rows.push(["Licenses",acct.lics.map(function(c){for(var i=0;i<LICS.length;i++)if(LICS[i][1]===c)return LICS[i][2];return c}).join(", ")]);
     wzPrev.innerHTML='<div class="pvh">What employers see</div><div class="pv"><div class="pvTop"><span class="pvAv" aria-hidden="true">'+E(ini)+'</span><div><b>'+E(name||"Your name")+'</b><span>'+E(head||"Your title or headline")+'</span></div></div>'+
       (skills.length?'<div class="chips">'+skills.slice(0,8).map(function(s){return '<span class="chip">'+E(s)+'</span>'}).join("")+(skills.length>8?'<span class="chip">+'+(skills.length-8)+' more</span>':"")+'</div>':'<div class="pvMeta">No skills added yet</div>')+
       '<ul>'+rows.map(function(r){return '<li class="'+(r[1]?"":"no")+'"><span>'+r[0]+'</span><span>'+(r[1]?E(r[1]):"Not added yet")+'</span></li>'}).join("")+'</ul></div>'+
