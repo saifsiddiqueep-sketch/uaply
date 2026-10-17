@@ -93,6 +93,11 @@ var CSS=`
 .nitem .c{font:500 12px var(--mono);color:var(--muted)}
 .toast{bottom:var(--toast-at,var(--above-nav,calc(88px + env(safe-area-inset-bottom,0px))));pointer-events:none}.toast button{pointer-events:auto}
 body{padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
+/* Pass / Undo / Apply always in sight, just above the bottom bar. The deck scrolls inside #main, and on first open the tips, the
+   example-profile notice, the location box, the filters and the card's 430 px minimum pushed the row below the bottom of #main,
+   under the bar (Oct 17 audit, "Start does not work"). Sticky to the bottom of #main the row stays where it is when everything
+   fits and holds the bottom edge when it does not; its own space stays in the flow, so scrolled to the end the card ends above it. */
+#pane-swipe .actions{position:sticky;bottom:0;z-index:3;background:var(--bg);box-shadow:0 -10px 12px -2px var(--bg)}
 #pane-track .stats{grid-template-columns:repeat(4,1fr)}
 #pane-track .row{flex-wrap:wrap}
 #pane-track .acts{display:flex;gap:6px;flex-wrap:wrap;flex-basis:100%}
