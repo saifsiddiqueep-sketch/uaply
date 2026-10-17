@@ -75,8 +75,10 @@ module.exports = async ({ ev, sleep, nav, shot }) => {
   await ev("(()=>{const m=(" + F + ").getElementById('main');m.scrollTop=0})()"); await sleep(200);
 
   // 4. a swipe (Pass, by its button): the message after it stays clear of the buttons and of the bar
-  await ev("(" + F + ").getElementById('btnNo').click()"); await sleep(900);
-  B = await boxes();
+  // on a cold start (empty job cache) the release build shows "Finding jobs for you" with Pass disabled for up to a minute: wait for a card
+  for (let i = 0; i < 240 && !(await ev("(()=>{const d=" + F + ",b=d.getElementById('btnNo');return !!d.querySelector('.card.top')&&!!b&&!b.disabled})()")); i++) await sleep(250);
+  await ev("(" + F + ").getElementById('btnNo').click()");
+  for (let w = 0; w < 12; w++) { await sleep(300); B = await boxes(); if (B.toast) break; }   // the message animates in; wait up to 3.6 s for it
   if (B.toast) {
     const overl = (a, b) => a && b && a.t < b.b - 0.5 && b.t < a.b - 0.5 && a.l < b.r - 0.5 && b.l < a.r - 0.5;
     const hit = B.btns.filter((b) => overl(B.toast, b)).map((b) => b.id);
