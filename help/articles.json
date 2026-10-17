@@ -22,15 +22,21 @@
    "id": "match-score",
    "title": "How is the match percentage worked out?",
    "tags": "match score percent percentage compatibility points why low",
-   "body": "The match is a fixed formula, not a judgment about you. It adds points for skills (30), experience (15), pay (15), job title (15), work style (10), location (10) and education (5). Each card lists the points for every part. Skills also count when your headline, About you or major says them, and the card tells you how many came from there. If you tick no work style, every style scores full points. The score only orders jobs for you. It never rejects you and never decides anything about hiring. Improve it by completing your profile and target titles.",
-   "go": "prof:settings"
+   "body": "The match is a fixed formula, not a judgment about you. It adds points for skills (30), experience (15), pay (15), job title (15), work style (10), location (10) and education (5). Each card lists the points for every part. Skills also count when your headline, About you or major says them, and the card tells you how many came from there. If you tick no work style, every style scores full points. If you pick fields, a Field row is worth 10 points. A job that requires a license adds a License row worth 10, and if you have not added the license the job is for, like an RN license or bar admission, its match is capped at 40%. These points come out of Skills, Title and Experience, so the total stays 100. If you get to work by public transit, bike or on foot, Location compares the estimated trip time with your limit instead of miles. The score only orders jobs for you. It never rejects you and never decides anything about hiring. Improve it by completing your profile and target titles.",
+   "go": "prof:settings",
+   "release": {
+    "body": "The match is a fixed formula, not a judgment about you. It adds points for skills (30), experience (15), pay (15), job title (15), work style (10), location (10) and education (5). Each card lists the points for every part. Skills also count when your headline, About you or major says them, and the card tells you how many came from there. If you tick no work style, every style scores full points. The score only orders jobs for you. It never rejects you and never decides anything about hiring. Improve it by completing your profile and target titles."
+   }
   },
   {
    "id": "profile-setup",
    "title": "How do I set up my profile?",
    "tags": "profile settings name email phone setup fill in details complete readiness",
-   "body": "Open Profile, then Profile setup. It is five short steps: About you, Jobs you want, Where and pay, Background and links, and Eligibility and extras. Tap Save and continue on each step; your answers are saved as you go and you can jump between steps any time. The bar at the top shows how complete your profile is. On a computer, a card beside the questions shows what employers will see. Your profile is what employers receive when you apply.",
-   "go": "prof:settings"
+   "body": "Open Profile, then Profile setup. It is five short steps: About you, Jobs you want, Where and pay, Background and links, and Eligibility and extras. Jobs you want also asks which fields you want to work in and which licenses and certifications you hold, and Where and pay asks how you get to work (Drive, Public transit, Bike or Walk). Tap Save and continue on each step; your answers are saved as you go and you can jump between steps any time. The bar at the top shows how complete your profile is. On a computer, a card beside the questions shows what employers will see. Your profile is what employers receive when you apply.",
+   "go": "prof:settings",
+   "release": {
+    "body": "Open Profile, then Profile setup. It is five short steps: About you, Jobs you want, Where and pay, Background and links, and Eligibility and extras. Tap Save and continue on each step; your answers are saved as you go and you can jump between steps any time. The bar at the top shows how complete your profile is. On a computer, a card beside the questions shows what employers will see. Your profile is what employers receive when you apply."
+   }
   },
   {
    "id": "target-titles",
@@ -47,6 +53,16 @@
    "go": "prof:jobs"
   },
   {
+   "id": "licenses-fields",
+   "title": "Licenses and fields for health care, dental and legal jobs",
+   "tags": "license licenses licensing certification certifications credential credentials field fields nurse nursing rn lpn np pa physician md doctor pharmacist therapist counselor dentist dental hygienist rdh dds paralegal attorney lawyer counsel bar notary bls cpr acls medical health care legal equivalents verified capped",
+   "body": "In Profile setup, under Jobs you want, pick the fields you want to work in (such as Health care and medical, Dental or Legal) and open Licenses and certifications to tick the ones you hold now, like RN, NP, PA-C, MD or DO, RDH, DDS or DMD, or bar admission. UAply reads each posting's field from its title and, for health care, dental and legal postings, the licenses it requires. A licensed title counts, and in the text only wording about holding a license counts, never when it says preferred or a plus. Picking fields adds a Field row to the match worth 10 points. A job that requires a license adds a License row worth 10. Holding any one of the licenses the job is for counts, so a job open to NP or PA needs one of them. BLS or CPR, ACLS and notary are extras that lower the row but never hide or cap a job. A job is capped at a 40% match if you have added none of the licenses it is for. In Filters, 'Hide fields I did not pick' and 'Hide jobs that need a license I have not added' are on by default; turn them off to see everything. Job titles also match equivalents like nurse and RN, or attorney, lawyer and counsel. Licenses you tick are sent with your applications, labeled as stated by the applicant, and UAply does not verify them.",
+   "go": "prof:settings",
+   "release": {
+    "hide": true
+   }
+  },
+  {
    "id": "no-jobs",
    "title": "Why don't I see any jobs (or only a few)?",
    "tags": "no jobs empty nothing few listings missing where jobs come from source feed",
@@ -60,18 +76,31 @@
    "id": "filters",
    "title": "How do filters work?",
    "tags": "filter filters posted date recent 24 hours week month applicants under 10 benefits experience level commission companies keywords minimum match",
-   "body": "Open Profile, then Filters. You can show jobs posted in the past 24 hours, week or month, jobs with under 10 applicants, jobs that mention benefits you pick, experience levels, and a minimum match. You can hide work styles you did not pick, jobs that pay below your minimum, jobs that need more education than you have, companies, and keywords. If your titles are in sales, you can also remove commission-only roles. Some listings don't say everything; turn on 'Hide listings that do not say' to hide those too. Clear all filters resets them.",
-   "go": "prof:filters"
+   "body": "Open Profile, then Filters. You can show jobs posted in the past 24 hours, week or month, jobs with under 10 applicants, jobs that mention benefits you pick (including Commuter or transit benefits, matched from what postings say), experience levels, and a minimum match. Above the commute slider, choose how you get to work: Drive, Public transit, Bike or Walk. You can hide work styles you did not pick, fields you did not pick, jobs that need a license you have not added, jobs that pay below your minimum, jobs that need more education than you have, companies, and keywords. The field and license filters are on by default, and nothing is hidden by field until you pick fields in Profile setup. If your titles are in sales, you can also remove commission-only roles. Some listings don't say everything; turn on 'Hide listings that do not say' to hide those too. Clear all filters resets them.",
+   "go": "prof:filters",
+   "release": {
+    "body": "Open Profile, then Filters. You can show jobs posted in the past 24 hours, week or month, jobs with under 10 applicants, jobs that mention benefits you pick, experience levels, and a minimum match. You can hide work styles you did not pick, jobs that pay below your minimum, jobs that need more education than you have, companies, and keywords. If your titles are in sales, you can also remove commission-only roles. Some listings don't say everything; turn on 'Hide listings that do not say' to hide those too. Clear all filters resets them."
+   }
   },
   {
    "id": "distance",
    "title": "Where is the distance filter?",
    "tags": "distance miles radius near me close commute location city 10 20 50",
-   "body": "Open Profile, then Filters, and drag the Commute distance slider. Far left shows remote jobs only, and far right shows every job. In between you choose how many miles from you in-person jobs can be, from 5 to 100. UAply measures from your device location if you tapped Use my location, otherwise from your city or ZIP code.",
+   "body": "Open Profile, then Filters, and drag the Commute distance slider. Far left shows remote jobs only, and far right shows every job. In between you choose how many miles from you in-person jobs can be, from 5 to 100. UAply measures from your device location if you tapped Use my location, otherwise from your city or ZIP code. Above the slider, How you get to work offers Drive, Public transit, Bike and Walk (it is also in Profile setup, under Where and pay). The miles slider is for Drive. The other three switch it to minutes: far left is remote only, in between is 5 to 120 minutes, and far right is any time. Travel times are estimates, not a trip planner.",
    "go": "prof:filters",
    "release": {
     "go": "prof:where",
     "body": "Distance is in Profile setup, under Where and pay, and it only appears when you tick Hybrid or On-site under work style, because remote jobs don't need it. Choose 10, 20, 50 or 100 miles from where you live. UAply finds that from your city and state, or from your ZIP code if it doesn't know the city. Distance works for most larger US cities."
+   }
+  },
+  {
+   "id": "commute-transit",
+   "title": "Commute by public transit, bike or walking",
+   "tags": "commute transit public transportation bus train subway metro rail bike bicycle cycling walk walking drive car travel time times minutes trip how long worked out calculated estimated estimate how i get to work near transit commuter benefits",
+   "body": "Choose how you get to work in Profile, Filters, above the commute slider, or in Profile setup, under Where and pay: Drive, Public transit, Bike or Walk. Drive keeps the miles slider. The other three switch the commute filter to minutes: far left is remote only, then 5 to 120 minutes in steps of 5, and far right is any time. Times are estimates, not a trip planner. UAply takes the straight-line distance, adds a quarter for streets, and uses typical door-to-door speeds: in cities with rail transit about 13 mph plus 12 minutes of walking and waiting, in places with only buses about 8 mph plus 15 minutes, by bike about 10 mph, and on foot about 3 mph. A trip is never shorter than 20 minutes by transit, 10 by bike or 15 on foot, because UAply only knows a job's city. In the match, Location compares the trip time with your limit (60 minutes when it is Any): full points within it, half points up to one and a half times it, and none beyond that, or partial points if you would relocate. In-person cards say About N min by transit (or by bike, on foot), and Near transit (per posting) when the posting says so. The Benefits filter includes Commuter or transit benefits. Your choice stays on your device.",
+   "go": "prof:filters",
+   "release": {
+    "hide": true
    }
   },
   {

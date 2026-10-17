@@ -32,7 +32,7 @@ button{font:inherit;cursor:pointer}
 .stage{flex:1;min-height:0;display:flex;justify-content:center;padding:6px 10px 10px}
 .top.min .chips,.top.min #note{display:none}
 iframe{border:1px solid var(--line);border-radius:14px;background:var(--bg);width:100%;height:100%}
-.stage.phone iframe{width:390px}
+.stage.phone iframe{width:min(390px,100%)}   /* on a real phone the frame must not be wider than the screen, or the page scrolls sideways under a swipe */
 /* app mode (phones, Home Screen, or ?app=1): no sandbox controls, the app fills the screen like an installed app */
 html,body{overscroll-behavior:none}
 body.app{height:100vh;height:100dvh;background:var(--bg)}
@@ -53,7 +53,8 @@ body.app iframe{border:0;border-radius:0;width:100%!important}
 </div>
 <div class="stage" id="stage"><iframe id="app" title="UAply sandbox build" allow="geolocation"></iframe></div>
 <div class="log" id="log" aria-live="polite"></div>
-<script>window.UAplyOpts={nearMe:true,consentFirst:true,simpleTabs:true,navLift:0,
+<script>window.UAplyOpts={nearMe:true,transit:true,fields:true,   /* transit: how you get to work (public transit, bike, walk); fields: job fields and licenses (health care, dental, legal) */
+  consentFirst:true,simpleTabs:true,navLift:0,
   /* Stripe Payment Links (TEST mode, "UAply sandbox" Stripe account): used where there is no server, like the GitHub Pages copy */
   stripeLinks:{starter:"https://buy.stripe.com/test_00w6oA7S25nWcZUcEDcEw00",pro:"https://buy.stripe.com/test_dRm9AM8W6aIgcZU8oncEw01"}};   /* sandbox only: ask for device location and show the commute slider; ask for consent once, before the first swipe */</script>
 <script src="uaply-nav.js"></script>

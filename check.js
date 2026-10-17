@@ -94,7 +94,25 @@ try {
   alone.length ? bad("these experiments no longer apply on their own: " + alone.map((x) => x[1]).join(" ")) : ok("each of the " + E.ORDER.length + " experiments applies on its own");
   const all = build(E.ORDER);
   all ? bad("with every experiment on: " + all) : ok("every experiment applies together");
-  const dev = fs.readFileSync("dev/index.html", "utf8"), P = JSON.parse(/var PROMOTED=(\[[^\]]*\])/.exec(dev)[1]);
+  /* the sandbox's page options transit (how you get to work) and fields (job fields and licenses): their patches run only when
+     window.UAplyOpts asks, so build again with them on, check the hooks really went in, and check a missing target is caught */
+  const sbOpts = /window\.UAplyOpts=\{([^}]*)/.exec(fs.readFileSync("sandbox/index.html", "utf8"));
+  ["transit", "fields"].forEach((k) => sbOpts && new RegExp("\\b" + k + ":\\s*true").test(sbOpts[1]) ? ok("sandbox/index.html switches on " + k) : bad("sandbox/index.html lost " + k + ":true in UAplyOpts"));
+  W.UAplyOpts = { nearMe: true, transit: true, fields: true };
+  const optsErr = build(E.ORDER);
+  const patched = (() => { let s = prod; E.ORDER.forEach((k) => { if (E.FEATURES[k].patch) try { s = E.FEATURES[k].patch(s); } catch (e) {} }); return s; })();
+  optsErr ? bad("with transit and fields on: " + optsErr) : ok("every experiment applies together with transit and fields on");
+  ["window.__uaplyFacts", "window.__uaplyRows", "window.__uaplyCapTo"].every((h) => patched.includes(h)) ? ok("the transit and fields hooks are in the patched page")
+    : bad("transit/fields hooks (__uaplyFacts, __uaplyRows, __uaplyCapTo) missing from the patched page");
+  {
+    /* self-test: a prod page without the score line the fields patch needs must fail the build */
+    const realProd = prod, target = "var total=0;rows.forEach(function(r){total+=r.w*r.s;";
+    let caught = "";
+    if (realProd.includes(target)) { const s0 = realProd.replace(target, "var total=0;/*gone*/rows.forEach(function(r){total+=r.w*r.s;"); let s = s0; E.ORDER.forEach((k) => { if (E.FEATURES[k].patch) try { s = E.FEATURES[k].patch(s); } catch (e) { caught += e.message; } }); }
+    /patch target not found/.test(caught) ? ok("a missing transit/fields patch target is reported") : bad("a missing fields patch target was not reported (or prod/index.html lost the score line)");
+  }
+  W.UAplyOpts = undefined;
+  const dev = fs.readFileSync("dev/index.html", "utf8"), P =JSON.parse(/var PROMOTED=(\[[^\]]*\])/.exec(dev)[1]);
   const unknown = P.filter((k) => !E.FEATURES[k]);
   unknown.length ? bad("dev/index.html PROMOTED names features that do not exist: " + unknown.join(", ")) : ok("every feature dev's PROMOTED list names exists (" + P.length + ")");
   /* sandbox-only: Hiring mode, the pretend back end, and the "Save to Applied?" question the sandbox removed */

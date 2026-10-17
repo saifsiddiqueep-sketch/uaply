@@ -4,6 +4,29 @@ How versions move: work happens in `sandbox`, is tested there, and goes to `dev`
 build: it is what the hosted site and the phone apps run. Each version is tagged on GitHub (Releases). `main` is the original
 production page and only changes when the owner decides.
 
+## Unreleased (sandbox)
+
+### How you get to work, and fields and licenses (sandbox only for now; Mohammed, 2026-10-15, moved onto sandbox 2026-10-17)
+- **How you get to work.** Profile setup (Where and pay) and Filters, above the commute slider, now ask Drive, Public transit, Bike or
+  Walk. Drive keeps the miles slider; the others switch it to minutes (Remote only, 5 to 120, Any time). Times are estimates, not a
+  trip planner: the straight-line distance plus a quarter for streets, at typical door-to-door speeds. The Location points in the
+  match use the time against your limit. In-person cards say "About N min by transit" (or by bike, on foot), and "Near transit (per
+  posting)" when the posting says so. The Benefits filter gains "Commuter or transit benefits". The choice is saved on the device.
+- **Fields and licenses for health care, dental and legal jobs.** Profile setup, under Jobs you want, adds "Fields you want to work
+  in" and a fold-out "Licenses and certifications" list. The server labels each real posting with its field (from the title) and, for
+  health care, dental and legal postings only, the licenses it requires: a licensed title counts, and in the text only wording about
+  holding a license counts, never "preferred" or "a plus". Licensed titles also raise the education a job asks for, and job titles
+  understand common equivalents (nurse and RN, attorney, lawyer and counsel).
+- In the match, picking fields adds a 10-point Field row, and a job that requires a license adds a 10-point License row (the points
+  come out of Skills, Title and Experience, so the total stays 100). A job is capped at a 40% match when you have added none of the
+  licenses it is for. BLS or CPR, ACLS and notary only lower the row. Filters adds "Hide fields I did not pick" and "Hide jobs that
+  need a license I have not added", both on by default. The licenses you tick are sent with your applications, labeled "as stated by
+  the applicant", and UAply does not verify them.
+- The sandbox also reads the public boards of One Medical, Oscar Health and Two Chairs (health care), Dental365, Premier Care Dental
+  Management and Apple Tree Dental (dental), and Everlaw, Harvey and Wilson Elser (legal). They link out only and are off unless the
+  owner switches feeds on. Ten example listings (health care, dental and legal, in and around Philadelphia) show when real postings
+  are not loaded, and each says it is an example.
+
 ## 1.0.0-rc.11 (release candidate)
 
 The swipe buttons a new visitor could not find, and small things the October 17 audit turned up.
