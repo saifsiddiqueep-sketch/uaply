@@ -50,6 +50,8 @@ module.exports = async ({ ev, sleep, nav, shot }) => {
   // 1. first open: the agreement box may be up (consentFirst); the buttons must already sit where the visitor will find them
   const consent = await ev("!!(" + F + ").getElementById('kcYes')");
   allVisible("first open" + (consent ? " (agreement box up)" : ""), await boxes());
+  // the location card (and the browser's own location prompt) wait for Agree: never two questions at once on first open
+  if (consent) { await sleep(2500); check(size + " first open: no location card while the agreement box is up", !(await ev("!!(" + F + ").getElementById('locAsk')"))); }
   if (process.env.SHOTS) await shot(process.env.SHOTS + "-" + size + "-1-first.png");
 
   // after Agree (the location prompt may appear now): same, and a real tap reaches each button

@@ -144,11 +144,11 @@
   {
    "id": "plans",
    "title": "Plans and billing",
-   "tags": "plan plans billing price cost pay subscription free plus pro upgrade cancel refund limit weekly applications many",
+   "tags": "plan plans billing price prices pricing cost costs pay paid fee fees charge charged expensive cheap money monthly subscription free plus pro upgrade cancel refund limit weekly applications many",
    "body": "There are three plans. Free: 50 applications a week. Plus ($9.99 a month): 250 a week, plus extra filters and Message the hiring manager. Pro ($19.99 a month): unlimited applications. Limits count the last 7 days. Open Profile, then Plan and billing to see your usage, switch or cancel. In this test version no real payments are taken: choosing a plan only records a test payment and no card is ever asked for.",
    "go": "prof:plan",
    "release": {
-    "body": "Open Profile, then Plan and billing. While it says paid plans are coming, UAply is free during early access: no weekly limit on applications, every filter and Message the hiring manager are included, and nothing is charged. When paid plans start, the page shows Free (50 applications a week), Plus ($9.99 a month, 250 a week) and Pro ($19.99 a month, unlimited). You need an account to choose one, payment is made on Stripe's own secure page so UAply never sees your card number, and you can cancel any time in Manage billing."
+    "body": "UAply is free during early access: nothing is charged, there is no weekly limit on applications, and every filter and Message the hiring manager are included. When paid plans start there will be three: Free (50 applications a week), Plus ($9.99 a month, 250 a week) and Pro ($19.99 a month, unlimited). Open Profile, then Plan and billing to see which applies today: while it says paid plans are coming, everything is free. To choose a paid plan you need an account; payment is made on Stripe's own secure page, so UAply never sees your card number, and you can cancel any time in Manage billing."
    }
   },
   {
