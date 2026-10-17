@@ -58,6 +58,7 @@ run "help requests from the assistant reach the support inbox" python tools/test
 run "applications go straight into employers' hiring systems (Greenhouse, Lever)" python tools/test-ats.py
 run "applications go straight into an employer's Ashby" python tools/test-ats-ashby.py
 run "applications go straight into an employer's SmartRecruiters" python tools/test-ats-smartrecruiters.py
+run "applications go straight into an employer's Workable" python tools/test-ats-workable.py
 run "swipe right to apply instantly, end to end" python tools/test-ats-flow.py
 run "paid plans: Stripe checkout, signed webhook, limits" python tools/test-billing.py
 run "autofill: real employers' forms answered from the profile, questions asked once" python tools/test-autofill.py

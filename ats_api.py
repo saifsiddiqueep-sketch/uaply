@@ -18,6 +18,9 @@ one of them needs a key that the EMPLOYER's own administrator creates and hands 
               GET {base}/postings/{uuid}/configuration   the posting's screening questions and consent settings; then POST {base}/postings/{uuid}/
               candidates with JSON firstName, lastName, email, phoneNumber, location, web, education, resume (the file in base64), answers
               ([{"id", "records": [{"fields": {field id: [values]}}]}]), messageToHiringManager and consentDecisions. The key goes in X-SmartToken.
+  workable    GET https://{subdomain}.workable.com/spi/v3/jobs/{shortcode}/questions, then POST .../jobs/{shortcode}/candidates with JSON
+              {"sourced": false, "candidate": {name, email, phone, resume {name, data base64}, answers [{question_key, ...}], ...}}. Bearer token
+              made by the employer's Admin with the r_jobs and w_candidates scopes. See the Workable section below for the pages this follows.
 
 Ashby and SmartRecruiters forms are answered by autofill.plan_questions, the same rules Greenhouse uses, and the same promise: a required question
 that neither the profile nor a saved answer can answer means nothing is sent. Voluntary diversity questions are never answered.
@@ -36,10 +39,10 @@ import urllib.parse
 import urllib.request
 import uuid
 
-KINDS = ("greenhouse", "lever", "ashby", "smartrecruiters")
-NAMES = {"greenhouse": "Greenhouse", "lever": "Lever", "ashby": "Ashby", "smartrecruiters": "SmartRecruiters"}
+KINDS = ("greenhouse", "lever", "ashby", "smartrecruiters", "workable")
+NAMES = {"greenhouse": "Greenhouse", "lever": "Lever", "ashby": "Ashby", "smartrecruiters": "SmartRecruiters", "workable": "Workable"}
 _BASES = {"greenhouse": "https://boards-api.greenhouse.io", "lever": "https://api.lever.co", "ashby": "https://api.ashbyhq.com",
-          "smartrecruiters": "https://api.smartrecruiters.com"}
+          "smartrecruiters": "https://api.smartrecruiters.com", "workable": "https://workable.com"}    # Workable: each account has its own address (_wk_base)
 TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
 KEY_RE = re.compile(r"^[A-Za-z0-9_.:+/=-]{8,200}$")
@@ -386,7 +389,169 @@ def _smartrecruiters(uuid_, key, cand, note, resume_meta, resume_bytes):
     return "failed", "SmartRecruiters did not accept the application (HTTP %s) %s" % (status, _short(reply, key))
 
 
-def plan(kind, job_id, key, cand, job, note, resume_meta, answers):
+# ---------------------------------------------------------------- Workable --------------------------------------------------------------------
+# From Workable's public API reference (read October 17, 2026):
+#   https://workable.readme.io/reference/job-questions          GET  https://{subdomain}.workable.com/spi/v3/jobs/{shortcode}/questions, scope r_jobs
+#   https://workable.readme.io/reference/job-candidates-create  POST https://{subdomain}.workable.com/spi/v3/jobs/{shortcode}/candidates, scope w_candidates
+#   https://workable.readme.io/reference/generate-an-access-token   the key: an API access token an Admin makes in the employer's own account,
+#                                                                   sent as "Authorization: Bearer <token>"; "accessible with all token types"
+#   https://help.workable.com/hc/en-us/articles/115015785428     where the Admin makes and revokes it (Settings, Integrations, Apps, API Access Tokens)
+#   https://workable.readme.io/page/oauth                         OAuth is only for Workable's official partners; UAply does not use it, it uses the
+#                                                                 token the employer made, exactly like the Greenhouse, Lever, Ashby and SmartRecruiters keys
+# The body is {"sourced": false, "candidate": {...}}: sourced false means the person applied (Workable then sends its own "thank you for applying"
+# email); left out, Workable files the person as "uploaded" by a recruiter, which is not what happened. Required: email and a name. The resume is a
+# file as {"name", "data": base64} (pdf, doc, docx, rtf). Answers are [{"question_key", ...}] with body (free_text; short_text at most 128
+# characters), checked (boolean), choices (a list of choice ids: multiple_choice, dropdown), date (YYYY-MM-DD), value (numeric) or a file. 201 is
+# success; 401 a bad key; 404 an unknown job; 422 a refused body ("candidate already exists" for the same email). Workable's job questions carry no
+# voluntary self-identification fields; any question whose words ask about gender, race, veteran or disability status is still never answered
+# (autofill.plan_questions). The reference documents no rate limit; a 429 is reported as a pause, like the others.
+_WK_KINDS = {"free_text": "textarea", "short_text": "text", "boolean": "boolean", "dropdown": "select", "numeric": "number", "date": "date", "file": "file"}
+_WK_RESUME_TYPES = {"application/pdf": ".pdf", "application/msword": ".doc", "application/rtf": ".rtf", "text/rtf": ".rtf",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx"}
+
+
+def _wk_base(subdomain):
+    """https://{subdomain}.workable.com/spi/v3, or the stand-in on this computer (UAPLY_ATS_BASE_WORKABLE) followed by /spi/v3."""
+    v = os.environ.get("UAPLY_ATS_BASE_WORKABLE", "")
+    if re.match(r"^http://(127\.0\.0\.1|localhost)(:\d+)?$", v):
+        return v + "/spi/v3"
+    return "https://%s.workable.com/spi/v3" % subdomain
+
+
+def _wk_headers(key, json_body=False):
+    h = {"Authorization": "Bearer " + key, "Accept": "application/json"}
+    if json_body:
+        h["Content-Type"] = "application/json"
+    return h
+
+
+def _wk_form(subdomain, shortcode, key):
+    def read():
+        status, reply = _call(urllib.request.Request("%s/jobs/%s/questions" % (_wk_base(subdomain), shortcode), headers=_wk_headers(key)))
+        if status == 200 and isinstance(reply, dict) and isinstance(reply.get("questions", []), list):
+            return {"questions": reply.get("questions") or []}, 200, ""
+        return None, status, _short(reply, key)
+    return _cached_form("workable", subdomain + "/" + shortcode, key, read)
+
+
+def _wk_questions(form):
+    """Workable's job questions as plain questions for autofill.plan_questions."""
+    out = []
+    for q in form.get("questions") or []:
+        if not isinstance(q, dict) or not isinstance(q.get("id"), str) or not q["id"]:
+            continue
+        t = str(q.get("type") or "")
+        kind = ("select" if q.get("single_answer") is True else "multi") if t == "multiple_choice" else _WK_KINDS.get(t, "other")
+        opts = [{"label": str(c.get("body", "")), "value": c.get("id")} for c in (q.get("choices") or []) if isinstance(c, dict) and c.get("id") is not None]
+        out.append({"id": q["id"], "label": str(q.get("body") or ""), "req": q.get("required") is True, "kind": kind, "options": opts, "wk": t})
+    return out
+
+
+def _wk_plan(subdomain, shortcode, key, cand, job, note, resume_meta, answers):
+    import autofill
+    form, status, why = _wk_form(subdomain, shortcode, key)
+    if not form:
+        if status in (401, 403):
+            return None, None, "Workable refused the key (HTTP %s)" % status
+        return None, None, "could not read the job's questions from Workable (HTTP %s) %s" % (status, why)
+    qs = _wk_questions(form)
+    p = autofill.plan_questions(qs, cand, job, note, resume_meta, answers, job.get("co") or "")
+    # a short_text answer longer than Workable's 128 characters would be refused: it is the person's to shorten, so it counts as missing
+    types = {q["id"]: q["wk"] for q in qs}
+    long_ = [qid for qid, v in p["values"] if types.get(qid) == "short_text" and len(str(v)) > 128]
+    if long_:                                    # an optional one is simply left out
+        byid = {q["id"]: q for q in qs}
+        p = dict(p, values=[(i, v) for i, v in p["values"] if i not in long_],
+                 missing=p["missing"] + [{"q": byid[i]["label"], "key": autofill.norm(byid[i]["label"], job.get("co") or ""), "req": True, "a": "",
+                                          "need": True, "kind": "text"} for i in long_ if byid[i]["req"]])
+    return p, qs, ""
+
+
+def _wk_body(plan, qs, cand, note, resume_meta, resume_bytes):
+    """The {"sourced": false, "candidate": {...}} body Workable's job-candidates-create takes."""
+    import autofill
+    ext = cand.get("ext") or {}
+    first, last = autofill._first_last(cand.get("name"))
+    c = {"name": (cand.get("name") or "").strip(), "firstname": first, "lastname": last, "email": cand.get("email") or "", "domain": "UAply"}
+    if ext.get("phone"):
+        c["phone"] = ext["phone"]
+    if cand.get("loc"):
+        c["address"] = cand["loc"][:200]
+    if cand.get("title"):
+        c["headline"] = str(cand["title"])[:200]
+    if ext.get("summary"):
+        c["summary"] = ext["summary"][:4000]
+    letter = "\n\n".join(x for x in ((note or "").strip(), "Applied through UAply.") if x)
+    if ext.get("resume") and not resume_bytes:
+        letter += "\n\nResume: " + ext["resume"]
+    c["cover_letter"] = letter[:4000]
+    degree = autofill._EDU.get(cand.get("edu") or "")
+    if ext.get("school"):                                            # school is the one required part of an education entry
+        c["education_entries"] = [dict({"school": ext["school"]}, **{k: v for k, v in (("degree", degree), ("field_of_study", ext.get("major"))) if v})]
+    if ext.get("job_title"):                                         # title is the one required part of an experience entry
+        e = {"title": ext["job_title"]}
+        if ext.get("employer"):
+            e["company"] = ext["employer"]
+        s, en = autofill._month(ext.get("job_start")), autofill._month(ext.get("job_end"))
+        if s:
+            e["start_date"] = "%04d-%02d-01" % (s[1], s[0])
+            if en:
+                e["end_date"] = "%04d-%02d-01" % (en[1], en[0])
+            else:
+                e["current"] = True
+        c["experience_entries"] = [e]
+    socials = [{"type": "linkedin", "url": ext["linkedin"]}] if ext.get("linkedin") else []
+    if socials:
+        c["social_profiles"] = socials
+    if resume_bytes and resume_meta:
+        name = re.sub(r'[^A-Za-z0-9._ -]', "_", resume_meta["name"])[:100]
+        ext_ = _WK_RESUME_TYPES.get(resume_meta.get("type") or "")
+        if ext_ and not name.lower().endswith(ext_):
+            name += ext_
+        c["resume"] = {"name": name, "data": base64.b64encode(resume_bytes).decode("ascii")}
+    types = {q["id"]: q["wk"] for q in qs}
+    ans = []
+    for qid, val in plan["values"]:
+        t = types.get(qid)
+        if t in ("free_text", "short_text"):
+            ans.append({"question_key": qid, "body": str(val)})
+        elif t == "boolean":
+            ans.append({"question_key": qid, "checked": bool(val)})
+        elif t in ("multiple_choice", "dropdown"):
+            ans.append({"question_key": qid, "choices": [str(v) for v in (val if isinstance(val, list) else [val])]})
+        elif t == "numeric":
+            ans.append({"question_key": qid, "value": val})
+        elif t == "date":
+            ans.append({"question_key": qid, "date": str(val)})
+    if ans:
+        c["answers"] = ans
+    return {"sourced": False, "candidate": c}
+
+
+def _workable(subdomain, shortcode, key, cand, note, resume_meta, resume_bytes):
+    job = cand.get("job") if isinstance(cand.get("job"), dict) else {}
+    if resume_bytes and resume_meta and (resume_meta.get("type") or "") not in _WK_RESUME_TYPES:
+        resume_bytes = None                                      # Workable takes pdf, doc, docx and rtf only; a link is sent instead
+    plan_, qs, why = _wk_plan(subdomain, shortcode, key, cand, job, note, resume_meta if resume_bytes else None, cand.get("answers"))
+    if not plan_:
+        return "failed", why
+    if plan_["missing"]:
+        return "needs_manual", "required questions UAply cannot answer from the profile: " + "; ".join(m["q"][:60] for m in plan_["missing"][:5])
+    body = json.dumps(_wk_body(plan_, qs, cand, note, resume_meta, resume_bytes)).encode("utf-8")
+    status, reply = _call(urllib.request.Request("%s/jobs/%s/candidates" % (_wk_base(subdomain), shortcode), data=body, method="POST",
+                                                 headers=_wk_headers(key, True)))
+    if status in (200, 201):
+        return "sent", ""
+    if status in (401, 403):
+        return "failed", "Workable refused the key (HTTP %s)" % status
+    if status == 429:
+        return "failed", "Workable is limiting applications for a moment (HTTP 429)"
+    if status == 422 and "already exists" in json.dumps(reply if reply is not None else "").lower():
+        return "failed", "Workable already has an application from this email for this job"
+    return "failed", "Workable did not accept the application (HTTP %s) %s" % (status, _short(reply, key))
+
+
+def plan(kind, job_id, key, cand, job, note, resume_meta, answers, board=""):
     """The filled form for a posting whose form can be read only with the employer's key (Ashby, SmartRecruiters), or None. uaply_api uses it
     before a swipe is sent, so a missing required answer is asked of the person once, the same way as for Greenhouse."""
     if not isinstance(job_id, str) or not ID_RE.match(job_id) or not isinstance(key, str) or not KEY_RE.match(key):
@@ -396,6 +561,8 @@ def plan(kind, job_id, key, cand, job, note, resume_meta, answers):
             return _ashby_plan(job_id, key, cand, job, note, resume_meta, answers)[0]
         if kind == "smartrecruiters" and UUID_RE.match(job_id):
             return _sr_plan(job_id, key, cand, job, note, resume_meta, answers)[0]
+        if kind == "workable" and isinstance(board, str) and TOKEN_RE.match(board):
+            return _wk_plan(board, job_id, key, cand, job, note, resume_meta, answers)[0]
     except Exception:
         pass
     return None
@@ -413,6 +580,8 @@ def submit(kind, board, job_id, key, cand, note, resume_meta, resume_bytes):
             return _ashby(job_id, key, cand, note, resume_meta, resume_bytes)
         if kind == "smartrecruiters":
             return _smartrecruiters(job_id, key, cand, note, resume_meta, resume_bytes)
+        if kind == "workable":
+            return _workable(board, job_id, key, cand, note, resume_meta, resume_bytes)
         return _lever(board, job_id, key, cand, note, resume_meta, resume_bytes)
     except Exception as e:                                   # never let one employer's system break the swipe
         return "failed", "unexpected problem (%s)" % type(e).__name__

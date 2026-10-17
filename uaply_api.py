@@ -10,7 +10,7 @@ Delivery modes (uaply-config.json, key "delivery"):
                     recruiter from your mail account, with Reply-To set to the candidate. The request must carry
                     confirm_real=true (the user pressed Send after reviewing it). If there is no recruiter email, the
                     result is "handoff": the employer accepts applications only on its own page, and the app opens it.
-                    Direct ATS submission (Greenhouse, Lever, Ashby, SmartRecruiters) needs an API key issued by each
+                    Direct ATS submission (Greenhouse, Lever, Ashby, SmartRecruiters, Workable) needs an API key issued by each
                     employer, so it happens only for employers who connected (ats_api.py).
 
 Safeguards: explicit consent flag, candidate name and email required, https posting URLs only, one application per
@@ -712,7 +712,7 @@ def submit(p, user=None, site=""):
     #   - an employer that connected its Greenhouse: anything the form requires that the profile cannot answer is asked first, then it all goes in
     #   - the sandbox, in test mode: the same, for every Greenhouse posting, and the filled form goes to the test inbox (nothing reaches the employer)
     #   - every other posting: the filled answers come back with the hand-off, so finishing on the employer's page is quick
-    #   - an employer that connected its Ashby or SmartRecruiters: the same as Greenhouse, but read with their key, and only for a live send
+    #   - an employer that connected its Ashby, SmartRecruiters or Workable: the same as Greenhouse, but read with their key, and only for a live send
     ref = known.get("ats") if isinstance(known.get("ats"), dict) else None
     gh = ats if (ats and ats.get("kind") == "greenhouse") else (ref if ref and ref.get("kind") == "greenhouse" else None)
     preview = (mode == "test" and policy == "link" and gh is not None and
@@ -721,11 +721,11 @@ def submit(p, user=None, site=""):
     if gh and (policy in ("direct", "link") or preview) and not _redirect(cfg):
         form = autofill.fetch_form(gh["board"], gh["id"])
         plan = autofill.plan_greenhouse(form, cand, job, note, resume_meta, resume_bytes, answers) if form else None
-    elif ats and ats.get("kind") in ("ashby", "smartrecruiters") and policy == "direct" and mode == "live" and not _redirect(cfg):
+    elif ats and ats.get("kind") in ("ashby", "smartrecruiters", "workable") and policy == "direct" and mode == "live" and not _redirect(cfg):
         # Ashby and SmartRecruiters show a posting's form only to the employer's key, so it is read only for a live send to an employer who
         # connected (never in test mode, which must not use an employer's key). A question the app cannot ask (a file other than the resume, a
         # type UAply cannot fill) is not asked: the send then reports it and the person finishes on the employer's page.
-        plan = ats_api.plan(ats["kind"], ats["id"], ats["key"], cand, job, note, resume_meta if resume_bytes else None, answers)
+        plan = ats_api.plan(ats["kind"], ats["id"], ats["key"], cand, job, note, resume_meta if resume_bytes else None, answers, ats.get("board") or "")
         if plan and any(m.get("kind") == "other" for m in plan["missing"]):
             plan = dict(plan, missing=[])
     if plan and plan["missing"] and (preview or (policy == "direct" and ats)):

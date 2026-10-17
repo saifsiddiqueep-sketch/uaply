@@ -1,4 +1,4 @@
-"""A stand-in for the application endpoints of Greenhouse, Lever, Ashby and SmartRecruiters, for tests. It follows their public documentation: Greenhouse
+"""A stand-in for the application endpoints of Greenhouse, Lever, Ashby, SmartRecruiters and Workable, for tests. It follows their public documentation: Greenhouse
 checks a Basic-auth key and serves a posting's questions; Lever checks a key in the address and needs a name and email; Ashby checks a Basic-auth key, serves
 the form from jobPosting.info and takes applicationForm.submit as multipart with the answers as a JSON string; SmartRecruiters checks X-SmartToken, serves
 the posting's configuration and takes the candidate as JSON. Every application it accepts is kept and shown at /__received; /__reset empties it.
@@ -12,7 +12,10 @@ Like Greenhouse, it also takes country_short_name and one employments[0][...] en
 employment entry with a missing part and a country that is not a two-letter code, so a test sees a half-sent field. Lever posting id 'slow' answers 429.
 Ashby posting ids are the forms in fixtures/ashby-forms.json; 4444... refuses the form (success false), 5555... answers with a hostile body, 6666... is
 blocked by the employer's application limit, 8888... answers 429 (these four use the 1111... form). SmartRecruiters uuids are the configurations in
-fixtures/smartrecruiters-configurations.json; ...0004 answers 429 and ...0005 a hostile body (both use the ...0001 configuration)."""
+fixtures/smartrecruiters-configurations.json; ...0004 answers 429 and ...0005 a hostile body (both use the ...0001 configuration).
+Workable: Bearer token 'wk-token-345' (and 'wk-readonly-token', which has r_jobs but not w_candidates: HTTP 403 on a send). Shortcodes are the jobs in
+fixtures/workable-questions.json; WK00000004 answers 429, WK00000005 a hostile body, WK00000006 "candidate already exists" (all three with no questions).
+Every Workable request is checked against workable.readme.io/reference/job-questions and /job-candidates-create (see wk_check)."""
 import base64
 import binascii
 import email
@@ -30,6 +33,8 @@ ASHBY_KEY, ASHBY_READONLY, SR_KEY = "ashby-key-789", "ashby-readonly-key", "sr-s
 RECEIVED = []
 FIX = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
 ASHBY_FORMS = json.load(open(os.path.join(FIX, "ashby-forms.json"), encoding="utf-8"))["forms"]
+WK_JOBS = json.load(open(os.path.join(FIX, "workable-questions.json"), encoding="utf-8"))["jobs"]
+WK_KEY, WK_READONLY = "wk-token-345", "wk-readonly-token"
 SR_CONFIGS = json.load(open(os.path.join(FIX, "smartrecruiters-configurations.json"), encoding="utf-8"))["configurations"]
 HOSTILE = {"message": "<script>alert(1)</script>\x00\x07 bad key ashby-key-789 sr-smarttoken-012 " + "x" * 5000, "errors": [{"code": "<b>boom</b>"}]}
 
@@ -132,6 +137,97 @@ def sr_check(cfg, body):
     return errs, answered
 
 
+def wk_job(code):
+    if code in ("WK00000004", "WK00000005", "WK00000006"):
+        return WK_JOBS["WK00000001"]
+    return WK_JOBS.get(code)
+
+
+WK_CANDIDATE_KEYS = {"name", "firstname", "lastname", "email", "headline", "summary", "address", "phone", "cover_letter", "education_entries",
+                     "experience_entries", "answers", "skills", "tags", "disqualified", "disqualification_reason", "disqualified_at", "social_profiles",
+                     "resume_url", "resume", "image_url", "image", "image_source", "domain", "recruiter_key"}
+WK_SOCIAL = {"linkedin", "github", "twitter", "facebook", "behance", "dribbble", "stackoverflow", "xing", "angellist"}   # part of the documented list
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def wk_b64(v):
+    try:
+        return bool(base64.b64decode(v or "", validate=True))
+    except (binascii.Error, ValueError, TypeError):
+        return False
+
+
+def wk_check(job, body):
+    """Problems with a Workable job-candidates-create body, as its API reference describes the fields. Also what UAply promises: an application is
+    marked applied (sourced false), never disqualified, and a self-identification question is never answered."""
+    errs = []
+    if not isinstance(body, dict) or set(body) - {"sourced", "candidate"}:
+        return ["the body takes only sourced and candidate"], {}
+    if body.get("sourced") is not False:
+        errs.append("sourced must be false for a person who applied (otherwise Workable files them as uploaded by a recruiter)")
+    c = body.get("candidate")
+    if not isinstance(c, dict):
+        return errs + ["candidate is required"], {}
+    unknown = set(c) - WK_CANDIDATE_KEYS
+    if unknown:
+        errs.append("unknown candidate fields: %s" % ", ".join(sorted(unknown)))
+    if not isinstance(c.get("email"), str) or "@" not in c["email"]:
+        errs.append("email is required")
+    if not (c.get("name") or (c.get("firstname") and c.get("lastname"))):
+        errs.append("name, or firstname and lastname, is required")
+    if c.get("disqualified"):
+        errs.append("UAply must never send a disqualified candidate")
+    r = c.get("resume")
+    if r is not None and not (isinstance(r, dict) and re.search(r"\.(pdf|docx?|rtf)$", r.get("name") or "", re.I) and wk_b64(r.get("data"))):
+        errs.append("resume needs a name ending .pdf, .doc, .docx or .rtf and base64 data")
+    for e in c.get("education_entries") or []:
+        if not (isinstance(e, dict) and e.get("school")):
+            errs.append("an education entry needs school")
+    for e in c.get("experience_entries") or []:
+        if not (isinstance(e, dict) and e.get("title")):
+            errs.append("an experience entry needs title")
+        for k in ("start_date", "end_date"):
+            if isinstance(e, dict) and k in e and not DATE_RE.match(str(e[k])):
+                errs.append("%s must be YYYY-MM-DD" % k)
+    for sp in c.get("social_profiles") or []:
+        if not (isinstance(sp, dict) and sp.get("type") in WK_SOCIAL and str(sp.get("url") or "").startswith("http")):
+            errs.append("a social profile needs a known type and a url")
+    qs = {q["id"]: q for q in job["questions"]}
+    answered = {}
+    for a in c.get("answers") or []:
+        q = qs.get(a.get("question_key")) if isinstance(a, dict) else None
+        if not q:
+            errs.append("unknown question_key %s" % (a.get("question_key") if isinstance(a, dict) else a))
+            continue
+        t, ids = q["type"], [ch["id"] for ch in q.get("choices") or []]
+        if re.search(r"gender|race|ethnic|veteran|disabilit", q["body"], re.I):
+            errs.append("a self-identification question was answered (%s)" % q["id"])
+        if t in ("free_text", "short_text"):
+            ok = isinstance(a.get("body"), str) and a["body"] != "" and (t != "short_text" or len(a["body"]) <= 128)
+            val = a.get("body")
+        elif t == "boolean":
+            ok, val = isinstance(a.get("checked"), bool), a.get("checked")
+        elif t in ("multiple_choice", "dropdown"):
+            ch = a.get("choices")
+            one = t == "dropdown" or q.get("single_answer")
+            ok = isinstance(ch, list) and bool(ch) and all(x in ids for x in ch) and (len(ch) == 1 or not one)
+            val = ch
+        elif t == "numeric":
+            ok, val = isinstance(a.get("value"), (int, float)) and not isinstance(a.get("value"), bool), a.get("value")
+        elif t == "date":
+            ok, val = isinstance(a.get("date"), str) and bool(DATE_RE.match(a["date"])), a.get("date")
+        else:
+            f = a.get("file") or {}
+            ok, val = isinstance(f, dict) and bool(f.get("name")) and wk_b64(f.get("data")), "(file)"
+        if not ok:
+            errs.append("invalid answer for %s (%s)" % (q["id"], t))
+        answered[q["id"]] = val
+    for q in job["questions"]:
+        if q.get("required") and q["id"] not in answered:
+            errs.append("missing required answer %s" % q["id"])
+    return errs, answered
+
+
 def std(required_phone=False):
     return [
         {"required": True, "label": "First Name", "fields": [{"name": "first_name", "type": "input_text", "values": []}]},
@@ -224,6 +320,13 @@ class H(http.server.BaseHTTPRequestHandler):
         if u.path == "/__reset":
             RECEIVED.clear()
             return self._json(200, {"ok": True})
+        if len(parts) == 5 and parts[:3] == ["spi", "v3", "jobs"] and parts[4] == "questions":   # Workable: a job's questions (scope r_jobs)
+            if self.headers.get("Authorization") not in ("Bearer " + WK_KEY, "Bearer " + WK_READONLY):
+                return self._json(401, {"error": "Not authorized"})
+            job = wk_job(parts[3])
+            if job is None:
+                return self._json(404, {"error": "Not found"})
+            return self._json(200, job)
         if len(parts) == 3 and parts[0] == "postings" and parts[2] == "configuration":       # SmartRecruiters: a posting's configuration
             if self.headers.get("X-SmartToken") != SR_KEY:
                 return self._json(401, {"id": "e1", "code": "INVALID_API_KEY_ERROR", "message": "Authentication data missing"})
@@ -311,6 +414,36 @@ class H(http.server.BaseHTTPRequestHandler):
             if pid.startswith("6666"):
                 return self._json(200, {"success": True, "blocked": True, "results": dict(res, formMessages={"blockMessageForCandidateHtml": "<p>Limit reached</p>"})})
             return self._json(200, {"success": True, "results": res})
+        if len(parts) == 5 and parts[:3] == ["spi", "v3", "jobs"] and parts[4] == "candidates":  # Workable: a new candidate (scope w_candidates)
+            auth = self.headers.get("Authorization") or ""
+            if auth not in ("Bearer " + WK_KEY, "Bearer " + WK_READONLY):
+                return self._json(401, {"error": "Not authorized"})
+            if auth == "Bearer " + WK_READONLY:
+                return self._json(403, {"error": "The token lacks the w_candidates scope"})
+            job = wk_job(parts[3])
+            if job is None:
+                return self._json(404, {"error": "Not found"})
+            if parts[3] == "WK00000004":
+                return self._json(429, {"error": "Too many requests"})
+            if parts[3] == "WK00000005":
+                return self._json(500, dict(HOSTILE, error=HOSTILE["message"] + " " + WK_KEY))
+            try:
+                assert ctype.startswith("application/json")
+                cand = json.loads(body)
+            except (AssertionError, ValueError):
+                return self._json(422, {"error": "Validation failed", "validation_errors": {"body": ["must be JSON"]}})
+            if parts[3] == "WK00000006":
+                return self._json(422, {"error": "Validation failed", "validation_errors": {"email": ["candidate already exists"]}})
+            errs, answered = wk_check(job, cand)
+            if errs:
+                return self._json(422, {"error": "Validation failed", "validation_errors": {"candidate": errs}})
+            c = cand["candidate"]
+            if c.get("resume"):
+                c["resume"] = dict(c["resume"], data="(%d bytes)" % len(base64.b64decode(c["resume"]["data"])))
+            RECEIVED.append({"system": "workable", "job": parts[3], "body": cand, "answered": answered})
+            n = len(RECEIVED)
+            return self._json(201, {"status": "created", "candidate": {"id": "wk%d" % n, "name": c.get("name"), "stage": "Applied", "sourced": False,
+                                                                       "profile_url": "https://example.org/candidates/wk%d" % n}})
         if len(parts) == 3 and parts[0] == "postings" and parts[2] == "candidates":           # SmartRecruiters: a new application
             if self.headers.get("X-SmartToken") != SR_KEY:
                 return self._json(401, {"id": "e1", "code": "INVALID_API_KEY_ERROR", "message": "Authentication data missing"})

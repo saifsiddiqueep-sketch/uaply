@@ -4,6 +4,17 @@ How versions move: work happens in `sandbox`, is tested there, and goes to `dev`
 build: it is what the hosted site and the phone apps run. Each version is tagged on GitHub (Releases). `main` is the original
 production page and only changes when the owner decides.
 
+## Unreleased (sandbox)
+
+### Workable, the fifth hiring system an employer can connect
+- **Workable jobs in the feed.** Workable's public, keyless jobs list (`www.workable.com/api/accounts/{subdomain}?details=true`) is a new feed kind, `workable`, off like every other feed until the owner lists it under `feeds`. Each posting records its subdomain and shortcode, so it becomes "Apply instantly" the moment that employer connects. First board: Hugging Face.
+- **Swipe right into an employer's Workable.** With the token the employer's Admin made (scopes `r_jobs` and `w_candidates`), UAply reads the job's questions, answers them with the same rules as the other systems, and creates the candidate on that job as an applicant (`"sourced": false`), with the resume file, education, most recent job, LinkedIn and the source `UAply`. Gender, race, veteran and disability questions are never answered; a required question the profile cannot answer is asked once or left to the person; test mode never uses the token. Everything follows Workable's API reference (cited in `ats_api.py`).
+- The **Connect** box on `/setup` offers Workable and says where its Admin makes the token.
+- Tests: `tools/test-ats-workable.py` (41 checks) against a Workable stand-in in `tools/mock-ats.py` that checks every request against the reference; 5 more checks in `tools/test-ats-flow.py` and 3 in `tools/test-setup.py`.
+
+### The employer kit
+- `docs/employers/`: one plain page per way of receiving applications (Greenhouse, Lever, Ashby, SmartRecruiters, Workable, email and webhook) with what UAply sends, the exact menu path for the key, what the key can do, how to revoke it and what the employer sees; a consent letter the employer signs or replies to before anything is sent; and an index. Linked from `EMPLOYERS.md` and from a new short "For employers" legal page.
+
 ## 1.0.0-rc.11 (release candidate)
 
 The swipe buttons a new visitor could not find, and small things the October 17 audit turned up.
