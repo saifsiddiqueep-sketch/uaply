@@ -15,10 +15,12 @@ sys.path.insert(0, os.path.join(HERE, ".."))
 TMP = tempfile.mkdtemp(prefix="uaply-atsflow-")
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8796                # another port can be given, so two test runs never collide
 os.environ.update(UAPLY_DATA_DIR=TMP, UAPLY_CONFIG_JSON="{}", UAPLY_ATS_BASE_GREENHOUSE="http://127.0.0.1:%d" % PORT, UAPLY_ATS_BASE_LEVER="http://127.0.0.1:%d" % PORT,
-                  UAPLY_ATS_BASE_ASHBY="http://127.0.0.1:%d" % PORT, UAPLY_ATS_BASE_SMARTRECRUITERS="http://127.0.0.1:%d" % PORT)
+                  UAPLY_ATS_BASE_ASHBY="http://127.0.0.1:%d" % PORT, UAPLY_ATS_BASE_SMARTRECRUITERS="http://127.0.0.1:%d" % PORT,
+                  UAPLY_ATS_BASE_WORKABLE="http://127.0.0.1:%d" % PORT)
 os.environ["UAPLY_ATS_JSON"] = json.dumps([{"kind": "lever", "board": "acme", "api_key": "lever-key-456"}, {"kind": "workday", "board": "x", "api_key": "abcdefgh123"},
                                            {"kind": "ashby", "board": "acmeashby", "api_key": "ashby-key-789"},
-                                           {"kind": "smartrecruiters", "board": "CityofPhiladelphia", "api_key": "sr-smarttoken-012"}])
+                                           {"kind": "smartrecruiters", "board": "CityofPhiladelphia", "api_key": "sr-smarttoken-012"},
+                                           {"kind": "workable", "board": "acmeworks", "api_key": "wk-token-345"}])
 
 import jobs_api  # noqa: E402
 import autofill  # noqa: E402
@@ -73,7 +75,7 @@ try:
       [("Robotics Intern", True, "direct"), ("Support Engineer", True, "direct"), ("Odd Question Role", True, "direct"), ("No Id Role", False, "link")])
     t("the key is never in what browsers get", "gh-secret-key" in json.dumps(jobs_api.get_jobs()) or "lever-key" in json.dumps(jobs_api.get_jobs()), False)
     t("only well-formed connections are accepted (an unknown system is ignored)", sorted(jobs_api.ats_connections()),
-      [("ashby", "acmeashby"), ("lever", "acme"), ("smartrecruiters", "CityofPhiladelphia")])
+      [("ashby", "acmeashby"), ("lever", "acme"), ("smartrecruiters", "CityofPhiladelphia"), ("workable", "acmeworks")])
     feed = jobs_api._normalize(dict(id="posting-uuid-9", title="Backend Engineer", company="Acme", loc="Remote - USA", remote=True,
                                     text="Python and SQL required. 2 years of experience.", url="https://jobs.lever.co/acme/posting-uuid-9", salary_text="", posted=0), "lever", "Acme", "acme")
     other = jobs_api._normalize(dict(id="777", title="Backend Engineer", company="Other", loc="Remote - USA", remote=True,
@@ -93,13 +95,19 @@ try:
       srj["id"], jobs_api._normalize(dict(id="744000146469759", title="Junior Cloud Engineer", company="City of Philadelphia", loc="Philadelphia, PA", remote=None,
                                           text="Python and AWS required.", url="https://jobs.smartrecruiters.com/CityofPhiladelphia/744000146469759", salary_text="",
                                           posted=0), "smartrecruiters", "City of Philadelphia", "CityofPhiladelphia")["id"])
+    # a Workable posting as the public feed gives it: the shortcode is where Workable's API finds it
+    wkj = jobs_api._normalize(dict(id="WK00000002", title="Junior Developer", company="Acme Works", loc="Philadelphia, Pennsylvania, United States", remote=None,
+                                   text="Python and SQL required.", url="https://apply.workable.com/j/WK00000002", salary_text="", posted=0),
+                              "workable", "Acme Works", "acmeworks")
+    t("a Workable posting records its subdomain and shortcode", wkj["ats"], {"kind": "workable", "board": "acmeworks", "id": "WK00000002"})
+    jobs_api._cache[("workable", "acmeworks", "Acme Works")] = {"at": time.time(), "jobs": [wkj], "status": "1 jobs"}
     jobs_api._cache[("lever", "acme", "Acme")] = {"at": time.time(), "jobs": [feed], "status": "1 jobs"}
     jobs_api._cache[("greenhouse", "other", "Other")] = {"at": time.time(), "jobs": [other], "status": "1 jobs"}
     jobs_api._cache[("ashby", "acmeashby", "Acme Ashby")] = {"at": time.time(), "jobs": [ash], "status": "1 jobs"}
     jobs_api._cache[("smartrecruiters", "CityofPhiladelphia", "City of Philadelphia")] = {"at": time.time(), "jobs": [srj], "status": "1 jobs"}
     jobs_api.SOURCES = [("lever", "acme", "Acme"), ("greenhouse", "other", "Other"), ("ashby", "acmeashby", "Acme Ashby"),
-                        ("smartrecruiters", "CityofPhiladelphia", "City of Philadelphia")]
-    jobs_api.feeds_allowed = lambda: {"lever", "greenhouse", "ashby", "smartrecruiters"}
+                        ("smartrecruiters", "CityofPhiladelphia", "City of Philadelphia"), ("workable", "acmeworks", "Acme Works")]
+    jobs_api.feeds_allowed = lambda: {"lever", "greenhouse", "ashby", "smartrecruiters", "workable"}
     jobs_api._load_source = lambda src: (jobs_api._cache[src]["jobs"], "ok")
     listing = {j["id"]: j for j in jobs_api.get_jobs()["jobs"]}
     t("a feed posting whose employer connected is marked instant; any other stays a hand-off", (listing[feed["id"]]["instant"], listing[feed["id"]]["apply"], listing[other["id"]].get("instant"), listing[other["id"]]["apply"]),
@@ -182,6 +190,29 @@ try:
     code, out = apply_to(srj, email="srtest@example.com")
     cfg["delivery"] = "live"
     t("test mode never uses an employer's key: it is simulated without asking or sending anything", (out["status"], len(received())), ("delivered_test", before))
+
+    # a connected employer's Workable posting
+    t("a connected Workable posting is instant, with no token in what browsers get",
+      (listing[wkj["id"]]["instant"], listing[wkj["id"]]["apply"], "wk-token" in json.dumps(listing)), (True, "direct", False))
+    cfg["delivery"] = "test"
+    before = len(received())
+    code, out = apply_to(wkj, email="wktest@example.com")
+    cfg["delivery"] = "live"
+    t("test mode never uses the employer's Workable token: simulated, nothing read or sent", (out["status"], len(received())), ("delivered_test", before))
+    code, out = apply_to(wkj, email="wk@example.com")
+    got = received()[-1]
+    t("swipe right on a connected employer's Workable posting goes into their Workable as an applicant, with the resume file and the answers",
+      (out["status"], got["system"], got["job"], got["body"]["sourced"], got["body"]["candidate"]["email"], got["body"]["candidate"]["resume"]["name"],
+       got["answered"].get("q_auth"), got["answered"].get("q_spon")),
+      ("sent", "workable", "WK00000002", False, "wk@example.com", "resume.pdf", True, ["c_spon_no"]))
+    t("...the record names the channel and holds no token", (uaply_api.APPS[-1]["channels"], "wk-token" in json.dumps(uaply_api.APPS[-1])), (["hiring system (workable)"], False))
+    p2 = json.loads(json.dumps(apply_to.last))
+    p2["profile"]["email"] = "wk2@example.com"
+    p2["profile"]["ext"]["sponsor"] = ""
+    before = len(received())
+    code, out = uaply_api.submit(p2, dict(apply_to.user, email="wk2@example.com"))
+    t("a Workable question the profile cannot answer: nothing is sent, and the app is told to ask it once",
+      (out["status"], len(out.get("questions", [])), len(received())), ("needs_answers", 1, before))
 
     # an employer system that fails
     uaply_api.hide_errors = True
