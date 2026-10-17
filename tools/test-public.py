@@ -108,5 +108,12 @@ t("forgot says email is unavailable instead of promising a link", (s, out.get("d
 page = req("GET", "/outbox", headers=auth("ownerpw"))[2].decode("utf-8")
 t("no reset link was created or stored", "?reset=" not in page.replace("&amp;", "&"), True)
 
+# /api/status (tools/live-check.py reads it from anywhere): yes/no facts only, never a password, key, address or folder
+s, _, body = req("GET", "/api/status")
+st = json.loads(body)
+t("/api/status answers with yes/no facts only", (s, all(isinstance(v, bool) or v is None for v in st.values())), (200, True))
+t("/api/status says what this server has on (public, owner pages on, email off)", (st.get("public"), st.get("ownerPages"), st.get("email")), (True, True, False))
+t("/api/status holds no secret or folder name", any(x in body.decode() for x in ("ownerpw", "uaply-", "/", "\\\\")), False)
+
 print(sum(R), "/", len(R))
 sys.exit(0 if all(R) else 1)

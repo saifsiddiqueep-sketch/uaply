@@ -38,8 +38,10 @@ const TMP = process.platform !== "win32" && os.tmpdir().length > 60 && fs.exists
 let failed = false;                                       // set when the test prints a FAIL line, so the runner (run-all-tests.sh) can see it
 const _log = console.log;
 console.log = (...a) => { const t = a.join(" "); if (/^FAIL\b|^TEST SCRIPT FAILED/.test(t)) failed = true; _log(...a); };
-// a test that hangs says so and fails, instead of going silent until the runner's time limit
-const LIMIT = Number(process.env.CDP_LIMIT_MS || 540000);
+// a test that hangs says so and fails, instead of going silent until the runner's time limit. A test that waits on a person (ui-live.js waits
+// for a code typed from an inbox) may ask for longer by exporting limitMs.
+const TEST = require(path.resolve(process.argv[2]));
+const LIMIT = Number(process.env.CDP_LIMIT_MS || TEST.limitMs || 540000);
 setTimeout(() => { console.log("TEST SCRIPT FAILED: no result after " + Math.round(LIMIT / 1000) + " s (the page or Chrome stopped responding)"); process.exit(1); }, LIMIT).unref();
 
 // start headless Chrome and connect; if it does not answer (a busy computer, a port already taken), try a fresh one, up to 3 times
@@ -101,7 +103,7 @@ async function launch() {
   };
   const nav = async (u) => { await send("Page.navigate", { url: u }); await sleep(2500); };
   const shot = async (f) => { const r = await send("Page.captureScreenshot", { format: "png" }); fs.writeFileSync(f, Buffer.from(r.result.data, "base64")); };
-  try { await require(path.resolve(process.argv[2]))({ ev, sleep, nav, shot, logs, send, on }); }
+  try { await TEST({ ev, sleep, nav, shot, logs, send, on }); }
   catch (e) { console.log("TEST SCRIPT FAILED:", e.message); }
   console.log("CONSOLE ISSUES:", logs.length ? "\n" + logs.join("\n") : "none");
   ws.close(); proc.kill();
