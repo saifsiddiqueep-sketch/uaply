@@ -4,7 +4,28 @@ How versions move: work happens in `sandbox`, is tested there, and goes to `dev`
 build: it is what the hosted site and the phone apps run. Each version is tagged on GitHub (Releases). `main` is the original
 production page and only changes when the owner decides.
 
-## Unreleased (sandbox and dev)
+## 1.0.0-rc.11 (release candidate)
+
+The swipe buttons a new visitor could not find, and small things the October 17 audit turned up.
+
+### Pass, Undo and Apply always in sight on first open
+- **The three swipe buttons are always visible above the bottom bar**, on first open and after the agreement, at every phone size and on a laptop. The cause was not the bar: the job card has a 430 px minimum height, and with the tips, the example-profile notice, the location box and the filters above it the content was taller than the scrolling area, so the buttons sat below its bottom edge (on a 390x844 phone the buttons were at 946 px with the bar at 740 px). One rule keeps the button row stuck to the bottom of the scrolling area, just above the bar. When the content is taller than the screen the buttons cover the lower part of the card until you scroll; scrolled to the end, the card ends above them.
+- The location question waits until you have tapped Agree, so there is never more than one question on first open.
+- New browser test `tools/ui-buttons-bar.js` (23 checks at each of four sizes, dev and sandbox) measures the boxes instead of trusting a screenshot: 12 of 22 failed before the fix.
+
+### Small things
+- The Account screen no longer promises an email receipt on a server where email is not switched on.
+- The Filters pay line reads "No minimum set" instead of "You want $0k+".
+- The help assistant answers "pricing", "fees", "is it expensive" and "do you charge" with the prices.
+- `/favicon.ico` and `/robots.txt` load; an address that does not exist shows UAply's own "Page not found" page with a Back to UAply button; every legal page has a "Back to UAply" link at the top.
+
+### An after-deploy check of the live site
+- `python tools/live-check.py --base https://uaply.onrender.com` checks the live site from outside (health, headers, jobs, sign-in lock-out, owner pages closed, legal pages, and whether email, Google and payments are on); `--expect all` fails if something that should be on is off. `node tools/cdp.js tools/ui-live.js --base ...` walks the live site in a real browser at phone and laptop size, and with `--email` signs up one address by email code. `GET /api/status` reports only yes/no facts (never a key, an address or a path).
+
+## 1.0.0-rc.10 (release candidates 9 and 10, October 17)
+
+rc.9: the agreement at first open, learning from swipes, Plan & billing decided by the server, the support page, honest hosted previews. rc.10: everything below.
+
 
 ### Google sign-in and Stripe ready for real accounts and real cards
 - **Continue with Google uses Google's full-page sign-in on every device** once the client secret is set (not only iPhone and iPad).
