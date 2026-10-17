@@ -33,6 +33,7 @@ Serves ROOT; each urlpath=file alias maps one URL to a file outside ROOT (e.g. /
   GET  /api/employer/me, /api/employer/logo/<id>, POST /api/employer/...   Hiring mode, sandbox only (employers_api.py)
   POST /api/profile/resume   read a resume (PDF, Word or text, up to 5 MB) and answer with the profile fields found; nothing is kept (resume_parse.py)
   GET  /healthz           for the host's health check
+  GET  /api/status        what is switched on, as yes/no facts only (never a key, an address or a path): for tools/live-check.py
 Accounts use an HttpOnly session cookie. When a signed-in user swipes right, a receipt goes to their email."""
 import sys, os, re, json, http.server, base64, hmac, threading, time, signal
 
@@ -301,6 +302,8 @@ class H(http.server.SimpleHTTPRequestHandler):
                     return self._send(200, uaply_api.outbox_json())
                 if p == "/outbox":
                     return self._send(200, uaply_api.outbox_html(), "text/html; charset=utf-8")
+                if p == "/api/status":
+                    return self._send(200, status_facts())
                 if p == "/api/auth/me":
                     return self._send(200, {"user": auth_api.user_for(self._token())})
                 if p == "/api/auth/providers":
@@ -549,6 +552,18 @@ class H(http.server.SimpleHTTPRequestHandler):
     def log_message(self, fmt, *args):
         if not PUBLIC:                                                   # keep request logs out of a host's logs (they hold IPs)
             super().log_message(fmt, *args)
+
+def status_facts():
+    """GET /api/status: the same on/off facts as the start-up line in the log, so a check run from anywhere (tools/live-check.py) can say what
+    is configured after a deploy. Only yes/no answers: never a key, a password, an email address, a price id or a folder name.
+    persistent is null where it cannot be known (any host but Render, or the owner's own computer)."""
+    b = billing_api.settings()
+    return {"ok": True, "public": PUBLIC, "persistent": PERSISTENT, "email": bool(uaply_api.mail_ready()),
+            "google": bool(google_auth.enabled()), "googleButton": bool(google_auth.button_enabled()),
+            "payments": bool(b["on"]), "paymentsTest": bool(b["on"] and b["test"]),
+            "paymentsWebhook": bool(b["on"] and str(b.get("webhook_secret") or "").startswith("whsec_")),
+            "ai": bool(chat_api.ai_ready()), "ownerPages": bool(OWNER_PASSWORD) if PUBLIC else True}
+
 
 class Server(http.server.ThreadingHTTPServer):
     request_queue_size = 128         # Python's default of 5 refuses connections outright when a burst of visitors arrives at once

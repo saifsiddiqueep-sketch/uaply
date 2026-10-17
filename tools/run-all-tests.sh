@@ -124,6 +124,23 @@ PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/fuzz" HOST=0.0.0.0 OWNER_PASSWORD=ownerpw UAP
 wait_port 18775
 run "no crash, hang or leaked error text across every endpoint" python tools/fuzz-api.py 18775
 
+step "The after-deploy checks (live-check.py, ui-live.js), against local servers only: this suite never touches the live site"
+# one server with everything off (as the live site was before the owner's keys) and one with email, Google and payments on through stand-ins
+LP="${LIVE_CHECK_PORT:-18810}"                 # uses LP to LP+4
+mkdir -p "$TMP/lc-off" "$TMP/lc-on"
+PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/lc-off" HOST=0.0.0.0 OWNER_PASSWORD=ownerpw UAPLY_CONFIG_JSON="$FEEDS" start python serve.py "$LP" dev --api)"
+PIDS="$PIDS $(start python tools/mock-google.py $((LP+2)))"
+PIDS="$PIDS $(start python tools/fake-smtp.py $((LP+3)) "$TMP/lc-on/mail.jsonl")"
+PIDS="$PIDS $(start python tools/mock-stripe.py $((LP+4)))"
+LC_ON='{"feeds":["greenhouse","lever","ashby"],"delivery":"test","owner_copy":"","anthropic_api_key":"","smtp":{"host":"127.0.0.1","port":'$((LP+3))',"starttls":false,"from_addr":"uaply@example.com"},"google":{"client_id":"test.apps.googleusercontent.com","client_secret":"test-secret","auth_url":"http://127.0.0.1:'$((LP+2))'/auth","token_url":"http://127.0.0.1:'$((LP+2))'/token","certs_url":"http://127.0.0.1:'$((LP+2))'/certs"}}'
+PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/lc-on" HOST=0.0.0.0 OWNER_PASSWORD=ownerpw UAPLY_STRIPE_BASE="http://127.0.0.1:$((LP+4))" STRIPE_SECRET_KEY=sk_test_mockkey123456 STRIPE_WEBHOOK_SECRET=whsec_testsecret STRIPE_PRICE_PLUS=price_plus1 STRIPE_PRICE_PRO=price_pro1 UAPLY_CONFIG_JSON="$LC_ON" start python serve.py $((LP+1)) dev --api)"
+wait_port "$LP" && wait_port $((LP+1))
+for _ in $(seq 1 120); do n=$(curl -s "http://127.0.0.1:$LP/api/jobs" | python -c "import sys,json; print(len(json.load(sys.stdin)['jobs']))" 2>/dev/null); m=$(curl -s "http://127.0.0.1:$((LP+1))/api/jobs" | python -c "import sys,json; print(len(json.load(sys.stdin)['jobs']))" 2>/dev/null); [ "${n:-0}" -gt 100 ] && [ "${m:-0}" -gt 100 ] && break; sleep 1; done
+run "live-check.py, everything off: every PASS/FAIL/SKIP line as the live site gets it" python tools/live-check.py --base "http://127.0.0.1:$LP"
+run "live-check.py, email, Google and payments on (stand-ins), all of them required" python tools/live-check.py --base "http://127.0.0.1:$((LP+1))" --expect email,google,payments --google-host "127.0.0.1:$((LP+2))"
+run "ui-live.js, everything off: agreement, Got it, a swipe, Account says email is off, no Google, early access, help" node tools/cdp.js tools/ui-live.js --base "http://127.0.0.1:$LP"
+run "ui-live.js, all on: Google button and redirect, buy buttons, sign-up by email code, Applied list" node tools/cdp.js tools/ui-live.js --base "http://127.0.0.1:$((LP+1))" --google-host "127.0.0.1:$((LP+2))" --email live.check+one@example.com --code-file "$TMP/lc-on/mail.jsonl"
+
 printf "\n"
 if [ "$FAILS" -eq 0 ]; then echo "ALL TESTS PASSED"; else echo "$FAILS test group(s) FAILED"; fi
 exit "$FAILS"
