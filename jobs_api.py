@@ -16,7 +16,7 @@ LEGAL STATUS OF EACH SOURCE (checked October 2026; this is not legal advice, hav
     emails. Never enabled by default; do not enable without written permission.
   * Jobicy: must credit Jobicy and send applicants to the original job URL, so it is LINK-OUT ONLY.
   * The Muse: terms not found. Unverified; do not enable until verified in writing.
-  * Greenhouse, Lever, Ashby public boards: meant for employers' careers pages; no terms found that cover third-party
+  * Greenhouse, Lever, Ashby, Workable public boards: meant for employers' careers pages; no terms found that cover third-party
     aggregation. Unverified, LINK-OUT ONLY.
   * USAJOBS (the federal government's own API, read October 16, 2026): its terms let public data be copied, stored and
     republished, commercial use included, without OPM approval; credit and a link to the official announcement are asked
@@ -86,6 +86,7 @@ SOURCES = [
     ("greenhouse", "affirm", "Affirm"),
     ("greenhouse", "imc", "IMC Trading"),
     ("lever", "spotify", "Spotify"),
+    ("workable", "huggingface", "Hugging Face"),  # Workable's public jobs feed (no key); most roles are remote, some US-based
     ("ashby", "linear", "Linear"),
     ("remotive", "software-dev", "Remotive"),
     ("jobicy", "engineering", "Jobicy"),      # credit Jobicy and link to its canonical job URL
@@ -97,7 +98,7 @@ SOURCES = [
     ("usajobs", "philadelphia", "USAJOBS"),   # every federal posting within 25 miles of Philadelphia (needs feed_keys.usajobs)
     ("usajobs", "students", "USAJOBS"),       # the same area, only the Students and Recent graduates hiring paths (Pathways)
 ]
-VIA = {"greenhouse": "%s on Greenhouse", "lever": "%s on Lever", "ashby": "%s on Ashby", "smartrecruiters": "%s on SmartRecruiters",
+VIA = {"greenhouse": "%s on Greenhouse", "lever": "%s on Lever", "ashby": "%s on Ashby", "smartrecruiters": "%s on SmartRecruiters", "workable": "%s on Workable",
        "jobicy": "Jobicy", "muse": "The Muse", "usajobs": "USAJOBS", "remotive": "Remotive"}       # the short credit line each source's jobs carry
 MULTI = ("jobicy", "muse", "usajobs")         # several feeds share one display name
 # The two USAJOBS searches (documented at developer.usajobs.gov/api-reference/get-api-search; several values are joined with ';')
@@ -347,6 +348,21 @@ def _fetch_raw(kind, token, name):
                             remote=bool(j.get("isRemote")) or j.get("workplaceType") == "Remote" or None,
                             text=_text(j.get("descriptionPlain") or j.get("descriptionHtml")),
                             url=j["jobUrl"], salary_text="", posted=_ts(j.get("publishedAt"))))
+    elif kind == "workable":
+        # Workable's public jobs feed (no key): https://www.workable.com/api/accounts/{subdomain}?details=true lists the account's published jobs
+        # with their descriptions (help.workable.com/hc/en-us/articles/115012771647, "Build a custom careers page using Workable's API"). It may
+        # answer through apply.workable.com/api/v1/widget/accounts/{subdomain}, the same list. The posting id Workable's API takes is the shortcode.
+        for j in _get("https://www.workable.com/api/accounts/%s?details=true" % urllib.parse.quote(token, safe="")).get("jobs", []):
+            if not isinstance(j, dict) or not j.get("shortcode") or not j.get("title"):  # "state" is the region here, not a status: the feed lists published jobs only
+                continue
+            locs = [l for l in (j.get("locations") or []) if isinstance(l, dict) and not l.get("hidden")]
+            loc = "; ".join(p for p in (", ".join(x for x in (l.get("city"), l.get("region"), l.get("country")) if x) for l in locs) if p)
+            loc = loc or ", ".join(x for x in (j.get("city"), j.get("state"), j.get("country")) if x)      # one place per posting in older replies
+            out.append(dict(id=j["shortcode"], title=j["title"], company=name, loc=loc, remote=True if j.get("telecommuting") is True else None,
+                            text=_text(j.get("description") or "") + " " + _text(j.get("requirements") or ""), url=j.get("url") or j.get("shortlink") or "",
+                            salary_text="", posted=_ts(j.get("published_on") or j.get("created_at")),
+                            force_type="parttime" if re.search(r"part", j.get("employment_type") or "", re.I) else
+                                       ("internship" if re.search(r"intern", j.get("employment_type") or "", re.I) else None)))
     elif kind == "remotive":
         for j in _get("https://remotive.com/api/remote-jobs?category=%s&limit=60" % token).get("jobs", []):
             loc = j.get("candidate_required_location") or ""
@@ -691,7 +707,7 @@ def feeds_allowed():
     """Third-party feeds the owner has explicitly switched on (default: none). See the legal notes at the top.
     A source kind is on when it is listed in "feeds" (uaply-config.json / UAPLY_CONFIG_JSON) or in UAPLY_FEEDS. "feeds_off" (a list, or
     UAPLY_FEEDS_OFF=remotive,muse) switches a kind off by name and wins over both, so one line turns a feed off without touching the others:
-    {"feeds_off": ["remotive"]}. The kinds: greenhouse, lever, ashby, smartrecruiters, usajobs, jobicy, muse, remotive."""
+    {"feeds_off": ["remotive"]}. The kinds: greenhouse, lever, ashby, smartrecruiters, workable, usajobs, jobicy, muse, remotive."""
     cfg = _cfg()
     f, off = cfg.get("feeds"), cfg.get("feeds_off")
     on = {x for x in f if isinstance(x, str)} if isinstance(f, list) else set()
@@ -730,7 +746,7 @@ def _file_stamp(path):
 
 
 def ats_connections():
-    """{(kind, board): api_key} for employers who connected their own hiring system (Greenhouse, Lever, Ashby or SmartRecruiters) with a key they created. Read from the
+    """{(kind, board): api_key} for employers who connected their own hiring system (Greenhouse, Lever, Ashby, SmartRecruiters or Workable) with a key they created. Read from the
     UAPLY_ATS_JSON setting (a host's dashboard) and from 'ats_connections' in the employer list. Anything malformed is skipped."""
     env, path = os.environ.get("UAPLY_ATS_JSON") or "", partners_file()
     try:
@@ -790,7 +806,7 @@ def _file_partner_jobs():
         name, consent = _clean(e.get("name"), 100), _clean(e.get("consent"), 300)
         if not name or not consent or consent.lower().startswith("placeholder"):
             continue                                   # no recorded consent (or the example text still in place), no listing
-        # the employer's own hiring system (Greenhouse, Lever, Ashby or SmartRecruiters) and the key they created for it: applications to their jobs go straight in
+        # the employer's own hiring system (Greenhouse, Lever, Ashby, SmartRecruiters or Workable) and the key they created for it: applications to their jobs go straight in
         a = e.get("ats") if isinstance(e.get("ats"), dict) else {}
         ats_cfg = a if ats_api.valid_connection(a.get("kind"), a.get("board"), a.get("api_key")) else None
         contact = _clean(e.get("contact"), 120)

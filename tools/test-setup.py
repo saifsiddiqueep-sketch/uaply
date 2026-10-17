@@ -172,6 +172,15 @@ t("the box offers all four systems and says where each employer makes its key",
 t("neither key is ever on the page", ("sr-test-token" in page, "ashby-test-key" in page), (False, False))
 setup_api.remove_ats({"kind": "smartrecruiters", "board": "CityofPhiladelphia"})
 setup_api.remove_ats({"kind": "ashby", "board": "acme"})
+s, out = setup_api.save_ats({"kind": "workable", "board": "acmeworks", "api_key": "wk-test-token-1234"})
+page = setup_api.page("localhost:8767", "http").decode()
+t("Workable connects too: saved by subdomain, named in the answer and on the page, the token never shown",
+  (s, jobs_api.ats_connections().get(("workable", "acmeworks")), "Real Workable postings" in out["message"], "Workable / acmeworks" in page, "wk-test-token" in page),
+  (200, "wk-test-token-1234", True, True, False))
+t("the box offers Workable and says where its Admin makes the token and which scopes it needs",
+  all(x in page for x in ('<option value="workable">', "API Access Tokens", "r_jobs and w_candidates", "apply.workable.com/<i>subdomain</i>")), True)
+setup_api.remove_ats({"kind": "workable", "board": "acmeworks"})
+t("...and it can be removed", ("workable", "acmeworks") in jobs_api.ats_connections(), False)
 t("with UAPLY_DATA_DIR set the employer list is written there, and the one next to the code is never created or changed",
   (os.path.exists(os.path.join(TMP, "uaply-partners.json")), os.path.exists(code_copy) and os.stat(code_copy).st_mtime_ns), (True, code_stamp))
 

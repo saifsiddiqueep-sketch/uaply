@@ -246,6 +246,7 @@ input[type=range]{accent-color:var(--accent);min-height:44px}
 #locAsk{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:100%;max-width:620px}
 #locAsk p{margin:0;color:var(--muted);font-size:13.5px}
 #locAsk .acts{display:flex;gap:8px;flex-wrap:wrap}
+@media (max-height:740px){.swipecol{gap:8px}.tips{padding:6px 10px!important;font-size:12.5px!important;line-height:1.35}.banner{padding:4px 10px!important;font-size:12px!important;line-height:1.3}.banner button{padding:4px 0!important;min-height:32px}#locAsk{padding:8px 12px;gap:4px;border-radius:12px}#locAsk b{font-size:13.5px}#locAsk p{font-size:12px;line-height:1.35}#locAsk .acts .btn{min-height:34px;padding:5px 14px;font-size:13.5px}.filters button{padding:4px 2px!important;min-height:32px}}
 #fMilesWrap.nearbox{display:flex;flex-direction:column;gap:6px;margin-top:8px}
 #fMilesWrap .rngrow{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
 #fMilesWrap .rngrow b{font-size:15px}
@@ -2046,7 +2047,7 @@ function apply(w,host){
     {k:"jobs",t:"Jobs you want",s:"Jobs",q:"What kind of work are you looking for?",use:"This is the core of your matches. Titles, skills, experience and education change every score and decide which jobs show. The opportunity types you pick open first in Services.",anchors:["pTitle","px-types-fulltime","pSkills","pYears","pEdu"]},
     {k:"where",t:"Where and pay",s:"Where and pay",q:"Where, how, and for how much?",use:"City, work style, distance, willingness to relocate and minimum pay all change your match score and which jobs show. Your state, ZIP code and country also fill in employer forms, and your state and ZIP code help find your location for distance. Your street stays on this device.",anchors:["aAddr","pm-remote","aMilesF","pSalary","px-start","aNoticeF"]},
     {k:"back",t:"Background and links",s:"Background",q:"Show employers who you are.",use:"Sent with your applications. Your headline, summary and major also count as skills when a job asks for them. GPA is optional and never changes a match.",anchors:["px-school","px-major","px-grad","px-gpa","px-employer","px-job_title","px-job_start","px-job_end","px-summary","px-resume","px-linkedin","px-portfolio","aResF","aSummaryF","aLinkedF","aSiteF","aCoverF"]},
-    {k:"final",t:"Eligibility and extras",s:"Eligibility",q:"Last details.",use:"Work authorization is added to applications only. It never changes a match or hides a job. The optional section at the bottom is yours to skip.",anchors:["px-auth","px-sponsor","aElig","aAutoF","aEeo"]}
+    {k:"final",t:"Eligibility and extras",s:"Eligibility",q:"Last details.",use:"Work authorization is added to applications only. It never changes a match or hides a job. The optional section at the bottom is yours to skip.",anchors:["px-auth","px-sponsor","aElig","aAutoF","aKept","aEeo"]}
   ];
   var wz={i:0,want:null,opened:false,dirty:false,pending:null};
   var wzGrid=form.querySelector(".grid");

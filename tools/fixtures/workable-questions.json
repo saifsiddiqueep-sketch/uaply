@@ -1,0 +1,23 @@
+{
+  "note": "Workable job questions for the stand-in hiring system (tools/mock-ats.py) and tools/test-ats-workable.py. Shaped like GET https://{subdomain}.workable.com/spi/v3/jobs/{shortcode}/questions in Workable's API reference (workable.readme.io/reference/job-questions): questions[] {id, body, type (free_text, short_text, multiple_choice, boolean, dropdown, numeric, date, file), required, single_answer, choices[] {id, body}, supported_file_types, max_file_size}. Written by hand from that reference, not recorded from a live employer: the questions need the employer's token.",
+  "jobs": {
+    "WK00000001": {"questions": []},
+    "WK00000002": {"questions": [
+      {"id": "q_auth", "body": "Are you legally authorized to work in the United States?", "type": "boolean", "required": true},
+      {"id": "q_spon", "body": "Will you now or in the future require sponsorship for employment visa status?", "type": "dropdown", "required": true,
+       "choices": [{"id": "c_spon_yes", "body": "Yes"}, {"id": "c_spon_no", "body": "No"}]},
+      {"id": "q_heard", "body": "How did you hear about this job?", "type": "multiple_choice", "single_answer": true, "required": true,
+       "choices": [{"id": "c_ref", "body": "Employee referral"}, {"id": "c_board", "body": "Job board"}, {"id": "c_other", "body": "Other"}]},
+      {"id": "q_li", "body": "LinkedIn profile", "type": "short_text", "required": false},
+      {"id": "q_years", "body": "How many years of experience do you have?", "type": "numeric", "required": false},
+      {"id": "q_gender", "body": "What is your gender?", "type": "dropdown", "required": false,
+       "choices": [{"id": "c_g1", "body": "Woman"}, {"id": "c_g2", "body": "Man"}, {"id": "c_g3", "body": "Prefer not to say"}]}
+    ]},
+    "WK00000003": {"questions": [
+      {"id": "q_color", "body": "What is your favorite color and why?", "type": "free_text", "required": true}
+    ]},
+    "WK00000007": {"questions": [
+      {"id": "q_sample", "body": "Upload a writing sample", "type": "file", "required": true, "supported_file_types": ["pdf"], "max_file_size": 5000000}
+    ]}
+  }
+}

@@ -308,43 +308,237 @@ function kitApply(w,host){
   function openProfile(step){if(typeof step==="string"&&w.__uaplyOpenProf){w.__uaplyOpenProf(step);return}var b=d.getElementById("nb-prof");if(b){b.click();var it=d.querySelector('.nwrap[data-k=prof] .nitem[data-v=settings]');if(it)it.click()}}
 
   /* answers the person gave to questions employers' forms asked, kept on this device and sent with each application so the
-     same question is never asked twice (the server matches them to each new form; see autofill.py) */
+     same question is never asked twice (the server matches them to each new form; see autofill.py). Beside each answer UAply keeps how
+     the question was asked (its words, kind and options, and which employer asked it first), so Profile setup, under Eligibility and
+     extras, can list them and let the person change one with the same control. */
   function answersKey(){return (w.__uaplyKey||"uaply")+".answers"}
-  function savedAnswers(){try{var a=JSON.parse(w.localStorage.getItem(answersKey()));return a&&typeof a==="object"&&!Array.isArray(a)?a:{}}catch(e){return {}}}
-  function keepAnswers(add){var a=savedAnswers();Object.keys(add).forEach(function(k){if(add[k])a[k]=String(add[k]).slice(0,2000)});var keys=Object.keys(a);while(keys.length>80)delete a[keys.shift()];try{w.localStorage.setItem(answersKey(),JSON.stringify(a))}catch(e){}}
+  function askedKey(){return (w.__uaplyKey||"uaply")+".answersAsked"}
+  function readObj(k){try{var a=JSON.parse(w.localStorage.getItem(k));return a&&typeof a==="object"&&!Array.isArray(a)?a:{}}catch(e){return {}}}
+  function savedAnswers(){return readObj(answersKey())}
+  function savedAsked(){return readObj(askedKey())}
+  function keepAnswers(add,meta){
+    var a=savedAnswers(),m=savedAsked();
+    Object.keys(add).forEach(function(k){if(add[k]){a[k]=String(add[k]).slice(0,2000);if(meta&&meta[k])m[k]=meta[k]}});
+    var keys=Object.keys(a);while(keys.length>80)delete a[keys.shift()];
+    Object.keys(m).forEach(function(k){if(!(k in a))delete m[k]});
+    try{w.localStorage.setItem(answersKey(),JSON.stringify(a));w.localStorage.setItem(askedKey(),JSON.stringify(m))}catch(e){}
+    paintKept();
+  }
+  function forgetAnswer(k){var a=savedAnswers(),m=savedAsked();delete a[k];delete m[k];try{w.localStorage.setItem(answersKey(),JSON.stringify(a));w.localStorage.setItem(askedKey(),JSON.stringify(m))}catch(e){}paintKept()}
+
+  /* ---- one control per kind of question. Every kind an employer's form can ask on screen:
+     text, textarea (long text, with a count), number (with its unit), date, month (month and year), select (a short list, or a
+     searchable list when it is long), multi (tick every one that applies; searchable when long) and consent (a notice the person
+     reads, then ticks). A file other than the resume is never asked here: the person finishes on the employer's page.
+     Nothing is ever chosen for the person: every control starts empty. */
+  var MANY=8,MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
+  function kaStyle(){
+    if(d.getElementById("kaStyle"))return;
+    var st=d.createElement("style");st.id="kaStyle";
+    st.textContent=".kaF{display:flex;flex-direction:column;gap:6px;min-width:0}.kaF>.kaL{font-weight:600}"+
+      ".kaF input,.kaF select,.kaF textarea{width:100%;min-height:44px;padding:9px 11px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:inherit;box-sizing:border-box}"+
+      ".kaF textarea{resize:vertical;min-height:110px}.kaF .kaRow{display:flex;gap:8px;align-items:center}.kaF .kaRow>*{flex:1;min-width:0}"+
+      ".kaF .kaUnit{flex:0 0 auto;color:var(--muted);font-weight:600}.kaF small{color:var(--muted)}"+
+      ".kaF .kaList{max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:4px;margin:0;list-style:none}"+
+      ".kaF .kaList [role=option]{padding:10px 11px;border-radius:8px;cursor:pointer;min-height:24px}"+
+      ".kaF .kaList [role=option][aria-selected=true]{background:var(--accent);color:var(--accent-ink)}"+
+      ".kaF .kaList [role=option].on{outline:2px solid var(--accent);outline-offset:-2px}"+
+      ".kaF fieldset{border:1px solid var(--line);border-radius:10px;margin:0;padding:6px 10px;max-height:240px;overflow:auto}"+
+      ".kaF fieldset label,.kaF .kaTick{display:flex;gap:10px;align-items:center;min-height:44px;cursor:pointer}"+
+      ".kaF fieldset input,.kaF .kaTick input{width:22px;height:22px;min-height:0;flex:0 0 auto;margin:0}"+
+      ".kaF .kaRead{max-height:150px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:10px 12px;white-space:pre-wrap;background:var(--bg)}"+
+      ".kaF .kaRead:focus-visible,.kaF .kaList:focus-visible{outline:2px solid var(--accent)}"+
+      ".kaF .kaTick.off{opacity:.55;cursor:not-allowed}";
+    d.head.appendChild(st);
+  }
+  /* how a question is asked: the server's kind, with a consent and a long list made explicit */
+  function askKind(q){var k=q.kind||"text";if(q.consent&&q.agree)return "consent";if((k==="select")&&q.opts&&q.opts.length>MANY)return "search";if(k==="select"&&!(q.opts&&q.opts.length))return "text";return k}
+  function fieldHtml(q,id,val){
+    var k=askKind(q),v=val==null?"":String(val),dk=' data-kind="'+k+'"';
+    var h='<div class="kaF" id="'+id+'W"'+dk+'>';
+    var lab='<label class="kaL" for="'+id+'">'+esc(q.q)+'</label>';
+    if(k==="file")return h+'<span class="kaL">'+esc(q.q)+'</span><small id="'+id+'" style="color:var(--no)">Upload your resume in Profile setup, under Background and links, then swipe right again.</small></div>';
+    if(k==="consent"){
+      h+='<span class="kaL" id="'+id+'L">Please read this from the employer</span>'+
+        '<div class="kaRead" id="'+id+'R" tabindex="0" role="region" aria-labelledby="'+id+'L">'+esc(q.q)+'</div>'+
+        (q.link?'<small><a href="'+esc(q.link)+'" target="_blank" rel="noopener noreferrer">Open the employer\'s full notice</a></small>':'')+
+        '<label class="kaTick" for="'+id+'"><input type="checkbox" id="'+id+'"'+(v?' checked':'')+'> <span>I have read it. '+esc(q.agree)+'</span></label>'+
+        '<small id="'+id+'H" aria-live="polite"></small>';
+    }else if(k==="textarea"){
+      h+=lab+'<textarea id="'+id+'" maxlength="2000" rows="5" aria-describedby="'+id+'C">'+esc(v)+'</textarea><small id="'+id+'C">'+v.length+' of 2000 characters</small>';
+    }else if(k==="number"){
+      h+=lab+'<div class="kaRow"><input id="'+id+'" type="text" inputmode="decimal" autocomplete="off" maxlength="20" value="'+esc(v)+'"'+(q.unit?' aria-describedby="'+id+'U"':'')+'>'+
+        (q.unit?'<span class="kaUnit" id="'+id+'U">'+esc(q.unit==="USD"?"US dollars":q.unit)+'</span>':'')+'</div>';
+    }else if(k==="date"){
+      h+=lab+'<input id="'+id+'" type="date" value="'+esc(/^\d{4}-\d{2}-\d{2}$/.test(v)?v:"")+'">';
+    }else if(k==="month"){
+      var mm=/^(\d{4})-(\d{2})$/.exec(v)||[],y0=new Date().getFullYear(),ys=[];for(var y=y0+8;y>=y0-60;y--)ys.push(y);
+      h+='<span class="kaL" id="'+id+'L">'+esc(q.q)+'</span><div class="kaRow" role="group" aria-labelledby="'+id+'L">'+
+        '<select id="'+id+'" aria-label="Month"><option value="">Month</option>'+MONTHS.map(function(n,i){var x=(i<9?"0":"")+(i+1);return '<option value="'+x+'"'+(mm[2]===x?' selected':'')+'>'+n+'</option>'}).join("")+'</select>'+
+        '<select id="'+id+'Y" aria-label="Year"><option value="">Year</option>'+ys.map(function(n){return '<option'+(mm[1]===String(n)?' selected':'')+'>'+n+'</option>'}).join("")+'</select></div>';
+    }else if(k==="search"){
+      h+=lab+'<input id="'+id+'" type="search" role="combobox" aria-autocomplete="list" aria-expanded="true" aria-controls="'+id+'B" autocomplete="off" placeholder="Type to search '+q.opts.length+' choices" value="'+esc(v)+'">'+
+        '<ul class="kaList" id="'+id+'B" role="listbox" aria-label="'+esc(q.q)+'">'+q.opts.map(function(o,i){return '<li role="option" id="'+id+'o'+i+'" aria-selected="'+(o===v)+'">'+esc(o)+'</li>'}).join("")+'</ul>'+
+        '<small id="'+id+'S" aria-live="polite">'+(v?'Chosen: '+esc(v):'Nothing chosen yet')+'</small>';
+    }else if(k==="multi"){
+      var on=v?v.split("\n"):[];
+      h+='<span class="kaL" id="'+id+'L">'+esc(q.q)+'</span><small>Tick every one that applies.</small>'+
+        (q.opts.length>MANY?'<input type="search" id="'+id+'F" aria-label="Filter the choices" placeholder="Type to filter '+q.opts.length+' choices" autocomplete="off">':'')+
+        '<fieldset id="'+id+'" aria-labelledby="'+id+'L">'+q.opts.map(function(o,i){return '<label><input type="checkbox" value="'+esc(o)+'"'+(on.indexOf(o)>-1?' checked':'')+'> <span>'+esc(o)+'</span></label>'}).join("")+'</fieldset>';
+    }else if(k==="select"){
+      h+=lab+'<select id="'+id+'"><option value="">Choose</option>'+q.opts.map(function(x){return '<option'+(x===v?' selected':'')+'>'+esc(x)+'</option>'}).join("")+'</select>';
+    }else{
+      h+=lab+'<input id="'+id+'" maxlength="300" autocomplete="off" value="'+esc(v)+'">';
+    }
+    return h+'</div>';
+  }
+  /* the behaviour each control needs once it is on the page (the count, the search list, the notice read to its end) */
+  function wireField(box,q){
+    var k=box.getAttribute("data-kind"),id=box.id.slice(0,-1),el=d.getElementById(id);
+    if(el&&q&&q.key!=null)el.setAttribute("data-k",q.key);         /* the answer's key, on the control itself */
+    if(k==="textarea"){var c=d.getElementById(id+"C");el.addEventListener("input",function(){c.textContent=el.value.length+" of 2000 characters"})}
+    if(k==="consent"){
+      var r=d.getElementById(id+"R"),tick=el.closest(".kaTick"),hint=d.getElementById(id+"H");
+      function read(){return r.scrollHeight-r.scrollTop-r.clientHeight<4}
+      function upd(){var ok=el.checked||read();el.disabled=!ok;tick.classList.toggle("off",!ok);hint.textContent=ok?"":"Scroll to the end of the notice to tick the box."}
+      r.addEventListener("scroll",upd);upd();w.setTimeout(upd,60);
+    }
+    if(k==="search"){
+      var list=d.getElementById(id+"B"),say=d.getElementById(id+"S"),act=-1;
+      var items=[].slice.call(list.querySelectorAll("[role=option]"));
+      function shown(){return items.filter(function(o){return !o.hidden})}
+      function mark(i){var s=shown();items.forEach(function(o){o.classList.remove("on")});act=Math.max(-1,Math.min(i,s.length-1));
+        if(act>-1){s[act].classList.add("on");el.setAttribute("aria-activedescendant",s[act].id);if(s[act].scrollIntoView)s[act].scrollIntoView({block:"nearest"})}else el.removeAttribute("aria-activedescendant")}
+      function pick(o){items.forEach(function(x){x.setAttribute("aria-selected","false")});o.setAttribute("aria-selected","true");el.value=o.textContent;box.setAttribute("data-v",o.textContent);say.textContent="Chosen: "+o.textContent;items.forEach(function(x){x.hidden=false});if(o.scrollIntoView)o.scrollIntoView({block:"nearest"})}
+      var pre=items.filter(function(o){return o.getAttribute("aria-selected")==="true"})[0];if(pre)box.setAttribute("data-v",pre.textContent);
+      el.addEventListener("input",function(){var t=el.value.trim().toLowerCase();box.removeAttribute("data-v");items.forEach(function(o){o.setAttribute("aria-selected","false");o.hidden=!!t&&o.textContent.toLowerCase().indexOf(t)<0});
+        var n=shown().length;say.textContent=n?n+" match"+(n===1?"":"es")+". Use the arrow keys and Enter, or tap one.":"No match. Try fewer letters.";mark(n===1?0:-1)});
+      el.addEventListener("keydown",function(e){
+        if(e.key==="ArrowDown"){e.preventDefault();mark(act+1)}else if(e.key==="ArrowUp"){e.preventDefault();mark(act-1)}
+        else if(e.key==="Enter"){var s=shown();if(act>-1&&s[act]){e.preventDefault();pick(s[act])}else if(s.length===1){e.preventDefault();pick(s[0])}}
+      });
+      list.addEventListener("click",function(e){var o=e.target.closest("[role=option]");if(o){pick(o);el.focus()}});
+    }
+    if(k==="multi"){
+      var f=d.getElementById(id+"F");
+      if(f)f.addEventListener("input",function(){var t=f.value.trim().toLowerCase();el.querySelectorAll("label").forEach(function(l){l.hidden=!!t&&l.textContent.toLowerCase().indexOf(t)<0&&!l.querySelector("input").checked})});
+    }
+  }
+  /* the answer as UAply stores it: plain text; a number as digits; a date as 2027-06-30 and a month as 2027-06; several choices one per
+     line; a consent as the employer's own "I agree" option. "" when unanswered; {bad:"why"} when what was typed cannot be sent */
+  function fieldVal(box,q){
+    var k=box.getAttribute("data-kind"),id=box.id.slice(0,-1),el=d.getElementById(id);
+    if(!el||k==="file")return "";
+    if(k==="consent")return el.checked?q.agree:"";
+    if(k==="month"){var m=el.value,y=d.getElementById(id+"Y").value;if(!m&&!y)return "";if(!m||!y)return {bad:"Choose both the month and the year."};return y+"-"+m}
+    if(k==="search")return box.getAttribute("data-v")||(el.value.trim()?{bad:"Choose one of the choices in the list."}:"");
+    if(k==="multi")return [].slice.call(el.querySelectorAll("input:checked")).map(function(c){return c.value}).join("\n");
+    var v=(el.value||"").trim();
+    if(k==="number"&&v){var n=v.replace(/(\d),(?=\d{3}\b)/g,"$1").replace(/[\s$]/g,"");if(!/^-?\d+(\.\d+)?$/.test(n))return {bad:"Enter a number"+(q.unit?" (in "+(q.unit==="USD"?"US dollars":q.unit)+")":"")+"."};return n}
+    if(k==="date"&&v&&!/^\d{4}-\d{2}-\d{2}$/.test(v))return {bad:"Choose a whole date."};
+    return v;
+  }
+  function metaOf(q,co){var m={q:String(q.q||"").slice(0,600),kind:q.kind||"text",co:co||"",at:Date.now()};["opts","unit","consent","agree","link"].forEach(function(k){if(q[k]!=null)m[k]=q[k]});return m}
+  /* shown to the person: a stored answer in words ("June 2027", "Python, SQL") */
+  function shownVal(m,v){
+    v=String(v||"");m=m||{};
+    if(m.consent)return "Agreed ("+v+")";
+    var mo=/^(\d{4})-(\d{2})$/.exec(v);if(mo&&+mo[2]>=1&&+mo[2]<=12)return MONTHS[+mo[2]-1]+" "+mo[1];
+    var dt=/^(\d{4})-(\d{2})-(\d{2})$/.exec(v);if(dt)return MONTHS[+dt[2]-1]+" "+(+dt[3])+", "+dt[1];
+    if(v.indexOf("\n")>-1)return v.split("\n").join(", ");
+    if(m.unit&&/^-?\d+(\.\d+)?$/.test(v))return m.unit==="USD"?"$"+v:v+" "+m.unit;
+    return v;
+  }
+  w.__uaplyAskField={html:fieldHtml,wire:wireField,value:fieldVal};
+
   /* the questions on an employer's form that the profile could not answer: asked once, then the application goes */
   function askSheet(job,qs,filled,total,go,cancel){
     var old=d.getElementById("kitAsk");if(old)old.remove();
+    kaStyle();
     var o=d.createElement("div");o.id="kitAsk";
-    o.style.cssText="position:fixed;inset:0;z-index:55;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.45);overflow:auto";
-    var fld="width:100%;padding:9px 11px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:inherit";
+    o.style.cssText="position:fixed;inset:0;z-index:55;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.45);overflow:auto;overscroll-behavior:contain";
     var hasFile=qs.some(function(q){return q.kind==="file"});
-    var h='<form role="dialog" aria-modal="true" aria-labelledby="kaH" novalidate style="background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:20px;max-width:480px;width:100%;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:12px;font-size:14px">'+
+    var h='<form role="dialog" aria-modal="true" aria-labelledby="kaH" novalidate style="background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:20px;max-width:520px;width:100%;box-sizing:border-box;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:14px;font-size:14px;min-width:0">'+
       '<h2 id="kaH" style="margin:0;font:800 20px var(--display)">'+(qs.length===1?'One question':qs.length+' questions')+' from '+esc(job.co)+'</h2>'+
-      '<p style="margin:0;color:var(--muted)">UAply filled in '+filled+' of '+total+' answers on '+esc(job.co)+'\'s application. '+(hasFile?'It also needs a resume file. Answer what you can (it is saved), then upload your resume in Profile setup, under Background and links, and swipe right again.':'Answer '+(qs.length===1?'this':'these')+' and UAply sends it. Your answers are saved, so the next employer that asks the same thing gets them automatically.')+'</p>';
-    qs.forEach(function(q,i){
-      var id="kaQ"+i;
-      h+='<div style="display:flex;flex-direction:column;gap:5px"><label for="'+id+'" style="font-weight:600">'+esc(q.q)+'</label>';
-      if(q.kind==="file")h+='<small id="'+id+'" style="color:var(--no)">Upload your resume in Profile setup, under Background and links, then swipe right again.</small>';
-      else if(q.opts&&q.opts.length)h+='<select id="'+id+'" data-k="'+esc(q.key)+'" style="'+fld+'"><option value="">Choose</option>'+q.opts.map(function(x){return '<option>'+esc(x)+'</option>'}).join("")+'</select>';
-      else if(q.kind==="textarea")h+='<textarea id="'+id+'" data-k="'+esc(q.key)+'" rows="4" maxlength="2000" style="'+fld+';resize:vertical"></textarea>';
-      else h+='<input id="'+id+'" data-k="'+esc(q.key)+'" maxlength="300" style="'+fld+'">';
-      h+='</div>';
-    });
+      '<p style="margin:0;color:var(--muted)">UAply filled in '+filled+' of '+total+' answers on '+esc(job.co)+'\'s application. '+(hasFile?'It also needs a resume file. Answer what you can (it is saved), then upload your resume in Profile setup, under Background and links, and swipe right again.':'Answer '+(qs.length===1?'this':'these')+' and UAply sends it. Your answers are saved, so the next employer that asks the same thing gets them automatically. You can change them in Profile setup, under Eligibility and extras.')+'</p>';
+    qs.forEach(function(q,i){h+=fieldHtml(q,"kaQ"+i,"")});
     h+='<p id="kaMsg" role="alert" style="margin:0;font-size:13px;color:var(--no);min-height:1.2em"></p>'+
       '<div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button type="button" class="btn ghost" id="kaNo">Not now</button><button type="submit" class="btn" id="kaYes">'+(hasFile?'Open Profile':'Send application')+'</button></div></form>';
     o.innerHTML=h;d.body.appendChild(o);
-    var first=o.querySelector("[data-k]")||d.getElementById("kaYes");first.focus();
+    var boxes=[].slice.call(o.querySelectorAll(".kaF"));
+    boxes.forEach(function(b,i){wireField(b,qs[i])});
+    var first=o.querySelector(".kaF input:not([disabled]),.kaF select,.kaF textarea,.kaF .kaRead")||d.getElementById("kaYes");first.focus();
     o.querySelector("form").onsubmit=function(e){
       e.preventDefault();
-      var add={},blank=null;
-      o.querySelectorAll("[data-k]").forEach(function(el){var v=(el.value||"").trim();if(!v&&!blank)blank=el;add[el.getAttribute("data-k")]=v});
-      if(hasFile){keepAnswers(add);o.remove();cancel();openProfile("back");return}   /* keep whatever was answered: only the resume is left next time */
-      if(blank){d.getElementById("kaMsg").textContent="Answer every question to send the application.";blank.focus();return}
-      keepAnswers(add);o.remove();go();
+      var add={},meta={},blank=null,why="";
+      boxes.forEach(function(b,i){
+        var q=qs[i];if(q.kind==="file")return;
+        var v=fieldVal(b,q);
+        if(v&&typeof v==="object"){if(!blank){blank=b;why=v.bad}v=""}
+        else if(!v&&!blank)blank=b;
+        add[q.key]=v;meta[q.key]=metaOf(q,job.co);
+      });
+      if(hasFile){keepAnswers(add,meta);o.remove();cancel();openProfile("back");return}   /* keep whatever was answered: only the resume is left next time */
+      if(blank){
+        var lab=blank.querySelector(".kaL");
+        d.getElementById("kaMsg").textContent=(why?why+" ":"Answer every question to send the application. ")+(lab?"("+lab.textContent.slice(0,80)+")":"");
+        var f=blank.querySelector("input:not([disabled]),select,textarea,.kaRead");if(f)f.focus();return;
+      }
+      keepAnswers(add,meta);o.remove();go();
     };
     d.getElementById("kaNo").onclick=function(){o.remove();cancel()};
     o.addEventListener("keydown",function(e){if(e.key==="Escape"){o.remove();cancel()}});
+  }
+
+  /* Profile setup, Eligibility and extras: "Answers you gave employers". Each one can be changed with the control it was asked with, or
+     removed (then the next employer that asks it asks again). They stay on this device and travel only with the applications sent. */
+  var kept=null,keptEdit=null;
+  function paintKept(){
+    if(!kept)return;
+    kaStyle();
+    var a=savedAnswers(),m=savedAsked(),keys=Object.keys(a);
+    var h='<h3 style="margin:0;font-size:15px">Answers you gave employers</h3>'+
+      '<small>When an employer\'s form asks something your profile does not answer, UAply asks you once and keeps the answer here. The next employer that asks the same question gets it automatically. These stay on this device and go only with the applications you send.</small>';
+    if(!keys.length)h+='<p class="note" style="margin:0" id="akNone">None yet.</p>';
+    else h+='<ul id="akList" style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px">'+keys.map(function(k,i){
+      var q=m[k]||{q:k.replace(/\{co\}/g,"(the company)"),kind:"text"},id="akQ"+i;
+      if(keptEdit===k)return '<li data-ak="'+esc(k)+'" style="border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px">'+
+        fieldHtml(dataQ(q,k),id,a[k])+'<p class="note" role="alert" id="akMsg" style="margin:0;color:var(--no)"></p><div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn" data-act="aksave">Save</button><button type="button" class="btn ghost" data-act="akcancel">Cancel</button></div></li>';
+      return '<li data-ak="'+esc(k)+'" style="border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:6px;min-width:0">'+
+        '<span style="font-weight:600;overflow-wrap:anywhere">'+esc(q.q.length>220?q.q.slice(0,217)+"...":q.q)+'</span>'+
+        '<span style="overflow-wrap:anywhere;white-space:pre-wrap" class="akA">'+esc(shownVal(q,a[k]))+'</span>'+
+        (q.co?'<small>First asked by '+esc(q.co)+'</small>':'')+
+        '<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn ghost" data-act="akedit" aria-label="Change your answer to: '+esc(q.q.slice(0,80))+'">Change</button><button type="button" class="btn ghost" data-act="akdel" aria-label="Remove your answer to: '+esc(q.q.slice(0,80))+'">Remove</button></div></li>';
+    }).join("")+'</ul>';
+    kept.innerHTML=h;
+    var ed=keptEdit&&kept.querySelector('[data-ak] .kaF');
+    if(ed){wireField(ed,dataQ(m[keptEdit]||{kind:"text"},keptEdit));var f=ed.querySelector("input:not([disabled]),select,textarea,.kaRead");if(f)f.focus()}
+  }
+  function dataQ(q,k){var x={};Object.keys(q).forEach(function(n){x[n]=q[n]});x.key=k;x.q=x.q||k;if(x.kind==="file"||x.kind==="other")x.kind="text";return x}
+  function liKey(el){var li=el.closest("[data-ak]");return li?li.getAttribute("data-ak"):null}
+  var grid=d.querySelector("#form .grid");
+  if(grid&&!d.getElementById("aKept")){
+    kept=d.createElement("div");kept.className="field full";kept.id="aKept";
+    kept.style.cssText="display:flex;flex-direction:column;gap:8px;min-width:0";
+    var eeo=d.getElementById("aEeo");if(eeo&&eeo.parentElement===grid)grid.insertBefore(kept,eeo);else grid.appendChild(kept);
+    kept.addEventListener("click",function(e){
+      var b=e.target.closest("[data-act]");if(!b)return;
+      var act=b.getAttribute("data-act"),k=liKey(b);if(k==null)return;
+      if(act==="akedit"){keptEdit=k;paintKept();return}
+      if(act==="akcancel"){keptEdit=null;paintKept();var c=kept.querySelector('[data-ak="'+k.replace(/["\\]/g,"\\$&")+'"] [data-act=akedit]');if(c)c.focus();return}
+      if(act==="akdel"){if(keptEdit===k)keptEdit=null;forgetAnswer(k);var n=kept.querySelector("[data-act=akedit]")||kept.querySelector("h3");if(n&&n.focus)n.focus();return}
+      if(act==="aksave"){
+        var m=savedAsked(),q=dataQ(m[k]||{kind:"text"},k),box=kept.querySelector('[data-ak] .kaF'),v=fieldVal(box,q),msg=d.getElementById("akMsg");
+        if(v&&typeof v==="object"){msg.textContent=v.bad;return}
+        if(!v){msg.textContent="Type an answer, or use Remove to forget this one.";return}
+        var add={};add[k]=v;var mm={};if(m[k])mm[k]=m[k];keptEdit=null;keepAnswers(add,mm);
+        var s=kept.querySelector('[data-ak="'+k.replace(/["\\]/g,"\\$&")+'"] [data-act=akedit]');if(s)s.focus();
+      }
+    });
+    /* editing an answer here is saved by its own Save button, not by Profile setup's "Save and continue" */
+    ["input","change"].forEach(function(t){kept.addEventListener(t,function(e){e.stopPropagation()})});
+    w.addEventListener("storage",function(e){if(e.key===answersKey()&&!keptEdit)paintKept()});
+    paintKept();
   }
   /* applications that could not reach the server: sent again when the connection is back, and on the next visit. The "online" event only
      comes after the device itself was offline, so when the device is online but UAply's server did not answer, it tries again every 30 seconds. */

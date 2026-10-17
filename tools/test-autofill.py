@@ -237,6 +237,67 @@ t("an answer saved under a long question's key is found again", autofill.clean_a
 t("saved answers from the browser are capped and cleaned", (len(autofill.clean_answers({"q%d" % i: "a" for i in range(200)})), autofill.clean_answers({"x": 5, "": "y", "ok": "  v "})),
   (80, {"ok": "v"}))
 
+# ---- every kind of question the app can ask on screen ------------------------------------------------------------------------------------------
+import importlib.util  # noqa: E402
+_spec = importlib.util.spec_from_file_location("mock_ats", os.path.join(HERE, "mock-ats.py"))
+MOCK = importlib.util.module_from_spec(_spec)
+_argv, sys.argv = sys.argv, [sys.argv[0]]
+_spec.loader.exec_module(MOCK)                          # only its forms are used here; it serves nothing until its main block runs
+sys.argv = _argv
+EK = {"questions": MOCK.questions_for("1007"), "location_questions": [], "company_name": "Every Kind Co", "title": "Data Analyst"}
+BARE = {"name": "Sam Rivera", "email": "sam@example.com", "loc": "Philadelphia, PA", "ext": {"phone": "+1 215 555 0100", "auth": "citizen", "sponsor": "no"}}
+ek = autofill.plan_greenhouse(EK, BARE, {"co": "Every Kind Co", "role": "Data Analyst"}, "", RESUME[0], RESUME[1], {})
+mk = {m["q"][:40]: m for m in ek["missing"]}
+t("each kind of required question is asked with its own control",
+  [(m["kind"], len(m.get("opts") or []), m.get("unit"), m.get("consent")) for m in ek["missing"]],
+  [("textarea", 0, None, None), ("select", 20, None, None), ("multi", 10, None, None), ("month", 0, None, None), ("date", 0, None, None),
+   ("number", 0, "hours", None), ("select", 2, None, None), ("select", 1, None, True)])
+t("a long list sends every option (the app makes it searchable), not the first 60", len(autofill.public_plan(dict(ek, missing=[dict(ek["missing"][1], opts=["x"] * 400)]))["missing"][0]["opts"]), 400)
+t("...and the plan caps what it sends at MAX_OPTS", len(autofill.ask_item({"kind": "select", "req": True}, "select", "Pick", [{"label": str(i), "value": i} for i in range(900)])["opts"]),
+  autofill.MAX_OPTS)
+notice = [m for m in ek["missing"] if m.get("consent")][0]
+t("a notice the person must accept names the option that accepts it, and the public plan carries it", (notice["agree"], autofill.public_plan(ek)["missing"][-1]["agree"]),
+  ("I acknowledge", "I acknowledge"))
+t("the voluntary question in the same form is never asked or answered", [i.get("skip") for i in ek["items"] if "gender" in i["q"].lower()], ["voluntary"])
+t("units from the label", [autofill.unit(x) for x in ("How many years of SQL?", "How many hours per week?", "Expected hourly rate (USD)", "What percent travel?", "How many?")],
+  ["years", "hours", "USD", "%", ""])
+t("text boxes that ask for a date, a month or a number get those controls; anything else stays text",
+  [autofill.sheet_kind("text", x) for x in ("Start date (MM/DD/YYYY)", "Graduation date", "How many languages do you speak?", "Your nickname")],
+  ["date", "month", "number", "text"])
+t("a file other than the resume, or a type UAply does not know, cannot be asked on screen", [autofill.sheet_kind(k, "x") for k in ("file", "other")], ["other", "other"])
+t("a yes/no question that is not a notice is never shown as a box to tick",
+  autofill.ask_item({"kind": "select", "req": True}, "boolean", "Will you require sponsorship?", []).get("consent"), None)
+t("an optional notice is not turned into a box the person must tick", autofill.ask_item({"kind": "select", "req": False}, "select", "I acknowledge the notice",
+                                                                                        [{"label": "I acknowledge", "value": 1}]).get("consent"), None)
+t("a link to read is kept only when it is a plain https address", [autofill.ask_item({"kind": "select", "req": True}, "select", "I consent to the policy",
+                                                                                    [{"label": "I consent"}], u).get("link") for u in ("https://example.org/privacy", "javascript:alert(1)")],
+  ["https://example.org/privacy", None])
+
+# the answers typed in the sheet, as the form gets them
+keys = {m["q"][:12]: m["key"] for m in ek["missing"]}
+ans = {keys["Tell us abou"]: "I built a bus-times app used by 300 students.", keys["Which office"]: "Philadelphia", keys["Which of the"]: "Python\nSQL\nTableau",
+       keys["Expected gra"]: "2027-06", keys["Earliest dat"]: "2027-07-01", keys["How many hou"]: "20", keys["Do you have "]: "Yes",
+       keys["Please read "]: "I acknowledge"}
+full = autofill.plan_greenhouse(EK, BARE, {"co": "Every Kind Co", "role": "Data Analyst"}, "", RESUME[0], RESUME[1], ans)
+F = {}
+for k, v in full["fields"]:
+    F.setdefault(k, []).append(v)
+t("with those answers nothing is missing", full["missing"], [])
+t("...a month and a date go into text boxes the way their labels ask (MM/YYYY, MM/DD/YYYY)", (F.get("question_403"), F.get("question_404")), (["06/2027"], ["07/01/2027"]))
+t("...several choices go in as one field per choice", F.get("question_402[]"), ["600", "601", "603"])
+t("...the long list sends the chosen option's value, the notice its one option, the number as typed", (F.get("question_401"), F.get("question_407"), F.get("question_405")),
+  (["512"], ["1"], ["20"]))
+t("...the person sees the choices in words", [i["a"] for i in full["items"] if i["q"].startswith("Which of these")], ["Python, SQL, Tableau  (your saved answer)"])
+wrong = dict(ans, **{keys["Which of the"]: "Python\nCobol"})
+t("a multi-select answer with one choice that is not on this form is not guessed: the question is asked again",
+  [m["q"][:30] for m in autofill.plan_greenhouse(EK, BARE, {"co": "X"}, "", RESUME[0], RESUME[1], wrong)["missing"]], ["Which of these tools have you "])
+t("a month answer is never sent to a box that wants a whole date", autofill._answer("Start", "k", "date", [], {"k": "2027-06"}, [], {}), None)
+t("a number written with a comma or a dollar sign is still a number", [autofill._answer("Pay", "k", "number", [], {"k": v}, [], {})[0] for v in ("85,000", "$ 40", "12.5")],
+  [85000, 40, 12.5])
+t("words in a number question are never sent", autofill._answer("Hours", "k", "number", [], {"k": "about 20"}, [], {}), None)
+t("the same month written for a label that wants words", autofill._as_text("2027-06", "Graduation date"), "June 2027")
+t("saved answers keep the line breaks of a multi-select and a long answer", autofill.clean_answers({"k": "Python\nSQL"}), {"k": "Python\nSQL"})
+
 # ---- how often a form is complete from the profile alone ------------------------------------------------------------------------------------
 complete = sum(1 for b in FORMS if not plan(b)["missing"])
 t("every saved form gets its name, email, phone and resume filled in", all({"first_name", "last_name", "email", "phone"} <= set(dict(plan(b)["fields"])) and plan(b)["files"] for b in FORMS), True)
@@ -267,6 +328,21 @@ try:
        [{"[company_name]": "Acme Robotics", "[title]": "Support Engineer", "[start_date][month]": "6", "[start_date][year]": "2024", "[current]": "true"}]))
     st_, why = ats_api.submit("greenhouse", "acme", "1006", "gh-secret-key-123", cand_with(**dict(JOB, salary="", relocate="")), "", *RESUME)
     t("...without expected pay and relocation in the profile, nothing is sent and those two are asked", (st_, "salary expectations" in why, "relocate" in why), ("needs_manual", True, True))
+
+    # every kind of question, asked once, then sent into the employer's Greenhouse; the same answers then fill a second employer's form
+    c = dict(BARE)
+    st_, why = ats_api.submit("greenhouse", "acme", "1007", "gh-secret-key-123", c, "", *RESUME)
+    t("a connected employer's form with every kind of question the profile cannot answer: nothing is sent", (st_, "proud" in why), ("needs_manual", True))
+    st_, why = ats_api.submit("greenhouse", "acme", "1007", "gh-secret-key-123", dict(c, answers=ans), "", *RESUME)
+    got = json.loads(urllib.request.urlopen("http://127.0.0.1:%d/__received" % PORT, timeout=5).read())[-1]["fields"]
+    t("...with the person's answers it is accepted by the stand-in, which checks every required answer and option", (st_, why), ("sent", ""))
+    t("...the employer received each kind as its form expects", [got.get(k) for k in ("question_401", "question_402[]", "question_403", "question_404", "question_405", "question_407")],
+      ["512", ["600", "601", "603"], "06/2027", "07/01/2027", "20", "1"])
+    t("...and never the voluntary question", "question_408" in got, False)
+    st_, why = ats_api.submit("greenhouse", "acme", "1008", "gh-secret-key-123", dict(c, answers=ans), "", *RESUME)
+    t("the same questions at another posting are answered from the saved answers, nothing asked", (st_, why), ("sent", ""))
+    st_, why = ats_api.submit("greenhouse", "acme", "1009", "gh-secret-key-123", dict(CAND), "", *RESUME)
+    t("a required file other than the resume is left to the person: nothing is sent", (st_, "Writing sample" in why), ("needs_manual", True))
 
     # the sandbox's preview: a real (public) posting whose employer has not connected, in test mode
     jid = 4242001
