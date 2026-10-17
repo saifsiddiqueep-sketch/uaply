@@ -60,6 +60,9 @@ for a in rest:
     alias[u] = os.path.abspath(f)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# browsers and crawlers ask for /favicon.ico whatever the page says: answer with the instance's own icon (a PNG; every browser takes it)
+alias.setdefault("/favicon.ico", next((f for f in (os.path.join(root, "favicon-32.png"), os.path.join(HERE, "legal", "favicon-32.png"))
+                                       if os.path.isfile(f)), os.path.join(HERE, "legal", "favicon-32.png")))
 
 
 def data_folder():
@@ -115,6 +118,27 @@ def log_oops(where, e):
     sys.stderr.write("[uaply] %s failed: %s: %s\n" % (where, type(e).__name__, str(e)[:300]))
     sys.stderr.flush()
 
+
+# robots.txt: the app and the legal pages may be indexed; the API and the owner-only pages are not pages for search engines
+ROBOTS = b"User-agent: *\nDisallow: /api/\nDisallow: /outbox\nDisallow: /feedback\nDisallow: /setup\nAllow: /\n"
+# the app's own page for an address that does not exist (it used to be Python's bare "Error response" page)
+NOT_FOUND_PAGE = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page not found - UAply</title><link rel="icon" type="image/png" href="/favicon.ico"><meta name="robots" content="noindex">
+<style>
+:root{--bg:#FDF0F2;--surface:#FFFFFF;--ink:#2A1218;--muted:#7B5560;--line:#F3DADF;--accent:#C92A55;--accent2:#F0663B;--accent-ink:#FFFFFF}
+@media (prefers-color-scheme: dark){:root{--bg:#190B10;--surface:#26131A;--ink:#FBE9EE;--muted:#C79BA6;--line:#40222B;--accent:#FF7A98;--accent2:#FFA86B;--accent-ink:#1A0A0F}}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px 16px;background:var(--bg);color:var(--ink);font:16px/1.5 'DM Sans','Segoe UI',system-ui,sans-serif}
+main{max-width:420px;width:100%;background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:28px 24px;text-align:center}
+h1{margin:0 0 8px;font-size:24px}p{margin:0 0 20px;color:var(--muted)}
+a.btn{display:inline-block;min-height:44px;padding:11px 22px;border-radius:999px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);font-weight:700;text-decoration:none}
+nav{margin-top:18px;font-size:14px;color:var(--muted)}nav a{color:inherit}
+</style></head>
+<body><main><h1>Page not found</h1><p>There is nothing at this address. It may have moved, or the link may have a typo.</p>
+<a class="btn" href="/">Back to UAply</a>
+<nav><a href="/legal/">Terms and policies</a> &middot; <a href="/legal/support.html">Support</a></nav></main></body></html>
+""".encode("utf-8")
 
 MAX_BODY = 40000
 MAX_APPLY_BODY = 1500000
@@ -177,6 +201,20 @@ class H(http.server.SimpleHTTPRequestHandler):
             name = p[len("/legal/"):] or "index.html"
             return os.path.join(HERE, "legal", name if LEGAL_NAME.match(name) else "not-a-legal-page")
         return alias.get(p) or super().translate_path(path)
+
+    def send_error(self, code, message=None, explain=None):
+        """A page that does not exist gets the app's own "Page not found" page with a way back, not Python's bare error page.
+        Addresses under /api/ keep the plain answer (scripts read those, not people); every other error is unchanged."""
+        if code != 404 or self.path.split("?", 1)[0].startswith("/api/") or self.command not in ("GET", "HEAD"):
+            return super().send_error(code, message, explain)
+        self.send_response(404, message)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(NOT_FOUND_PAGE)))
+        self.send_header("Connection", "close")
+        self.close_connection = True
+        self.end_headers()
+        if self.command == "GET":
+            self.wfile.write(NOT_FOUND_PAGE)
 
     def _send(self, code, body, ctype="application/json", headers=()):
         if not isinstance(body, bytes):
@@ -282,6 +320,8 @@ class H(http.server.SimpleHTTPRequestHandler):
         p = self.path.split("?", 1)[0]
         if p == "/healthz":                                                 # for the host's health check
             return self._send(200, {"ok": True})
+        if p == "/robots.txt":
+            return self._send(200, ROBOTS, "text/plain; charset=utf-8")
         if api and p == "/legal":                                           # a typed uaply.net/legal (no slash) finds the legal pages too
             return self._redirect("/legal/")
         if api and p in OWNER_PAGES and not self._owner_ok():

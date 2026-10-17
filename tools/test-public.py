@@ -78,6 +78,20 @@ t("a typed /legal (no slash) goes to the legal pages", (s, h.get("location")), (
 for p in ("/legal/", "/legal/terms.html", "/legal/privacy.html", "/legal/style.css", "/legal/favicon-32.png"):
     t("legal file %s still opens" % p, req("GET", p)[0], 200)
 t("a made-up path is a plain 404", req("GET", "/nope.html")[0], 404)
+s, h, body = req("GET", "/nope.html")
+t("a made-up path shows the app's own Page not found page with a way back", (h.get("content-type", "").startswith("text/html"), b"Page not found" in body,
+  b'href="/">Back to UAply' in body, b"Error response" in body), (True, True, True, False))
+s, h, body = req("GET", "/api/nope")
+t("an unknown /api/ address keeps the plain answer (read by scripts, not people)", (s, b"Page not found" in body), (404, False))
+s, h, body = req("HEAD", "/nope.html")
+t("HEAD on a made-up path is a 404 with no body", (s, body), (404, b""))
+s, h, body = req("GET", "/favicon.ico")
+t("/favicon.ico is the app's icon (browsers and crawlers ask for it)", (s, h.get("content-type"), body[:8]), (200, "image/png", b"\x89PNG\r\n\x1a\n"))
+s, h, body = req("GET", "/robots.txt")
+t("/robots.txt lets the site be indexed but not the API or the owner pages", (s, h.get("content-type", "").startswith("text/plain"),
+  all(x in body for x in (b"User-agent: *", b"Disallow: /api/", b"Disallow: /outbox", b"Disallow: /setup"))), (200, True, True))
+s, _, body = req("GET", "/legal/terms.html")
+t("the legal pages have a Back to UAply link", b'href="../" class="home">&larr; Back to UAply' in body, True)
 t("POST to an unknown path is refused", req("POST", "/api/secret", {})[0], 404)
 t("oversized body is refused", req("POST", "/api/auth/login", {"email": "a@b.co", "password": "x" * 50000})[0], 413)
 t("an empty POST is a plain 400, not a size error", req("POST", "/api/auth/login")[0], 400)
