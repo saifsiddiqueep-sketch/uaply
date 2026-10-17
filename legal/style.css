@@ -19,5 +19,6 @@ th,td{text-align:left;vertical-align:top;border-bottom:1px solid var(--line);pad
 th{color:var(--muted);font-weight:600}
 .box{border:1px solid var(--line);border-radius:14px;padding:4px 16px 12px;margin:16px 0;background:var(--bg)}
 nav.docs{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:14px;margin:0 0 20px}
+nav.docs a.home{font-weight:700;flex-basis:100%}   /* the way back to the app, on its own line above the other legal pages */
 footer{max-width:46rem;margin:18px auto 0;color:var(--muted);font-size:13px;text-align:center}
 @media (max-width:520px){main{padding:20px 16px}h1{font-size:25px}}

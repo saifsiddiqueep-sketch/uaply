@@ -125,6 +125,9 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot }) => {
     check(name, did === expect, "did: " + did);
   };
   await ev("(()=>{const d=" + F + ";d.scrollingElement.scrollTop=0;document.scrollingElement.scrollTop=0})()"); await sleep(300);
+  // on a short phone the notices above the deck (the location box) leave only the card's top edge between them and Pass / Undo /
+  // Apply, which now always stay in sight above the bottom bar: a thumb first scrolls the page to the card, so do the same
+  await ev("(()=>{const d=" + F + ",m=d.getElementById('main'),c=d.querySelector('.card.top');if(m&&c)m.scrollTop+=c.getBoundingClientRect().top-m.getBoundingClientRect().top})()"); await sleep(300);
   await swipe("a long straight swipe right applies", 200, 0, 12, 16, false, "applied");
   await swipe("a long straight swipe left passes", -200, 0, 12, 16, false, "passed");
   await swipe("a quick short flick left (80px) passes", -80, 0, 4, 12, false, "passed");
