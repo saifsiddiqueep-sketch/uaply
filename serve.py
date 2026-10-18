@@ -168,6 +168,17 @@ def too_fast(path, ip):
         _swipes[(path, ip)] = hits
         return False
 
+
+def dns_check():
+    """Whether sign-up asks DNS if the address's domain can receive mail (auth_api.mail_domain_status). On by default only where it
+    matters: a public server that really sends the code, where a dead domain would only bounce and hurt the sender's reputation.
+    UAPLY_DNS_CHECK=on or off overrides that (tests use on, with UAPLY_DNS_SERVER pointing at a stand-in resolver)."""
+    force = (os.environ.get("UAPLY_DNS_CHECK") or "").strip().lower()
+    if force in ("on", "off"):
+        return force == "on"
+    return PUBLIC and bool(uaply_api.mail_ready())
+
+
 class H(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *a, **k):
         super().__init__(*a, directory=root, **k)
@@ -418,7 +429,8 @@ class H(http.server.SimpleHTTPRequestHandler):
             return self._send(429, {"error": "You're swiping faster than UAply can keep up. Wait a moment and try again.", "code": "slow_down"})
         try:
             if p == "/api/auth/signup":
-                code, out, token = auth_api.signup(payload.get("email"), payload.get("password"), ip, payload.get("agree"))
+                code, out, token = auth_api.signup(payload.get("email"), payload.get("password"), ip, payload.get("agree"), dns_check(),
+                                                   auth_api.SIGNUPS_PER_HOUR if PUBLIC else None)
                 if token:                                        # a new password account must prove it owns the email: send the first code
                     uid, addr, digits = auth_api.issue_code_for_token(token)
                     out = dict(out, delivery=uaply_api.send_verification_mail(uid, addr, digits))
@@ -470,7 +482,8 @@ class H(http.server.SimpleHTTPRequestHandler):
                 msg = {"agree": "Tick the box to confirm you are 18 or older and agree to the Terms and Privacy Policy, then choose Google again.",
                        "failed": "Google sign-in could not be checked. Try again.", "unverified": "Google says that email address is not verified, so UAply cannot use it.",
                        "off": "Google sign-in is not switched on.", "limited": "Too many tries. Wait a minute and try again.",
-                       "email_in_use": "That email already has a UAply account. Log in with your email and password instead."}
+                       "email_in_use": "That email already has a UAply account. Log in with your email and password instead.",
+                       "disposable": auth_api.KEEP_MSG}
                 err, ident = google_auth.verify_credential(payload.get("credential"), ip)
                 if not err:
                     err, user, token = auth_api.oauth_login(ident["provider"], ident["subject"], ident["email"], payload.get("agree") is True, ident.get("trusted", True))

@@ -1543,6 +1543,14 @@ function apply(w,host){
       readFile(g,true,function(txt){var r=importBackup(txt);msg(r===true?"Restored.":r);if(r===true)renderAcct("data")});
     }
   });
+  acctSec.addEventListener("input",function(e){
+    /* sign-up: a +tag makes a separate account (docs/ACCOUNTS.md). Said from the typed text alone: asking the server whether the plain
+       address has an account would tell anyone who has an account */
+    if(e.target.id!=="sEmail")return;
+    var nt=d.getElementById("sEmailNote");if(!nt)return;
+    var v=(e.target.value||"").trim(),at=v.lastIndexOf("@");
+    nt.hidden=!(at>0&&v.slice(0,at).indexOf("+")>=0);
+  });
   acctSec.addEventListener("click",function(e){
     var bb=e.target.closest("[data-bill]");
     if(bb){billingAction(bb.getAttribute("data-bill"),bb);return}
@@ -1682,7 +1690,7 @@ function apply(w,host){
     SRV.google=!!(j&&j.google);SRV.googleClientId=(j&&j.googleClientId)||"";SRV.googleRedirect=!!(j&&j.googleRedirect);SRV.canEmail=!!(j&&j.canEmail);SRV.mailKnown=!!j;
     if((SRV.google||!SRV.canEmail)&&!acctSec.hidden&&sub.prof==="account")redrawAcct();
   }).catch(function(){});
-  var GERR={agree:"Tick the box to confirm you are 18 or older and agree to the Terms and Privacy Policy, then try Google again.",cancelled:"Google sign-in was cancelled.",expired:"That Google sign-in expired or could not be checked. Try again.",failed:"Google sign-in did not work. Try again, or use your email and password.",unverified:"Google says that email address is not verified, so UAply cannot use it.",off:"Google sign-in is not switched on.",email_in_use:"That email already has a UAply account. Log in with your email and password instead."};
+  var GERR={agree:"Tick the box to confirm you are 18 or older and agree to the Terms and Privacy Policy, then try Google again.",cancelled:"Google sign-in was cancelled.",expired:"That Google sign-in expired or could not be checked. Try again.",failed:"Google sign-in did not work. Try again, or use your email and password.",unverified:"Google says that email address is not verified, so UAply cannot use it.",off:"Google sign-in is not switched on.",email_in_use:"That email already has a UAply account. Log in with your email and password instead.",disposable:"Please use an email address you'll keep — temporary addresses can't be used for job applications."};
   function googleReturn(){
     var tp=null,q=null;
     try{tp=w.top;q=new w.URLSearchParams(tp.location.search)}catch(e){return}
@@ -1825,7 +1833,7 @@ function apply(w,host){
       '</div>';
     var up=AUI.sMode!=="in";
     return '<div class="plan" style="display:flex;flex-direction:column;gap:10px"><b>'+(up?"Create your UAply account":"Log in to UAply")+'</b>'+
-      '<div class="field"><label for="sEmail">Email</label><input type="text" id="sEmail" inputmode="email" autocomplete="email" maxlength="200" placeholder="you@gmail.com"></div>'+
+      '<div class="field"><label for="sEmail">Email</label><input type="text" id="sEmail" inputmode="email" autocomplete="email" maxlength="200" placeholder="you@gmail.com">'+(up?'<small id="sEmailNote" hidden>Each address is its own UAply account: one with a +tag is a separate account from the plain address, even though the mail lands in the same inbox. Use the address you want to sign in with.</small>':'')+'</div>'+
       '<div class="field"><label for="sPw">Password</label><input type="password" id="sPw" autocomplete="'+(up?"new-password":"current-password")+'" maxlength="128">'+(up?'<small>At least 8 characters.</small>':'')+'</div>'+
       (up?'<div class="field"><label for="sPw2">Confirm password</label><input type="password" id="sPw2" autocomplete="new-password" maxlength="128"></div>'+
         '<div class="checks"><label><input type="checkbox" id="sAgree"> I am 18 or older and agree to the <a href="'+LB+'terms.html" target="_blank" rel="noopener noreferrer">Terms</a> and <a href="'+LB+'privacy.html" target="_blank" rel="noopener noreferrer">Privacy Policy</a></label></div>':'')+

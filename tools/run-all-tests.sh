@@ -113,6 +113,7 @@ PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/pub" HOST=0.0.0.0 OWNER_PASSWORD=ownerpw UAPL
 wait_port 18772
 run "cookies, headers, owner pages, path traversal, limits" python tools/test-public.py 18772
 run "sign-in as the live site runs it (uaply.net, www, onrender.com): cookies, same-site check, Google tokens and linking, restart, lock-out, codes" python tools/test-public-auth.py 18780
+run "one address, one account: letter case, look-alikes, races, Google linking, delete and sign up again, throwaway and dead domains, the audit tool" python tools/test-accounts.py 18800
 
 step "Real email sending (against a stand-in mail server)"
 PIDS="$PIDS $(start python tools/fake-smtp.py 12525 "$TMP/smtp/mail.jsonl")"

@@ -189,6 +189,9 @@ def checkout(user, plan, site):
               "success_url": site + "/?billing=success", "cancel_url": site + "/?billing=cancel",
               "client_reference_id": str(user["id"]), "metadata[uaply_user]": str(user["id"]), "metadata[plan]": plan,
               "subscription_data[metadata][uaply_user]": str(user["id"]), "subscription_data[metadata][plan]": plan,
+              # the account number alone is not enough to find the account again: if the accounts file were ever lost (a host with no
+              # disk) numbers start again at 1 and would name someone else, so the address goes along and must match (_uid)
+              "metadata[uaply_email]": user["email"], "subscription_data[metadata][uaply_email]": user["email"],
               "allow_promotion_codes": "true", "billing_address_collection": "auto",
               "payment_method_options[card][request_three_d_secure]": "automatic"}
     if r.get("stripe_customer"):
@@ -268,12 +271,26 @@ def _plan_for_price(price):
     return "plus" if pid and pid == s.get("price_plus") else "pro" if pid and pid == s.get("price_pro") else ""
 
 
+def _ref_uid(ref, meta):
+    """The account a Stripe object's account number names, or None. When the object also carries the account's address (every checkout
+    since uaply_email was added), the number counts only if that account still has that address: a number reused after the accounts file
+    was lost, or after the account was deleted, never hands one person's subscription to another."""
+    ref = str(ref or "")
+    row = auth_api.billing_row(int(ref)) if ref.isdigit() else None
+    if not row:
+        return None
+    want = (meta or {}).get("uaply_email") if isinstance(meta, dict) else None
+    if want and auth_api.canonical_email(str(want)) != row["email"]:
+        return None
+    return int(ref)
+
+
 def _uid(meta, customer, sub_id, user_id=None):
     if user_id:
         return user_id
-    ref = str((meta or {}).get("uaply_user", ""))
-    if ref.isdigit() and auth_api.billing_row(int(ref)):
-        return int(ref)
+    uid = _ref_uid((meta or {}).get("uaply_user", ""), meta)
+    if uid:
+        return uid
     return auth_api.find_billing(customer or "", sub_id or "")
 
 
@@ -340,7 +357,7 @@ def webhook(raw, header):
         return 400, {"error": "bad body"}
     if kind == "checkout.session.completed" and obj.get("mode") == "subscription":
         ref = obj.get("client_reference_id") or ""
-        uid = int(ref) if str(ref).isdigit() and auth_api.billing_row(int(ref)) else None
+        uid = _ref_uid(ref, obj.get("metadata"))
         if uid and obj.get("customer"):
             auth_api.set_billing(uid, stripe_customer=obj["customer"], stripe_sub=obj.get("subscription") or "")
         if obj.get("subscription"):

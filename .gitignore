@@ -5,6 +5,7 @@ uaply-config.json.*
 uaply-partners.json.*
 *.bak
 data/
+!tools/data/
 
 # generated
 __pycache__/

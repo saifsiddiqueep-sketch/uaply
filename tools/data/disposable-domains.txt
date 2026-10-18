@@ -1,0 +1,156 @@
+# Throwaway ("temporary", "10-minute") email domains that cannot be used to make a UAply account.
+#
+# Why: an application, its receipt and the employer's reply go to this address, so it must be one the person keeps. A sign-up with one of
+# these domains (or a domain under one, like x.mailinator.com) is refused with: "Please use an email address you'll keep — temporary
+# addresses can't be used for job applications." Read by auth_api.disposable_domains(); edits apply without a restart.
+#
+# How to edit: one domain per line, lower case, no "@". "#" starts a comment. Repeats are harmless (they are removed when read).
+# Never add a domain real people keep for years (gmail.com, yahoo.com, outlook.com, a school's or employer's domain): only services whose
+# whole point is a mailbox that disappears. Forwarding alias services (SimpleLogin, Firefox Relay, DuckDuckGo, iCloud Hide My Email,
+# 33mail, Burner Mail) are left out on purpose: the mail reaches the person's real inbox.
+#
+# Source: every domain below was checked, on October 17, 2026, to be in the community list
+#   https://github.com/disposable-email-domains/disposable-email-domains  (file disposable_email_blocklist.conf, CC0-1.0; the list PyPI
+#   uses to refuse throwaway addresses; each entry there needs evidence that the service hands out throwaway inboxes). Only that
+#   conservative list is used, never the 100,000-entry auto-generated ones (they flag privacy relays and obscure real domains).
+#   The community list has about 4,000 entries; these are the best-known services. To use all of it, paste its lines below.
+# Privacy relays (tools/data/relay-domains.txt) are checked first and always pass, even if a relay domain is ever added here.
+
+# Mailinator and its other domains
+mailinator.com
+mailinator.net
+mailinator2.com
+binkmail.com
+bobmail.info
+chammy.info
+devnullmail.com
+letthemeatspam.com
+notmailinator.com
+reallymymail.com
+safetymail.info
+sogetthis.com
+spamherelots.com
+suremail.info
+thisisnotmyrealemail.com
+tradermail.info
+veryrealemail.com
+zippymail.info
+
+# Guerrilla Mail and its other domains
+guerrillamail.com
+guerrillamail.net
+guerrillamail.org
+guerrillamail.biz
+guerrillamail.de
+guerrillamail.info
+guerrillamailblock.com
+grr.la
+pokemail.net
+sharklasers.com
+spam4.me
+
+# 10 Minute Mail and similar timers
+10minutemail.com
+10minutemail.net
+10minutemail.co.uk
+20minutemail.com
+minuteinbox.com
+
+# Temp Mail and similar
+temp-mail.org
+tempail.com
+tempinbox.com
+tempmailo.com
+tempr.email
+tempemail.net
+tempomail.fr
+emltmp.com
+boximail.com
+mail.tm
+mytemp.email
+mohmal.com
+moakt.com
+1secmail.com
+1secmail.net
+1secmail.org
+esiix.com
+wwjmp.com
+xojxe.com
+yoggm.com
+
+# YOPmail and its other domains
+yopmail.com
+yopmail.fr
+yopmail.net
+jetable.fr.nf
+courriel.fr.nf
+moncourrier.fr.nf
+monemail.fr.nf
+monmail.fr.nf
+
+# Nada
+getnada.com
+
+# Dispostable, Discard, Trashmail, Maildrop and other throwaway inboxes
+dispostable.com
+discard.email
+discardmail.com
+discardmail.de
+trashmail.com
+trashmail.de
+trashmail.net
+trashmail.me
+trashmail.io
+trash-mail.com
+trash-me.com
+mytrashmail.com
+mailmetrash.com
+maildrop.cc
+mailnesia.com
+mailcatch.com
+mailsac.com
+mailpoof.com
+mailforspam.com
+mail7.io
+inboxkitten.com
+dropmail.me
+emailondeck.com
+emailfake.com
+fakeinbox.com
+fakemail.net
+getairmail.com
+harakirimail.com
+jetable.org
+mintemail.com
+anonbox.net
+anonymbox.com
+byom.de
+dodgit.com
+mailnull.com
+spambox.us
+spambog.com
+spamfree24.org
+spamdecoy.net
+spaml.de
+throwawaymail.com
+throwam.com
+trbvm.com
+kurzepost.de
+proxymail.eu
+rcpt.at
+wegwerfmail.de
+wegwerfmail.net
+wegwerfadresse.de
+
+# Fake Mail Generator's domains
+fakemailgenerator.com
+armyspy.com
+cuvox.de
+dayrep.com
+einrot.com
+fleckens.hu
+gustr.com
+jourrapide.com
+rhyta.com
+superrito.com
+teleworm.us
