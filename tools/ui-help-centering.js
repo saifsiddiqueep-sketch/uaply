@@ -17,10 +17,13 @@ module.exports = async ({ ev, sleep, nav, shot }) => {
   const sub = (k) => ev("(()=>{const d=" + F + ";d.getElementById('nb-prof').click();const it=d.querySelector('.nwrap[data-k=prof] .nitem[data-v=" + k + "]');if(it)it.click();return !!it})()");
   // the screen's content block (#acctSec) inside the app column (#main): its left and right margins
   const margins = () => ev("JSON.stringify((()=>{const d=" + F + ";const e=d.getElementById('acctSec');if(!e||e.hidden)return null;const m=e.closest('main')||d.body;const c=m.getBoundingClientRect(),cs=getComputedStyle(m),r=e.getBoundingClientRect();return {w:Math.round(r.width),left:Math.round(r.left-c.left-parseFloat(cs.paddingLeft)),right:Math.round(c.left+m.clientLeft+m.clientWidth-parseFloat(cs.paddingRight)-r.right)}})())").then(JSON.parse);
+  // centering is a sandbox switch for now (UAplyOpts.centerAcct): on dev the screens are left as they were
+  const mid = JSON.parse(await ev("JSON.stringify(" + F + ".documentElement.classList.contains('acctMid'))"));
+  if (W >= 700) console.log("centering switch (sandbox only): " + (mid ? "on" : "off"));
   for (const k of ["plan", "account"]) {
     await sub(k); await sleep(900);
     const b = await margins();
-    if (W >= 700) check(k + " centered at " + W + "px", !!b && Math.abs(b.left - b.right) <= 4, JSON.stringify(b));
+    if (W >= 700 && mid) check(k + " centered at " + W + "px", !!b && Math.abs(b.left - b.right) <= 4, JSON.stringify(b));
     await shot("shot-" + TAG + "-" + k + "-" + W + "x" + H + ".png");
   }
   console.log(bad ? bad + " FAILED" : "ALL PASS");
