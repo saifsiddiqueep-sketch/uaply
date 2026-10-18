@@ -161,7 +161,8 @@ YRS_RE = re.compile(r"(\d{1,2})\+?\s*(?:or more\s*)?(?:years|yrs)", re.I)
 
 _cache = {}
 _lock = threading.Lock()
-_disk = {"loaded": False, "dirty": False}
+_disk = {"loaded": False, "dirty": False, "filled": False}   # filled: a saved list was loaded, or the first fill of an empty disk is done
+_load_lock = threading.Lock()
 hide_errors = False                # serve.py sets this on a hosted server: the public job list then says "unavailable right now" instead of a raw network error
 DISK_MAX_AGE = 24 * 3600          # never trust a saved copy older than a day
 CACHE_VERSION = 8                # raise this whenever the rules for keeping or classifying postings change: older saved copies are then ignored
@@ -174,9 +175,13 @@ def _cache_file():
 
 
 def _load_disk():
-    if _disk["loaded"]:
-        return
-    _disk["loaded"] = True
+    with _load_lock:                   # a second request arriving meanwhile waits for the saved list instead of finding the cache empty
+        if not _disk["loaded"]:
+            _read_disk()
+            _disk["loaded"] = True
+
+
+def _read_disk():
     try:
         with open(_cache_file(), encoding="utf-8") as f:
             saved = json.load(f)
@@ -188,32 +193,54 @@ def _load_disk():
                 kind, token, name = key.split("|", 2)
                 if isinstance(v, dict) and isinstance(v.get("jobs"), list) and now - float(v.get("at", 0)) < DISK_MAX_AGE:
                     _cache.setdefault((kind, token, name), {"at": float(v["at"]), "jobs": v["jobs"], "status": str(v.get("status", ""))})
+            if _cache:
+                _disk["filled"] = True
     except Exception:
         pass
+
+
+_save_lock = threading.Lock()      # one save at a time: background refreshes finish together, and two writers of the same .tmp file could
+#                                    interleave into a broken saved list (or, on Windows, fail and lose the save)
 
 
 def _save_disk():
     if not _disk["dirty"]:
         return
-    try:
-        with _lock:
-            snap = {"|".join(k): {"at": v["at"], "jobs": v["jobs"], "status": v["status"]} for k, v in _cache.items()}
-            snap["_version"] = CACHE_VERSION
-            _disk["dirty"] = False
-        path = _cache_file()
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        tmp = path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(snap, f)
-        os.replace(tmp, path)
-    except Exception as e:                      # jobs still work from memory; only a restart would have to wait for every feed again
-        sys.stderr.write("[uaply] could not save the job cache: %s: %s\n" % (type(e).__name__, str(e)[:200]))
+    with _save_lock:
+        try:
+            with _lock:
+                if not _disk["dirty"]:
+                    return
+                snap = {"|".join(k): {"at": v["at"], "jobs": v["jobs"], "status": v["status"]} for k, v in _cache.items()}
+                snap["_version"] = CACHE_VERSION
+                _disk["dirty"] = False
+            path = _cache_file()
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            tmp = path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(snap, f)
+            os.replace(tmp, path)
+        except Exception as e:                  # jobs still work from memory; only a restart would have to wait for every feed again
+            _disk["dirty"] = True               # so the next refresh tries again
+            sys.stderr.write("[uaply] could not save the job cache: %s: %s\n" % (type(e).__name__, str(e)[:200]))
+
+
+MAX_FEED_BYTES = 40 * 1000 * 1000    # the largest board (Databricks) answered 9.9 MB on October 17, 2026; anything past this is refused, not parsed
+FEED_PARALLEL = 3                    # boards read and parsed at the same time. Each costs about 4x its size while it is parsed (the bytes, the text,
+#                                      then Python's objects), and memory a process has used is mostly not given back: reading all of them at once
+#                                      took the live server (512 MB plan) from 45 MB to 275 MB, and to 491 MB when two rounds overlapped (Oct 17).
+_feed_slots = threading.BoundedSemaphore(FEED_PARALLEL)
 
 
 def _get(url, headers=None):
     req = urllib.request.Request(url, headers=dict({"User-Agent": UA, "Accept": "application/json"}, **(headers or {})))
     with urllib.request.urlopen(req, timeout=20) as r:
-        return json.loads(r.read().decode("utf-8", "replace"))
+        body = r.read(MAX_FEED_BYTES + 1)
+    if len(body) > MAX_FEED_BYTES:
+        raise ValueError("the answer is larger than %d MB" % (MAX_FEED_BYTES // 1000000))
+    text = body.decode("utf-8", "replace")
+    del body                              # the bytes go before the parse starts: one copy fewer of a board held at the peak
+    return json.loads(text)
 
 
 KEY_RE = re.compile(r"^[A-Za-z0-9+/=_.-]{16,200}$")      # what a feed's API key looks like (USAJOBS: about 44 letters, digits, + / =)
@@ -324,30 +351,30 @@ def _salary(*texts):
     return [0, 0]
 
 
-def _fetch_raw(kind, token, name):
-    """Return a list of raw postings: dicts with id, title, company, loc, remote, text, url, salary_text."""
-    out = []
+def _iter_raw(kind, token, name):
+    """The raw postings of one board, one at a time: dicts with id, title, company, loc, remote, text, url, salary_text. A generator, so a
+    board's postings are worked through as they are read instead of all being held (each with up to 20,000 characters of text) first."""
     if kind == "greenhouse":
         for j in _get("https://boards-api.greenhouse.io/v1/boards/%s/jobs?content=true" % token).get("jobs", []):
-            out.append(dict(id=j["id"], title=j["title"], company=j.get("company_name") or name,
-                            loc=(j.get("location") or {}).get("name", ""), remote=None,
-                            text=_text(j.get("content")), url=j["absolute_url"], salary_text="",
-                            posted=_ts(j.get("first_published") or j.get("updated_at"))))
+            yield dict(id=j["id"], title=j["title"], company=j.get("company_name") or name,
+                       loc=(j.get("location") or {}).get("name", ""), remote=None,
+                       text=_text(j.get("content")), url=j["absolute_url"], salary_text="",
+                       posted=_ts(j.get("first_published") or j.get("updated_at")))
     elif kind == "lever":
         for j in _get("https://api.lever.co/v0/postings/%s?mode=json" % token):
             cat = j.get("categories") or {}
-            out.append(dict(id=j["id"], title=j["text"], company=name, loc=cat.get("location", "") or "",
-                            remote=(j.get("workplaceType") == "remote") or None,
-                            text=_text((j.get("descriptionPlain") or "") + " " + (j.get("additionalPlain") or "")),
-                            url=j["hostedUrl"], salary_text="", posted=_ts(j.get("createdAt"))))
+            yield dict(id=j["id"], title=j["text"], company=name, loc=cat.get("location", "") or "",
+                       remote=(j.get("workplaceType") == "remote") or None,
+                       text=_text((j.get("descriptionPlain") or "") + " " + (j.get("additionalPlain") or "")),
+                       url=j["hostedUrl"], salary_text="", posted=_ts(j.get("createdAt")))
     elif kind == "ashby":
         for j in _get("https://api.ashbyhq.com/posting-api/job-board/%s" % token).get("jobs", []):
             if j.get("isListed") is False:
                 continue
-            out.append(dict(id=j["id"], title=j["title"], company=name, loc=j.get("location", "") or "",
-                            remote=bool(j.get("isRemote")) or j.get("workplaceType") == "Remote" or None,
-                            text=_text(j.get("descriptionPlain") or j.get("descriptionHtml")),
-                            url=j["jobUrl"], salary_text="", posted=_ts(j.get("publishedAt"))))
+            yield dict(id=j["id"], title=j["title"], company=name, loc=j.get("location", "") or "",
+                       remote=bool(j.get("isRemote")) or j.get("workplaceType") == "Remote" or None,
+                       text=_text(j.get("descriptionPlain") or j.get("descriptionHtml")),
+                       url=j["jobUrl"], salary_text="", posted=_ts(j.get("publishedAt")))
     elif kind == "workable":
         # Workable's public jobs feed (no key): https://www.workable.com/api/accounts/{subdomain}?details=true lists the account's published jobs
         # with their descriptions (help.workable.com/hc/en-us/articles/115012771647, "Build a custom careers page using Workable's API"). It may
@@ -358,19 +385,19 @@ def _fetch_raw(kind, token, name):
             locs = [l for l in (j.get("locations") or []) if isinstance(l, dict) and not l.get("hidden")]
             loc = "; ".join(p for p in (", ".join(x for x in (l.get("city"), l.get("region"), l.get("country")) if x) for l in locs) if p)
             loc = loc or ", ".join(x for x in (j.get("city"), j.get("state"), j.get("country")) if x)      # one place per posting in older replies
-            out.append(dict(id=j["shortcode"], title=j["title"], company=name, loc=loc, remote=True if j.get("telecommuting") is True else None,
-                            text=_text(j.get("description") or "") + " " + _text(j.get("requirements") or ""), url=j.get("url") or j.get("shortlink") or "",
-                            salary_text="", posted=_ts(j.get("published_on") or j.get("created_at")),
-                            force_type="parttime" if re.search(r"part", j.get("employment_type") or "", re.I) else
-                                       ("internship" if re.search(r"intern", j.get("employment_type") or "", re.I) else None)))
+            yield dict(id=j["shortcode"], title=j["title"], company=name, loc=loc, remote=True if j.get("telecommuting") is True else None,
+                       text=_text(j.get("description") or "") + " " + _text(j.get("requirements") or ""), url=j.get("url") or j.get("shortlink") or "",
+                       salary_text="", posted=_ts(j.get("published_on") or j.get("created_at")),
+                       force_type="parttime" if re.search(r"part", j.get("employment_type") or "", re.I) else
+                                  ("internship" if re.search(r"intern", j.get("employment_type") or "", re.I) else None))
     elif kind == "remotive":
         for j in _get("https://remotive.com/api/remote-jobs?category=%s&limit=60" % token).get("jobs", []):
             loc = j.get("candidate_required_location") or ""
             if not re.search(r"usa|united states|worldwide|americas|north america|anywhere", loc, re.I):
                 continue
-            out.append(dict(id=j["id"], title=j["title"], company=j["company_name"], loc="Remote (%s)" % loc, remote=True,
-                            text=_text(j.get("description")) + " " + " ".join(j.get("tags") or []),
-                            url=j["url"], salary_text=j.get("salary") or "", posted=_ts(j.get("publication_date"))))
+            yield dict(id=j["id"], title=j["title"], company=j["company_name"], loc="Remote (%s)" % loc, remote=True,
+                       text=_text(j.get("description")) + " " + " ".join(j.get("tags") or []),
+                       url=j["url"], salary_text=j.get("salary") or "", posted=_ts(j.get("publication_date")))
     elif kind == "jobicy":
         data = _get("https://jobicy.com/api/v2/remote-jobs?count=30&geo=usa&industry=%s" % token)
         for j in data.get("jobs", []):
@@ -379,11 +406,11 @@ def _fetch_raw(kind, token, name):
             if j.get("salaryPeriod") == "yearly" and j.get("salaryCurrency") == "USD" and isinstance(lo, (int, float)) \
                     and isinstance(hi, (int, float)) and 20000 <= lo < hi <= 600000:
                 sal = [int(lo), int(hi)]
-            out.append(dict(id=j["id"], title=j["jobTitle"], company=j["companyName"],
-                            loc="Remote (%s)" % re.sub(r"\s+", " ", j.get("jobGeo") or "USA").strip(), remote=True,
-                            text=_text(j.get("jobDescription")), url=j["url"], salary_text="", sal=sal,
-                            posted=_ts(j.get("pubDate")),
-                            fallback=(j.get("jobIndustry") or [None])[0]))
+            yield dict(id=j["id"], title=j["jobTitle"], company=j["companyName"],
+                       loc="Remote (%s)" % re.sub(r"\s+", " ", j.get("jobGeo") or "USA").strip(), remote=True,
+                       text=_text(j.get("jobDescription")), url=j["url"], salary_text="", sal=sal,
+                       posted=_ts(j.get("pubDate")),
+                       fallback=(j.get("jobIndustry") or [None])[0])
     elif kind == "muse":
         key = feed_keys().get("muse")         # registered key (The Muse: required beyond testing; 3,600 requests an hour instead of 500)
         for page in (1, 2):
@@ -393,16 +420,20 @@ def _fetch_raw(kind, token, name):
                 locs = [l.get("name", "") for l in j.get("locations", [])]
                 loc = ", ".join(locs[:2]) + (" +%d more" % (len(locs) - 2) if len(locs) > 2 else "")
                 cats = [c.get("name") for c in j.get("categories", []) if c.get("name")]
-                out.append(dict(id=j["id"], title=j["name"], company=j["company"]["name"], loc=loc or "Not listed",
-                                remote=any(re.search("remote|flexible", l, re.I) for l in locs) or None,
-                                text=_text(j.get("contents")), url=j["refs"]["landing_page"], salary_text="",
-                                fallback=cats[0] if cats else None, posted=_ts(j.get("publication_date")),
-                                force_type="internship" if token == "Internship" else None))
+                yield dict(id=j["id"], title=j["name"], company=j["company"]["name"], loc=loc or "Not listed",
+                           remote=any(re.search("remote|flexible", l, re.I) for l in locs) or None,
+                           text=_text(j.get("contents")), url=j["refs"]["landing_page"], salary_text="",
+                           fallback=cats[0] if cats else None, posted=_ts(j.get("publication_date")),
+                           force_type="internship" if token == "Internship" else None)
     elif kind == "usajobs":
-        out = _usajobs(token)
+        yield from _usajobs(token)
     elif kind == "smartrecruiters":
-        out = _smartrecruiters(token, name)
-    return out
+        yield from _smartrecruiters(token, name)
+
+
+def _fetch_raw(kind, token, name):
+    """All raw postings of one board as a list (tools and tests; the job list itself reads them one at a time through _iter_raw)."""
+    return list(_iter_raw(kind, token, name))
 
 
 _sr_desc = {}            # (company, posting id) -> {"at", "released", "detail"}: each description is read once a day at most
@@ -418,6 +449,10 @@ def _sr_detail(token, pid, released):
     at = time.time()
     try:
         d = _get("https://api.smartrecruiters.com/v1/companies/%s/postings/%s" % (urllib.parse.quote(token, safe=""), urllib.parse.quote(pid, safe="")))
+        if isinstance(d, dict):                  # keep only what _smartrecruiters reads (120 full records stayed in memory all day before)
+            secs = ((d.get("jobAd") or {}).get("sections")) or {}
+            d = {"jobAd": {"sections": {k: {"text": (secs.get(k) or {}).get("text") or ""} for k in ("jobDescription", "qualifications", "additionalInformation")}},
+                 "compensation": d.get("compensation") or {}}
     except Exception:
         d = c["detail"] if c else None           # keep the last description if this read fails, and try again at the next hourly refresh
         at = time.time() - SR_DESC_TTL + TTL["smartrecruiters"] - 60
@@ -580,7 +615,7 @@ def _normalize(raw, kind, name, board=None):
     return out
 
 
-_refreshing = set()
+_refreshing = {}          # source -> threading.Event, set when the read in progress is done (see _start_refresh)
 
 
 def known_webhook(job_id):
@@ -616,29 +651,67 @@ def known_contact(job_id):
     return ""
 
 
-def _refresh_in_background(src):
+FIRST_WAIT = 90                  # seconds the very first request on an empty disk waits for a board (every later request waits for none)
+_failed = {}                     # source -> (when, status) of a read that failed with no copy to fall back on: not tried again for 2 minutes
+
+
+def _trim():
+    """Hand memory freed after reading the boards back to the system (Linux, glibc). Without it the process keeps its high-water mark."""
+    try:
+        import ctypes
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except Exception:
+        pass
+
+
+def _refresh_in_background(src, done):
     try:
         _fetch_source(src)
         _save_disk()
     finally:
         with _lock:
-            _refreshing.discard(src)
+            _refreshing.pop(src, None)
+            last = not _refreshing
+        done.set()
+        if last:
+            _trim()
+
+
+def _start_refresh(src):
+    """Read one board in a background thread unless it is already being read. Call with _lock held. Returns the event set when it is done.
+    Every read of a board goes through here, so a board is never read twice at once (on October 17 every visitor who arrived during the first
+    fill read the missing boards again, alongside the warm-up)."""
+    ev = _refreshing.get(src)
+    if ev is None:
+        ev = _refreshing[src] = threading.Event()
+        threading.Thread(target=_refresh_in_background, args=(src, ev), daemon=True).start()
+    return ev
 
 
 def _load_source(src):
-    """Serve what is cached right away, even if stale, and refresh it in the background.
-    Only the very first request for a source waits for the network."""
+    """Serve what is cached right away, even if stale, and refresh it in the background. Never makes a visitor wait for a board while the
+    saved list has anything to show (a board that is new, or failed last time, shows up at the next request). Only on an empty disk (the
+    very first start) does the first request wait for the boards, as there is nothing else to show."""
     ttl = TTL.get(src[0], DEFAULT_TTL)
     if src[0] == "usajobs" and not feed_keys().get("usajobs"):
         return _fetch_source(src)                # no key: skipped right away, never served from an older copy
     with _lock:
         c = _cache.get(src)
-        if c and time.time() - c["at"] >= ttl and src not in _refreshing:
-            _refreshing.add(src)
-            threading.Thread(target=_refresh_in_background, args=(src,), daemon=True).start()
-    if c:
-        return c["jobs"], c["status"]
-    return _fetch_source(src)
+        if c:
+            if time.time() - c["at"] >= ttl:
+                _start_refresh(src)
+            return c["jobs"], c["status"]
+        f = _failed.get(src)
+        if f and time.time() - f[0] < 120:
+            return [], f[1]
+        ev = _start_refresh(src)
+        if _disk["filled"]:                      # the saved list has the other boards: do not hold this visitor up for this one
+            return [], "loading"
+    ev.wait(FIRST_WAIT)
+    with _lock:
+        c = _cache.get(src)
+        f = _failed.get(src)
+    return (c["jobs"], c["status"]) if c else ([], f[1] if f else "loading")
 
 
 def _fetch_source(src):
@@ -650,17 +723,18 @@ def _fetch_source(src):
         return [], "no key"                     # skipped, nothing fetched or cached: the source starts the moment the owner adds the key
     try:
         student, other = [], []
-        for raw in _fetch_raw(kind, token, name):
-            # only the first STUDENT_PER_SOURCE student roles and PER_SOURCE others can be kept below, so a posting past those is not worked
-            # through at all (a big board lists hundreds; reading every one cost about 35 CPU seconds, a minute or more on a small host)
-            bucket, cap = (other, PER_SOURCE) if _type(raw) == "job" else (student, STUDENT_PER_SOURCE)
-            if kind in KEEP:                                     # the City and USAJOBS keep up to 120 (student roles first), so read them all
-                cap = KEEP[kind]
-            if len(bucket) >= cap:
-                continue
-            j = _normalize(raw, kind, name, token)
-            if j:
-                (student if j["type"] in ("internship", "coop", "parttime") else other).append(j)
+        with _feed_slots:                        # at most FEED_PARALLEL boards downloaded and parsed at once (memory, see FEED_PARALLEL)
+            for raw in _iter_raw(kind, token, name):
+                # only the first STUDENT_PER_SOURCE student roles and PER_SOURCE others can be kept below, so a posting past those is not worked
+                # through at all (a big board lists hundreds; reading every one cost about 35 CPU seconds, a minute or more on a small host)
+                bucket, cap = (other, PER_SOURCE) if _type(raw) == "job" else (student, STUDENT_PER_SOURCE)
+                if kind in KEEP:                                     # the City and USAJOBS keep up to 120 (student roles first), so read them all
+                    cap = KEEP[kind]
+                if len(bucket) >= cap:
+                    continue
+                j = _normalize(raw, kind, name, token)
+                if j:
+                    (student if j["type"] in ("internship", "coop", "parttime") else other).append(j)
         # keep the student-type roles first (a board can list hundreds of senior roles ahead of its internships)
         if kind in KEEP:
             jobs = (student + other)[:KEEP[kind]]
@@ -678,9 +752,12 @@ def _fetch_source(src):
         with _lock:
             if c:
                 c["at"] = time.time() - ttl + 120   # retry in two minutes
+            else:
+                _failed[src] = (time.time(), status)   # nothing to fall back on: say so, and try again in two minutes (not at every request)
         return jobs, status
     with _lock:
         _cache[src] = {"at": time.time(), "jobs": jobs, "status": status}
+        _failed.pop(src, None)
         _disk["dirty"] = True
     return jobs, status
 
@@ -898,8 +975,9 @@ def get_jobs():
     _load_disk()
     allowed = feeds_allowed()
     sources = [s for s in SOURCES if s[0] in allowed]
-    with ThreadPoolExecutor(max_workers=16) as ex:
+    with ThreadPoolExecutor(max_workers=max(1, len(sources))) as ex:     # each mostly waits (the reads themselves are limited by _feed_slots)
         results = list(ex.map(_load_source, sources))
+    _disk["filled"] = True
     jobs, seen, summary = [], set(), {}
     for pj in partner_jobs():
         seen.add(pj["id"])

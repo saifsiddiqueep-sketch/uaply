@@ -54,6 +54,7 @@ run "Connect Gmail form" python tools/test-setup.py
 
 step "Swipe-right emails (content, test label, safety, real send)"
 run "receipt and owner copy emails" python tools/test-emails.py
+run "email as the mail service sees it: headers, daily quota (250/300), refusals, held mail, bounce webhook" python tools/test-mail-limits.py 2538 18799
 run "help requests from the assistant reach the support inbox" python tools/test-support.py
 run "applications go straight into employers' hiring systems (Greenhouse, Lever)" python tools/test-ats.py
 run "applications go straight into an employer's Ashby" python tools/test-ats-ashby.py
@@ -61,12 +62,15 @@ run "applications go straight into an employer's SmartRecruiters" python tools/t
 run "applications go straight into an employer's Workable" python tools/test-ats-workable.py
 run "swipe right to apply instantly, end to end" python tools/test-ats-flow.py
 run "paid plans: Stripe checkout, signed webhook, limits" python tools/test-billing.py
+run "Stripe Checkout form filler of ui-live.js: card fields inside another site's iframe, Save my info, a decline, test cards only" node tools/cdp.js tools/ui-stripe-form.js
 run "autofill: real employers' forms answered from the profile, questions asked once" python tools/test-autofill.py
 run "Hiring mode: company, postings, feed, applicants (sandbox only)" python tools/test-employers.py
 run "job feeds: USAJOBS, City of Philadelphia, keys, feeds_off, via credit" python tools/test-feeds.py 18784
 run "swipe learning: the math, the worked example, the replay test" python tools/test-learn.py
 run "fill from your resume: six resumes, layouts, dates, refused files, the endpoint" python tools/test-resume.py 18798
 run "the server as Render runs it: start, stop mid-request, restart on the same disk" python tools/test-render.py 18782
+run "reading every job board stays far below the 512 MB plan, and a redeploy answers from the saved list at once" python tools/test-feed-memory.py
+run "backups: pack the data folder, restore it, refuse damaged ones, encrypt, upload to a private GitHub repository" python tools/test-backup.py 18806
 run "every path from swipe right to inbox, replayed in a browser" python tools/ui-apply-paths.py
 run "the one-time question box: every kind of question, phone and computer" python tools/ui-questions.py
 
@@ -113,6 +117,7 @@ PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/pub" HOST=0.0.0.0 OWNER_PASSWORD=ownerpw UAPL
 wait_port 18772
 run "cookies, headers, owner pages, path traversal, limits" python tools/test-public.py 18772
 run "sign-in as the live site runs it (uaply.net, www, onrender.com): cookies, same-site check, Google tokens and linking, restart, lock-out, codes" python tools/test-public-auth.py 18780
+run "one address, one account: letter case, look-alikes, races, Google linking, delete and sign up again, throwaway and dead domains, the audit tool" python tools/test-accounts.py 18800
 
 step "Real email sending (against a stand-in mail server)"
 PIDS="$PIDS $(start python tools/fake-smtp.py 12525 "$TMP/smtp/mail.jsonl")"

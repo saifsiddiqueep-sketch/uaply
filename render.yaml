@@ -14,7 +14,7 @@ services:
     region: virginia                # US East, nearest to Philadelphia. Render cannot move a service to another region later.
     buildCommand: pip install -r requirements.txt
     startCommand: python serve.py ${PORT:-10000} dev --api   # Render sets PORT (10000 by default); the fallback keeps a blank PORT from stopping the start
-    healthCheckPath: /healthz
+    healthCheckPath: /healthz        # answered from memory; 503 while stopping. Must ALSO be set in the dashboard (Settings > Health Checks) for a service made by hand
     envVars:
       - key: PYTHON_VERSION
         value: "3.12.7"
@@ -22,6 +22,8 @@ services:
         value: 0.0.0.0
       - key: UAPLY_DATA_DIR
         value: /var/data
+      - key: MALLOC_ARENA_MAX         # glibc keeps 2 memory pools instead of up to 8 per CPU: with Python's threads, freed memory is reused, not held per thread
+        value: "2"
       - key: UAPLY_FEEDS              # real postings from employers' own public career pages (link-out only). Remove this line to switch them off.
         value: greenhouse,lever,ashby
       - key: ANTHROPIC_API_KEY        # turns on AI answers in the assistant; swap it any time without a code change
@@ -61,6 +63,8 @@ services:
         value: 0.0.0.0
       - key: UAPLY_DATA_DIR
         value: /var/data
+      - key: MALLOC_ARENA_MAX         # glibc keeps 2 memory pools instead of up to 8 per CPU: with Python's threads, freed memory is reused, not held per thread
+        value: "2"
       - key: UAPLY_FEEDS              # the same real postings as dev, so the test bench shows what users see. Remove this line to switch them off.
         value: greenhouse,lever,ashby
       - key: ANTHROPIC_API_KEY

@@ -29,16 +29,29 @@ limit holds even when a visitor makes up a new address for every try).
 Email verification: a new password account gets a 6-digit code by email (email_codes above); a "Continue with Google" account
 counts as verified only when Google is the authority on that address (see oauth_login).
 
+One address, one account (docs/ACCOUNTS.md has the reasoning): every address is stored and compared only as canonical_email() makes it
+(NFKC, trimmed, lower-case, plain ASCII, no spaces or control characters), the users table refuses a second row with the same address
+in any letter case, and sign-up, log-in, Forgot password, the code and Google all look accounts up through that one key. Dots and
++tags are NOT folded: owner+live1@gmail.com and owner@gmail.com are two accounts, because only the inbox's owner can verify either.
+A new account also needs an address that can receive mail: privacy relays always pass (tools/data/relay-domains.txt), throwaway domains
+never do (tools/data/disposable-domains.txt), and on a server that sends email the domain must have a mail server or an address in DNS
+(mail_domain_status, asked over DNS over HTTPS; a DNS failure never blocks anyone). At most 5 new accounts per visitor address an hour.
+
 A hosted database (instead of this file) is a later step: this module is the stand-in that already behaves like one.
 """
 import hashlib
 import hmac
+import json
 import os
 import re
 import secrets
 import sqlite3
+import sys
 import threading
 import time
+import unicodedata
+import urllib.parse
+import urllib.request
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,190}\.[A-Za-z]{2,24}$")
@@ -124,6 +137,13 @@ def init(instance):
             except sqlite3.OperationalError:
                 pass
         c.execute("UPDATE users SET email_verified=1 WHERE id IN (SELECT user_id FROM identities)")      # Google already verified those emails
+        # A second safety net under canonical_email(): the database itself refuses two rows whose addresses differ only in letter case
+        # (the plain UNIQUE above compares bytes, so it would let Alice@x.com and alice@x.com both in if some future code path forgot
+        # to clean the address). A database that already holds such a pair cannot get the index; the server still starts and says so.
+        try:
+            c.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_email_nocase ON users(email COLLATE NOCASE)")
+        except sqlite3.IntegrityError:
+            sys.stderr.write("[uaply] accounts: two accounts share an address in different letter case; run python tools/audit-accounts.py\n")
 
 
 class _db:
@@ -147,9 +167,162 @@ def _hash(pw, salt):
     return hashlib.pbkdf2_hmac("sha256", pw.encode("utf-8"), salt, ITER)
 
 
-def _clean_email(v):
-    e = v.strip().lower() if isinstance(v, str) else ""
-    return e if EMAIL_RE.match(e) else ""
+def canonical_email(v):
+    """The one key an address is stored, compared and rate-limited under, or "" when it is not an address UAply accepts.
+
+    NFKC first, so look-alike forms of the same letters (full-width letters, the Kelvin sign) become the plain letters
+    they stand for and cannot open a second account; then trimmed and lower-cased (local part and domain: every mail provider people
+    use treats letter case as the same mailbox). After that the address must be plain ASCII with no spaces or control characters:
+    internationalised addresses (non-ASCII local parts or domains) are refused rather than guessed at, because two different
+    Unicode spellings can look identical and UAply's email sending does not support them. Dots and +tags are kept as typed (see
+    docs/ACCOUNTS.md): they are separate accounts."""
+    if not isinstance(v, str) or len(v) > 400:
+        return ""
+    e = unicodedata.normalize("NFKC", v).strip()
+    if any(ch.isspace() or unicodedata.category(ch).startswith("C") for ch in e):     # spaces, tabs, line breaks, NUL, zero-width marks
+        return ""
+    e = e.lower()
+    return e if e.isascii() and EMAIL_RE.fullmatch(e) else ""
+
+
+_clean_email = canonical_email
+
+
+# ---------- a mailbox someone can keep: no throwaway domains, and a domain that can receive mail ----------
+DISPOSABLE_FILE = os.path.join(ROOT, "tools", "data", "disposable-domains.txt")
+RELAY_FILE = os.path.join(ROOT, "tools", "data", "relay-domains.txt")
+KEEP_MSG = "Please use an email address you'll keep — temporary addresses can't be used for job applications."
+_lists = {}          # file -> (mtime, frozenset of domains)
+
+
+def _domain_file(path):
+    """The domains in one of the tools/data lists (one per line, # starts a comment), lower-cased and without repeats. Read again whenever
+    the file changes, so the owner's edits apply without a restart. A missing file is an empty list."""
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        return frozenset()
+    hit = _lists.get(path)
+    if not hit or hit[0] != mtime:
+        with open(path, encoding="utf-8") as f:
+            names = {ln.split("#", 1)[0].strip().lower().rstrip(".") for ln in f}
+        hit = (mtime, frozenset(n for n in names if n))
+        _lists[path] = hit
+    return hit[1]
+
+
+def disposable_domains():
+    return _domain_file(DISPOSABLE_FILE)
+
+
+def relay_domains():
+    return _domain_file(RELAY_FILE)
+
+
+def _listed(email_or_domain, listed):
+    """True when the domain, or a domain it sits under (x.mailinator.com, alias.anonaddy.com), is in `listed`."""
+    parts = email_or_domain.rpartition("@")[2].lower().split(".")
+    return any(".".join(parts[i:]) in listed for i in range(len(parts) - 1))
+
+
+def is_relay(email_or_domain):
+    """A privacy relay (Apple Hide My Email, Firefox Relay, DuckDuckGo, SimpleLogin, addy.io): the mail reaches the person's real inbox,
+    so it is never refused, whatever the throwaway list says. Sign in with Apple hands out privaterelay.appleid.com addresses."""
+    return _listed(email_or_domain, relay_domains())
+
+
+def is_disposable(email_or_domain):
+    """A throwaway inbox (tools/data/disposable-domains.txt) that is not also a privacy relay."""
+    return not is_relay(email_or_domain) and _listed(email_or_domain, disposable_domains())
+
+
+# Whether a domain can receive mail is asked over DNS over HTTPS (Python has no MX lookup of its own, and a host's port 25 must never be
+# probed: Render blocks it and probing gets a server's address blocklisted). Only the domain is sent, never the address.
+DOH_URLS = ("https://dns.google/resolve", "https://cloudflare-dns.com/dns-query")
+DNS_SECONDS = 3.0                # per resolver
+DNS_CACHE_SECONDS = 86400        # a verdict is kept a day, so a burst of sign-ups does not ask again for every one
+_dns_cache = {}                  # domain -> (verdict, expires)
+_dns_lock = threading.Lock()
+_RTYPE = {"MX": 15, "A": 1, "AAAA": 28}
+
+
+def _doh_urls():
+    env = (os.environ.get("UAPLY_DOH_URLS") or "").strip()            # tests point this at a stand-in resolver
+    return tuple(u.strip() for u in env.split(",") if u.strip()) if env else DOH_URLS
+
+
+def _doh(domain, rtype):
+    """(DNS status, answers of that type) from the first resolver that answers in time, or None when none did."""
+    for base in _doh_urls():
+        url = base + ("&" if "?" in base else "?") + urllib.parse.urlencode({"name": domain, "type": rtype})
+        try:
+            req = urllib.request.Request(url, headers={"Accept": "application/dns-json", "User-Agent": "UAply sign-up check"})
+            with urllib.request.urlopen(req, timeout=DNS_SECONDS) as r:
+                j = json.loads(r.read(200000).decode("utf-8"))
+            if not isinstance(j, dict) or not isinstance(j.get("Status"), int):
+                continue
+            return j["Status"], [a for a in (j.get("Answer") or []) if isinstance(a, dict) and a.get("type") == _RTYPE[rtype]]
+        except Exception:                                    # timeout, refused, not JSON, an HTTP error: try the next resolver
+            continue
+    return None
+
+
+def _lookup(domain):
+    got = _doh(domain, "MX")
+    if got is None:
+        return "unknown"
+    status, answers = got
+    if status == 3:
+        return "none"                                        # NXDOMAIN: no such domain
+    if status != 0:
+        return "unknown"                                     # SERVFAIL and the like: the resolver's problem, not the person's
+    if any(str(a.get("data", "")).split()[-1:] != ["."] for a in answers):     # "0 ." is a null MX (RFC 7505): names no mail server
+        return "ok"
+    for rtype in ("A", "AAAA"):                              # no mail server named: mail goes to the domain's own address (RFC 5321 5.1)
+        got = _doh(domain, rtype)
+        if got is None:
+            return "unknown"
+        if got[0] == 0 and got[1]:
+            return "ok"
+    return "none"
+
+
+def mail_domain_status(domain):
+    """Can this domain receive mail? "ok" (a mail server, or an address mail falls back to), "none" (DNS says it does not exist, or it
+    has neither), or "unknown" (no resolver answered within 3 seconds each, or one failed). Unknown always lets the person through and
+    writes one line to the log: a DNS hiccup must never turn a real person away. Verdicts are remembered for a day."""
+    domain = (domain or "").lower()
+    if not domain:
+        return "unknown"
+    now = time.time()
+    with _dns_lock:
+        hit = _dns_cache.get(domain)
+        if hit and hit[1] > now:
+            return hit[0]
+    verdict = _lookup(domain)
+    if verdict == "unknown":
+        sys.stderr.write("[uaply] sign-up: could not check whether %s receives mail (no clear answer from DNS over HTTPS); let it through\n" % domain[:100])
+        sys.stderr.flush()
+        return verdict
+    with _dns_lock:
+        if len(_dns_cache) > 20000:
+            for k in [k for k, v in _dns_cache.items() if v[1] <= now] or list(_dns_cache)[:5000]:
+                del _dns_cache[k]
+        _dns_cache[domain] = (verdict, now + DNS_CACHE_SECONDS)
+    return verdict
+
+
+def mailbox_problem(email, check_dns=False):
+    """Why this (canonical) address cannot have a new account, as one sentence for the person, or "" when it can. Privacy relays first:
+    they always pass. Role addresses (info@, support@) are real mailboxes and pass too."""
+    dom = email.rpartition("@")[2]
+    if is_relay(dom):
+        return ""
+    if is_disposable(dom):
+        return KEEP_MSG
+    if check_dns and mail_domain_status(dom) == "none":
+        return "We couldn't find a mail server for %s, so please check the spelling or use an email address you'll keep." % dom
+    return ""
 
 
 def _recent(bucket, key, window):
@@ -230,20 +403,41 @@ def set_billing(user_id, **fields):
         c.execute("UPDATE users SET %s WHERE id=?" % ", ".join("%s=?" % k for k, _ in pairs), [v for _, v in pairs] + [user_id])
 
 
-def signup(email, password, ip, agree=False):
-    """Returns (status, body, session_token_or_None)."""
+SIGNUPS_PER_HOUR = 5            # new accounts per visitor address and hour on a public server (serve.py passes it)
+SIGNUPS_PER_HOUR_LOCAL = 10     # the owner's own computer, where every request comes from 127.0.0.1 (tests, the browser checks)
+SIGNUP_LIMIT_MSG = "Several accounts were already made from this connection in the last hour, so please try again later or log in to the one you have."
+
+
+def signup(email, password, ip, agree=False, check_dns=False, per_hour=None):
+    """Returns (status, body, session_token_or_None). check_dns (serve.py: on a public server that sends email) also refuses a domain
+    DNS says cannot receive mail, before any code is sent; it runs outside the lock, so a slow resolver holds up nobody else.
+    per_hour caps sign-up tries per visitor address (`ip` is the X-Forwarded-For address on a public server, as for the lock-out)."""
+    return signup_with_code(email, password, ip, agree, check_dns, per_hour)[:3]
+
+
+def signup_with_code(email, password, ip, agree=False, check_dns=False, per_hour=None):
+    """signup() that also makes the first 6-digit code in the SAME locked transaction that creates the account. Returns
+    (status, body, token, mail) where mail is (user_id, email, digits) to send, or None.
+
+    Why one step: a "Continue with Google" for the same Gmail address can arrive between "account created" and "code made". Google is
+    the authority there, so oauth_login (under the same lock) removes the unproven password and ends this new session; asking for the
+    code afterwards found no session and the sign-up answered 500. Made together, the Google sign-in can only come before (this
+    sign-up is then told the address is taken) or after (the code it removes is simply dead), never in between."""
     email = _clean_email(email)
     if not email:
-        return 400, {"error": "Enter a valid email address."}, None
+        return 400, {"error": "Enter a valid email address."}, None, None
     if agree is not True:
-        return 400, {"error": "Confirm you are 18 or older and agree to the Terms and Privacy Policy."}, None
+        return 400, {"error": "Confirm you are 18 or older and agree to the Terms and Privacy Policy."}, None, None
     if not isinstance(password, str) or not (8 <= len(password) <= 128):
-        return 400, {"error": "Use a password between 8 and 128 characters."}, None
+        return 400, {"error": "Use a password between 8 and 128 characters."}, None, None
     if password.lower() == email:
-        return 400, {"error": "Your password cannot be your email."}, None
+        return 400, {"error": "Your password cannot be your email."}, None, None
+    problem = mailbox_problem(email, check_dns)
+    if problem:
+        return 400, {"error": problem, "code": "mailbox"}, None, None
     with _lock:
-        if len(_recent(_signups, ip, 3600)) >= 10:
-            return 429, {"error": "Too many sign-ups from this connection. Try again later."}, None
+        if len(_recent(_signups, ip, 3600)) >= (per_hour or SIGNUPS_PER_HOUR_LOCAL):
+            return 429, {"error": SIGNUP_LIMIT_MSG, "code": "signup_limit"}, None, None
         _signups[ip].append(time.time())
         salt = secrets.token_bytes(16)
         pw_hash = _hash(password, salt)
@@ -254,9 +448,10 @@ def signup(email, password, ip, agree=False):
                                 (email, salt, pw_hash, now, now, now))
                 uid = cur.lastrowid
                 token = _new_session(c, uid)
+                digits = _new_code(c, uid)
         except sqlite3.IntegrityError:
-            return 409, {"error": "That email already has an account. Log in instead."}, None
-    return 200, {"user": {"id": uid, "email": email, "hasPassword": True, "emailVerified": False}}, token
+            return 409, {"error": "That email already has an account. Log in instead."}, None, None
+    return 200, {"user": {"id": uid, "email": email, "hasPassword": True, "emailVerified": False}}, token, (uid, email, digits)
 
 
 def login(email, password, ip):
@@ -336,6 +531,15 @@ def add_mail(user_id, to_addr, subject, body, status):
                   (user_id, to_addr, subject[:200], body[:8000], status, int(time.time())))
 
 
+def mark_mail_sent(user_id, to_addr):
+    """A receipt that was held (the daily email limit, the mail service down) went out later: its stored copy now says sent."""
+    with _lock, _db() as c:
+        row = c.execute("SELECT id FROM user_mail WHERE user_id=? AND to_addr=? AND status='held' ORDER BY id LIMIT 1", (user_id, to_addr)).fetchone()
+        if row:
+            c.execute("UPDATE user_mail SET status='sent' WHERE id=?", (row[0],))
+        return bool(row)
+
+
 def mail_list(limit=50):
     with _lock, _db() as c:
         return [dict(r) for r in c.execute("SELECT to_addr, subject, body, status, at FROM user_mail ORDER BY id DESC LIMIT ?", (limit,))]
@@ -352,6 +556,10 @@ def oauth_login(provider, subject, email, agree=False, trusted=True):
 
     Known identity: sign in. Trusted email that already has an account: link the identity to it and sign in. Otherwise create an
     account with no password (has_password=0); that needs `agree` (18 or older, Terms and Privacy Policy).
+
+    The account is found by the provider's permanent account number first, so a Google account whose email later changes keeps
+    signing into the same UAply account and never makes a second one. The email is only used (as canonical_email) when that number
+    is new, and then it either joins the one account that already has that exact address or makes the only one.
 
     `trusted` says the provider is the authority on this email address (for Google: a Gmail address or a Workspace account). An
     untrusted email can still sign in by the provider's account number, but it never proves ownership: it cannot be merged into an
@@ -377,6 +585,8 @@ def oauth_login(provider, subject, email, agree=False, trusted=True):
                 if not row:
                     if agree is not True:
                         return "agree", None, None
+                    if is_disposable(email):                # a Google account can be registered with a throwaway address too
+                        return "disposable", None, None
                     cur = c.execute("INSERT INTO users(email, salt, hash, created_at, last_login, terms_at, has_password, email_verified) VALUES(?,?,?,?,?,?,0,?)",
                                     (email, secrets.token_bytes(16), secrets.token_bytes(32), now, now, now, 1 if trusted else 0))
                     row = c.execute("SELECT * FROM users WHERE id=?", (cur.lastrowid,)).fetchone()
@@ -507,8 +717,11 @@ def _new_code(c, user_id):
 
 
 def issue_code_for_token(token):
-    """The first code, right after sign-up. Returns (user_id, email, digits)."""
+    """A code for the account this session belongs to. Returns (user_id, email, digits), or None when the session has ended (a Google
+    sign-in for the same address can end it at any moment). serve.py's sign-up uses signup_with_code instead."""
     user = user_for(token)
+    if not user:
+        return None
     with _lock, _db() as c:
         return user["id"], user["email"], _new_code(c, user["id"])
 

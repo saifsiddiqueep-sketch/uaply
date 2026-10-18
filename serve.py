@@ -32,10 +32,11 @@ Serves ROOT; each urlpath=file alias maps one URL to a file outside ROOT (e.g. /
   GET  /api/billing/status, POST /api/billing/checkout, /api/billing/portal, /api/billing/webhook   Plus and Pro (billing_api.py)
   GET  /api/employer/me, /api/employer/logo/<id>, POST /api/employer/...   Hiring mode, sandbox only (employers_api.py)
   POST /api/profile/resume   read a resume (PDF, Word or text, up to 5 MB) and answer with the profile fields found; nothing is kept (resume_parse.py)
-  GET  /healthz           for the host's health check
-  GET  /api/status        what is switched on, as yes/no facts only (never a key, an address or a path): for tools/live-check.py
+  GET  /healthz           for the host's health check: {"ok": true} from memory, 503 once the server is stopping (HEAD too)
+  POST /api/email/events  Brevo's webhook: bounces and complaints put an address on the bounce list (needs email_events_secret; mailer.py)
+  GET  /api/status        what is switched on, as yes/no facts only (never a key, an address or a path), and the deployed commit: for tools/live-check.py
 Accounts use an HttpOnly session cookie. When a signed-in user swipes right, a receipt goes to their email."""
-import sys, os, re, json, http.server, base64, hmac, threading, time, signal
+import sys, os, re, json, http.server, base64, hmac, threading, time, signal, random
 
 LEGAL_NAME = re.compile(r"^[A-Za-z0-9_-]+\.(html|css|png)$")       # the files in legal/: terms.html, style.css, favicon-32.png ...
 
@@ -109,9 +110,11 @@ if api:
     chat_api.init(os.path.basename(root))
     billing_api.PUBLIC = PUBLIC                                     # Plan and billing: buy buttons on a public server only when Stripe keys are set
     uaply_api.hide_errors = jobs_api.hide_errors = PUBLIC       # a hosted server never shows visitors raw error text; the owner's own computer still does
-    threading.Thread(target=jobs_api.get_jobs, daemon=True).start()   # warm the job cache so the first visitor does not wait
+    uaply_api.PUBLIC = PUBLIC                                   # the live site never labels a real hand-off email [TEST]
+    uaply_api.start_mail_worker()                               # sends receipts and copies held back by the daily email limit (mailer.py)
+    # the job-list warm-up starts after the port is bound (at the end of this file), so the health check passes at once
 
-OOPS = "Something went wrong on our side. Try again in a moment."
+OOPS ="Something went wrong on our side. Try again in a moment."
 
 
 def log_oops(where, e):
@@ -168,25 +171,157 @@ def too_fast(path, ip):
         _swipes[(path, ip)] = hits
         return False
 
+
+def dns_check():
+    """Whether sign-up asks DNS if the address's domain can receive mail (auth_api.mail_domain_status). On by default only where it
+    matters: a public server that really sends the code, where a dead domain would only bounce and hurt the sender's reputation.
+    UAPLY_DNS_CHECK=on or off overrides that (tests use on, with UAPLY_DNS_SERVER pointing at a stand-in resolver)."""
+    force = (os.environ.get("UAPLY_DNS_CHECK") or "").strip().lower()
+    if force in ("on", "off"):
+        return force == "on"
+    return PUBLIC and bool(uaply_api.mail_ready())
+
+
+# ---- what the server did: one line per API request, and one summary line a day (at midnight UTC, and when the server stops) ----
+# The lines hold no IP address, no query string (reset links carry their token there), no cookie and no email address: only the method,
+# the path, the status and the time taken. UAPLY_REQUEST_LOG=off keeps the per-request lines out (the daily line stays).
+REQUEST_LOG = (os.environ.get("UAPLY_REQUEST_LOG") or "on").strip().lower() not in ("off", "0", "no", "false")
+SLOW_MS = 1000                                   # any request slower than this gets its line, whatever its path
+MAX_PATHS = 80                                   # distinct paths kept in the day's figures (scanners try thousands of made-up ones)
+_stats_lock = threading.Lock()
+
+
+def _new_stats():
+    return {"since": time.time(), "requests": 0, "health": 0, "codes": {}, "paths": {}, "signups": 0, "logins": 0, "applications": 0, "ms": []}
+
+
+TIMES_KEPT = 20000                               # request times kept for the day's p50 and p95 (a fair sample once there are more)
+
+
+_stats = _new_stats()
+
+
+def _path_key(path):
+    if path.startswith("/api/employer/logo/"):
+        return "/api/employer/logo/*"
+    if path.startswith("/api/") or path in OWNER_PAGES or path in ("/", "/robots.txt"):
+        return path[:60]
+    return "(files and pages)"
+
+
+def record_request(method, path, code, ms):
+    """Count one answered request (called by the handler) and log its line when it is an API call, an error or slow."""
+    if path == "/healthz":                                       # Render asks every few seconds: counted apart, never logged
+        with _stats_lock:
+            _stats["health"] += 1
+        return
+    key = _path_key(path)
+    with _stats_lock:
+        s = _stats
+        s["requests"] += 1
+        s["codes"][code] = s["codes"].get(code, 0) + 1
+        if key not in s["paths"] and len(s["paths"]) >= MAX_PATHS:
+            key = "(other)"
+        n, total, worst = s["paths"].get(key, (0, 0.0, 0.0))
+        s["paths"][key] = (n + 1, total + ms, max(worst, ms))
+        if len(s["ms"]) < TIMES_KEPT:                            # Render shows response times only on its Pro plan: these stand in for them
+            s["ms"].append(ms)
+        else:                                                    # reservoir sampling: every request of the day equally likely to be kept
+            i = random.randrange(s["requests"])
+            if i < TIMES_KEPT:
+                s["ms"][i] = ms
+        if method == "POST" and code == 200:
+            if path == "/api/auth/signup":
+                s["signups"] += 1
+            elif path == "/api/auth/login":
+                s["logins"] += 1
+            elif path == "/api/apply":
+                s["applications"] += 1
+    if REQUEST_LOG and PUBLIC and (path.startswith("/api/") or path in OWNER_PAGES or code >= 500 or ms >= SLOW_MS):
+        sys.stderr.write("[uaply] %s %s %d %d ms\n" % (method, key if key != "(files and pages)" else path[:80], code, ms))
+        sys.stderr.flush()
+
+
+def _rss_mb():
+    """This process's memory now and at its peak, in MB (Linux; None elsewhere). Read from /proc: no extra module, a microsecond."""
+    try:
+        with open("/proc/self/status") as f:
+            st = f.read()
+        return tuple(int(re.search(r"%s:\s+(\d+)" % k, st).group(1)) // 1024 for k in ("VmRSS", "VmHWM"))
+    except (OSError, AttributeError):
+        return None, None
+
+
+def daily_summary(reason="day"):
+    """The day's figures as one line of JSON after '[uaply] daily', and a fresh count. reason: 'day' at midnight UTC, 'stop' at a deploy."""
+    global _stats
+    with _stats_lock:
+        s, _stats = _stats, _new_stats()
+    codes = s["codes"]
+    slowest = sorted(((v[1] / v[0], k, v) for k, v in s["paths"].items() if v[0]), reverse=True)[:5]
+    now_mb, peak_mb = _rss_mb()
+    times = sorted(s["ms"])
+
+    def pct(q):
+        return int(times[min(len(times) - 1, int(len(times) * q / 100))]) if times else None
+    out = {"day": time.strftime("%Y-%m-%d", time.gmtime(s["since"])), "from": time.strftime("%H:%M", time.gmtime(s["since"])),
+           "to": time.strftime("%H:%M", time.gmtime()), "why": reason, "requests": s["requests"],
+           "2xx": sum(n for c, n in codes.items() if 200 <= c < 300), "3xx": sum(n for c, n in codes.items() if 300 <= c < 400),
+           "4xx": sum(n for c, n in codes.items() if 400 <= c < 500), "429": codes.get(429, 0),
+           "5xx": sum(n for c, n in codes.items() if c >= 500), "signups": s["signups"], "logins": s["logins"], "applications": s["applications"],
+           "p50_ms": pct(50), "p95_ms": pct(95),
+           "slowest": [{"path": k, "n": v[0], "avg_ms": int(avg), "max_ms": int(v[2])} for avg, k, v in slowest],
+           "health_checks": s["health"], "memory_mb": now_mb, "peak_memory_mb": peak_mb}
+    return "[uaply] daily " + json.dumps(out, separators=(",", ":"))
+
+
+def _midnight_loop():
+    while True:
+        now = time.time()
+        time.sleep((int(now // 86400) + 1) * 86400 - now + 0.5)   # just after midnight UTC
+        sys.stderr.write(daily_summary("day") + "\n")
+        sys.stderr.flush()
+
+
+_stopping = threading.Event()                    # set at SIGTERM: /healthz answers 503 from then on
+
+
 class H(http.server.SimpleHTTPRequestHandler):
+    server_version = "UAply"                     # not "SimpleHTTP/0.6 Python/3.12.7": no version for a scanner to match (Render passes it on)
+    sys_version = ""
+
     def __init__(self, *a, **k):
         super().__init__(*a, directory=root, **k)
+
+    def version_string(self):
+        return self.server_version
 
     def handle_one_request(self):
         """Count the requests being answered, so a stop (a deploy) can let them finish first. An idle kept-open connection is not counted."""
         self._counted = False
+        self._code = None
         try:
             super().handle_one_request()
         finally:
             if self._counted:
                 with _busy_lock:
                     _busy[0] -= 1
+                if self._code and getattr(self, "command", None):
+                    try:
+                        record_request(self.command, self.path.split("?", 1)[0], self._code, (time.monotonic() - self._t0) * 1000)
+                    except Exception:
+                        pass
+
+    def send_response(self, code, message=None):
+        self._code = code
+        super().send_response(code, message)
 
     def parse_request(self):
         """A null byte in the address (raw or as %00) is never valid: answer 400 instead of letting the file lookup fail and drop the connection."""
         with _busy_lock:                                     # a request line arrived: from here on this request is "in progress"
             _busy[0] += 1
         self._counted = True
+        self._t0 = time.monotonic()
         if not super().parse_request():
             return False
         if "\x00" in self.path or "%00" in self.path.lower():
@@ -320,7 +455,7 @@ class H(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         p = self.path.split("?", 1)[0]
         if p == "/healthz":                                                 # for the host's health check
-            return self._send(200, {"ok": True})
+            return self._health()
         if p == "/robots.txt":
             return self._send(200, ROBOTS, "text/plain; charset=utf-8")
         if api and p == "/legal":                                           # a typed uaply.net/legal (no slash) finds the legal pages too
@@ -368,6 +503,25 @@ class H(http.server.SimpleHTTPRequestHandler):
                 return self._send(502, {"error": OOPS})
         super().do_GET()
 
+    def _health(self, head=False):
+        """Render's health check: answered from memory (no disk, no job feeds, no lock), so it stays quick while the boards are being read.
+        503 once the server is stopping, so nothing new is sent to a copy that is on its way out."""
+        code, body = (503, b'{"ok": false, "stopping": true}') if _stopping.is_set() else (200, b'{"ok": true}')
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        if code == 503:
+            self.send_header("Connection", "close")
+            self.close_connection = True
+        self.end_headers()
+        if not head:
+            self.wfile.write(body)
+
+    def do_HEAD(self):
+        if self.path.split("?", 1)[0] == "/healthz":                     # uptime monitors often ask with HEAD
+            return self._health(head=True)
+        super().do_HEAD()
+
     def do_POST(self):
         p = self.path.split("?", 1)[0]
         if api and p == "/api/billing/webhook":        # from Stripe, not from our pages: its signature replaces the same-site check
@@ -383,6 +537,19 @@ class H(http.server.SimpleHTTPRequestHandler):
                 log_oops(p, e)
                 code, out = 500, {"error": OOPS}
             return self._send(code, out)
+        if api and p == "/api/email/events":           # from Brevo (bounces, complaints): the shared secret replaces the same-site check
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                n = 0
+            if not 0 < n <= 262144:
+                return self._refuse(400, {"error": "bad size"})
+            try:
+                code, out = uaply_api.email_events(self.rfile.read(n), self.headers.get("Authorization") or "")
+            except Exception as e:
+                log_oops(p, e)
+                code, out = 500, {"error": OOPS}
+            return self._send(code, out, headers=[("WWW-Authenticate", 'Basic realm="uaply"')] if code == 401 else ())
         if not api or p not in ("/api/apply", "/api/decision", "/api/auth/signup", "/api/auth/login", "/api/auth/logout",
                                 "/api/auth/delete", "/api/auth/forgot", "/api/auth/reset", "/api/auth/change-password",
                                 "/api/setup/test-mail", "/api/setup/save-mail", "/api/setup/save-google", "/api/setup/save-ats", "/api/setup/remove-ats", "/api/setup/save-stripe", "/api/setup/save-feed-keys", "/api/auth/google/token", "/api/auth/verify", "/api/auth/resend", "/api/chat", "/api/feedback", "/api/billing/checkout", "/api/billing/portal",
@@ -418,9 +585,12 @@ class H(http.server.SimpleHTTPRequestHandler):
             return self._send(429, {"error": "You're swiping faster than UAply can keep up. Wait a moment and try again.", "code": "slow_down"})
         try:
             if p == "/api/auth/signup":
-                code, out, token = auth_api.signup(payload.get("email"), payload.get("password"), ip, payload.get("agree"))
-                if token:                                        # a new password account must prove it owns the email: send the first code
-                    uid, addr, digits = auth_api.issue_code_for_token(token)
+                # the account and its first code are made in one locked step (auth_api.signup_with_code), so a Google sign-in for the same
+                # address racing this sign-up can never leave it half made
+                code, out, token, mail = auth_api.signup_with_code(payload.get("email"), payload.get("password"), ip, payload.get("agree"),
+                                                                   dns_check(), auth_api.SIGNUPS_PER_HOUR if PUBLIC else None)
+                if mail:                                         # a new password account must prove it owns the email: send the first code
+                    uid, addr, digits = mail
                     out = dict(out, delivery=uaply_api.send_verification_mail(uid, addr, digits))
                 return self._send(code, out, headers=self._cookie(token) if token else ())
             if p == "/api/auth/login":
@@ -470,7 +640,8 @@ class H(http.server.SimpleHTTPRequestHandler):
                 msg = {"agree": "Tick the box to confirm you are 18 or older and agree to the Terms and Privacy Policy, then choose Google again.",
                        "failed": "Google sign-in could not be checked. Try again.", "unverified": "Google says that email address is not verified, so UAply cannot use it.",
                        "off": "Google sign-in is not switched on.", "limited": "Too many tries. Wait a minute and try again.",
-                       "email_in_use": "That email already has a UAply account. Log in with your email and password instead."}
+                       "email_in_use": "That email already has a UAply account. Log in with your email and password instead.",
+                       "disposable": auth_api.KEEP_MSG}
                 err, ident = google_auth.verify_credential(payload.get("credential"), ip)
                 if not err:
                     err, user, token = auth_api.oauth_login(ident["provider"], ident["subject"], ident["email"], payload.get("agree") is True, ident.get("trusted", True))
@@ -500,7 +671,7 @@ class H(http.server.SimpleHTTPRequestHandler):
                     link = self._site_base() + "/?reset=" + tok
                     body = ("Hi,\n\nSomeone asked to reset the password for this UAply account. Use this link within one hour:\n\n%s\n\n"
                             "If you did not ask for this, ignore this email; your password has not changed.\n\n--\nUAply") % link
-                    status = uaply_api.send_system_mail(uid, addr, "Reset your UAply password", body, secret=True)
+                    status = uaply_api.send_system_mail(uid, addr, "Reset your UAply password", body, secret=True, kind="reset")
                     out = dict(out, delivery=status)
                 else:
                     out = dict(out, delivery=("sent" if uaply_api.mail_ready() else "delivered_test"))
@@ -585,6 +756,10 @@ class H(http.server.SimpleHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
         self.send_header("X-Frame-Options", "SAMEORIGIN")               # the app frames itself; other sites may not
+        # the same rule for browsers that only read CSP, plus no plugins and no <base> tag pointing scripts elsewhere. Deliberately no script
+        # or style rules: the pages carry their own inline code, and Google's and Stripe's pages are reached by full-page redirects.
+        self.send_header("Content-Security-Policy", "frame-ancestors 'self'; object-src 'none'; base-uri 'self'")
+        self.send_header("Permissions-Policy", "camera=(), microphone=(), usb=(), payment=()")   # never used; location stays the browser's default (the app asks)
         if self.headers.get("X-Forwarded-Proto") == "https":
             self.send_header("Strict-Transport-Security", "max-age=31536000")
         super().end_headers()
@@ -596,13 +771,20 @@ class H(http.server.SimpleHTTPRequestHandler):
 def status_facts():
     """GET /api/status: the same on/off facts as the start-up line in the log, so a check run from anywhere (tools/live-check.py) can say what
     is configured after a deploy. Only yes/no answers: never a key, a password, an email address, a price id or a folder name.
-    persistent is null where it cannot be known (any host but Render, or the owner's own computer)."""
+    persistent is null where it cannot be known (any host but Render, or the owner's own computer). commit is the one exception to yes/no: the
+    short id of the deployed commit (RENDER_GIT_COMMIT), or null off Render."""
     b = billing_api.settings()
     return {"ok": True, "public": PUBLIC, "persistent": PERSISTENT, "email": bool(uaply_api.mail_ready()),
+            "emailEvents": bool(uaply_api.events_secret()),
             "google": bool(google_auth.enabled()), "googleButton": bool(google_auth.button_enabled()),
             "payments": bool(b["on"]), "paymentsTest": bool(b["on"] and b["test"]),
             "paymentsWebhook": bool(b["on"] and str(b.get("webhook_secret") or "").startswith("whsec_")),
-            "ai": bool(chat_api.ai_ready()), "ownerPages": bool(OWNER_PASSWORD) if PUBLIC else True}
+            "ai": bool(chat_api.ai_ready()), "ownerPages": bool(OWNER_PASSWORD) if PUBLIC else True, "commit": COMMIT}
+
+
+# The commit this copy runs: Render sets RENDER_GIT_COMMIT (the full id) for every deploy. Only its first 7 hex digits are shown (public
+# anyway on GitHub); tools/live-check.py compares them with the branch on GitHub, so a deploy that never happened is caught. None elsewhere.
+COMMIT = (lambda c: c[:7] if re.fullmatch(r"[0-9a-f]{7,40}", c) else None)((os.environ.get("RENDER_GIT_COMMIT") or "").strip().lower())
 
 
 class Server(http.server.ThreadingHTTPServer):
@@ -619,11 +801,11 @@ def startup_summary():
     except ValueError:
         cfg_note = "NOT VALID JSON, ignored"
     disk = {True: "persistent disk", False: "NOT a persistent disk: everything is lost at the next deploy", None: "local folder"}[PERSISTENT]
-    return ("[uaply] %s on %s:%d (%s) | data: %s (%s) | feeds: %s | email: %s | owner pages: %s | AI answers: %s | Google sign-in: %s | payments: %s | UAPLY_CONFIG_JSON: %s"
+    return ("[uaply] %s on %s:%d (%s) | data: %s (%s) | feeds: %s | email: %s | owner pages: %s | AI answers: %s | Google sign-in: %s | payments: %s | UAPLY_CONFIG_JSON: %s | commit: %s"
             % (os.path.basename(root), BIND, port, "public" if PUBLIC else "this computer only", DATA_DIR, disk,
-               ",".join(sorted(jobs_api.feeds_allowed())) or "off", "on" if uaply_api.mail_ready() else "off (test inbox only)",
+               ",".join(sorted(jobs_api.feeds_allowed())) or "off", ("on (bounce events: %s)" % ("on" if uaply_api.events_secret() else "off")) if uaply_api.mail_ready() else "off (test inbox only)",
                ("on" if OWNER_PASSWORD else "off (no OWNER_PASSWORD)") if PUBLIC else "on", "on" if chat_api.ai_ready() else "off",
-               google_auth.summary(), billing_api.summary(), cfg_note))
+               google_auth.summary(), billing_api.summary(), cfg_note, COMMIT or "unknown"))
 
 
 _busy, _busy_lock = [0], threading.Lock()
@@ -633,6 +815,7 @@ srv = Server((BIND, port), H)
 def _stop(signum, frame):
     """A host stops the server with SIGTERM at every deploy (Render then waits 30 seconds before forcing it). Stop taking new requests, let the
     ones in progress finish (a swipe that is sending an email, a sign-up), then exit normally."""
+    _stopping.set()                                                # /healthz says 503 from now on
     sys.stderr.write("[uaply] stopping (signal %d): finishing %d request(s) in progress\n" % (signum, _busy[0]))
     sys.stderr.flush()
     threading.Thread(target=srv.shutdown, daemon=True).start()     # shutdown() waits for serve_forever, so it cannot run on this thread
@@ -647,11 +830,19 @@ if PUBLIC and api and PERSISTENT is False:
     sys.stderr.write("[uaply] WARNING: %s is not on a persistent disk. Accounts, applications and feedback will disappear at the next deploy. "
                      "In Render: the service, Disks, add a disk with mount path %s.\n" % (DATA_DIR, DATA_DIR))
 sys.stderr.flush()
+if api:
+    # the port is open before the boards are read: the health check passes at once, and a saved list on the disk is served at once while
+    # every board refreshes behind it (jobs_api._load_source). On an empty disk the first visitor waits for this same read, never a second one.
+    threading.Thread(target=jobs_api.get_jobs, daemon=True).start()
+threading.Thread(target=_midnight_loop, daemon=True).start()
+DRAIN_SECONDS = 15                            # the longest a stop waits for requests in progress: with the rest, about 16 s of Render's 30
 srv.serve_forever()
+srv.socket.close()                            # stop accepting at once: a new connection is refused now instead of waiting for the drain
 time.sleep(0.2)                               # a connection accepted just before the stop gets to read its request line
-_until = time.time() + 20                    # well inside Render's 30 seconds before it forces the stop
+_until = time.time() + DRAIN_SECONDS
 while _busy[0] > 0 and time.time() < _until:
     time.sleep(0.05)
 srv.server_close()
+sys.stderr.write(daily_summary("stop") + "\n")
 sys.stderr.write("[uaply] stopped%s\n" % ("" if _busy[0] <= 0 else " (%d request(s) did not finish in time)" % _busy[0]))
 sys.stderr.flush()

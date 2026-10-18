@@ -6,6 +6,7 @@ not reachable from other computers, which makes it the safer way to run this tes
 import base64
 import http.client
 import json
+import re
 import socket
 import sys
 
@@ -48,6 +49,12 @@ cookie = h.get("set-cookie", "")
 t("session cookie is HttpOnly, Secure and SameSite=Lax", all(x in cookie for x in ("HttpOnly", "Secure", "SameSite=Lax")), True)
 t("HSTS header is sent over HTTPS", "strict-transport-security" in h, True)
 t("no-sniff and frame protection headers are sent", "x-content-type-options" in h and h.get("x-frame-options") == "SAMEORIGIN", True)
+t("CSP: only this site may frame it, no plugins, no <base> elsewhere", h.get("content-security-policy"), "frame-ancestors 'self'; object-src 'none'; base-uri 'self'")
+t("Permissions-Policy switches off camera, microphone, USB and the payment API (location is left to the app's own prompt)",
+  h.get("permissions-policy"), "camera=(), microphone=(), usb=(), payment=()")
+t("the Server header names no Python version (Render passes it on as x-render-origin-server)", h.get("server"), "UAply")
+s, h, body = req("HEAD", "/healthz")
+t("HEAD /healthz answers 200 with no body (uptime monitors ask that way)", (s, body), (200, b""))
 t("a cross-site sign-up is refused", req("POST", "/api/auth/signup", {"email": "pub2@example.com", "password": "correct horse 99", "agree": True},
                                          headers={"Origin": "https://evil.example"})[0], 403)
 t("a request with no Origin is refused", req("POST", "/api/auth/login", {"email": "a@b.co", "password": "x"}, origin=False)[0], 403)
@@ -125,7 +132,9 @@ t("no reset link was created or stored", "?reset=" not in page.replace("&amp;", 
 # /api/status (tools/live-check.py reads it from anywhere): yes/no facts only, never a password, key, address or folder
 s, _, body = req("GET", "/api/status")
 st = json.loads(body)
-t("/api/status answers with yes/no facts only", (s, all(isinstance(v, bool) or v is None for v in st.values())), (200, True))
+t("/api/status answers with yes/no facts only (and the deployed commit's short id, or null off Render)",
+  (s, all(isinstance(v, bool) or v is None for k, v in st.items() if k != "commit"), st.get("commit") is None or bool(re.fullmatch(r"[0-9a-f]{7}", st["commit"]))),
+  (200, True, True))
 t("/api/status says what this server has on (public, owner pages on, email off)", (st.get("public"), st.get("ownerPages"), st.get("email")), (True, True, False))
 t("/api/status holds no secret or folder name", any(x in body.decode() for x in ("ownerpw", "uaply-", "/", "\\\\")), False)
 

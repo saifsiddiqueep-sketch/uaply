@@ -15,10 +15,13 @@
 //                     ZIP 19104), the plan must read Plus; then a second account (--email2, default: the first address with "2" added to its
 //                     +tag; --code2 or the same --code-file) tries the declined test card 4000 0000 0000 0002 and must stay on Free. Refused on
 //                     a server with live keys: this tool never uses a real card. If Stripe shows a captcha the tool stops: it never solves one.
+//                     The card fields are found in Stripe's page or inside its iframes and typed as keystrokes (tools/stripe-checkout.js, tried
+//                     against a stand-in by tools/ui-stripe-form.js); after the 4242 card the plan must read Plus within 60 s (the webhook).
 // --out DIR           also saves a screenshot of each step there.   --google-host HOST   where Google's page must be (default accounts.google.com).
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const stripe = require("./stripe-checkout.js");          // fills Stripe Checkout, card fields in Stripe's iframes included (tested by ui-stripe-form.js)
 
 function arg(name, dflt) { const i = process.argv.indexOf("--" + name); return i > 2 && i + 1 < process.argv.length ? process.argv[i + 1] : dflt; }
 const flag = (name) => process.argv.includes("--" + name);
@@ -39,7 +42,8 @@ module.exports.limitMs = (9 + (EMAIL ? 4 : 0) + (STRIPE ? 9 : 0)) * 60000;
 const WRONG = /Cannot reach UAply|check your (internet|connection)|Something went wrong|undefined|\[object Object\]|\bNaN\b/i;
 const SIZES = [[390, 844, true], [1280, 800, false]];
 
-async function main({ ev, sleep, nav, shot, logs, send, on }) {
+async function main(api) {
+  const { ev, sleep, nav, shot, logs, send, on } = api;
   const count = { PASS: 0, FAIL: 0, SKIP: 0 };
   const out = (kind, name, extra) => { count[kind]++; console.log(kind + " " + name + (extra ? "  -> " + extra : "")); };
   const check = (name, ok, extra) => { out(ok ? "PASS" : "FAIL", name, ok ? "" : extra); return ok; };
@@ -250,8 +254,13 @@ async function main({ ev, sleep, nav, shot, logs, send, on }) {
     else {
       const bought = await pay("plus", "4242424242424242", "[account 1] ", true);
       if (bought) {
+        // the plan changes only when Stripe's signed webhook reaches the server: give it up to 60 seconds
+        const t0 = Date.now();
         const plan = await waitFor(async () => { const b = (await json("/api/billing/status")).j || {}; return b.plan === "plus" ? b : null; }, 60000);
-        check("[account 1] after the 4242 test card the server says the plan is Plus (the signed webhook arrived)", !!plan, "still " + (((await json("/api/billing/status")).j || {}).plan));
+        check("[account 1] after the 4242 test card the server says the plan is Plus (the signed webhook arrived" + (plan ? ", after " + Math.round((Date.now() - t0) / 1000) + " s" : "") + ")",
+          !!plan, "still " + (((await json("/api/billing/status")).j || {}).plan) + " after 60 s: check Stripe, Developers > Webhooks for a failed delivery");
+        const me = ((await json("/api/auth/me")).j || {}).user || {};
+        check("[account 1] /api/auth/me says plan Plus too", me.plan === "plus", JSON.stringify({ plan: me.plan }));
         await menu("nb-prof", "plan"); await sleep(1500);
         check("[account 1] Plan & billing reads Current plan: Plus", /Current plan: Plus/.test(await secText("#acctSec")), (await secText("#acctSec")).slice(0, 120));
         await snap("stripe-1-plus");
@@ -268,42 +277,40 @@ async function main({ ev, sleep, nav, shot, logs, send, on }) {
     }
   }
 
-  // Stripe Checkout, the hosted page (checkout.stripe.com): only test cards, typed the way a person types them
+  // Stripe Checkout, the hosted page (checkout.stripe.com): only Stripe's published test cards (stripe-checkout.js refuses any other number),
+  // typed into the card fields wherever Stripe draws them (its own iframes included)
   async function pay(k, card, label, shouldWork) {
     await menu("nb-prof", "plan");
     if (!check(label + "Choose " + k + " is offered to a verified account", await click("[data-bill=" + k + "]"), (await secText("#acctSec")).slice(0, 120))) return false;
-    const onStripe = await waitFor(async () => /(^|\.)stripe\.com$/.test(await ev("location.host")) && await ev("!!document.getElementById('cardNumber')||!!document.querySelector('[data-testid=card-accordion-item-button]')"), 30000);
+    const onStripe = await waitFor(async () => /(^|\.)stripe\.com$/.test(await ev("location.host")) && (await ev("document.readyState")) === "complete", 30000);
     if (!check(label + "Choose " + k + " opens Stripe's own Checkout page", !!onStripe, await ev("location.href"))) return false;
-    if (await ev("!!document.querySelector('[data-testid=card-accordion-item-button]')&&!(document.getElementById('cardNumber')||{}).offsetParent")) {
-      await ev("document.querySelector('[data-testid=card-accordion-item-button]').click()"); await sleep(800);
-    }
-    const typeInto = async (id, text) => {
-      const ok = await ev("(()=>{const e=document.getElementById(" + JSON.stringify(id) + ");if(!e||e.readOnly||e.disabled)return false;e.focus();if(e.select)e.select();return true})()");
-      if (ok) { await send("Input.insertText", { text }); await sleep(250); }
-      return ok;
-    };
-    if (await ev("(()=>{const e=document.getElementById('email');return !!(e&&!e.value&&!e.readOnly)})()")) await typeInto("email", label.includes("2") ? EMAIL2 : EMAIL);
-    await typeInto("cardNumber", card);
-    await typeInto("cardExpiry", "1234");
-    await typeInto("cardCvc", "123");
-    await typeInto("billingName", "UAply Live Check");
-    await ev("(()=>{const s=document.getElementById('billingCountry');if(s&&s.value!=='US'){const set=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set;set.call(s,'US');s.dispatchEvent(new Event('change',{bubbles:true}))}})()");
-    await sleep(500);
-    await typeInto("billingPostalCode", "19104");
+    const sess = (String(await ev("location.pathname")).match(/cs_(?:test|live)_[A-Za-z0-9]+/) || [""])[0];
+    info(label + "Stripe Checkout session " + (sess || "(id not in the address)") + ": match it in Stripe, Developers > Events");
+    if (/^cs_live_/.test(sess)) { check(label + "Stripe Checkout is in TEST mode", false, "a LIVE session: this tool never types a card there"); return false; }
+    const r = await stripe.fill(api, { card, email: label.includes("2") ? EMAIL2 : EMAIL });
+    info(label + "Stripe's form: " + r.notes.join(", "));
     await snap("stripe-" + card.slice(-4) + "-filled");
-    await ev("(()=>{const b=document.querySelector('.SubmitButton,button[type=submit]');if(b)b.click()})()");
-    const captcha = () => ev("[...document.querySelectorAll('iframe')].some(f=>/hcaptcha|recaptcha|challenges/.test(f.src)&&f.offsetWidth>100&&f.offsetHeight>100)");
+    if (!check(label + "the card fields are found and filled (in the page or Stripe's iframes)", r.ok, r.notes.join(", "))) return false;
+    const F = r.F;
+    if (!check(label + "Pay is pressed", await stripe.submit(api, F), "the Pay button stayed disabled: " + (await F.text()).slice(0, 160))) return false;
+    // Stripe Link may ask an address it knows for a code by text message: this tool cannot answer that
+    const linkCode = async () => /Enter the code|Verify it.s you|sent a code to/i.test(await F.text());
     if (shouldWork) {
       // back to the site's public_url (which may be another address than --base, e.g. https://uaply.net) with ?billing=success
-      const back = await waitFor(async () => (await captcha()) ? "captcha" : /[?&]billing=success/.test(await ev("location.href")) || (await ev("location.href")).startsWith(BASE + "/") ? "back" : "", 90000);
+      const back = await waitFor(async () => (await stripe.captcha(F)) ? "captcha" : (await linkCode()) ? "link" :
+        /[?&]billing=success/.test(await ev("location.href")) || String(await ev("location.href")).startsWith(BASE + "/") ? "back" : "", 90000);
       if (back === "back") { await nav(BASE + "/?billing=success"); await sleep(1500); }          // the session cookie belongs to --base
       if (back === "captcha") { check(label + "Stripe Checkout finished", false, "Stripe asked for a captcha (a bot check). This tool never solves one: finish this payment by hand"); return false; }
-      return check(label + "the test card " + card.replace(/(\d{4})(?=\d)/g, "$1 ") + " is accepted and Stripe sends the browser back to UAply", back === "back", (await ev("location.href")).slice(0, 100) + " | " + String(await ev("document.body.innerText")).split(/\s+/).join(" ").slice(0, 160));
+      if (back === "link") { check(label + "Stripe Checkout finished", false, "Stripe Link asked for a code for this address: use an address with no Link account"); return false; }
+      return check(label + "the test card " + card.replace(/(\d{4})(?=\d)/g, "$1 ") + " is accepted and Stripe sends the browser back to UAply", back === "back",
+        String(await ev("location.href")).slice(0, 100) + " | " + (await F.text()).slice(0, 200));
     }
-    const said = await waitFor(async () => { if (await captcha()) return "captcha"; const t = String(await ev("document.body.innerText")); return /declined/i.test(t) ? t : ""; }, 45000);
+    const said = await waitFor(async () => { if (await stripe.captcha(F)) return "captcha"; const t = await F.text(); return /declined/i.test(t) ? t : ""; }, 45000);
     if (said === "captcha") { check(label + "Stripe Checkout answered", false, "Stripe asked for a captcha (a bot check). This tool never solves one"); return false; }
     await snap("stripe-" + card.slice(-4) + "-declined");
-    return check(label + "the declined test card " + card.replace(/(\d{4})(?=\d)/g, "$1 ") + " is refused on Stripe's page", !!said && /stripe\.com$/.test(await ev("location.host")), (await ev("location.href")).slice(0, 100));
+    if (said) info(label + "Stripe said: " + (said.match(/[^.]*declined[^.]*\./i) || [said.slice(0, 120)])[0].trim());
+    return check(label + "the declined test card " + card.replace(/(\d{4})(?=\d)/g, "$1 ") + " is refused on Stripe's page (the error shows inline)",
+      !!said && /stripe\.com$/.test(await ev("location.host")), String(await ev("location.href")).slice(0, 100) + " | " + (await F.text()).slice(0, 160));
   }
 
   console.log("\n" + count.PASS + " passed, " + count.FAIL + " failed, " + count.SKIP + " skipped");

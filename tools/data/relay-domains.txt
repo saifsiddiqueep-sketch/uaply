@@ -1,0 +1,20 @@
+# Privacy relay domains: ALWAYS allowed to make a UAply account, checked before the throwaway list (auth_api.is_relay).
+#
+# Why: a relay gives the person a private address that forwards to their real, long-lived inbox, so applications, receipts and employers'
+# replies still reach them. Sign in with Apple hands out privaterelay.appleid.com addresses; refusing relays would refuse those people.
+# A domain under one of these (alias.anonaddy.com) counts too.
+#
+# How to edit: one domain per line, lower case, no "@". "#" starts a comment. Read by auth_api.relay_domains(); edits apply without a restart.
+# Last reviewed: October 17, 2026.
+
+privaterelay.appleid.com     # Apple Hide My Email (Sign in with Apple, iCloud+)
+duck.com                     # DuckDuckGo Email Protection
+mozmail.com                  # Firefox Relay
+simplelogin.co               # SimpleLogin (Proton)
+simplelogin.com              # SimpleLogin
+aleeas.com                   # SimpleLogin's alias domain
+slmails.com                  # SimpleLogin's alias domain
+anonaddy.me                  # addy.io (formerly AnonAddy)
+anonaddy.com                 # addy.io (formerly AnonAddy)
+addy.io                      # addy.io
+passmail.net                 # Proton Pass aliases

@@ -40,6 +40,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+import auth_api
 import jwt_rs256
 import uaply_api
 
@@ -206,7 +207,7 @@ def _identity(c):
     accounts (the hd claim). For any other address "verified" can be out of date (the address may have changed hands), so such an email
     is not trusted: it can sign someone in by their Google account number, but it cannot prove ownership of the address or be merged
     into an existing UAply account with that address."""
-    email = c["email"].strip().lower()
+    email = auth_api.canonical_email(c["email"])           # the same key as every other way in ("" makes oauth_login refuse it)
     hd = c.get("hd") if isinstance(c.get("hd"), str) else ""
     return {"provider": "google", "subject": str(c["sub"])[:100], "email": email,
             "trusted": email.endswith(("@gmail.com", "@googlemail.com")) or bool(hd)}
