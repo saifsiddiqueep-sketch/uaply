@@ -336,6 +336,15 @@ def add_mail(user_id, to_addr, subject, body, status):
                   (user_id, to_addr, subject[:200], body[:8000], status, int(time.time())))
 
 
+def mark_mail_sent(user_id, to_addr):
+    """A receipt that was held (the daily email limit, the mail service down) went out later: its stored copy now says sent."""
+    with _lock, _db() as c:
+        row = c.execute("SELECT id FROM user_mail WHERE user_id=? AND to_addr=? AND status='held' ORDER BY id LIMIT 1", (user_id, to_addr)).fetchone()
+        if row:
+            c.execute("UPDATE user_mail SET status='sent' WHERE id=?", (row[0],))
+        return bool(row)
+
+
 def mail_list(limit=50):
     with _lock, _db() as c:
         return [dict(r) for r in c.execute("SELECT to_addr, subject, body, status, at FROM user_mail ORDER BY id DESC LIMIT ?", (limit,))]

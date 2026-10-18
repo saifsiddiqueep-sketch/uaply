@@ -433,7 +433,8 @@ def feedback_html():
                                          ("from " + e(r["source"]) + " · ") if r.get("source") else "",
                                          ("screen: " + e(r["page"]) + " · ") if r.get("page") else "") + {
                                              "emailed": "emailed to the team", "failed": "NOT emailed (the mail server refused it)",
-                                             "saved": "not emailed (no real email connected)"}.get(r.get("delivery"), "saved"))
+                                             "saved": "not emailed (no real email connected)",
+                                             "held": "held: emailed later (the daily email limit, or the mail service was down)"}.get(r.get("delivery"), "saved"))
         for r in recs[:200]) or "<p class='m'>No feedback yet.</p>"
     return ("""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>UAply feedback</title><style>

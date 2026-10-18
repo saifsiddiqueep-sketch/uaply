@@ -311,6 +311,12 @@ def email():
     if STATUS.get("email"):
         t("email is on: Forgot password answers without saying whether the address has an account", s == 200 and j.get("ok") is True and j.get("delivery") == "sent", "%s %r" % (s, j))
         skip("sign-up by email code reaches a real inbox", "tools/ui-live.js --email you+tag@gmail.com and the code from that inbox")
+        s2, _, _ = req("POST", "/api/email/events", {"event": "hard_bounce", "email": who})        # no secret: must be refused, never recorded
+        t("the bounce webhook refuses a call without the shared secret", s2 in (401, 404), str(s2))
+        if STATUS.get("emailEvents"):
+            t("bounces and complaints from Brevo are switched on (email_events_secret)", True)
+        elif STATUS.get("source") == "/api/status":
+            off("emailEvents", "bounces and complaints from Brevo reach UAply", "email_events_secret in UAPLY_CONFIG_JSON and the Brevo webhook (DEPLOY.md, Email: bounces)")
     else:
         t("email is off: Forgot password says plainly it is not available (never promises a link)", s == 200 and j.get("delivery") == ("unavailable" if PUBLIC else "delivered_test"), "%s %r" % (s, j))
         off("email", "email is on (sign-up codes, receipts, password resets)", "the Brevo SMTP key in UAPLY_CONFIG_JSON (the smtp block); the log must say email: on")
