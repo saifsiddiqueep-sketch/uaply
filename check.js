@@ -80,9 +80,9 @@ console.log("Wiring between files");
 try {
   /* a fresh copy of every shared script, so this does not depend on the section above */
   const W = {}, fakeDoc = { getElementById() { return null; } };
-  ["nav", "live", "profile", "chat", "envs", "employers", "learn", "resume"].forEach((f) => new Function("window", "localStorage", "document", fs.readFileSync("shared/uaply-" + f + ".js", "utf8"))(W, localStorage, fakeDoc));
+  ["nav", "live", "profile", "chat", "envs", "employers", "learn", "resume", "onboard"].forEach((f) => new Function("window", "localStorage", "document", fs.readFileSync("shared/uaply-" + f + ".js", "utf8"))(W, localStorage, fakeDoc));
   const E = W.UAplyEnv, prod = fs.readFileSync("prod/index.html", "utf8");
-  const NEEDS = { submit: ["nav", "live", "kit"], profile: ["nav"], employers: ["nav"], resume: ["nav"] };   /* the same rule as run() in uaply-envs.js */
+  const NEEDS = { submit: ["nav", "live", "kit"], profile: ["nav"], employers: ["nav"], resume: ["nav"], onboard: ["nav"] };   /* the same rule as run() in uaply-envs.js */
   const build = (keys) => {
     let s = prod, err = "";
     E.ORDER.forEach((k) => { if (keys.includes(k) && E.FEATURES[k].patch) { try { s = E.FEATURES[k].patch(s); } catch (e) { err += k + ": " + e.message + ". "; } } });
@@ -98,8 +98,8 @@ try {
   const unknown = P.filter((k) => !E.FEATURES[k]);
   unknown.length ? bad("dev/index.html PROMOTED names features that do not exist: " + unknown.join(", ")) : ok("every feature dev's PROMOTED list names exists (" + P.length + ")");
   /* sandbox-only: Hiring mode, the pretend back end, and the "Save to Applied?" question the sandbox removed */
-  const leak = P.filter((k) => ["employers", "backend", "confirm"].includes(k));
-  leak.length ? bad("sandbox-only features in the release build: " + leak.join(", ")) : ok("no sandbox-only feature (Hiring mode, Mock back end, Confirm apply) is in the release build");
+  const leak = P.filter((k) => ["employers", "backend", "confirm", "onboard"].includes(k));
+  leak.length ? bad("sandbox-only features in the release build: " + leak.join(", ")) : ok("no sandbox-only feature (Hiring mode, Mock back end, Confirm apply, First-run and swipe lock) is in the release build");
   /* allowed in dev since October 17: Learns from your swipes (its file must load) and consent before the first swipe. Still sandbox-only:
      Hiring mode's file and the sandbox's controls bar (All on / All off / Clear saved swipes) */
   !P.includes("learn") || dev.includes('<script src="uaply-learn.js"></script>') ? ok("Learns from your swipes is promoted and its file loads in dev") : bad("dev promotes learn but does not load uaply-learn.js");

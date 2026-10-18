@@ -31,6 +31,8 @@ Serves ROOT; each urlpath=file alias maps one URL to a file outside ROOT (e.g. /
   POST /api/setup/save-google, save-stripe, save-ats, remove-ats   the other boxes on /setup (this computer only)
   GET  /api/billing/status, POST /api/billing/checkout, /api/billing/portal, /api/billing/webhook   Plus and Pro (billing_api.py)
   GET  /api/employer/me, /api/employer/logo/<id>, POST /api/employer/...   Hiring mode, sandbox only (employers_api.py)
+  GET  /api/profile/readiness  is the profile complete enough to apply (readiness.py), with what is missing
+  POST /api/profile/state      save Profile setup progress for the signed-in account; answers with its readiness
   POST /api/profile/resume   read a resume (PDF, Word or text, up to 5 MB) and answer with the profile fields found; nothing is kept (resume_parse.py)
   GET  /healthz           for the host's health check: {"ok": true} from memory, 503 once the server is stopping (HEAD too)
   POST /api/email/events  Brevo's webhook: bounces and complaints put an address on the bounce list (needs email_events_secret; mailer.py)
@@ -100,6 +102,7 @@ if api:
                      ("/uaply-live.js", "shared/uaply-live.js"), ("/uaply-profile.js", "shared/uaply-profile.js"),
                      ("/uaply-chat.js", "shared/uaply-chat.js"), ("/uaply-employers.js", "shared/uaply-employers.js"),
                      ("/uaply-learn.js", "shared/uaply-learn.js"), ("/uaply-resume.js", "shared/uaply-resume.js"),
+                     ("/uaply-onboard.js", "shared/uaply-onboard.js"),
                      ("/help/articles.json", "help/articles.json"),
                      ("/prod-index.html", "prod/index.html")):
         alias.setdefault(url, os.path.join(HERE, rel))
@@ -479,6 +482,8 @@ class H(http.server.SimpleHTTPRequestHandler):
                     return self._send(200, uaply_api.outbox_html(), "text/html; charset=utf-8")
                 if p == "/api/status":
                     return self._send(200, status_facts())
+                if p == "/api/profile/readiness":
+                    return self._send(*uaply_api.get_readiness(auth_api.user_for(self._token())))
                 if p == "/api/auth/me":
                     return self._send(200, {"user": auth_api.user_for(self._token())})
                 if p == "/api/auth/providers":
@@ -554,7 +559,7 @@ class H(http.server.SimpleHTTPRequestHandler):
                                 "/api/auth/delete", "/api/auth/forgot", "/api/auth/reset", "/api/auth/change-password",
                                 "/api/setup/test-mail", "/api/setup/save-mail", "/api/setup/save-google", "/api/setup/save-ats", "/api/setup/remove-ats", "/api/setup/save-stripe", "/api/setup/save-feed-keys", "/api/auth/google/token", "/api/auth/verify", "/api/auth/resend", "/api/chat", "/api/feedback", "/api/billing/checkout", "/api/billing/portal",
                                 "/api/employer/company", "/api/employer/job", "/api/employer/job/status", "/api/employer/applicant",
-                                "/api/employer/import", "/api/profile/resume"):
+                                "/api/employer/import", "/api/profile/resume", "/api/profile/state"):
             return self._refuse(404, {"error": "not found"})
         # Only accept requests made by this site's own pages (blocks cross-site forms and scripts).
         origin = self.headers.get("Origin")
@@ -702,6 +707,8 @@ class H(http.server.SimpleHTTPRequestHandler):
                 u = auth_api.user_for(self._token())
                 over = billing_api.limit_reached(u)
                 code, out = (402, {"error": over, "code": "limit"}) if over else uaply_api.submit(payload, u, self._site_base())
+            elif p == "/api/profile/state":
+                code, out = uaply_api.save_readiness(payload, auth_api.user_for(self._token()))
             elif p == "/api/billing/checkout":
                 code, out = billing_api.checkout(auth_api.user_for(self._token()), payload.get("plan"), self._site_base())
             elif p == "/api/billing/portal":

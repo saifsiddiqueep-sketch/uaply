@@ -131,7 +131,8 @@ def init(instance):
         for col in ("terms_at INTEGER", "has_password INTEGER NOT NULL DEFAULT 1", "email_verified INTEGER NOT NULL DEFAULT 0",
                     "plan TEXT NOT NULL DEFAULT 'free'", "plan_status TEXT NOT NULL DEFAULT ''", "plan_renews INTEGER NOT NULL DEFAULT 0",
                     "plan_cancel INTEGER NOT NULL DEFAULT 0", "stripe_customer TEXT NOT NULL DEFAULT ''", "stripe_sub TEXT NOT NULL DEFAULT ''",
-                    "plan_failed INTEGER NOT NULL DEFAULT 0"):      # databases made before these columns existed
+                    "plan_failed INTEGER NOT NULL DEFAULT 0",
+                    "profile_state TEXT NOT NULL DEFAULT ''"):      # databases made before these columns existed
             try:
                 c.execute("ALTER TABLE users ADD COLUMN " + col)
             except sqlite3.OperationalError:
@@ -367,6 +368,23 @@ def billing_row(user_id):
     with _db() as c:
         r = c.execute("SELECT id, email, plan, plan_status, plan_renews, plan_cancel, plan_failed, stripe_customer, stripe_sub FROM users WHERE id=?", (user_id,)).fetchone()
     return dict(r) if r else None
+
+
+def save_profile_state(user_id, state):
+    """Profile setup progress for a signed-in account (readiness.py): the required fields' values, whether a resume is on file, and the
+    steps skipped. Kept as one JSON text so the browser and the server agree on readiness; an account that never saved any reads as {}."""
+    with _lock, _db() as c:
+        c.execute("UPDATE users SET profile_state=? WHERE id=?", (json.dumps(state, separators=(",", ":"))[:20000], user_id))
+
+
+def profile_state(user_id):
+    with _db() as c:
+        r = c.execute("SELECT profile_state FROM users WHERE id=?", (user_id,)).fetchone()
+    try:
+        v = json.loads(r["profile_state"]) if r and r["profile_state"] else {}
+    except ValueError:
+        v = {}
+    return v if isinstance(v, dict) else {}
 
 
 EVENT_DAYS = 30          # Stripe resends an event for up to 3 days; ids are kept ten times that long, then forgotten

@@ -44,6 +44,7 @@ import ats_api
 import autofill
 import jobs_api
 import auth_api
+import readiness
 import emails
 import mailer
 
@@ -744,10 +745,19 @@ def email_events(body, authorization):
 def submit(p, user=None, site=""):
     """Returns (http_status, dict). `user` is the signed-in account ({id, email}) or None. `site` is the address the person is using
     (for the link in their receipt)."""
+    cfg = config()
+    if readiness.enforced(cfg, INSTANCE):
+        # the swipe lock (sandbox, Trello card 9): a profile missing a required field is never sent, even when this is called directly
+        # rather than from a swipe. Checked on the profile in this request, which is exactly what would reach the employer.
+        ready = readiness.check(p.get("profile"), bool(p.get("resume")))
+        if ready["state"] != "ready":
+            return 403, {"error": "Complete your profile to unlock job swiping and start applying. Missing: %s." %
+                         ", ".join(m["label"] for m in ready["missing"]), "code": "profile_incomplete", "readiness": ready}
+        if user:
+            auth_api.save_profile_state(user["id"], dict(auth_api.profile_state(user["id"]), readiness=ready["state"]))
     err = _validate(p)
     if err:
         return 400, {"error": err}
-    cfg = config()
     mode = cfg["delivery"]
     job = {k: _s(p["job"].get(k), 600) for k in ("co", "role", "url", "source", "loc", "contact")}
     job["id"] = int(p["job"]["id"])
@@ -940,6 +950,40 @@ def submit(p, user=None, site=""):
     if rec["status"] != "failed" and not already:
         out["copied"] = _send_owner_copy(cfg, rec)
     return 200, out
+
+
+def _progress(raw):
+    """Only what readiness needs from the browser's profile (never the street address, answers or the resume file itself)."""
+    q = raw if isinstance(raw, dict) else {}
+    pr = q.get("profile") if isinstance(q.get("profile"), dict) else {}
+    x = pr.get("ext") if isinstance(pr.get("ext"), dict) else {}
+    steps = readiness.STEP_ORDER
+    return {"profile": {"name": _s(pr.get("name"), 100), "email": _s(pr.get("email"), 200), "loc": _s(pr.get("loc"), 100),
+                        "ext": {"phone": _s(x.get("phone"), 25), "resume": _https(x.get("resume"))}},
+            "hasResume": q.get("hasResume") is True,
+            "skipped": [k for k in steps if isinstance(q.get("skipped"), list) and k in q["skipped"]]}
+
+
+def readiness_out(state, user):
+    r = readiness.check(state.get("profile"), state.get("hasResume") is True)
+    r.update(signedIn=bool(user), enforced=readiness.enforced(config(), INSTANCE), skipped=state.get("skipped") or [],
+             saved=bool(state.get("profile")))
+    return r
+
+
+def get_readiness(user):
+    """GET /api/profile/readiness: the signed-in account's saved Profile setup progress, as readiness.check sees it. Signed out: nothing is
+    kept on the server (the profile lives on the device), so this is not_started with signedIn false."""
+    return 200, readiness_out(auth_api.profile_state(user["id"]) if user else {}, user)
+
+
+def save_readiness(p, user):
+    """POST /api/profile/state: store Profile setup progress for a signed-in account and answer with its readiness. Signed out it is only
+    checked, never stored."""
+    state = _progress(p)
+    if user:
+        auth_api.save_profile_state(user["id"], state)
+    return 200, readiness_out(state, user)
 
 
 def _line_user(line):
