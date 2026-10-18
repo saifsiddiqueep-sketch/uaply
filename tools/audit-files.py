@@ -178,6 +178,8 @@ for secret in ("uaply-config.json", "uaply-partners.json"):
 for t in sorted(tracked):                                 # backups and scratch files named to slip past .gitignore (this happened with a ".bak" copy of the partner list)
     if re.search(r"(\.bak|\.orig|\.rej|\.swp|\.tmp|\.log|~)$", t) or os.path.basename(t).startswith(("uaply-config.json.", "uaply-partners.json.")):
         err(t, "looks like a local backup, temporary or log file and should not be committed")
+    if os.path.basename(t).startswith("uaply-backup-"):          # tools/backup-data.py: accounts, password hashes and applications
+        err(t, "is a data backup (accounts and applications) and must never be committed")
 SHIPPED_DATA = ("tools/data/",)                          # lists that ship with the code (the throwaway-email domains), not anyone's records
 for d in ("data/", "__pycache__/"):
     if any((t.startswith(d) or "/" + d in t) and not t.startswith(SHIPPED_DATA) for t in tracked):

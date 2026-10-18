@@ -67,6 +67,8 @@ run "job feeds: USAJOBS, City of Philadelphia, keys, feeds_off, via credit" pyth
 run "swipe learning: the math, the worked example, the replay test" python tools/test-learn.py
 run "fill from your resume: six resumes, layouts, dates, refused files, the endpoint" python tools/test-resume.py 18798
 run "the server as Render runs it: start, stop mid-request, restart on the same disk" python tools/test-render.py 18782
+run "reading every job board stays far below the 512 MB plan, and a redeploy answers from the saved list at once" python tools/test-feed-memory.py
+run "backups: pack the data folder, restore it, refuse damaged ones, encrypt, upload to a private GitHub repository" python tools/test-backup.py 18799
 run "every path from swipe right to inbox, replayed in a browser" python tools/ui-apply-paths.py
 run "the one-time question box: every kind of question, phone and computer" python tools/ui-questions.py
 

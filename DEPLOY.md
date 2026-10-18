@@ -58,23 +58,113 @@ simulated payments (paid plans appear only once live Stripe keys are set, sectio
 5. Check each one: `/healthz` answers `{"ok": true}`, and the service's **Logs** show one line starting `[uaply] dev on 0.0.0.0:10000 (public)`.
    It must say `data: /var/data (persistent disk)`, `email: on` and `UAPLY_CONFIG_JSON: valid` (and, once set up, `Google sign-in: on (full-page
    sign-in on every device)` and `payments: on, LIVE mode`). `NOT a persistent disk` means the disk is not
-   attached (accounts would vanish at the next deploy); `NOT VALID JSON` means the settings line has a typo and was ignored. On the very first
-   start the job list takes about a minute to fill (the server reads every employer's board once); after that it is saved on the disk and a
-   redeploy shows jobs at once.
+   attached (accounts would vanish at the next deploy); `NOT VALID JSON` means the settings line has a typo and was ignored. The line ends with
+   `commit: <7 letters>`, the commit Render deployed. On the very first start (an empty disk) the job list takes about a minute to fill (the
+   server reads every employer's board once); after that it is saved on the disk and every restart or redeploy shows the saved jobs at once
+   while the boards refresh behind them (`tools/test-render.py` proves it answers in under 3 seconds even when the network hangs).
 6. Your address (Cloudflare): in Render, uaply-dev, Settings, Custom Domains, add `uaply.net` (Render adds `www` and redirects it). In Cloudflare,
    DNS: delete any AAAA record for `uaply.net`, add CNAME `@` and CNAME `www`, both to `uaply-dev.onrender.com` with Proxy status **DNS only**,
    and set SSL/TLS to **Full**. Back in Render press Verify; https://uaply.net works once the certificate shows as issued. Leave the MX and TXT
    (email) records alone. Add `https://uaply.net` to the Google client ID's Authorized JavaScript origins.
 
-How deploys behave: every push to `dev` (or `sandbox`) redeploys that service. Because it has a disk, Render stops the old copy before
-starting the new one, so the site is unreachable for a few seconds; the server finishes the requests in progress before it stops
-(`[uaply] stopped` in the log), and the new copy answers about a second after Render starts it (measured with a filled disk). Accounts, sessions, applications and feedback survive: people stay
-signed in. Render keeps a snapshot of the disk every day for at least 7 days (Disks, in the service).
+How deploys behave: every push to `dev` (or `sandbox`) redeploys that service, once auto-deploy works (it did not on October 17: see
+"Auto-deploy" below). Because it has a disk, Render stops the old copy before starting the new one (Render offers no zero-downtime deploy for a
+service with a disk), so the site is unreachable for a few seconds and a visitor in that gap gets a 502 from Render (the October 17 metrics
+show 1 to 6 of them per deploy, never between deploys). At the stop the server answers 503 to the health check, closes its port at once,
+finishes the requests in progress (at most 15 seconds) and exits with `[uaply] daily {...}` and `[uaply] stopped` in the log, in about 2
+seconds when nothing is in progress; Render allows 30 and that cannot be raised for a service with a disk. The new copy answers about a
+second after Render starts it. Accounts, sessions, applications and feedback survive: people stay signed in. Render keeps a snapshot of the
+disk every day for at least 7 days (the service, Disks); see "Backups" for a copy off Render.
 
 Changing the API key later (for example to a business key) is only an edit of `ANTHROPIC_API_KEY` in Render's
 dashboard; no code changes. `python tools/test-render.py` starts the server the way Render does and checks all of the above.
 
 Before real users: fill the blanks in `legal/`, and keep `delivery` in test mode until partner employers have agreed.
+
+### Running the live site: health check, auto-deploy, backups, logs, capacity
+The live service is `uaply` (`srv-db9i3i6q1p3s738b5b4g`, https://uaply.onrender.com). It was made by hand, not from this Blueprint, so
+`render.yaml` does not change it: each setting below is typed into the dashboard once.
+
+**Health check (dashboard only).** uaply → **Settings** → **Health Checks** → **Edit** → Health Check Path `/healthz` → **Save Changes**.
+Without it Render only checks that the port accepts a connection, so a server that is stuck would stay "live". With it Render asks every few
+seconds; an answer other than 2xx/3xx within 5 seconds counts as a failure; after 15 seconds of failures Render stops sending visitors there
+and after 60 seconds it restarts the server, and a deploy goes live only once the new copy passes. `/healthz` is answered from memory (no
+disk, no job boards), answers in milliseconds, works with HEAD too, and says 503 once the server is stopping.
+
+**Environment (dashboard only).** uaply → **Environment** → **Add Environment Variable**: `MALLOC_ARENA_MAX` = `2` → **Save, rebuild, and
+deploy**. It keeps memory down while the job boards are read (see Capacity). `render.yaml` has it for services made from the Blueprint.
+
+**Auto-deploy.** The service says Auto-Deploy "On Commit", yet on October 17 every deploy was started by hand or through the API: a push to
+`dev` never started one. The service was created from the repository's address, and Render hears about pushes only through its GitHub app.
+To fix it, once:
+1. GitHub: open https://github.com/apps/render/installations/new, pick the account `saifsiddiqueep-sketch`, and under **Repository access**
+   choose **Only select repositories** with `uaply` ticked (or All repositories) → **Install** (or **Save** if it is already installed). To check
+   later: GitHub → your picture → **Settings** → **Applications** → **Installed GitHub Apps** → **Render** → **Configure**. (The app delivers the
+   push events itself, so the repository's **Settings → Webhooks** page may stay empty; that is normal for an app.)
+2. Render: your picture → **Account Settings** → **Git Deployment Credentials** → **Add credential** → **GitHub**, confirm.
+3. Render: uaply → **Settings** → **Build & Deploy**: **Repository** must show `saifsiddiqueep-sketch/uaply` (press **Edit** and pick it from
+   the list that now appears, if it shows a plain address or a warning), **Branch** `dev`, **Auto-Deploy** `On Commit` → **Save Changes**.
+4. Prove it: merge the next PR into `dev`. Within a minute uaply → **Events** shows a deploy whose trigger is the new commit (not "Manual" or
+   "API"). Then run `python tools/live-check.py --base https://uaply.onrender.com`: the line "the site runs the latest push (origin/dev = ...)"
+   compares the commit the site reports in `/api/status` with the head of `dev` on GitHub and fails when a push was never deployed.
+To skip one deploy on purpose, put `[skip render]` in the commit message.
+
+**Backups.** Render's daily disk snapshot is the first line (uaply → **Disks** → **Snapshots**, kept at least 7 days; restoring one
+replaces the whole disk and loses everything since). It lives on Render, and Render warns a snapshot of a database being written can come
+back broken. So once a week (Sunday evening is the quietest), take a copy that is consistent and off Render:
+1. uaply → **Shell**, then `python tools/backup-data.py --keep 4`. It packs `/var/data` (accounts through SQLite's own backup, sessions,
+   applications, swipes, feedback, employers, the partner list; not the job list, which rebuilds itself) into
+   `/var/data/backups/uaply-backup-YYYYMMDD-HHMMSSZ.tar.gz` with a manifest of every file's SHA-256, and keeps the newest 4 there (a few MB each).
+2. Take it off Render (free, pick one):
+   - **Your Google Drive, through your computer:** in the Shell, `export UAPLY_BACKUP_PASSPHRASE='...'` (a long passphrase you keep in your
+     password manager; never in a file or chat), `python tools/backup-data.py --encrypt`, then `wormhole send /var/data/backups/<the .enc file>`
+     (magic-wormhole is installed on Render's Python machines). On your computer, once, `pip install magic-wormhole`; then
+     `wormhole receive <the code it showed>` inside your Google Drive for desktop folder (for example `G:\My Drive\UAply backups`). Drive keeps it
+     off Render and on your computer. (With an SSH key added in Render → Account Settings → SSH Public Keys, `scp -s
+     srv-db9i3i6q1p3s738b5b4g@ssh.virginia.render.com:/var/data/backups/<file> .` does the same.)
+   - **A private GitHub repository:** create a private repository `uaply-backups`, then a fine-grained token (GitHub → Settings → Developer
+     settings → Fine-grained tokens → Generate: Repository access only `uaply-backups`, Permissions → Contents: Read and write, expiry 1 year).
+     In the Shell: `export GITHUB_BACKUP_TOKEN='...'` and the passphrase as above, then `python tools/backup-data.py --encrypt --upload
+     saifsiddiqueep-sketch/uaply-backups`. It refuses a repository that is not private, and each backup becomes one release asset there.
+     Typed into the Shell, the token and passphrase last only for that session.
+3. Once a month, check one: `python tools/backup-data.py --list <file>` (needs the passphrase for an `.enc` file) lists every file.
+To restore: put the file on the disk (wormhole the other way), `python tools/backup-data.py --restore <file> --yes` (it checks every file
+against the manifest first and saves the current state as a backup before changing anything), then at once uaply → **Manual Deploy** →
+**Restart service** so the server reads the restored files. The backups hold password hashes, email addresses and applications: never a public
+place, a chat or this repository (`tools/audit-files.py` refuses a committed one). `python tools/test-backup.py` tests all of it.
+
+**Logs (uaply → Logs).** Search box: plain text, `*` wildcards or `/regex/`; time range at the top right (Live tail to watch). What to search:
+- `[uaply] dev on`: the start-up line (what is switched on, the disk, the commit). `stopping` / `stopped`: a deploy's stop.
+- `[uaply] daily`: one line of JSON per day at midnight UTC (and at each stop, for the part of the day before it): requests, `2xx` to `5xx`,
+  `429`, `signups`, `logins`, `applications`, `p50_ms` and `p95_ms` (Render shows response times only on its Pro plan, so these stand in for
+  them), the five slowest paths with their average and worst, the health checks, and the memory now and at its peak in MB.
+- `[uaply] GET /api/` or `[uaply] POST /api/`: one line per API request (method, path, status, milliseconds; never an IP address, a query
+  string, a cookie or an email address), plus any request slower than a second or answering 5xx. `UAPLY_REQUEST_LOG=off` in Environment
+  switches these lines off. Render's own request logs need a Pro workspace.
+- `failed:` (a server error and its reason), `job feed` (a board that could not be read), `could not save`.
+The free Hobby workspace keeps logs and metrics 7 days. **Metrics** (uaply → Metrics): CPU and Memory per instance, and HTTP requests by
+status code. **Notifications** (Account Settings → Notifications): leave "Deploy failed" on email.
+
+**Capacity (October 17, 20:00 to 01:30 UTC, the metrics export).** CPU peaked at 0.18 of the plan's 0.5 CPU, only while job boards were read,
+and sat near 0.0003 otherwise. Memory started at 40 to 55 MB, jumped to 270 to 285 MB the minute the boards were read and stayed there (a
+process mostly keeps memory it has used); one copy reached 491 MB of the 512 MB after a second read overlapped the first: the boards (65 MB of
+answers, up to 16 read at once, more for each visitor who arrived during the first fill) were the whole problem. Now at most 3 boards are read
+at once, a board is never read twice at once, freed memory is handed back, and `tools/test-feed-memory.py` measures it on boards as large as
+the real ones: the peak went from 308 MB to 93 MB (process) and from 407 MB to 57 MB (Python's allocations). Requests: 761 in 5.5 hours (19 to
+306 an hour, at most 59 in one minute), all 502s within a minute of a deploy, every 429 and 503 from the live-site check itself (its
+lock-out and "checkout off" tests). One instance throughout (a service with a disk cannot have more). **Starter is enough for launch week.**
+Ask the owner about **Standard** ($25 a month instead of $7, 1 CPU and 2 GB; he approves any money) when any of these holds for a day: memory
+above 400 MB in Metrics, an "out of memory" restart in Events, CPU above 0.4 for 10 minutes outside a board refresh, or `p95_ms` in the daily
+line above 1500.
+
+**What Render does and what the app does (HTTPS and headers).** Render (through Cloudflare) holds the certificate, ends HTTPS, redirects
+`http://` to `https://` with a 301 and serves HTTP/2 and HTTP/3 to browsers; the app sees plain HTTP with `X-Forwarded-Proto: https`. The app
+sends, on every answer: `Strict-Transport-Security: max-age=31536000` (only behind HTTPS), `X-Content-Type-Options: nosniff`, `X-Frame-Options:
+SAMEORIGIN` and `Content-Security-Policy: frame-ancestors 'self'; object-src 'none'; base-uri 'self'` (other sites cannot frame it),
+`Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: camera=(), microphone=(), usb=(), payment=()`, `Cache-Control: no-store`,
+cookies with `HttpOnly; Secure; SameSite=Lax`, and `Server: UAply` (it used to name the Python version, which Render passes on as
+`x-render-origin-server`). Not yet: `includeSubDomains`/`preload` in HSTS (only once every name under uaply.net is HTTPS for good) and script
+rules in the CSP (the pages carry their own inline code). `tools/test-public.py` and `tools/live-check.py` check these.
 
 ## 2. App Store and Google Play (Capacitor, in `mobile/`)
 The apps open https://uaply.net (`mobile/capacitor.config.json`, `server.url`). If the address changes, edit it there and
