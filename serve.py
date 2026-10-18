@@ -445,10 +445,12 @@ class H(http.server.SimpleHTTPRequestHandler):
             return self._send(429, {"error": "You're swiping faster than UAply can keep up. Wait a moment and try again.", "code": "slow_down"})
         try:
             if p == "/api/auth/signup":
-                code, out, token = auth_api.signup(payload.get("email"), payload.get("password"), ip, payload.get("agree"), dns_check(),
-                                                   auth_api.SIGNUPS_PER_HOUR if PUBLIC else None)
-                if token:                                        # a new password account must prove it owns the email: send the first code
-                    uid, addr, digits = auth_api.issue_code_for_token(token)
+                # the account and its first code are made in one locked step (auth_api.signup_with_code), so a Google sign-in for the same
+                # address racing this sign-up can never leave it half made
+                code, out, token, mail = auth_api.signup_with_code(payload.get("email"), payload.get("password"), ip, payload.get("agree"),
+                                                                   dns_check(), auth_api.SIGNUPS_PER_HOUR if PUBLIC else None)
+                if mail:                                         # a new password account must prove it owns the email: send the first code
+                    uid, addr, digits = mail
                     out = dict(out, delivery=uaply_api.send_verification_mail(uid, addr, digits))
                 return self._send(code, out, headers=self._cookie(token) if token else ())
             if p == "/api/auth/login":
