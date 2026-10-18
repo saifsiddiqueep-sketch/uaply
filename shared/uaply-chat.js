@@ -174,7 +174,9 @@ function apply(w,host){
     botSay("Sorry about that. What were you looking for? Your answer goes to the team so we can fix it.");
     flow={kind:"answer",step:"text",data:{topic:"answer",helpful:false,articles:ids}};
     hint("What were you looking for?");
-    chips([{label:"Skip",run:function(){meSay("Skip");finish({topic:"answer",helpful:false,articles:ids})}}]);
+    /* an answer that did not help is the moment people want a person: offer it here, not two taps later behind Skip */
+    chips([{label:"Talk to a person",pri:true,run:function(){meSay("Talk to a person");flow=null;hint();post("/api/feedback",{topic:"answer",helpful:false,articles:ids,page:where(),source:"chat"});startHuman()}},
+      {label:"Skip",run:function(){meSay("Skip");finish({topic:"answer",helpful:false,articles:ids})}}]);
   }
 
   /* ---------- feedback: one question at a time ---------- */
@@ -277,6 +279,9 @@ function apply(w,host){
   d.body.appendChild(nudge);
   function hideNudge(remember){if(!nudge.hidden){nudge.hidden=true;if(remember){var s=load();s.nudged=Date.now();store(s)}}}
   nudge.querySelector(".x").onclick=function(){hideNudge(true);btn.focus()};
+  /* a tap anywhere else means "not now": the question floats where the bottom-bar menus open, so a tap meant for Applied landed on
+     the "3" and sent a rating nobody chose */
+  d.addEventListener("pointerdown",function(e){if(!nudge.hidden&&!nudge.contains(e.target))hideNudge(false)},true);
   nudge.addEventListener("click",function(e){
     var b=e.target.closest("[data-r]");if(!b)return;
     var n=+b.getAttribute("data-r");hideNudge(true);

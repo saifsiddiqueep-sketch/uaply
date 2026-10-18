@@ -640,7 +640,7 @@ class H(http.server.SimpleHTTPRequestHandler):
                 msg = {"agree": "Tick the box to confirm you are 18 or older and agree to the Terms and Privacy Policy, then choose Google again.",
                        "failed": "Google sign-in could not be checked. Try again.", "unverified": "Google says that email address is not verified, so UAply cannot use it.",
                        "off": "Google sign-in is not switched on.", "limited": "Too many tries. Wait a minute and try again.",
-                       "email_in_use": "That email already has a UAply account. Log in with your email and password instead.",
+                       "email_in_use": "That email already has a UAply account. Sign in with your email and password instead.",
                        "disposable": auth_api.KEEP_MSG}
                 err, ident = google_auth.verify_credential(payload.get("credential"), ip)
                 if not err:

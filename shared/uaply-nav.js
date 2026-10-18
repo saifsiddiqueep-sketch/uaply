@@ -35,7 +35,7 @@ function patch(s){
   s=once(s,'&&(F==="all"||j.mode===F)}).map(function(j){return {j:j,m:evaluate(j,S.profile)}}).sort(',
            '&&(j.type||"job")===TYPE&&!(window.__uaplyHide&&window.__uaplyHide(j))&&(F==="all"||j.mode===F)}).map(function(j){return {j:j,m:evaluate(j,S.profile)}}).filter(function(x){return x.m.pct>=MINPCT}).sort(');
   s=once(s,'<h2>You have seen every job</h2><p>Jobs you passed on can come back, and your applications are in the Applied tab.</p>',
-    `<h2>'+(window.__uaplyLoadingJobs?"Finding jobs for you…":window.__uaplyJobsFailed?"Could not load jobs":MINPCT>0?"No jobs at "+MINPCT+"% match or higher":(JOBS.filter(function(j){return (j.type||"job")===TYPE&&(j.live||!window.__uaplyHideSamples)}).length?"You have seen every one of these":"Nothing listed here right now"))+'</h2><p>'+(window.__uaplyLoadingJobs?"Looking for current postings. This takes a few seconds.":window.__uaplyJobsFailed?"Check your internet connection, then close and reopen UAply.":MINPCT>0?"Lower the minimum match in Profile, then Filters.":(JOBS.filter(function(j){return (j.type||"job")===TYPE&&(j.live||!window.__uaplyHideSamples)}).length?"Jobs you passed on can come back, and your applications are in the Dashboard.":"New postings appear as employers publish them. Try another section or check back soon."))+'</p>`);
+    `<h2>'+(window.__uaplyLoadingJobs?"Finding jobs for you…":window.__uaplyJobsFailed?"Could not load jobs":MINPCT>0?"No jobs at "+MINPCT+"% match or higher":(window.__uaplyEmpty||function(){return ["You have seen every one of these"]})(JOBS,S,TYPE)[0])+'</h2><p>'+(window.__uaplyLoadingJobs?"Looking for current postings. This takes a few seconds.":window.__uaplyJobsFailed?"Check your internet connection, then close and reopen UAply.":MINPCT>0?"Lower the minimum match in Profile, then Filters.":(window.__uaplyEmpty||function(){return ["","Jobs you passed on can come back, and your applications are in the Dashboard."]})(JOBS,S,TYPE)[1])+'</p>`);
   s=once(s,'title:String(x.title||"")};','title:String(x.title||""),st:(x.st==="interview"||x.st==="accepted"||x.st==="rejected")?x.st:"applied",sent:(x.sent&&typeof x.sent==="object")?{at:+x.sent.at||0,to:String(x.sent.to||"").slice(0,120),status:String(x.sent.status||"").slice(0,20)}:undefined};');
   /* profile gets an email so a recruiter can reply */
   s=once(s,'salary:100000,loc:"New York",','salary:100000,loc:"New York",email:"jordan.lee@example.com",');
@@ -93,7 +93,7 @@ var CSS=`
 .nitem:hover,.nitem:focus-visible{background:var(--bg)}
 .nitem[aria-checked="true"]{color:var(--accent);background:var(--bg)}
 .nitem .c{font:500 12px var(--mono);color:var(--muted)}
-.toast{bottom:var(--toast-at,var(--above-nav,calc(88px + env(safe-area-inset-bottom,0px))));pointer-events:none}.toast button{pointer-events:auto}
+.toast{bottom:var(--toast-at,var(--above-nav,calc(88px + env(safe-area-inset-bottom,0px))));pointer-events:none;width:max-content;max-width:min(600px,calc(100vw - 32px))}.toast button{pointer-events:auto}
 body{padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
 /* Pass / Undo / Apply always in sight, just above the bottom bar. The deck scrolls inside #main, and on first open the tips, the
    example-profile notice, the location box, the filters and the card's 430 px minimum pushed the row below the bottom of #main,
@@ -290,6 +290,8 @@ function apply(w,host){
   /* a server without email (the live site until the owner adds the mail key) sends no receipts, so its Account screen must not promise
      them; the owner's computer (test inbox) and a server with email keep the line above */
   function leadOf(v){
+    /* signed in: the line above "You are signed in" must not still ask the person to sign in */
+    if(v==="account"&&SRV.up&&SRV.user)return "Your sign-in, email confirmations and password. Your profile stays on this device.";
     if(v==="account"&&SRV.up&&SRV.mailKnown&&!(SRV.canEmail||SRV.testInbox))return "Sign in to keep a record of your applications with your account and to apply directly to employers that take applications through UAply. Email receipts start once email is switched on for this site. Your profile stays on this device.";
     return LEADS[v];
   }
@@ -741,8 +743,25 @@ function apply(w,host){
       });
     }
     n.hidden=!(shown===0&&byTitle>0);
-    if(!n.hidden)n.textContent=byTitle+" listing"+(byTitle===1?" is":"s are")+" hidden because "+(byTitle===1?"it does":"they do")+" not match your target titles. Add more titles in Profile setup, under Jobs you want, or turn off \"Hide roles that do not match my target titles\" in Profile, Filters.";
+    if(!n.hidden){
+      n.textContent=byTitle+" listing"+(byTitle===1?" is":"s are")+" hidden because "+(byTitle===1?"it does":"they do")+" not match your target titles. Add more titles in Profile setup, under Jobs you want, or show every role here. ";
+      /* one tap instead of a trip to Profile, Filters: the same switch as "Hide roles that do not match my target titles" there */
+      var b=d.createElement("button");b.type="button";b.className="btn ghost";b.id="titleShowAll";b.textContent="Show all roles";b.style.cssText="margin-top:8px;display:block";
+      b.onclick=function(){acct.fTitleOnly=false;saveA();try{A.renderAll()}catch(e){}};
+      n.appendChild(b);
+    }
   }
+  /* what an empty deck says (heading, line). "You have seen every one of these" only when the person really has: when every listing of
+     this kind is hidden by their filters or target titles (a new profile whose titles the feed does not have yet), it says so and where to
+     widen them, instead of telling someone who has seen nothing that they have seen everything. */
+  w.__uaplyEmpty=function(jobs,S,type){
+    var all=jobs.filter(function(j){return (j.type||"job")===type&&(j.live||!w.__uaplyHideSamples)}),
+        seen=all.filter(function(j){return S&&S.decisions&&S.decisions[j.id]}).length,hid=all.length-seen,
+        n=function(k){return k+" listing"+(k===1?" is":"s are")};
+    if(!all.length)return ["Nothing listed here right now","New postings appear as employers publish them. Try another section or check back soon."];
+    if(hid)return [(seen?"No more jobs here match":"No jobs here match")+" your profile and filters",n(hid)+" hidden by your filters or target titles. Open Profile, then Filters to see more, or pick another kind of job in the Jobs menu."+(seen?" Jobs you passed on can come back.":"")];
+    return ["You have seen every one of these","Jobs you passed on can come back, and your applications are in the Dashboard."];
+  };
   /* a short note when you are looking at an opportunity type you did not pick in your profile */
   function typeNote(){
     var n=d.getElementById("typeNote");
@@ -1540,7 +1559,7 @@ function apply(w,host){
     if(t.id==="aEnf"){acct.enforce=t.checked;saveA();msg(acct.enforce?"Limits are now enforced.":"Limits are off.")}
     else if(t.id==="aImp"&&t.files[0]){
       var g=t.files[0];if(g.size>3145728){msg("That file is too large.");return}
-      readFile(g,true,function(txt){var r=importBackup(txt);msg(r===true?"Restored.":r);if(r===true)renderAcct("data")});
+      readFile(g,true,function(txt){var r=importBackup(txt);if(r===true)renderAcct("data");msg(r===true?"Restored. Your profile, applications and details from the file are on this device now.":r)});   /* the screen is redrawn first: drawing it after the message wiped the message, so a restore looked like nothing happened */
     }
   });
   acctSec.addEventListener("input",function(e){
@@ -1650,10 +1669,12 @@ function apply(w,host){
     renderAcct("account");msg("Signed in with "+VIA[via]+".");
   }
   /* ---------- real accounts on this server (auth_api.py). Used whenever the back end is running. ---------- */
+  var BUSY="UAply is restarting for a moment. Wait a minute, then try again.";
   function apiPost(path,body){
     if(preview())return Promise.resolve({ok:false,j:{error:PREVIEW_TEXT,code:"preview"}});   /* nothing to send it to: say so, never "could not reach" */
     return w.fetch(path,{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
-      .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j}},function(){return {ok:false,j:{error:"The server sent an unexpected reply."}}})})
+      /* 502, 503 and 504 come from the host while UAply restarts (each deploy takes it away for a few seconds): say that, not "unexpected reply" */
+      .then(function(r){if(r.status>=502&&r.status<=504)return {ok:false,j:{error:BUSY,code:"busy"}};return r.json().then(function(j){return {ok:r.ok,j:j}},function(){return {ok:false,j:{error:r.ok?"The server sent an unexpected reply.":BUSY,code:r.ok?"":"busy"}}})})
       .catch(function(){return {ok:false,j:{error:"Could not reach the server."}}});
   }
   var hb=d.createElement("button");hb.type="button";hb.id="hdrAcct";hb.className="hdrbtn";
@@ -1690,7 +1711,7 @@ function apply(w,host){
     SRV.google=!!(j&&j.google);SRV.googleClientId=(j&&j.googleClientId)||"";SRV.googleRedirect=!!(j&&j.googleRedirect);SRV.canEmail=!!(j&&j.canEmail);SRV.mailKnown=!!j;
     if((SRV.google||!SRV.canEmail)&&!acctSec.hidden&&sub.prof==="account")redrawAcct();
   }).catch(function(){});
-  var GERR={agree:"Tick the box to confirm you are 18 or older and agree to the Terms and Privacy Policy, then try Google again.",cancelled:"Google sign-in was cancelled.",expired:"That Google sign-in expired or could not be checked. Try again.",failed:"Google sign-in did not work. Try again, or use your email and password.",unverified:"Google says that email address is not verified, so UAply cannot use it.",off:"Google sign-in is not switched on.",email_in_use:"That email already has a UAply account. Log in with your email and password instead.",disposable:"Please use an email address you'll keep — temporary addresses can't be used for job applications."};
+  var GERR={agree:"Tick the box to confirm you are 18 or older and agree to the Terms and Privacy Policy, then try Google again.",cancelled:"Google sign-in was cancelled.",expired:"That Google sign-in expired or could not be checked. Try again.",failed:"Google sign-in did not work. Try again, or use your email and password.",unverified:"Google says that email address is not verified, so UAply cannot use it.",off:"Google sign-in is not switched on.",email_in_use:"That email already has a UAply account. Sign in with your email and password instead.",disposable:"Please use an email address you'll keep — temporary addresses can't be used for job applications."};
   function googleReturn(){
     var tp=null,q=null;
     try{tp=w.top;q=new w.URLSearchParams(tp.location.search)}catch(e){return}
@@ -1720,17 +1741,17 @@ function apply(w,host){
   var GBTN='<button type="button" class="btn" data-auth="gsign" style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;background:#fff;color:#1f1f1f;border:1px solid #747775">'+
     '<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>'+
     '<span>Continue with Google</span></button>';
-  var PW_GONE="Signed in with Google. This account had a password that was never confirmed by email, so it was removed to keep the account yours. To also sign in with a password, log out and use Forgot password.";
+  var PW_GONE="Signed in with Google. This account had a password that was never confirmed by email, so it was removed to keep the account yours. To also sign in with a password, sign out and use Forgot password.";
   /* proving the email is theirs: a 6-digit code (shown to anyone signed in with a password who has not entered it yet) */
   /* what to tell the person after a code was requested: emailed, could not be sent, or (this computer, no real email connected) saved in the test inbox */
   function codeNote(dl,em){
     em=em||"your email";
-    if(dl==="sent")return "We emailed a 6-digit code to "+em+". Check your inbox (and spam), then enter it below.";
+    if(dl==="sent")return "We emailed a 6-digit code to "+em+". Check your inbox (and spam), then type it in the 6-digit code box.";
     if(dl==="failed")return "We could not send the code to "+em+". Check that the address is right, then press Send a new code.";
     if(dl==="busy")return "We could not send the code just now: the problem is on our side, not your address. Your account is saved. Press Send a new code in a few minutes.";
     if(dl==="bounced")return "Emails to "+em+" bounce back, so we did not send a code. Check the address, or sign up with another one. Help, then Talk to a person, if this address is right.";
     if(dl==="delivered_test")return SRV.testInbox?"No real email is connected on this computer, so the code is in the test inbox.":"Email is not switched on for this site yet, so no code was sent. Your account works and you can swipe; verify once email is on.";
-    return SRV.canEmail?"We emailed you a 6-digit code: enter it below to verify your email.":"";
+    return SRV.canEmail?"We emailed you a 6-digit code: type it in the 6-digit code box to verify your email.":"";
   }
   function verifyHTML(){
     if(!SRV.user||SRV.user.emailVerified!==false)return "";
@@ -1776,9 +1797,9 @@ function apply(w,host){
     var box='<div class="plan" style="display:flex;flex-direction:column;gap:10px">';
     if(AUI.forgotSent)return box+'<b>Check your email</b><p class="note" style="margin:0">If that email has an account, a reset link is on its way. It works for one hour.</p>'+
       (SRV.canEmail?'':'<p class="note" style="margin:0">Test mode: no real email is sent. The link is in the <a href="/outbox" target="_blank" rel="noopener noreferrer">test inbox</a>.</p>')+
-      '<div class="acts"><button type="button" class="btn ghost" data-auth="sforgotback">Back to log in</button></div></div>';
+      '<div class="acts"><button type="button" class="btn ghost" data-auth="sforgotback">Back to sign in</button></div></div>';
     return box+'<b>Reset your password</b><div class="field"><label for="sFEmail">Email</label><input type="text" id="sFEmail" inputmode="email" autocomplete="email" maxlength="200" placeholder="you@gmail.com"><small>We email you a link that works for one hour.</small></div>'+
-      '<div class="acts"><button type="button" class="btn" data-auth="sforgotgo">Email me a reset link</button><button type="button" class="btn ghost" data-auth="sforgotback">Back to log in</button></div></div>';
+      '<div class="acts"><button type="button" class="btn" data-auth="sforgotgo">Email me a reset link</button><button type="button" class="btn ghost" data-auth="sforgotback">Back to sign in</button></div></div>';
   }
   function resetHTML(){
     return '<div class="plan" style="display:flex;flex-direction:column;gap:10px"><b>Choose a new password</b>'+
@@ -1787,7 +1808,7 @@ function apply(w,host){
       '<div class="acts"><button type="button" class="btn" data-auth="sresetgo">Save new password</button><button type="button" class="btn ghost" data-auth="sresetno">Cancel</button></div></div>';
   }
   function changeHTML(){
-    if(!SRV.user||SRV.user.hasPassword===false)return '<p class="note" style="margin:0">You sign in with Google. To also sign in with a password, log out and use Forgot password with this email.</p>';
+    if(!SRV.user||SRV.user.hasPassword===false)return '<p class="note" style="margin:0">You sign in with Google. To also sign in with a password, sign out and use Forgot password with this email.</p>';
     if(!AUI.chgOpen)return '<div class="acts"><button type="button" class="btn ghost" data-auth="schg">Change password</button></div>';
     return '<div class="field"><label for="sCur">Current password</label><input type="password" id="sCur" autocomplete="current-password" maxlength="128"></div>'+
       '<div class="field"><label for="sNew">New password</label><input type="password" id="sNew" autocomplete="new-password" maxlength="128"><small>At least 8 characters. Your other devices are signed out.</small></div>'+
@@ -1834,15 +1855,15 @@ function apply(w,host){
       deleteHTML()+
       '</div>';
     var up=AUI.sMode!=="in";
-    return '<div class="plan" style="display:flex;flex-direction:column;gap:10px"><b>'+(up?"Create your UAply account":"Log in to UAply")+'</b>'+
+    return '<div class="plan" style="display:flex;flex-direction:column;gap:10px"><b>'+(up?"Create your UAply account":"Sign in to UAply")+'</b>'+
       '<div class="field"><label for="sEmail">Email</label><input type="text" id="sEmail" inputmode="email" autocomplete="email" maxlength="200" placeholder="you@gmail.com">'+(up?'<small id="sEmailNote" hidden>Each address is its own UAply account: one with a +tag is a separate account from the plain address, even though the mail lands in the same inbox. Use the address you want to sign in with.</small>':'')+'</div>'+
       '<div class="field"><label for="sPw">Password</label><input type="password" id="sPw" autocomplete="'+(up?"new-password":"current-password")+'" maxlength="128">'+(up?'<small>At least 8 characters.</small>':'')+'</div>'+
       (up?'<div class="field"><label for="sPw2">Confirm password</label><input type="password" id="sPw2" autocomplete="new-password" maxlength="128"></div>'+
-        '<div class="checks"><label><input type="checkbox" id="sAgree"> I am 18 or older and agree to the <a href="'+LB+'terms.html" target="_blank" rel="noopener noreferrer">Terms</a> and <a href="'+LB+'privacy.html" target="_blank" rel="noopener noreferrer">Privacy Policy</a></label></div>':'')+
-      '<div class="acts"><button type="button" class="btn" data-auth="ssubmit">'+(up?"Create account":"Log in")+'</button><button type="button" class="btn ghost" data-auth="smode">'+(up?"I already have an account":"Create an account")+'</button>'+(up?'':'<button type="button" class="btn ghost" data-auth="sforgot">Forgot password?</button>')+'</div>'+
+        '<div class="checks"><label><input type="checkbox" id="sAgree"> <span>I am 18 or older and agree to the <a href="'+LB+'terms.html" target="_blank" rel="noopener noreferrer">Terms</a> and <a href="'+LB+'privacy.html" target="_blank" rel="noopener noreferrer">Privacy Policy</a></span></label></div>':'')+
+      '<div class="acts"><button type="button" class="btn" data-auth="ssubmit">'+(up?"Create account":"Sign in")+'</button><button type="button" class="btn ghost" data-auth="smode">'+(up?"I already have an account":"Create an account")+'</button>'+(up?'':'<button type="button" class="btn ghost" data-auth="sforgot">Forgot password?</button>')+'</div>'+
       '<small>Your account is stored on UAply\'s server. Passwords are scrambled (hashed) and never stored as typed. '+(SRV.canEmail||SRV.testInbox?'Once you are signed in, each swipe right emails you a receipt.':'Email is not switched on for this site yet, so receipts start once it is; your account and swipes work now.')+'</small>'+
       (SRV.testInbox&&!SRV.canEmail&&up?'<small>No real email is connected on this computer yet, so the verification code and receipts go to the <a href="/outbox" target="_blank" rel="noopener noreferrer">test inbox</a>. <a href="/setup#gmail" target="_blank" rel="noopener noreferrer">Connect Gmail</a> to send real ones.</small>':'')+
-      (SRV.google&&!noGoogle()?'<p class="note" style="text-align:center;margin:0">or</p><div class="checks"><label><input type="checkbox" id="gAgree"> I am 18 or older and agree to the <a href="'+LB+'terms.html" target="_blank" rel="noopener noreferrer">Terms</a> and <a href="'+LB+'privacy.html" target="_blank" rel="noopener noreferrer">Privacy Policy</a> (needed the first time)</label></div><div id="gBtn" style="min-height:44px"></div><small>Google handles the sign-in. UAply never sees your Google password, only your verified email.</small>'
+      (SRV.google&&!noGoogle()?'<p class="note" style="text-align:center;margin:0">or</p><div class="checks"><label><input type="checkbox" id="gAgree"> <span>I am 18 or older and agree to the <a href="'+LB+'terms.html" target="_blank" rel="noopener noreferrer">Terms</a> and <a href="'+LB+'privacy.html" target="_blank" rel="noopener noreferrer">Privacy Policy</a> (needed the first time)</span></label></div><div id="gBtn" style="min-height:44px"></div><small>Google handles the sign-in. UAply never sees your Google password, only your verified email.</small>'
         :(SRV.testInbox&&!noGoogle()?'<p class="note" style="text-align:center;margin:0">or</p><button type="button" class="btn" data-auth="gsetup" style="width:100%">Continue with Google</button><small>Google sign-in is not connected on this computer yet. Press the button to open setup (about 5 minutes). Only you see this button until it is connected; visitors never do.</small>':''))+'</div>';
   }
   function accountHTML(){
@@ -1890,16 +1911,18 @@ function apply(w,host){
         if(spw!==((d.getElementById("sPw2")||{}).value||"")){msg("The passwords do not match.");return}
         if(!(d.getElementById("sAgree")||{}).checked){msg("Confirm you are 18 or older and agree to the Terms and Privacy Policy.");return}
       }else if(!spw){msg("Enter your password.");return}
-      b.disabled=true;msg(sup?"Creating your account…":"Logging in…");
+      b.disabled=true;msg(sup?"Creating your account…":"Signing in…");
       apiPost(sup?"/api/auth/signup":"/api/auth/login",sup?{email:sem,password:spw,agree:true}:{email:sem,password:spw}).then(function(r){
         b.disabled=false;
         if(!r.ok||!r.j.user){msg((r.j&&r.j.error)||"Something went wrong. Try again.");return}
         SRV.user=r.j.user;afterServerSignIn();renderAcct("account");
-        msg(sup?"Account created. "+codeNote(r.j.delivery,sem):"You are logged in.");
+        msg(sup?"Account created. "+codeNote(r.j.delivery,sem):"You are signed in.");
       });
       return;
     }
-    if(a==="sout"){apiPost("/api/auth/logout",{}).then(function(){SRV.user=null;AUI.delOpen=false;AUI.survey=false;paintHeader();renderAcct("account");msg("Signed out.")});return}
+    /* "Signed out" only once the server ended the session: when the request failed (the server restarting) the session cookie was still
+       good, so a reload signed the person straight back in, on what may be a shared computer */
+    if(a==="sout"){apiPost("/api/auth/logout",{}).then(function(r){if(!r.ok){msg("You are still signed in. "+(r.j&&r.j.error||"Could not reach UAply."));return}SRV.user=null;AUI.delOpen=false;AUI.survey=false;paintHeader();renderAcct("account");msg("Signed out.")});return}
     if(a==="sdel"){loadBilling();AUI.survey=true;AUI.delOpen=false;renderAcct("account");var f1=d.querySelector("#acctSec .svform input");if(f1)f1.focus();return}
     if(a==="sdelno"){AUI.delOpen=false;AUI.survey=false;renderAcct("account");return}
     if(a==="sdelskip"){AUI.survey=false;AUI.delOpen=true;renderAcct("account");var dp=d.getElementById("sDelPw");if(dp)dp.focus();return}
@@ -1975,7 +1998,7 @@ function apply(w,host){
         b.disabled=false;
         if(!r.ok){msg((r.j&&r.j.error)||"Could not reset the password. Ask for a new link.");return}
         AUI.reset="";AUI.forgot=false;AUI.sMode="in";SRV.user=null;paintHeader();renderAcct("account");
-        msg("Password changed. Log in with your new password.");
+        msg("Password changed. Sign in with your new password.");
       });
       return;
     }
@@ -2079,7 +2102,8 @@ function apply(w,host){
   wzGrid.after(wzFoot);
   var wzMsgEl=d.createElement("p");wzMsgEl.id="wzMsg";wzMsgEl.className="note";wzMsgEl.setAttribute("role","status");wzFoot.after(wzMsgEl);
   var wzPrev=d.createElement("aside");wzPrev.id="wzPrev";wzPrev.setAttribute("aria-label","What employers see");form.appendChild(wzPrev);
-  function wzMsg(t){wzMsgEl.textContent=t;if(t&&wzMsgEl.scrollIntoView)wzMsgEl.scrollIntoView({block:"nearest",behavior:"smooth"})}
+  /* stay: the next step just opened at its top, so "Saved." is written without scrolling down to it (it used to pull every step to its last field) */
+  function wzMsg(t,stay){wzMsgEl.textContent=t;if(t&&!stay&&wzMsgEl.scrollIntoView)wzMsgEl.scrollIntoView({block:"nearest",behavior:"smooth"})}
   function fv(id){var e=d.getElementById(id);return e?String(e.value||"").trim():""}
   function selText(id){var e=d.getElementById(id);return e&&e.value&&e.selectedIndex>-1?e.options[e.selectedIndex].text:""}
   /* the card mirrors what the server puts in an application (uaply_api.py, _detail_text): nothing more, nothing less */
@@ -2140,7 +2164,7 @@ function apply(w,host){
     if(form.hidden||!form.classList.contains("wz"))return false;
     var p=wz.pending;wz.pending=null;wz.dirty=false;
     if(w.__uaplyAutoSave)return true;
-    if(p==="next"){wzSet(wz.i+1,true);wzMsg("Saved.")}
+    if(p==="next"){wzSet(wz.i+1,true);wzMsg("Saved.",true)}
     else if(p==="finish"){
       var tc=typesChosen();if(tc.length&&tc.indexOf(sub.svc)<0)sub.svc=tc[0];
       setTimeout(function(){cur="svc";go("svc")},0);

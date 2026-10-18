@@ -47,7 +47,8 @@ setTimeout(() => { console.log("TEST SCRIPT FAILED: no result after " + Math.rou
 // start headless Chrome and connect; if it does not answer (a busy computer, a port already taken), try a fresh one, up to 3 times
 async function launch() {
   for (let attempt = 1; attempt <= 3; attempt++) {
-    const port = 9300 + Math.floor(Math.random() * 500);
+    // CDP_PORT pins Chrome's debugging port (a machine where only some ports may be used); otherwise a random one, so runs can overlap
+    const port = process.env.CDP_PORT ? Number(process.env.CDP_PORT) + attempt - 1 : 9300 + Math.floor(Math.random() * 500);
     const profile = fs.mkdtempSync(path.join(TMP, "uaply-cdp-"));
     const proc = spawn(CHROME, [...EXTRA, "--headless=new", "--disable-gpu", "--remote-debugging-port=" + port, "--user-data-dir=" + profile,
       "--window-size=" + (process.env.W || 1100) + "," + (process.env.H || 900), "about:blank"], { stdio: "ignore", env: Object.assign({}, process.env, { TMPDIR: TMP }) });

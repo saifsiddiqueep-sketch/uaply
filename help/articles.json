@@ -11,11 +11,11 @@
   {
    "id": "swipe-right",
    "title": "How do I apply to a job? (What happens when I swipe right)",
-   "tags": "how to apply apply applying application send submit employer recruiter swipe right undo consent",
+   "tags": "how to apply apply applying application send submit employer recruiter swipe right left pass undo consent",
    "body": "Swiping right applies for you. The first time, UAply explains what is sent and asks you to agree. If the employer has agreed to receive applications through UAply, your profile details are sent to them. Otherwise UAply opens the employer's own application page so you can finish there. Every application is saved in Dashboard, Applied, and you can tap Undo right after a swipe. In this test version, applications go to a test inbox and nothing reaches a real company.",
    "go": "dash:applied",
    "release": {
-    "body": "Swiping right applies for you. The first time, UAply explains what is sent and asks you to agree. If the employer has agreed to receive applications through UAply (the card says Apply instantly), your profile details are sent to them. For every other job (the card says Opens employer site) nothing is sent: the job is kept in Dashboard, Applied as Not sent yet, and Finish now opens the employer's own application page so you can finish there. You can tap Undo right after a swipe."
+    "body": "Swiping right applies for you. The first time, UAply explains what is sent and asks you to agree. If the employer has agreed to receive applications through UAply (the card says Apply instantly), your profile details are sent to them. For every other job (the card says Opens employer site) nothing is sent: the job is kept in Dashboard, Applied as Not sent yet, and Finish now opens the employer's own application page so you can finish there. You can tap Undo right after a swipe. Swiping left (Pass) only hides the job: nothing is sent, and Undo brings it back."
    }
   },
   {
@@ -66,12 +66,12 @@
   {
    "id": "distance",
    "title": "Where is the distance filter?",
-   "tags": "distance miles radius near me close commute location city 10 20 50",
+   "tags": "distance miles radius near me nearby close commute location gps city 10 20 50 turn off stop using my location",
    "body": "Open Profile, then Filters, and drag the Commute distance slider. Far left shows remote jobs only, and far right shows every job. In between you choose how many miles from you in-person jobs can be, from 5 to 100. UAply measures from your device location if you tapped Use my location, otherwise from your city or ZIP code.",
    "go": "prof:filters",
    "release": {
     "go": "prof:where",
-    "body": "Distance is in Profile setup, under Where and pay, and it only appears when you tick Hybrid or On-site under work style, because remote jobs don't need it. Choose 10, 20, 50 or 100 miles from where you live. UAply finds that from your city and state, or from your ZIP code if it doesn't know the city. Distance works for most larger US cities."
+    "body": "Distance is in Profile setup, under Where and pay, and it only appears when you tick Hybrid or On-site under work style, because remote jobs don't need it. Choose 10, 20, 50 or 100 miles from where you live. UAply finds that from your city and state, or from your ZIP code if it doesn't know the city. Distance works for most larger US cities. If you tapped Use my location, Profile, then Filters has a Commute distance slider that measures from where you are; to stop using your location, open Profile, then Filters, and tap Stop using my location."
    }
   },
   {
@@ -148,7 +148,10 @@
    "body": "There are three plans. Free: 50 applications a week. Plus ($9.99 a month): 250 a week, plus extra filters and Message the hiring manager. Pro ($19.99 a month): unlimited applications. Limits count the last 7 days. Open Profile, then Plan and billing to see your usage, switch or cancel. In this test version no real payments are taken: choosing a plan only records a test payment and no card is ever asked for.",
    "go": "prof:plan",
    "release": {
-    "body": "UAply is free during early access: nothing is charged, there is no weekly limit on applications, and every filter and Message the hiring manager are included. When paid plans start there will be three: Free (50 applications a week), Plus ($9.99 a month, 250 a week) and Pro ($19.99 a month, unlimited). Open Profile, then Plan and billing to see which applies today: while it says paid plans are coming, everything is free. To choose a paid plan you need an account; payment is made on Stripe's own secure page, so UAply never sees your card number, and you can cancel any time in Manage billing."
+    "body": "UAply is free during early access: nothing is charged, there is no weekly limit on applications, and every filter and Message the hiring manager are included. When paid plans start there will be three: Free (50 applications a week), Plus ($9.99 a month, 250 a week) and Pro ($19.99 a month, unlimited). Open Profile, then Plan and billing to see which applies today: while it says paid plans are coming, everything is free. To choose a paid plan you need an account; payment is made on Stripe's own secure page, so UAply never sees your card number, and you can cancel any time in Manage billing.",
+    "paid": {
+     "body": "There are three plans. Free: 50 applications a week. Plus ($9.99 a month): 250 a week, plus extra filters and Message the hiring manager. Pro ($19.99 a month): unlimited applications (fair use). Limits count the last 7 days. To choose a plan you need an account: open Profile, then Plan and billing, and tap Choose Plus or Choose Pro. Payment is made on Stripe's own secure page, so UAply never sees your card number. To cancel, open Plan and billing and tap Manage billing; your plan stays until the end of the month you paid for."
+    }
    }
   },
   {

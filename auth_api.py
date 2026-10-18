@@ -450,7 +450,7 @@ def signup_with_code(email, password, ip, agree=False, check_dns=False, per_hour
                 token = _new_session(c, uid)
                 digits = _new_code(c, uid)
         except sqlite3.IntegrityError:
-            return 409, {"error": "That email already has an account. Log in instead."}, None, None
+            return 409, {"error": "That email already has an account. Sign in instead."}, None, None
     return 200, {"user": {"id": uid, "email": email, "hasPassword": True, "emailVerified": False}}, token, (uid, email, digits)
 
 

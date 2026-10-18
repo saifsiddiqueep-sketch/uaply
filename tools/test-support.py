@@ -182,9 +182,19 @@ try:
     chat_api.RELEASE, chat_api._help["mtime"] = True, None
     asks = ["How much does it cost?", "pricing", "fees", "Is it expensive?", "Do you charge?", "monthly fee", "how much money", "Is UAply free?"]
     t("every way of asking about price finds Plans and billing", [q for q in asks if not (chat_api.search(q) and chat_api.search(q)[0]["id"] == "plans")], [])
+    real_paid = chat_api._paid
+    chat_api._paid = lambda: False                          # a public server without Stripe keys: Plan & billing says "free during early access"
     ans = chat_api._from_articles("pricing")["answer"]
     t("the release build's pricing answer starts with what it costs today and names the coming prices",
       (ans.startswith("UAply is free during early access"), "$9.99" in ans and "$19.99" in ans), (True, True))
+    # with Stripe keys the Plan screen sells Plus and Pro: the answer must not still say everything is free (the live site, Oct 18)
+    chat_api._paid = lambda: True
+    ans = chat_api._from_articles("pricing")["answer"]
+    t("with paid plans on, the pricing answer gives the three plans and how to choose and cancel, never 'free during early access'",
+      (ans.startswith("There are three plans"), "early access" in ans, "Choose Plus" in ans and "Manage billing" in ans), (True, False, True))
+    ans = chat_api._from_articles("how do I cancel Plus")["answer"]
+    t("'how do I cancel Plus' with paid plans on says to use Manage billing", ("Manage billing" in ans, "early access" in ans), (True, False))
+    chat_api._paid = real_paid
     chat_api.RELEASE, chat_api._help["mtime"] = False, None
 finally:
     proc.terminate()

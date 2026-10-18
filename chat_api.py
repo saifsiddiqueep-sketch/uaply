@@ -95,29 +95,43 @@ def _s(v, n):
     return re.sub(r"[\r\t]+", " ", v).strip()[:n] if isinstance(v, str) else ""
 
 
+def _paid():
+    """Whether Plan & billing offers Choose Plus and Choose Pro on this server (Stripe keys set, or the owner's own computer), the same
+    test the screen uses. A release article can carry a "paid" wording for that case, so the assistant never says "free during early
+    access" next to a screen that sells Plus."""
+    try:
+        import billing_api
+        return bool(billing_api.buttons())
+    except Exception:
+        return False
+
+
 def articles():
-    """The help articles, reloaded when the file changes. Invalid entries are skipped."""
+    """The help articles, reloaded when the file changes (or when paid plans are switched on or off). Invalid entries are skipped."""
     try:
         mtime = os.path.getmtime(HELP_PATH)
     except OSError:
         return []
+    paid = _paid()
     with _lock:
-        if _help["mtime"] != mtime:
+        if _help["mtime"] != mtime or _help.get("paid") != paid:
             try:
                 with open(HELP_PATH, encoding="utf-8") as f:
                     raw = json.load(f).get("articles", [])
                 def rel(a):
                     r = a.get("release") if isinstance(a.get("release"), dict) else {}
+                    if RELEASE and paid and isinstance(r.get("paid"), dict):
+                        return r["paid"]
                     return r if RELEASE else {}
                 _help["articles"] = [
                     {"id": _s(a.get("id"), 60), "title": _s(a.get("title"), 120), "tags": _s(a.get("tags"), 400),
                      "body": _s(rel(a).get("body") or a.get("body"), 1500), "go": _s(rel(a).get("go") or a.get("go"), 40)}
                     for a in raw if isinstance(a, dict) and a.get("id") and a.get("title") and a.get("body")
                     and not rel(a).get("hide")]
-                _help["mtime"] = mtime
+                _help["mtime"], _help["paid"] = mtime, paid
             except Exception as e:                  # a typo in the file: keep the last good articles, and tell the owner why answers are missing
                 print("UAply Assistant: help/articles.json could not be read (%s: %s)" % (type(e).__name__, str(e)[:160]), file=sys.stderr)
-                _help["mtime"] = mtime              # said once per change of the file, not on every question
+                _help["mtime"], _help["paid"] = mtime, paid     # said once per change of the file, not on every question
         return list(_help["articles"])
 
 

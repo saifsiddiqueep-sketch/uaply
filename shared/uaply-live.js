@@ -671,7 +671,9 @@ function kitApply(w,host){
      saved agreement for this build and opens the box; `done(agreed)` is called with the answer */
   w.__uaplyConsentInfo=function(){try{var c=JSON.parse(w.localStorage.getItem(consentKey()));return c&&typeof c==="object"?{at:+c.at||0,current:c.v===CONSENT_V}:null}catch(e){return null}};
   w.__uaplyConsentAgain=function(done){try{w.localStorage.removeItem(consentKey())}catch(e){}var o=d.getElementById("kitConsent");if(o)o.remove();
-    ensureConsent(function(){if(done)done(true)},function(){if(done)done(false)},true)};
+    ensureConsent(function(){if(done)done(true)},function(){if(done)done(false)},true);
+    /* shown again on request, so "You only see this once" is no longer true: that line goes */
+    var box=d.getElementById("kitConsent");if(box)[].slice.call(box.querySelectorAll("p")).forEach(function(p){if(/^You only see this once/.test(p.textContent))p.remove()})};
   if(consentFirst&&!showSheet){
     /* not while someone is in Hiring mode: employers do not swipe. Hiring mode calls this again when they switch back */
     w.__uaplyAskConsent=function(){if(!hasConsent()&&!d.body.classList.contains("hire"))ensureConsent(function(){},function(){},true)};

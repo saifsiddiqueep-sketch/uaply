@@ -114,6 +114,7 @@ function apply(w){
   function relSync(){if(relBox&&!relSel.value&&relBox.checked)relSel.value="yes"}
   function readItem(it){
     if(it.type==="checks")return it.opts.filter(function(o){return d.getElementById(id(it.k,o[0])).checked}).map(function(o){return o[0]});
+    if(it.type==="url")return fullLink(el(it.k).value);   /* what is saved and sent is always the completed https:// link */
     return (el(it.k).value||"").trim();
   }
   function read(){var o={};ALL.forEach(function(it){var v=readItem(it);if(it.type==="checks"?v.length:v!=="")o[it.k]=v});return o}
@@ -131,6 +132,7 @@ function apply(w){
   function validate(it){
     var msg="",v=readItem(it);
     if(it.val)msg=it.val(v);
+    if(msg&&it.type==="url"&&!it.val(fullLink(v)))msg="";   /* "linkedin.com/in/name" is fine: https:// is added when the field is left or saved */
     if(it.k==="job_end"&&v){var s0=readItem(ALL.filter(function(x){return x.k==="job_start"})[0]);msg=!s0?"Add the month you started too.":v<s0?"This is before the month you started.":""}
     if(it.k==="sponsor"||it.k==="auth"){
       var a=readItem(ALL.filter(function(x){return x.k==="auth"})[0]),s=readItem(ALL.filter(function(x){return x.k==="sponsor"})[0]);
@@ -174,8 +176,20 @@ function apply(w){
   form.addEventListener("input",function(e){var it=ALL.filter(function(x){return e.target.id===id(x.k)||e.target.id.indexOf(id(x.k)+"-")===0})[0];if(it){validate(it);if(it.k==="auth")validate(ALL.filter(function(x){return x.k==="sponsor"})[0]);if(it.k==="job_start")validate(ALL.filter(function(x){return x.k==="job_end"})[0])}update()});
   form.addEventListener("change",function(){update()});
 
+  /* most people type a link the way it shows in the address bar ("linkedin.com/in/name", "www.site.com", "http://..."): that is
+     completed to https:// when the field is left or saved, instead of being refused with "Use a full link that starts with https://" */
+  function fullLink(v){
+    v=(v||"").trim();if(!v)return v;
+    if(/^http:\/\//i.test(v))return "https://"+v.slice(7);
+    if(!/^[a-z][a-z0-9+.-]*:/i.test(v)&&/^(www\.)?[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?(\/\S*)?$/i.test(v))return "https://"+v;
+    return v;
+  }
+  function fixUrl(it){if(it.type!=="url")return;var c=el(it.k);if(!c)return;var v=fullLink(c.value);if(v!==c.value)c.value=v}
+  w.__uaplyFullLink=fullLink;
+  form.addEventListener("focusout",function(e){var it=ALL.filter(function(x){return e.target.id===id(x.k)})[0];if(it&&it.type==="url"){fixUrl(it);validate(it);update()}});
   /* a link or phone that fails its check blocks Save and takes you to the first problem */
   form.addEventListener("submit",function(e){
+    ALL.forEach(fixUrl);
     var bad=ALL.map(validate).map(function(m,i){return m?ALL[i]:null}).filter(Boolean)[0];
     if(bad){e.preventDefault();e.stopImmediatePropagation();goTo(bad.sec,id(bad.k))}
   },true);

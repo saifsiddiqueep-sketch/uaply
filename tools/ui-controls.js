@@ -352,7 +352,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
     await menu("prof", "account"); await sleep(600);
     const p = JSON.parse(await ev("JSON.stringify((()=>{const d=" + F + ",b=d.querySelector('[data-auth=sout]');if(!b)return null;b.scrollIntoView({block:'center'});const f=document.querySelector('iframe').getBoundingClientRect(),r=b.getBoundingClientRect();return {x:f.left+r.left+r.width/2,y:f.top+r.top+r.height/2}})())"));
     if (p) { if (PHONE) await tapAt(p); else await clickAt(p); await sleep(1200); }
-    check("Account › Sign out (" + (PHONE ? "tap" : "click") + ") signs out", !!p && /Signed out|Create your UAply account|Log in to UAply/.test(await ev("(" + F + ").body.innerText")));
+    check("Account › Sign out (" + (PHONE ? "tap" : "click") + ") signs out", !!p && /Signed out|Create your UAply account|Sign in to UAply|Log in to UAply/.test(await ev("(" + F + ").body.innerText")));
   }
 
   // ---- the links that were noted instead of opened: the ones on this server must answer
