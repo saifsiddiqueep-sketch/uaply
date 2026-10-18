@@ -68,6 +68,7 @@ for name, s in services.items():
       (env.get("UAPLY_DATA_DIR") or {}).get("value"), (s.get("disk") or {}).get("mountPath"))
     t("%s: HOST=0.0.0.0 (Render reaches the server only on that address)" % name, (env.get("HOST") or {}).get("value"), "0.0.0.0")
     t("%s: health check at /healthz" % name, s.get("healthCheckPath"), "/healthz")
+    t("%s: MALLOC_ARENA_MAX=2 (freed memory is reused instead of held per thread; the 512 MB plan)" % name, (env.get("MALLOC_ARENA_MAX") or {}).get("value"), "2")
     t("%s: start command uses Render's PORT, with 10000 if it is blank" % name, "${PORT:-10000}" in s.get("startCommand", ""), True)
     inst = (re.findall(r"serve\.py \S+ (\w+) --api", s.get("startCommand", "")) or [""])[0]
     t("%s: start command serves an existing folder with the back end on" % name, bool(inst) and os.path.isdir(os.path.join(ROOT, inst)), True)
@@ -104,7 +105,10 @@ dev = services.get("uaply-dev") or {"startCommand": "python serve.py ${PORT:-100
 for e in dev.get("envVars", []):
     if "value" in e:
         ENV[e["key"]] = str(e["value"])
-ENV.update(PORT=str(PORT), RENDER="true", UAPLY_DATA_DIR=DISK, UAPLY_CONFIG_FILE="none", OWNER_PASSWORD=OWNER, SUPPORT_EMAIL="support@example.com",
+for k in ("NO_PROXY", "no_proxy", "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
+    ENV.pop(k, None)
+COMMIT = "0123abc4567def890123abc4567def890123abc4"            # stands in for the commit id Render passes as RENDER_GIT_COMMIT
+ENV.update(PORT=str(PORT), RENDER="true", RENDER_GIT_COMMIT=COMMIT, UAPLY_DATA_DIR=DISK, UAPLY_CONFIG_FILE="none", OWNER_PASSWORD=OWNER, SUPPORT_EMAIL="support@example.com",
            UAPLY_CONFIG_JSON=json.dumps({"delivery": "test", "smtp": {"host": "127.0.0.1", "port": SMTP_PORT, "starttls": False,
                                                                     "from_addr": "uaply@example.com"}, "owner_copy": "owner@example.com", "google": {}}))
 START = dev["startCommand"].split("#")[0].strip()
@@ -219,6 +223,12 @@ try:
     t("home page", s, 200)
     t("HSTS, no-sniff and frame protection behind Render's HTTPS", ("strict-transport-security" in h, h.get("x-content-type-options"), h.get("x-frame-options")),
       (True, "nosniff", "SAMEORIGIN"))
+    t("no Python version in the Server header (Render passes it on as x-render-origin-server)", h.get("server"), "UAply")
+    t0 = time.time()
+    hz = [req("GET", "/healthz") for _ in range(20)]
+    t("health check: 200 {\"ok\": true}, quick (20 in %.2f s), and HEAD works too" % (time.time() - t0),
+      ([x[0] for x in hz] == [200] * 20, json.loads(hz[0][2]), time.time() - t0 < 2, req("HEAD", "/healthz")[:3:2]), (True, {"ok": True}, True, (200, b"")))
+    t("/api/status names the deployed commit (the short id of RENDER_GIT_COMMIT)", json.loads(req("GET", "/api/status")[2]).get("commit"), COMMIT[:7])
     s, h, body = req("GET", "/api/jobs")
     t("job list answers on a fresh disk", (s, "jobs" in json.loads(body)), (200, True))
     s, h, body = req("POST", "/api/auth/signup", {"email": "render@example.com", "password": "correct horse 99", "agree": True})
@@ -244,6 +254,12 @@ try:
     for f in ("uaply.db", "applications.jsonl", "decisions.jsonl", "feedback.jsonl"):
         t("written on the disk: dev/%s" % f, os.path.exists(os.path.join(inst, f)), True)
     t("nothing written next to the code (it is wiped at every deploy)", os.path.exists(os.path.join(ROOT, "data")), repo_data_before)
+    text = readlog(log)
+    t("the log has one line per API request: method, path, status, time", bool(re.search(r"\[uaply\] POST /api/auth/signup 200 \d+ ms", text)) and
+      bool(re.search(r"\[uaply\] POST /api/apply 200 \d+ ms", text)), True)
+    lines = "\n".join(x for x in text.splitlines() if re.match(r"\[uaply\] (GET|POST|HEAD) ", x))
+    t("...and never the visitor's address, a cookie, an email address, a query string or the health checks",
+      any(x in lines for x in ("203.0.113.7", session.split("=", 1)[-1], "@", "?", "/healthz")), False)
     if os.path.exists("/proc/%d/status" % p.pid):
         rss = int(re.search(r"VmRSS:\s+(\d+)", open("/proc/%d/status" % p.pid).read()).group(1)) // 1024
         t("memory after first boot is far below the 512 MB plan (%d MB)" % rss, rss < 200, True)
@@ -262,7 +278,16 @@ try:
             os.killpg(p.pid, signal.SIGTERM)
     except Exception as e:
         print("     (could not signal: %s)" % e)
-    time.sleep(0.7)
+    seen = []                                           # what a newcomer gets while the server stops: 503 from /healthz, then a refused connection
+    while time.time() - t0 < 0.7:
+        try:
+            c = http.client.HTTPConnection("127.0.0.1", PORT, timeout=2)
+            c.request("GET", "/healthz", headers={"Host": HOSTNAME})
+            seen.append((round(time.time() - t0, 2), c.getresponse().status))
+            c.close()
+        except OSError:
+            seen.append((round(time.time() - t0, 2), "refused"))
+        time.sleep(0.05)
     try:
         sock.sendall(payload)
         answer = sock.recv(4096).decode("utf-8", "replace")
@@ -270,27 +295,44 @@ try:
         answer = ""
     sock.close()
     t("SIGTERM: the request in progress still gets its answer", answer.startswith("HTTP/1.0 200") or answer.startswith("HTTP/1.1 200"), True)
+    late = [s for at, s in seen if at >= 0.3]
+    t("SIGTERM: a newcomer is turned away at once (the health check says 503, then the port refuses): %s" % sorted(set(s for _, s in seen), key=str),
+      bool(late) and all(s in (503, "refused") for s in late) and late[-1] == "refused", True)
     try:
         code = p.wait(timeout=25)
     except subprocess.TimeoutExpired:
         p.kill()
         code = "still running after 25 s"
-    t("SIGTERM: the server exits normally (code 0) well inside Render's 30 seconds", (code, time.time() - t0 < 25), (0, True))
+    took = time.time() - t0
+    t("SIGTERM: the server exits normally (code 0) within 5 seconds, far inside Render's 30 (%.1f s)" % took, (code, took < 5), (0, True))
     t("SIGTERM: the log says it stopped cleanly", "[uaply] stopped" in readlog(log), True)
+    m = re.search(r"\[uaply\] daily (\{.*\})", readlog(log))
+    day = json.loads(m.group(1)) if m else {}
+    t("SIGTERM: the day's summary line is written first (requests, errors, sign-ups, applications, slowest paths)",
+      (day.get("why"), day.get("requests", 0) > 10, day.get("signups"), day.get("applications"), day.get("5xx"), bool(day.get("slowest")),
+       isinstance(day.get("p95_ms"), int), day.get("health_checks", 0) >= 20),
+      ("stop", True, 1, 1, 0, True, True, True))
     t("SIGTERM: the swipe that was in progress was saved", '"jobId": 900003' in open(os.path.join(inst, "decisions.jsonl"), encoding="utf-8").read(), True)
 
     # ---------- 4. the next boot on the same disk (a redeploy), with the job list saved by the last run ----------
     import jobs_api
     feeds = [x.strip() for x in ENV.get("UAPLY_FEEDS", "").split(",") if x.strip()]
     srcs = [s for s in jobs_api.SOURCES if s[0] in feeds]
-    cache = {"|".join(s): {"at": time.time() - 60, "jobs": [fake_job(i, s)], "status": "1 jobs"} for i, s in enumerate(srcs)}
+    # the saved list is two hours old (past its 30 minutes, inside the day it may be used) and one board is missing from it (it failed last
+    # time), so every board refreshes; the network is a black hole that accepts and never answers, so a request that waited for a board would
+    # take 20 seconds or more instead of answering at once
+    cache = {"|".join(s): {"at": time.time() - 7200, "jobs": [fake_job(i, s)], "status": "1 jobs"} for i, s in enumerate(srcs[1:])}
     cache["_version"] = jobs_api.CACHE_VERSION
     with open(os.path.join(DISK, "jobs-cache.json"), "w", encoding="utf-8") as f:
         json.dump(cache, f)
+    hole = socket.socket()
+    hole.bind(("127.0.0.1", PORT + 2))
+    hole.listen(64)
+    NET = {"HTTPS_PROXY": "http://127.0.0.1:%d" % (PORT + 2), "HTTP_PROXY": "http://127.0.0.1:%d" % (PORT + 2)}
     # a write that was cut short (a full disk, a forced stop): the last line has no end
     with open(os.path.join(inst, "applications.jsonl"), "a", encoding="utf-8") as f:
         f.write('{"id": "cut-short", "job": {"co": "Bro')
-    p, log = boot("boot2.log", UAPLY_FEEDS=",".join(feeds))
+    p, log = boot("boot2.log", UAPLY_FEEDS=",".join(feeds), **NET)
     procs.append(p)
     up = wait_up(p)
     t("redeploy: the health check answers within 15 seconds", up is not None and up < 15, True)
@@ -303,8 +345,12 @@ try:
     s, h, body = req("GET", "/api/jobs")
     took = time.time() - t0
     got = json.loads(body)
-    t("redeploy: jobs come at once from the saved copy on the disk (%d sources, %.2f s)" % (len(srcs), took),
-      (s, len(got["jobs"]), took < 5), (200, len(srcs), True))
+    t("redeploy: jobs come at once from the saved copy on the disk, while every board refreshes behind it (%d boards, %.2f s)" % (len(srcs) - 1, took),
+      (s, len(got["jobs"]), took < 3), (200, len(srcs) - 1, True))
+    t("redeploy: the board missing from the saved copy says loading instead of holding the visitor up",
+      got["sources"].get(srcs[0][2] + ("/" + srcs[0][1] if srcs[0][0] in jobs_api.MULTI else "")), "loading")
+    t0 = time.time()
+    t("redeploy: the health check stays quick while the boards are read", (req("GET", "/healthz")[0], time.time() - t0 < 1), (200, True))
     t("redeploy: feedback is still on the owner's Feedback page", "render feedback one" in req("GET", "/feedback", headers=owner())[2].decode(), True)
     s, h, body = req("POST", "/api/apply", {"consent": True, "job": dict(job, id=900004, role="Second intern"),
                                             "profile": {"name": "Render Test", "email": "render@example.com"}}, headers={"Cookie": session})
@@ -312,7 +358,7 @@ try:
     stop(p)
 
     # ---------- 5. the boot after that: the cut-short line hides nothing ----------
-    p, log = boot("boot3.log", UAPLY_FEEDS=",".join(feeds))
+    p, log = boot("boot3.log", UAPLY_FEEDS=",".join(feeds), **NET)
     procs.append(p)
     wait_up(p)
     s, h, body = req("GET", "/api/outbox", headers=owner())
@@ -361,6 +407,8 @@ finally:
             p.wait()
     smtp.kill()
     smtp.wait()
+    if "hole" in globals():
+        hole.close()
     shutil.rmtree(TMP, ignore_errors=True)
 
 print(sum(R), "/", len(R))

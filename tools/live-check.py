@@ -15,18 +15,24 @@ real inbox: tools/ui-live.js does those."""
 import argparse
 import http.client
 import json
+import os
 import re
 import secrets
 import ssl
+import subprocess
 import sys
 import time
 import urllib.parse
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
 ap.add_argument("--base", required=True, help="the site's address, e.g. https://uaply.onrender.com")
 ap.add_argument("--expect", default="", help="comma list of features that must be on: email, google, payments, persistent (or all)")
 ap.add_argument("--google-host", default="accounts.google.com")
 ap.add_argument("--no-rate-limit", action="store_true")
+ap.add_argument("--branch", default="dev", help="the branch the site deploys from; its head on GitHub must be the commit the site runs (default dev)")
+ap.add_argument("--commit", default="", help="the commit the site must run, instead of asking GitHub for the head of --branch")
 ap.add_argument("--timeout", type=float, default=60)
 A = ap.parse_args()
 
@@ -141,6 +147,10 @@ def home():
     t("header X-Frame-Options: SAMEORIGIN (other sites cannot frame UAply)", h.get("x-frame-options") == "SAMEORIGIN", repr(h.get("x-frame-options")))
     t("header Referrer-Policy: strict-origin-when-cross-origin", h.get("referrer-policy") == "strict-origin-when-cross-origin", repr(h.get("referrer-policy")))
     t("header Cache-Control: no-store (a shared computer never shows the last person's page)", "no-store" in h.get("cache-control", ""), repr(h.get("cache-control")))
+    t("header Content-Security-Policy: frame-ancestors 'self', object-src 'none'", all(x in h.get("content-security-policy", "") for x in ("frame-ancestors 'self'", "object-src 'none'")),
+      repr(h.get("content-security-policy")))
+    origin_server = h.get("x-render-origin-server") or h.get("server", "")
+    t("the server names no Python version (scanners match on it)", "Python/" not in origin_server, repr(origin_server))
     if HTTPS:
         hsts = h.get("strict-transport-security", "")
         m = re.search(r"max-age=(\d+)", hsts)
@@ -158,8 +168,8 @@ def status():
     s, _, j = get_json("/api/status")
     if s == 200 and isinstance(j, dict) and j.get("ok") is True:
         STATUS.update(j, source="/api/status")
-        t("/api/status answers with yes/no facts only", all(isinstance(v, bool) or v is None for k, v in j.items()),
-          "a value that is not yes/no: %r" % {k: v for k, v in j.items() if not (isinstance(v, bool) or v is None)})
+        odd = {k: v for k, v in j.items() if not (isinstance(v, bool) or v is None or (k == "commit" and isinstance(v, str) and re.fullmatch(r"[0-9a-f]{7}", v)))}
+        t("/api/status answers with yes/no facts only (and the deployed commit's short id)", not odd, "a value that is not yes/no: %r" % odd)
         return
     # an older server (before /api/status): the same facts from the endpoints the app already reads
     skip("/api/status", "a deploy of the commit that adds it; the facts below come from /api/auth/providers and /api/billing/status")
@@ -197,6 +207,37 @@ def persistent():
 
 
 safe(persistent, "persistent disk")
+
+
+# ---------- the deploy is the latest push ----------
+def deployed():
+    """The commit the site runs (/api/status, from Render's RENDER_GIT_COMMIT) against the head of the branch on GitHub. On October 17 every
+    deploy had been started by hand: a push to dev had never redeployed the site, and nothing said so."""
+    live = STATUS.get("commit")
+    if not live:
+        if STATUS.get("source") != "/api/status" or "commit" not in STATUS:
+            skip("the site runs the latest push to %s" % A.branch, "a deploy of the commit that adds the commit to /api/status")
+        else:
+            skip("the site runs the latest push to %s" % A.branch, "a server on Render (it says which commit it runs through RENDER_GIT_COMMIT)")
+        return
+    want, where = (A.commit or "").strip().lower(), "--commit"
+    if not want:
+        try:
+            out = subprocess.run(["git", "ls-remote", "origin", "refs/heads/" + A.branch], cwd=ROOT, capture_output=True, text=True, timeout=30).stdout
+            want, where = (out.split() or [""])[0], "origin/" + A.branch
+        except (OSError, subprocess.SubprocessError) as e:
+            skip("the site runs the latest push to %s" % A.branch, "git and this repository's GitHub remote (%s), or --commit SHA" % type(e).__name__)
+            return
+    if not re.fullmatch(r"[0-9a-f]{7,40}", want):
+        skip("the site runs the latest push to %s" % A.branch, "the head of %s from GitHub (git ls-remote gave nothing), or --commit SHA" % where)
+        return
+    info("the site runs commit %s; %s is %s" % (live, where, want[:7]))
+    t("the site runs the latest push (%s = %s)" % (where, want[:7]), want.startswith(live),
+      "the site runs %s, %s is %s. If the push was more than 10 minutes ago it was never deployed: in Render, Manual Deploy > Deploy latest "
+      "commit, then fix auto-deploy (DEPLOY.md, \"Auto-deploy\")" % (live, where, want[:7]))
+
+
+safe(deployed, "the deployed commit")
 
 
 # ---------- the job list ----------
