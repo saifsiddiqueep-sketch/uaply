@@ -7,11 +7,11 @@
    Nothing here sees or sends the person's profile: only what they type into the chat. */
 (function(){
 var CSS=`
-#uaChatBtn{position:fixed;right:16px;bottom:var(--above-nav,calc(96px + env(safe-area-inset-bottom,0px)));z-index:40;display:flex;align-items:center;gap:8px;min-height:48px;padding:0 18px 0 14px;border:0;border-radius:999px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);font-weight:700;font-size:14.5px;box-shadow:var(--shadow);cursor:pointer}
+#uaChatBtn{position:fixed;right:16px;bottom:var(--help-at,var(--above-nav,calc(96px + env(safe-area-inset-bottom,0px))));z-index:40;display:flex;align-items:center;gap:8px;min-height:48px;padding:0 18px 0 14px;border:0;border-radius:999px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);font-weight:700;font-size:14.5px;box-shadow:var(--shadow);cursor:pointer}
 #uaChatBtn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 #uaChatBtn:focus-visible,#uaChat button:focus-visible,#uaChat input:focus-visible,#uaNudge button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
-#uaChat{position:fixed;right:16px;bottom:calc(var(--above-nav,96px) + 60px);z-index:45;width:min(390px,calc(100vw - 24px));height:min(580px,calc(100vh - 190px));display:flex;flex-direction:column;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);overflow:hidden}
-#uaChat[hidden],#uaNudge[hidden]{display:none}
+#uaChat{position:fixed;right:16px;bottom:calc(var(--help-at,var(--above-nav,96px)) + 60px);z-index:45;width:min(390px,calc(100vw - 24px));height:min(580px,calc(100vh - 190px));display:flex;flex-direction:column;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);overflow:hidden}
+#uaChat[hidden],#uaNudge[hidden],#uaChatBtn[hidden]{display:none}
 #uaChat .hd{display:flex;align-items:center;gap:10px;padding:12px 12px 12px 16px;border-bottom:1px solid var(--line)}
 #uaChat .hd b{font:800 16px var(--display,inherit)}
 #uaChat .tag{font:700 10.5px var(--mono,ui-monospace,monospace);letter-spacing:.06em;padding:3px 8px;border-radius:6px;background:var(--bg);color:var(--accent);border:1px solid var(--line)}
@@ -32,14 +32,14 @@ var CSS=`
 #uaChat input{flex:1;min-width:0;min-height:44px;padding:0 14px;border:1px solid var(--line);border-radius:999px;background:var(--bg);color:var(--ink);font:inherit}
 #uaChat form button{min-width:44px;min-height:44px;border:0;border-radius:999px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);font-weight:700;padding:0 16px;cursor:pointer}
 #uaChat .ft{padding:0 14px 10px;font-size:11.5px;color:var(--muted);background:var(--surface)}
-#uaNudge{position:fixed;right:16px;bottom:calc(var(--above-nav,96px) + 60px);z-index:44;width:min(330px,calc(100vw - 24px));background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:14px;display:flex;flex-direction:column;gap:10px}
+#uaNudge{position:fixed;right:16px;bottom:calc(var(--help-at,var(--above-nav,96px)) + 60px);z-index:44;width:min(330px,calc(100vw - 24px));background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:14px;display:flex;flex-direction:column;gap:10px}
 #uaNudge p{margin:0;font-weight:700;padding-right:30px}
 #uaNudge small{color:var(--muted)}
 #uaNudge .x{position:absolute;top:6px;right:6px;border:0;background:none;color:var(--muted);min-width:36px;min-height:36px;font-size:20px;cursor:pointer}
 #uaNudge .row{display:flex;gap:6px}
 #uaNudge .row button{flex:1;min-height:44px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:12px;font-weight:700;cursor:pointer}
 #uaNudge .row button:hover{border-color:var(--accent)}
-@media (max-width:520px){#uaChat{left:12px;right:12px;width:auto;bottom:calc(var(--above-nav,96px) + 54px)}#uaChatBtn span{display:none}#uaChatBtn{padding:0 13px}}
+@media (max-width:520px){#uaChat{left:12px;right:12px;width:auto;bottom:calc(var(--help-at,var(--above-nav,96px)) + 54px)}#uaChatBtn span{display:none}#uaChatBtn{padding:0 13px}}
 @media (prefers-reduced-motion:no-preference){#uaChat:not([hidden]),#uaNudge:not([hidden]){animation:uaUp .18s ease-out}@keyframes uaUp{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}}
 `;
 
@@ -91,6 +91,22 @@ function apply(w,host){
   }
   function close(){p.hidden=true;btn.setAttribute("aria-expanded","false");btn.focus()}
   btn.onclick=function(){p.hidden?open():close()};
+  /* on a phone the bubble sat beside the Apply button on the job deck (375x812: 0 px apart, a thumb meant for Apply could open Help).
+     When the Pass / Undo / Apply row comes within 24 px of where the bubble would sit, lift the bubble (and the panel and nudge above it)
+     16 px above that row; on every other screen, or when there is room beside the row, it stays just above the bottom bar. */
+  function helpAt(){
+    var de=d.documentElement,row=d.querySelector("#pane-swipe:not([hidden]) .actions"),lift="";
+    if(row){var bs=row.querySelectorAll("button"),right=0,top=w.innerHeight;
+      for(var i=0;i<bs.length;i++){var r=bs[i].getBoundingClientRect();if(r.width){right=Math.max(right,r.right);top=Math.min(top,r.top)}}
+      var rr=row.getBoundingClientRect();if(rr.height&&rr.top<top)top=rr.top;
+      if(right&&right+24>w.innerWidth-16-(btn.offsetWidth||48))lift=Math.max(0,Math.round(w.innerHeight-top))+16+"px"}
+    if(lift)de.style.setProperty("--help-at",lift);else de.style.removeProperty("--help-at");
+    /* short phones (under 740 px tall, like an iPhone SE): lifted, the bubble covered the job card's scores, so it steps aside on the
+       job deck there; it is back on every other screen and whenever the help panel is open */
+    btn.hidden=!!lift&&w.innerHeight<740&&p.hidden}
+  helpAt();w.addEventListener("resize",helpAt);d.addEventListener("scroll",helpAt,{passive:true,capture:true});
+  d.addEventListener("click",function(){w.setTimeout(helpAt,60)},true);
+  if(w.ResizeObserver)new w.ResizeObserver(helpAt).observe(d.body);
   p.querySelector("#uaChatX").onclick=close;
   p.addEventListener("keydown",function(e){if(e.key==="Escape"){e.stopPropagation();close()}});
 

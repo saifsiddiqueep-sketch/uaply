@@ -106,6 +106,8 @@ body{padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
 #pane-track .acts .btn{padding:6px 12px;font-size:13px}
 #legalbar{flex:none;text-align:center;font-size:12px;color:var(--muted);padding-bottom:2px}#legalbar a{color:inherit;text-underline-offset:2px}
 #acctSec{display:flex;flex-direction:column;gap:14px}
+/* sandbox (OPTS.centerAcct): Account, Plan & billing and Data & privacy sit in the middle like the job deck (1500 px laptop: they hugged the left edge) */
+html.acctMid #acctSec{width:100%;max-width:620px;margin-inline:auto}
 #acctSec h3{margin:0}
 #acctSec textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;min-height:96px;resize:vertical;width:100%}
 #acctSec .bar{height:10px;border-radius:999px;background:var(--line);overflow:hidden}
@@ -261,6 +263,7 @@ function apply(w,host){
   var OPTS=(host&&host.defaultView&&host.defaultView.UAplyOpts)||{};   /* e.g. dev sets hideServiceCounts */
   /* sandbox without a server: Stripe Payment Links (test mode) per plan, {starter:url, pro:url}. Only buy.stripe.com links are used */
   var PAYLINK={};(function(l){l=l&&typeof l==="object"?l:{};["starter","pro"].forEach(function(k){if(/^https:\/\/buy\.stripe\.com\/[A-Za-z0-9_]+$/.test(l[k]||""))PAYLINK[k]=l[k]})})(OPTS.stripeLinks);
+  if(OPTS.centerAcct)d.documentElement.classList.add("acctMid");   /* sandbox only for now: Mohammed approved it there first */
   var REL=!!OPTS.release;   /* release build: no test controls, no simulated sign-in, no sample data, no paid plans */
   /* a static preview with no server (see PREVIEW_TEXT): the other experiments ask through w.__uaplyPreview() */
   function preview(){return !!OPTS.preview||!!w.__uaplyPreviewOn}
