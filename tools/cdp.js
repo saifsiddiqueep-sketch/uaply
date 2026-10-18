@@ -88,7 +88,10 @@ async function launch() {
       logs.push("ERR " + d.params.args.map((a) => a.value || a.description).join(" ").slice(0, 200));
     }
   };
-  const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending[i] = r; ws.send(JSON.stringify({ id: i, method, params })); });
+  // sessionId: a frame Chrome attached us to (Target.setAutoAttach with flatten), e.g. a cross-origin iframe running in its own process
+  const send = (method, params = {}, sessionId) => new Promise((r) => {
+    const i = ++id; pending[i] = r; ws.send(JSON.stringify(sessionId ? { id: i, method, params, sessionId } : { id: i, method, params }));
+  });
   await send("Runtime.enable");
   await send("Page.enable");
   if (process.env.W && Number(process.env.W) < 700) {          // phone sizes: real device emulation (a headless window cannot go below ~500px)
