@@ -54,6 +54,7 @@ run "Connect Gmail form" python tools/test-setup.py
 
 step "Swipe-right emails (content, test label, safety, real send)"
 run "receipt and owner copy emails" python tools/test-emails.py
+run "email as the mail service sees it: headers, daily quota (250/300), refusals, held mail, bounce webhook" python tools/test-mail-limits.py 2538 18799
 run "help requests from the assistant reach the support inbox" python tools/test-support.py
 run "applications go straight into employers' hiring systems (Greenhouse, Lever)" python tools/test-ats.py
 run "applications go straight into an employer's Ashby" python tools/test-ats-ashby.py
@@ -68,7 +69,7 @@ run "swipe learning: the math, the worked example, the replay test" python tools
 run "fill from your resume: six resumes, layouts, dates, refused files, the endpoint" python tools/test-resume.py 18798
 run "the server as Render runs it: start, stop mid-request, restart on the same disk" python tools/test-render.py 18782
 run "reading every job board stays far below the 512 MB plan, and a redeploy answers from the saved list at once" python tools/test-feed-memory.py
-run "backups: pack the data folder, restore it, refuse damaged ones, encrypt, upload to a private GitHub repository" python tools/test-backup.py 18799
+run "backups: pack the data folder, restore it, refuse damaged ones, encrypt, upload to a private GitHub repository" python tools/test-backup.py 18806
 run "every path from swipe right to inbox, replayed in a browser" python tools/ui-apply-paths.py
 run "the one-time question box: every kind of question, phone and computer" python tools/ui-questions.py
 
