@@ -452,22 +452,27 @@ def main():
         t("HTTP: 20 sign-ups for one address (three spellings) at the same instant: exactly one succeeds", sorted(res), [200] + [409] * 19)
         t("HTTP: ...one account in the file", count("race.web@example.com"), 1)
 
-        # a password sign-up and a Google sign-in for the same new Gmail address at the same instant, ten of each
-        res2 = []
-        go3 = threading.Barrier(20)
-        creds = [gtoken("mixed.race@gmail.com", "mix-sub") for _ in range(10)]      # made before the start line: only UAply is raced
+        # a password sign-up and a Google sign-in for the same new Gmail address at the same instant, ten of each, eight rounds (a Google
+        # sign-in landing between "account made" and "first code made" once answered the sign-up with 500: both are one locked step now)
+        rounds = []
+        for k in range(8):
+            res2 = []
+            go3 = threading.Barrier(20)
+            addr = "mixed.race%d@gmail.com" % k
+            creds = [gtoken(addr, "mix-sub-%d" % k) for _ in range(10)]      # made before the start line: only UAply is raced
 
-        def mixed(n):
-            go3.wait()
-            r = signup("Mixed.Race@gmail.com") if n % 2 else google("mixed.race@gmail.com", "mix-sub", cred=creds[n // 2])
-            res2.append(r[0])
-        th = [threading.Thread(target=mixed, args=(n,)) for n in range(20)]
-        for x in th:
-            x.start()
-        for x in th:
-            x.join(240)
-        t("HTTP: ten password sign-ups and ten Google sign-ins for one new Gmail address at once: one account, one Google link",
-          (count("mixed.race@gmail.com"), len(identities("mix-sub")), 500 in res2), (1, 1, False))
+            def mixed(n):
+                go3.wait()
+                r = signup(addr.replace("mixed", "Mixed")) if n % 2 else google(addr, "mix-sub-%d" % k, cred=creds[n // 2])
+                res2.append(r[0])
+            th = [threading.Thread(target=mixed, args=(n,)) for n in range(20)]
+            for x in th:
+                x.start()
+            for x in th:
+                x.join(240)
+            rounds.append((count(addr), len(identities("mix-sub-%d" % k)), sorted(set(res2) - {200, 409})))
+        t("HTTP: ten password sign-ups and ten Google sign-ins for one new Gmail address at once, eight times: one account, one Google link, "
+          "only 200 or 409 answers", rounds, [(1, 1, [])] * 8)
 
         # 5. Google linking
         s, out, att = signup("Link.Me@Gmail.com")

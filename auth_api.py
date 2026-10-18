@@ -412,21 +412,32 @@ def signup(email, password, ip, agree=False, check_dns=False, per_hour=None):
     """Returns (status, body, session_token_or_None). check_dns (serve.py: on a public server that sends email) also refuses a domain
     DNS says cannot receive mail, before any code is sent; it runs outside the lock, so a slow resolver holds up nobody else.
     per_hour caps sign-up tries per visitor address (`ip` is the X-Forwarded-For address on a public server, as for the lock-out)."""
+    return signup_with_code(email, password, ip, agree, check_dns, per_hour)[:3]
+
+
+def signup_with_code(email, password, ip, agree=False, check_dns=False, per_hour=None):
+    """signup() that also makes the first 6-digit code in the SAME locked transaction that creates the account. Returns
+    (status, body, token, mail) where mail is (user_id, email, digits) to send, or None.
+
+    Why one step: a "Continue with Google" for the same Gmail address can arrive between "account created" and "code made". Google is
+    the authority there, so oauth_login (under the same lock) removes the unproven password and ends this new session; asking for the
+    code afterwards found no session and the sign-up answered 500. Made together, the Google sign-in can only come before (this
+    sign-up is then told the address is taken) or after (the code it removes is simply dead), never in between."""
     email = _clean_email(email)
     if not email:
-        return 400, {"error": "Enter a valid email address."}, None
+        return 400, {"error": "Enter a valid email address."}, None, None
     if agree is not True:
-        return 400, {"error": "Confirm you are 18 or older and agree to the Terms and Privacy Policy."}, None
+        return 400, {"error": "Confirm you are 18 or older and agree to the Terms and Privacy Policy."}, None, None
     if not isinstance(password, str) or not (8 <= len(password) <= 128):
-        return 400, {"error": "Use a password between 8 and 128 characters."}, None
+        return 400, {"error": "Use a password between 8 and 128 characters."}, None, None
     if password.lower() == email:
-        return 400, {"error": "Your password cannot be your email."}, None
+        return 400, {"error": "Your password cannot be your email."}, None, None
     problem = mailbox_problem(email, check_dns)
     if problem:
-        return 400, {"error": problem, "code": "mailbox"}, None
+        return 400, {"error": problem, "code": "mailbox"}, None, None
     with _lock:
         if len(_recent(_signups, ip, 3600)) >= (per_hour or SIGNUPS_PER_HOUR_LOCAL):
-            return 429, {"error": SIGNUP_LIMIT_MSG, "code": "signup_limit"}, None
+            return 429, {"error": SIGNUP_LIMIT_MSG, "code": "signup_limit"}, None, None
         _signups[ip].append(time.time())
         salt = secrets.token_bytes(16)
         pw_hash = _hash(password, salt)
@@ -437,9 +448,10 @@ def signup(email, password, ip, agree=False, check_dns=False, per_hour=None):
                                 (email, salt, pw_hash, now, now, now))
                 uid = cur.lastrowid
                 token = _new_session(c, uid)
+                digits = _new_code(c, uid)
         except sqlite3.IntegrityError:
-            return 409, {"error": "That email already has an account. Log in instead."}, None
-    return 200, {"user": {"id": uid, "email": email, "hasPassword": True, "emailVerified": False}}, token
+            return 409, {"error": "That email already has an account. Log in instead."}, None, None
+    return 200, {"user": {"id": uid, "email": email, "hasPassword": True, "emailVerified": False}}, token, (uid, email, digits)
 
 
 def login(email, password, ip):
@@ -705,8 +717,11 @@ def _new_code(c, user_id):
 
 
 def issue_code_for_token(token):
-    """The first code, right after sign-up. Returns (user_id, email, digits)."""
+    """A code for the account this session belongs to. Returns (user_id, email, digits), or None when the session has ended (a Google
+    sign-in for the same address can end it at any moment). serve.py's sign-up uses signup_with_code instead."""
     user = user_for(token)
+    if not user:
+        return None
     with _lock, _db() as c:
         return user["id"], user["email"], _new_code(c, user["id"])
 
