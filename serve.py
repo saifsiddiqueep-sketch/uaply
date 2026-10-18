@@ -33,6 +33,7 @@ Serves ROOT; each urlpath=file alias maps one URL to a file outside ROOT (e.g. /
   GET  /api/employer/me, /api/employer/logo/<id>, POST /api/employer/...   Hiring mode, sandbox only (employers_api.py)
   POST /api/profile/resume   read a resume (PDF, Word or text, up to 5 MB) and answer with the profile fields found; nothing is kept (resume_parse.py)
   GET  /healthz           for the host's health check
+  POST /api/email/events  Brevo's webhook: bounces and complaints put an address on the bounce list (needs email_events_secret; mailer.py)
   GET  /api/status        what is switched on, as yes/no facts only (never a key, an address or a path): for tools/live-check.py
 Accounts use an HttpOnly session cookie. When a signed-in user swipes right, a receipt goes to their email."""
 import sys, os, re, json, http.server, base64, hmac, threading, time, signal
@@ -109,6 +110,8 @@ if api:
     chat_api.init(os.path.basename(root))
     billing_api.PUBLIC = PUBLIC                                     # Plan and billing: buy buttons on a public server only when Stripe keys are set
     uaply_api.hide_errors = jobs_api.hide_errors = PUBLIC       # a hosted server never shows visitors raw error text; the owner's own computer still does
+    uaply_api.PUBLIC = PUBLIC                                   # the live site never labels a real hand-off email [TEST]
+    uaply_api.start_mail_worker()                               # sends receipts and copies held back by the daily email limit (mailer.py)
     threading.Thread(target=jobs_api.get_jobs, daemon=True).start()   # warm the job cache so the first visitor does not wait
 
 OOPS = "Something went wrong on our side. Try again in a moment."
@@ -394,6 +397,19 @@ class H(http.server.SimpleHTTPRequestHandler):
                 log_oops(p, e)
                 code, out = 500, {"error": OOPS}
             return self._send(code, out)
+        if api and p == "/api/email/events":           # from Brevo (bounces, complaints): the shared secret replaces the same-site check
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                n = 0
+            if not 0 < n <= 262144:
+                return self._refuse(400, {"error": "bad size"})
+            try:
+                code, out = uaply_api.email_events(self.rfile.read(n), self.headers.get("Authorization") or "")
+            except Exception as e:
+                log_oops(p, e)
+                code, out = 500, {"error": OOPS}
+            return self._send(code, out, headers=[("WWW-Authenticate", 'Basic realm="uaply"')] if code == 401 else ())
         if not api or p not in ("/api/apply", "/api/decision", "/api/auth/signup", "/api/auth/login", "/api/auth/logout",
                                 "/api/auth/delete", "/api/auth/forgot", "/api/auth/reset", "/api/auth/change-password",
                                 "/api/setup/test-mail", "/api/setup/save-mail", "/api/setup/save-google", "/api/setup/save-ats", "/api/setup/remove-ats", "/api/setup/save-stripe", "/api/setup/save-feed-keys", "/api/auth/google/token", "/api/auth/verify", "/api/auth/resend", "/api/chat", "/api/feedback", "/api/billing/checkout", "/api/billing/portal",
@@ -513,7 +529,7 @@ class H(http.server.SimpleHTTPRequestHandler):
                     link = self._site_base() + "/?reset=" + tok
                     body = ("Hi,\n\nSomeone asked to reset the password for this UAply account. Use this link within one hour:\n\n%s\n\n"
                             "If you did not ask for this, ignore this email; your password has not changed.\n\n--\nUAply") % link
-                    status = uaply_api.send_system_mail(uid, addr, "Reset your UAply password", body, secret=True)
+                    status = uaply_api.send_system_mail(uid, addr, "Reset your UAply password", body, secret=True, kind="reset")
                     out = dict(out, delivery=status)
                 else:
                     out = dict(out, delivery=("sent" if uaply_api.mail_ready() else "delivered_test"))
@@ -612,6 +628,7 @@ def status_facts():
     persistent is null where it cannot be known (any host but Render, or the owner's own computer)."""
     b = billing_api.settings()
     return {"ok": True, "public": PUBLIC, "persistent": PERSISTENT, "email": bool(uaply_api.mail_ready()),
+            "emailEvents": bool(uaply_api.events_secret()),
             "google": bool(google_auth.enabled()), "googleButton": bool(google_auth.button_enabled()),
             "payments": bool(b["on"]), "paymentsTest": bool(b["on"] and b["test"]),
             "paymentsWebhook": bool(b["on"] and str(b.get("webhook_secret") or "").startswith("whsec_")),
@@ -634,7 +651,7 @@ def startup_summary():
     disk = {True: "persistent disk", False: "NOT a persistent disk: everything is lost at the next deploy", None: "local folder"}[PERSISTENT]
     return ("[uaply] %s on %s:%d (%s) | data: %s (%s) | feeds: %s | email: %s | owner pages: %s | AI answers: %s | Google sign-in: %s | payments: %s | UAPLY_CONFIG_JSON: %s"
             % (os.path.basename(root), BIND, port, "public" if PUBLIC else "this computer only", DATA_DIR, disk,
-               ",".join(sorted(jobs_api.feeds_allowed())) or "off", "on" if uaply_api.mail_ready() else "off (test inbox only)",
+               ",".join(sorted(jobs_api.feeds_allowed())) or "off", ("on (bounce events: %s)" % ("on" if uaply_api.events_secret() else "off")) if uaply_api.mail_ready() else "off (test inbox only)",
                ("on" if OWNER_PASSWORD else "off (no OWNER_PASSWORD)") if PUBLIC else "on", "on" if chat_api.ai_ready() else "off",
                google_auth.summary(), billing_api.summary(), cfg_note))
 

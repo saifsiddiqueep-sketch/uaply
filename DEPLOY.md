@@ -218,3 +218,48 @@ before the first charge.
    A failed delivery shows the reason; Stripe retries it for up to three days, and UAply handles each event once.
 
 Never put a live key in a file, a chat or the sandbox; sandbox stays on test keys.
+
+## 5. Email: deliverability, the daily limit, bounces (Brevo and Cloudflare)
+UAply sends everything through Brevo's SMTP relay as `UAply <uaplytechnologies@uaply.net>`; all of it goes through `mailer.py`.
+
+**DNS for uaply.net (checked on October 17, 2026 through dns.google).** Everything Brevo needs is published:
+| Record | Name | Value | State |
+|---|---|---|---|
+| TXT | `uaply.net` | `brevo-code:52c6ef1ae330942d173fea8457e3e8fd` | present (proves the domain to Brevo) |
+| CNAME | `brevo1._domainkey` | `b1.uaply-net.dkim.brevo.com` | present, resolves to a 2048-bit key |
+| CNAME | `brevo2._domainkey` | `b2.uaply-net.dkim.brevo.com` | present, resolves to a 2048-bit key |
+| TXT | `_dmarc` | `v=DMARC1; p=none; rua=mailto:rua@dmarc.brevo.com` | present, monitoring only |
+| TXT | `uaply.net` | `v=spf1 include:_spf.mx.cloudflare.net ~all` | present (Cloudflare Email Routing); no Brevo include |
+| MX | `uaply.net` | `route1/2/3.mx.cloudflare.net` | present: replies to uaplytechnologies@uaply.net are routed |
+
+Brevo's own guide ("Authenticate your domain with Brevo (Brevo code, DKIM, DMARC)") asks only for the Brevo code, the two DKIM records and
+DMARC, and says SPF is needed only with a dedicated IP: on Brevo's shared IPs the bounce address is Brevo's own domain, so DMARC passes through
+the aligned DKIM signature (d=uaply.net). Optional, harmless (two DNS lookups of the ten SPF allows): edit the one SPF record to
+`v=spf1 include:_spf.mx.cloudflare.net include:spf.brevo.com ~all`. Never add a second SPF record. After two to four weeks of clean DMARC reports
+(Brevo, Domains, uaply.net) tighten DMARC to `v=DMARC1; p=quarantine; rua=mailto:rua@dmarc.brevo.com`. Keep the Brevo `rua` address in every
+change, or Brevo's report stops.
+
+**The daily limit.** Brevo's free plan sends 300 emails a day. UAply counts what it sent per UTC day (`mail-count.json` in the data folder):
+from 250 only sign-up codes, reset links and applications to employers go; receipts, the owner's copies, help requests and acknowledgements are
+held (`mail-held.json` in the instance folder) and sent after midnight UTC by a background worker (every 5 minutes); at 300 nothing more is tried
+that day and a sign-up code answers "the problem is on our side, try again in a few minutes". If Brevo itself says the quota is used up, the
+day is marked full at once. The stored copy of a held receipt says why it waits (the test inbox shows HELD, then SENT). On a paid Brevo plan set
+`"mail_daily_quota"` and `"mail_priority_at"` in `UAPLY_CONFIG_JSON`. A refused login (a revoked SMTP key), a dropped connection or a 4xx
+answer: receipts and copies are held and retried every 15 minutes (up to 8 times); codes and applications fail and say so. Each problem
+writes one line to the log, for example
+`[uaply] email not sent: receipt to s***@example.com: quota (421 4.7.0 ...); held until 2026-10-18 00:00 UTC`.
+
+**Bounces and complaints (the Brevo webhook).** Brevo accepts a message first and finds out later that the address bounced, was blocked or
+complained. With the webhook, UAply puts such addresses on its bounce list (`mail-suppressed.json` in the data folder) and sends them no more
+codes, receipts or copies; a sign-up with that address then says the address bounces.
+1. Make a secret on your own computer: `python -c "import secrets; print(secrets.token_urlsafe(32))"`. Add it to `UAPLY_CONFIG_JSON` in Render as
+   `"email_events_secret":"<the secret>"` (at least 24 characters). The log line must then say `email: on (bounce events: on)`.
+2. In Brevo: Transactional, Settings, Webhook (in the newer menu: Settings, Webhooks, Transactional), Add a new webhook. URL
+   `https://uaply:<the secret>@uaply.onrender.com/api/email/events` (the part before the @ is sent as basic authentication; a webhook made
+   through Brevo's API can send it as a bearer token instead). Events: Hard bounced, Soft bounced, Blocked, Invalid email, Marked as spam
+   (complaint), Unsubscribed, and Delivered (it clears the soft-bounce count). Save, then use Brevo's test button: the answer must be 200.
+3. When the domain moves to uaply.net, change the webhook URL to `https://uaply:<the secret>@uaply.net/api/email/events`.
+4. To take an address off the list (someone fixed their mailbox): `curl -X POST https://uaply.onrender.com/api/email/events -H "Authorization: Bearer <the secret>" -H "Content-Type: application/json" -d "{\"event\":\"uaply_unblock\",\"email\":\"person@example.com\"}"`.
+   Remove it in Brevo too (Contacts, Blocklisted), or Brevo keeps blocking it.
+Hard bounces, blocks, invalid addresses, complaints and unsubscribes stay on the list for a year; five soft bounces within a week for a week.
+Without `email_events_secret` the address does not exist (404). `tools/test-mail-limits.py` checks all of this against `tools/fake-smtp.py`.

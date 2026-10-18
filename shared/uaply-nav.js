@@ -1727,6 +1727,8 @@ function apply(w,host){
     em=em||"your email";
     if(dl==="sent")return "We emailed a 6-digit code to "+em+". Check your inbox (and spam), then enter it below.";
     if(dl==="failed")return "We could not send the code to "+em+". Check that the address is right, then press Send a new code.";
+    if(dl==="busy")return "We could not send the code just now: the problem is on our side, not your address. Your account is saved. Press Send a new code in a few minutes.";
+    if(dl==="bounced")return "Emails to "+em+" bounce back, so we did not send a code. Check the address, or sign up with another one. Help, then Talk to a person, if this address is right.";
     if(dl==="delivered_test")return SRV.testInbox?"No real email is connected on this computer, so the code is in the test inbox.":"Email is not switched on for this site yet, so no code was sent. Your account works and you can swipe; verify once email is on.";
     return SRV.canEmail?"We emailed you a 6-digit code: enter it below to verify your email.":"";
   }

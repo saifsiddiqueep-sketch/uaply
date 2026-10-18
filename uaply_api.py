@@ -26,7 +26,6 @@ import hmac
 import json
 import os
 import re
-import smtplib
 import sys
 import threading
 import time
@@ -46,6 +45,7 @@ import autofill
 import jobs_api
 import auth_api
 import emails
+import mailer
 
 EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")   # strict: one plain address, no lists or names
 
@@ -151,6 +151,7 @@ def _load():
         store.extend(read_lines(os.path.join(DATA, name)))
 
 
+PUBLIC = False             # serve.py sets this on a hosted server (the live site): see _mail_ctx
 hide_errors = False        # serve.py sets this on a hosted server: visitors then see a plain sentence, never a mail server's or an employer's raw error text
 
 
@@ -162,6 +163,7 @@ def init(instance):
     global DATA, INSTANCE
     INSTANCE = re.sub(r"[^A-Za-z0-9_-]", "", instance) or "default"
     DATA = os.path.join(data_root(), INSTANCE)
+    mailer.init(DATA)                                      # mail held for later (quota, a mail service that is down) is kept per instance
     APPS.clear()
     DECISIONS.clear()
     _load()
@@ -404,27 +406,39 @@ def _from(cfg):
     return v if name or not addr else formataddr(("UAply", addr))
 
 
-def _send_email(cfg, to, cand, job, note, original="", resume=None):
-    s = cfg["smtp"]
+class MailNotSent(Exception):
+    """mailer.send() did not send the message and did not keep it for later. str(e) is a plain reason for the owner's log and records."""
+    REASONS = {"quota": "the daily email limit is reached", "login": "the mail service refused UAply's login",
+               "recipient": "the mail service refused that address", "unreachable": "the mail service could not be reached",
+               "temporary": "the mail service said to try again later", "refused": "the mail service refused the message"}
+
+    def __init__(self, status, why):
+        self.status, self.why = status, why
+        super().__init__(("that address is on the bounce list (%s)" % why) if status == "suppressed" else self.REASONS.get(why, "it could not be sent (%s)" % why))
+
+
+def _application_message(cfg, to, cand, job, note, original="", resume=None):
     msg = EmailMessage()
     msg["From"] = _from(cfg)
     msg["To"] = to
-    # the name is quoted, so a name such as "Sam <someone@else.example>" can never become the address the employer's Reply goes to
-    msg["Reply-To"] = formataddr((cand["name"], cand["email"]))
+    # the name is quoted, so a name such as "Sam <someone@else.example>" can never become the address the employer's Reply goes to;
+    # line breaks and other control characters are taken out first (the email library refuses them, which would lose the application)
+    msg["Reply-To"] = formataddr((mailer.header(cand["name"], 100), cand["email"]))
     test = _redirect(cfg) == to
-    msg["Subject"] = "%sApplication: %s - %s" % ("[TEST] " if test else "", job["role"], cand["name"])
+    msg["Subject"] = mailer.header("%sApplication: %s - %s" % ("[TEST] " if test else "", job["role"], cand["name"]), 250)
     extra = ("\nTest redirect: this would have gone to %s.\n" % (original or "the company's application page")) if test else ""
     msg.set_content("%s\n\n--\nSent through UAply on behalf of %s <%s>.\nPosting: %s\n%s" % (_application_text(cand, job, note), cand["name"], cand["email"], job["url"], extra))
     if resume:                                                 # the resume the person uploaded goes along as a real attachment
         meta, data = resume
         maintype, subtype = meta["type"].split("/", 1)
         msg.add_attachment(data, maintype=maintype, subtype=subtype, filename=meta["name"])
-    with smtplib.SMTP(s["host"], int(s.get("port", 587)), timeout=20) as srv:
-        if s.get("starttls", True):
-            srv.starttls()
-        if s.get("user"):
-            srv.login(s["user"], s.get("password", ""))
-        srv.send_message(msg)
+    return msg
+
+
+def _send_email(cfg, to, cand, job, note, original="", resume=None):
+    status, why = mailer.send(cfg, _application_message(cfg, to, cand, job, note, original, resume), "application")
+    if status != "sent":                                       # an application is never held: the record says failed and the person can send it again
+        raise MailNotSent(status, why)
 
 
 def _deliver(cfg, target, cand, job, note, contact, resume_meta, resume_bytes, hook, rec, ats=None):
@@ -477,7 +491,10 @@ def _site_base(cfg, site=""):
 
 def _mail_ctx(cfg, rec, note, user_email="", site=""):
     """Everything emails.py needs to write the receipt or the owner copy of one application."""
-    return {"test": rec["mode"] != "live", "status": rec["status"], "cand": rec["candidate"], "job": rec["job"], "at": rec["at"],
+    # A hand-off is the same in test and live mode (UAply sends nothing; the person finishes on the employer's site), so on the live site
+    # it is never labelled [TEST]: a real person would read "This is a test email" about a real job. The owner's own computer keeps the label.
+    test = rec["mode"] != "live" and not (PUBLIC and rec["status"] == "handoff")
+    return {"test": test, "status": rec["status"], "cand": rec["candidate"], "job": rec["job"], "at": rec["at"],
             "match": rec.get("match", 0), "to": rec.get("to", ""), "rows": _detail_rows(rec["candidate"], note), "note": note,
             "channels": rec.get("channels") or [], "user_email": user_email, "base_url": _site_base(cfg, site), "support_email": _s(cfg.get("support_email"), 120),
             "preview": rec.get("preview") is True}
@@ -487,7 +504,7 @@ def _copy_message(cfg, rec):
     """The owner's copy of one application, as plain text plus an HTML version (built apart from sending so it can be tested)."""
     subject, text, page = emails.owner_copy(_mail_ctx(cfg, rec, rec.get("note", "")))
     msg = EmailMessage()
-    msg["From"], msg["To"], msg["Subject"] = _from(cfg), _owner_copy(cfg), subject
+    msg["From"], msg["To"], msg["Subject"] = _from(cfg), _owner_copy(cfg), mailer.header(subject, 250)
     msg.set_content(text)
     msg.add_alternative(page, subtype="html")
     return msg
@@ -499,50 +516,56 @@ def _send_owner_copy(cfg, rec):
     if not owner or not _smtp_ready(cfg) or (rec["status"] == "sent" and rec.get("to", "").lower() == owner.lower()):
         return False                       # nothing to do, or the owner already received the application itself
     try:
-        s = cfg["smtp"]
-        with smtplib.SMTP(s["host"], int(s.get("port", 587)), timeout=20) as srv:
-            if s.get("starttls", True):
-                srv.starttls()
-            if s.get("user"):
-                srv.login(s["user"], s.get("password", ""))
-            srv.send_message(_copy_message(cfg, rec))
-        return True
+        status, why = mailer.send(cfg, _copy_message(cfg, rec), "owner_copy", user=rec.get("user"))     # held (not lost) near the daily limit
+        return status == "sent"
     except Exception as e:
         sys.stderr.write("[uaply] the owner's copy of application %s was not sent: %s: %s\n" % (rec.get("id"), type(e).__name__, str(e)[:200]))
         return False
 
 
-def _send_receipt(cfg, to, subject, body, page=None, reply_to=None):
-    s = cfg["smtp"]
+def _send_receipt(cfg, to, subject, body, page=None, reply_to=None, kind="receipt", user=None):
+    """Send one message UAply writes itself. Returns "sent" or "held" (kept and sent later, for the kinds that can wait); raises
+    MailNotSent when it was neither (mailer.py writes the one log line)."""
     msg = EmailMessage()
     msg["From"] = _from(cfg)
     msg["To"] = to
-    msg["Subject"] = subject
+    msg["Subject"] = mailer.header(subject, 250)
     if reply_to and EMAIL_RE.match(reply_to):             # pressing Reply answers this address (only a plain, valid address is ever used)
         msg["Reply-To"] = reply_to
     msg.set_content(body)
     if page:
         msg.add_alternative(page, subtype="html")
-    with smtplib.SMTP(s["host"], int(s.get("port", 587)), timeout=20) as srv:
-        if s.get("starttls", True):
-            srv.starttls()
-        if s.get("user"):
-            srv.login(s["user"], s.get("password", ""))
-        srv.send_message(msg)
+    status, why = mailer.send(cfg, msg, kind, user=user)
+    if status in ("sent", "held"):
+        return status
+    raise MailNotSent(status, why)
 
 
-def send_system_mail(user_id, to, subject, body, secret=False, stored_subject=None, redacted="(the link was emailed and is not kept here)", page=None):
+def _code_status(e):
+    """What the app is told when a code or a reset link did not go: 'bounced' (that address bounces: use another one), 'failed' (the
+    address was refused) or 'busy' (a problem on UAply's side: the daily limit, the mail service's login or connection; try again later)."""
+    if isinstance(e, MailNotSent):
+        if e.status == "suppressed":
+            return "bounced"
+        return "failed" if e.why in ("recipient", "invalid") else "busy"
+    return "failed"
+
+
+def send_system_mail(user_id, to, subject, body, secret=False, stored_subject=None, redacted="(the link was emailed and is not kept here)", page=None, kind="reset"):
     """Mail UAply itself sends to a person (password reset links, verification codes). Real email when SMTP is set up (whatever the
     delivery mode, since that setting is about recruiters), otherwise it lands in the simulated test inbox. `secret` keeps the secret
     out of the stored copy whenever a real email was attempted: the body is replaced by `redacted` and the subject by `stored_subject`,
     so a reset link or a code is never kept after it leaves. Only the test inbox (no real email connected) keeps it, because showing it
-    there is its whole purpose. Never raises. Returns "sent", "failed" or "delivered_test"."""
+    there is its whole purpose. Codes and reset links go first when the daily limit is near and are never held for later.
+    Never raises. Returns "sent", "failed", "busy", "bounced" (see _code_status) or "delivered_test"."""
     cfg = config()
     status = "delivered_test"
     if _smtp_ready(cfg):
         try:
-            _send_receipt(cfg, to, subject, body, page)
+            _send_receipt(cfg, to, subject, body, page, kind=kind, user=user_id)
             status = "sent"
+        except MailNotSent as e:
+            status = _code_status(e)                       # mailer.py already wrote the reason to the log
         except Exception as e:
             status = "failed"
             sys.stderr.write("[uaply] sending mail failed: %s: %s\n" % (type(e).__name__, str(e)[:200]))      # the reason for the owner; the person only sees "could not send"
@@ -568,8 +591,9 @@ def support_address(cfg):
 
 def send_support_ticket(rec, user=None):
     """Email a help request from the assistant to the team, with the person's email as the reply address so pressing Reply answers them.
-    Returns "emailed" (the team got it by email), "failed" (the mail server refused it) or "saved" (no real email is connected, or the hourly
-    limit was reached: the request is still on the Feedback page). A short acknowledgement goes to the person only when UAply has already
+    Returns "emailed" (the team got it by email), "failed" (the mail server refused it), "held" (the daily email limit or a mail service that
+    is down: it is emailed later, mailer.py) or "saved" (no real email is connected, or the hourly limit was reached: the request is still on
+    the Feedback page). A short acknowledgement goes to the person only when UAply has already
     proven the address is theirs (a verified account), so nobody can use this to make UAply email a stranger."""
     cfg = config()
     to = support_address(cfg)
@@ -582,18 +606,23 @@ def send_support_ticket(rec, user=None):
             return "saved"
         _support_times.append(now)
     subject, body = emails.support_ticket(rec, user["email"] if user else "")
+    uid = user["id"] if user else None
     try:
-        _send_receipt(cfg, to, subject, body, reply_to=rec.get("email") or None)
+        sent = _send_receipt(cfg, to, subject, body, reply_to=rec.get("email") or None, kind="support", user=uid)
+    except MailNotSent:
+        return "failed"                                    # mailer.py wrote the reason to the log; the request is on the Feedback page
     except Exception as e:
         sys.stderr.write("[uaply] sending the help request to the team failed: %s: %s\n" % (type(e).__name__, str(e)[:200]))
         return "failed"
     if user and user.get("emailVerified") and rec.get("email") and user["email"].lower() == rec["email"].lower():
         try:
             ack_subject, ack_body = emails.support_ack(rec)
-            _send_receipt(cfg, user["email"], ack_subject, ack_body, reply_to=to)
+            _send_receipt(cfg, user["email"], ack_subject, ack_body, reply_to=to, kind="ack", user=uid)
+        except MailNotSent:
+            pass
         except Exception as e:
             sys.stderr.write("[uaply] sending the acknowledgement failed: %s: %s\n" % (type(e).__name__, str(e)[:200]))
-    return "emailed"
+    return "emailed" if sent == "sent" else "held"         # held: near the daily limit or the mail service is down; it is sent later
 
 
 def send_verification_mail(user_id, to, digits):
@@ -601,7 +630,7 @@ def send_verification_mail(user_id, to, digits):
     kept in the stored copy once emailed."""
     subject, text, page = emails.verification_email(digits)
     return send_system_mail(user_id, to, subject, text, secret=True, page=page,
-                            stored_subject="Your UAply verification code", redacted="(the code was emailed and is not kept here)")
+                            stored_subject="Your UAply verification code", redacted="(the code was emailed and is not kept here)", kind="code")
 
 
 def mail_ready():
@@ -616,18 +645,100 @@ def _receipt(cfg, user, cand, job, note, rec, site=""):
     status = "delivered_test"
     if _smtp_ready(cfg):                      # the receipt goes only to the applicant's own address, so it is safe to send in test mode too
         try:
-            _send_receipt(cfg, to, subject, body, page)
-            status = "sent"
+            status = _send_receipt(cfg, to, subject, body, page, kind="receipt", user=user["id"])     # "sent" or "held"
+        except MailNotSent as e:
+            status = "bounced" if e.status == "suppressed" else "failed"          # mailer.py wrote the reason to the log
         except Exception as e:
             status = "failed"
             sys.stderr.write("[uaply] the applicant's confirmation was not sent: %s: %s\n" % (type(e).__name__, str(e)[:200]))
     elif cfg["delivery"] == "live":
         status = "not_configured"
+    stored = body
+    if status == "held":                      # the note in the stored copy: the application itself is done, only this email waits
+        stored = HELD_NOTE + "\n\n" + body
     try:
-        auth_api.add_mail(user["id"], to, subject, body, status)
+        auth_api.add_mail(user["id"], to, subject, stored, status)
     except Exception:
         pass
     return {"to": to, "status": status}
+
+
+HELD_NOTE = ("(Held: UAply's email was at its daily limit or could not reach the mail service when you applied. Your application is done; "
+             "this confirmation is kept and sent as soon as email is available again, at the latest the next day.)")
+
+
+def _mail_sent_later(entry):
+    """A held receipt went out: its stored copy now says sent (the note stays, so the person can see why it came late)."""
+    if entry.get("kind") == "receipt" and entry.get("user"):
+        try:
+            auth_api.mark_mail_sent(entry["user"], entry.get("to", ""))
+        except Exception:
+            pass
+
+
+def flush_mail():
+    """Send the mail that was held, when it is due (the background worker calls this every five minutes)."""
+    cfg = config()
+    return mailer.flush(cfg, _mail_sent_later) if _smtp_ready(cfg) else 0
+
+
+def start_mail_worker():
+    return mailer.start_worker(lambda: config() if _smtp_ready(config()) else {}, _mail_sent_later)
+
+
+EVENTS_MIN_SECRET = 24
+
+
+def events_secret(cfg=None):
+    """The shared secret for POST /api/email/events ('email_events_secret' in UAPLY_CONFIG_JSON); '' turns the endpoint off."""
+    v = (cfg or config()).get("email_events_secret")
+    v = v.strip() if isinstance(v, str) else ""
+    return v if len(v) >= EVENTS_MIN_SECRET and not v.upper().startswith("PASTE") else ""      # a blank left from an example never opens it
+
+
+def _events_auth_ok(secret, authorization):
+    """Brevo sends the secret either as a bearer token (the webhook's auth setting) or as the password of a URL with
+    https://uaply:SECRET@... (basic authentication, any user name). Compared in constant time."""
+    a = (authorization or "").strip()
+    given = ""
+    if a[:7].lower() == "bearer ":
+        given = a[7:].strip()
+    elif a[:6].lower() == "basic ":
+        try:
+            given = base64.b64decode(a[6:].strip(), validate=True).decode("utf-8").partition(":")[2]
+        except (ValueError, UnicodeDecodeError):
+            given = ""
+    return bool(given) and hmac.compare_digest(given.encode("utf-8"), secret.encode("utf-8"))
+
+
+def email_events(body, authorization):
+    """POST /api/email/events: Brevo's transactional webhook. A hard bounce, an invalid address, an address Brevo blocks, a spam complaint
+    or an unsubscribe puts the address on the bounce list (mailer.py), so UAply sends it no more codes, receipts or copies; five soft
+    bounces within a week do too, and 'delivered' clears the soft count. One event or a list of events. Returns (status, body)."""
+    secret = events_secret()
+    if not secret:
+        return 404, {"error": "not found"}
+    if not _events_auth_ok(secret, authorization):
+        return 401, {"error": "unauthorized"}
+    try:
+        data = json.loads(body.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return 400, {"error": "bad request"}
+    if not isinstance(data, (dict, list)):
+        return 400, {"error": "bad request"}
+    events = data if isinstance(data, list) else [data]
+    done = {}
+    for ev in events[:500]:
+        if not isinstance(ev, dict):
+            continue
+        name, addr = str(ev.get("event") or "")[:40], str(ev.get("email") or "").strip().lower()
+        if not EMAIL_RE.match(addr):
+            continue
+        what = mailer.record_event(name, addr)
+        done[what] = done.get(what, 0) + 1
+        if what in ("blocked", "unblocked"):
+            sys.stderr.write("[uaply] email events: %s %s (%s)\n" % (mailer.mask(addr), "is on the bounce list" if what == "blocked" else "was taken off the bounce list", name))
+    return 200, {"ok": True, "recorded": done}
 
 
 def submit(p, user=None, site=""):
@@ -814,6 +925,11 @@ def submit(p, user=None, site=""):
         what = "The email" if all(e.startswith("email:") for e in rec["error"].split("; ")) else "Your application to %s" % job["co"]
         out["error"] = ("%s could not be sent right now. Try again in a moment." % what if hide_errors
                         else "%s could not be sent: %s" % (what, rec["error"]))
+        if rec["error"] == "email: " + MailNotSent.REASONS["quota"]:
+            # the one failure "in a moment" would be wrong about: the record is kept, and the same swipe works again after midnight UTC
+            out["error"] = ("UAply has sent as many emails as it can today, so your application to %s was not sent yet. Nothing is lost: "
+                            "try again tomorrow (after midnight UTC)." % job["co"])
+            out["code"] = "mail_quota"
     if user and rec["status"] in ("delivered_test", "sent", "handoff"):
         # A real confirmation goes only to an address the person has proven is theirs (otherwise anyone could make UAply email a stranger).
         # With no real email connected nothing leaves this server: the confirmation is only saved in the test inbox, so it is made for any account.
@@ -854,6 +970,7 @@ def forget_user(user_id):
                 os.replace(tmp, path)
         except Exception:
             pass
+    mailer.forget_user(user_id)                    # receipts and copies still held for later are dropped with the account
     return gone
 
 
@@ -918,7 +1035,8 @@ def outbox_html():
         mails = auth_api.mail_list(30)
     except Exception:
         mails = []
-    mail_badge = {"delivered_test": "TEST", "sent": "SENT", "failed": "FAILED", "not_configured": "NOT SENT"}
+    mail_badge = {"delivered_test": "TEST", "sent": "SENT", "failed": "FAILED", "not_configured": "NOT SENT", "held": "HELD",
+                  "bounced": "BOUNCES", "busy": "NOT SENT"}
     receipts = "<h2 style='margin:12px 0 0;font-size:18px'>Receipts to applicants</h2><p class='m'>What signed-in applicants receive at their own email after each swipe right.</p>" + (
         "".join('<article><header><span class="b">%s</span><b>%s</b> to %s<time>%s</time></header><pre>%s</pre></article>' % (
             e(mail_badge.get(m["status"], m["status"].upper())), e(m["subject"]), e(m["to_addr"]),
