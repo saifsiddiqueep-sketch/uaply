@@ -1364,7 +1364,17 @@ function apply(w,host){
 
   /* ---------- real plans: the server keeps the plan, Stripe takes the payment ---------- */
   var BILL={enabled:false,plan:"free",signedIn:false,plans:{free:{name:"Free",price:0,cap:50},plus:{name:"Plus",price:9.99,cap:250},pro:{name:"Pro",price:19.99,cap:0}}};
-  function loadBilling(){return w.fetch("/api/billing/status",{credentials:"same-origin"}).then(function(r){return r.ok?r.json():null}).then(function(j){if(j){j._asked=BILL._asked;j._note=BILL._note;BILL=j;if(!acctSec.hidden&&sub.prof==="plan")renderAcct("plan")}}).catch(function(){})}
+  /* OPTS.shieldsHelp: a failed read (a blocker, a deploy's 502, a dropped connection) is remembered, so the Plan screen says so and offers
+     Try again instead of looking like "Payments are not switched on yet" with nothing to press; opening the screen again retries by itself */
+  var HELP=!!OPTS.shieldsHelp;
+  function loadBilling(){
+    BILL._loading=true;
+    function done(j){
+      if(j){j._asked=BILL._asked;j._note=BILL._note;BILL=j}else if(HELP&&!preview())BILL._failed=true;
+      BILL._loading=false;if((j||HELP)&&!acctSec.hidden&&sub.prof==="plan")renderAcct("plan");
+    }
+    return w.fetch("/api/billing/status",{credentials:"same-origin"}).then(function(r){return r.ok?r.json():null}).then(done,function(){done(null)});
+  }
   loadBilling();
   var EARLY="Paid plans are coming. UAply is free during early access.";
   function earlyAccess(){return BILL.early===true}   /* the server says so: a public server with no Stripe keys (billing_api.buttons). No prices to choose, no checkout, no payment links */
@@ -1372,6 +1382,12 @@ function apply(w,host){
   function testMode(){return !!BILL.test||(!BILL.enabled&&!!BILL.buttons&&!!(PAYLINK.starter||PAYLINK.pro))}
   function billingHTML(){
     var who=SRV.user?SRV.user.id:0;
+    if(HELP&&BILL._failed){
+      if(!BILL._loading&&!BILL._retried){BILL._retried=true;setTimeout(loadBilling,0)}   /* one automatic retry per failure, when the screen opens */
+      return '<div class="plan" id="billFail" role="alert" style="display:flex;flex-direction:column;gap:8px"><b>Plans could not load just now</b>'+
+        '<small>UAply could not reach its server to read your plan. This is usually a moment of downtime, or a browser privacy shield or ad blocker stopping the request. Nothing was charged.</small>'+
+        '<div class="acts"><button type="button" class="btn" data-bill="retry">Try again</button></div>'+shieldsLine()+'</div>';
+    }
     if(!!BILL.signedIn!==!!SRV.user&&BILL._asked!==who){BILL._asked=who;loadBilling()}       /* signed in or out since the plan was last read: read it again (the screen redraws when it arrives) */
     if(earlyAccess())return '<div class="plan" data-cur="true" style="display:flex;flex-direction:column;gap:6px"><b>Current plan: Free (early access)</b>'+
       '<ul><li>No weekly limit on applications</li><li>Full dashboard and tracking</li><li>Every filter</li><li>Message the hiring manager</li></ul>'+
@@ -1404,6 +1420,7 @@ function apply(w,host){
   }
   function billingAction(k,btn){
     if(k==="signin"){sub.prof="account";renderAcct("account");return}
+    if(k==="retry"){btn.disabled=true;btn.textContent="Loading…";BILL._retried=true;loadBilling().then(function(){if(BILL._failed!==false&&!BILL.plans){renderAcct("plan")}});return}
     if(!BILL.enabled&&PAYLINK[LINKOF[k]]){   /* no keys on this server: Stripe's own test Payment Link (test mode, no real money) */
       var u=PAYLINK[LINKOF[k]],em=(d.getElementById("pEmail")||{}).value||"";
       if(/^[^@\s]{1,64}@[^@\s]+\.[A-Za-z]{2,}$/.test(em))u+="?prefilled_email="+encodeURIComponent(em);
@@ -1520,7 +1537,7 @@ function apply(w,host){
   function renderAcct(v){
     var h='<h3>'+label("prof",v)+'</h3><p class="lead">'+(v==="plan"&&earlyAccess()?EARLY:leadOf(v))+'</p>';
     /* preview: the release build shows only the preview note; the sandbox keeps its simulated sign-in below it */
-    if(v==="account"){acctSec.innerHTML=h+(preview()?previewHTML()+(REL?"":accountHTML()):accountHTML())+'<p class="note" id="aMsg" role="status"></p>';paintHeader();setTimeout(mountGoogle,0);return}
+    if(v==="account"){acctSec.innerHTML=h+shieldsLine()+(preview()?previewHTML()+(REL?"":accountHTML()):accountHTML())+'<p class="note" id="aMsg" role="status"></p>';paintHeader();setTimeout(mountGoogle,0);return}
     if(v==="plan"&&preview()&&REL){
       h+=previewHTML();
     }else if(v==="plan"&&(SRV.up||REL)){
@@ -1670,6 +1687,20 @@ function apply(w,host){
   }
   /* ---------- real accounts on this server (auth_api.py). Used whenever the back end is running. ---------- */
   var BUSY="UAply is restarting for a moment. Wait a minute, then try again.";
+  /* privacy shields (Brave Shields, strict tracking protection, "block all cookies"): the browser may refuse this site's storage or its
+     sign-in cookie. Seen as: localStorage throws, or the server just signed someone in but the next /api/auth/me says nobody is */
+  var SHIELD={storage:false,cookie:false};
+  if(HELP){try{w.localStorage.setItem("uaply.probe","1");w.localStorage.removeItem("uaply.probe")}catch(e){SHIELD.storage=true}}
+  function shieldsLine(){
+    if(!HELP||!(SHIELD.storage||SHIELD.cookie))return "";
+    return '<p class="note" id="shieldsNote" role="alert" style="margin:0;padding:10px 12px;border:1px solid var(--accent);border-radius:12px">Your browser\'s privacy shields are blocking sign-in on this site. Allow cookies for uaply.net and reload. <a href="/legal/support.html#cookies" target="_blank" rel="noopener noreferrer">How to allow them</a></p>';
+  }
+  function checkCookie(){
+    if(!HELP)return;
+    w.fetch("/api/auth/me",{credentials:"same-origin"}).then(function(r){return r.ok?r.json():null}).then(function(j){
+      if(j&&!j.user&&SRV.user){SHIELD.cookie=true;SRV.user=null;paintHeader();if(!acctSec.hidden&&sub.prof==="account")renderAcct("account")}
+    }).catch(function(){});
+  }
   function apiPost(path,body){
     if(preview())return Promise.resolve({ok:false,j:{error:PREVIEW_TEXT,code:"preview"}});   /* nothing to send it to: say so, never "could not reach" */
     return w.fetch(path,{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
@@ -1726,6 +1757,7 @@ function apply(w,host){
     if(!er&&!ok)return;
     try{tp.history.replaceState(null,"",tp.location.pathname)}catch(e){}
     sub.prof="account";cur="prof";go("prof");renderAcct("account");
+    if(!er&&HELP&&!SRV.user){SHIELD.cookie=true;renderAcct("account");msg(GERR.failed);return}   /* Google said yes but no session cookie arrived */
     msg(er?(GERR[er]||GERR.failed):(q.get("password_removed")?PW_GONE:"Signed in with Google."));
   }
   w.__uaplyAuth=function(){return {up:SRV.up,user:SRV.user}};
@@ -1917,6 +1949,7 @@ function apply(w,host){
         if(!r.ok||!r.j.user){msg((r.j&&r.j.error)||"Something went wrong. Try again.");return}
         SRV.user=r.j.user;afterServerSignIn();renderAcct("account");
         msg(sup?"Account created. "+codeNote(r.j.delivery,sem):"You are signed in.");
+        checkCookie();   /* the cookie the server just set must come back; if it does not, the browser is blocking it */
       });
       return;
     }

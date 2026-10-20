@@ -17,6 +17,10 @@
 //                     a server with live keys: this tool never uses a real card. If Stripe shows a captcha the tool stops: it never solves one.
 //                     The card fields are found in Stripe's page or inside its iframes and typed as keystrokes (tools/stripe-checkout.js, tried
 //                     against a stand-in by tools/ui-stripe-form.js); after the 4242 card the plan must read Plus within 60 s (the webhook).
+// --shields          runs as Brave Shields would: third-party cookies blocked (cdp.js starts Chrome with --test-third-party-cookie-phaseout)
+//                     and every request checked against the ad-block filter lists in --lists DIR (EasyList, EasyPrivacy, uBlock filters,
+//                     brave/adblock-lists: plain .txt files you download), first-party requests too (Brave's "aggressive" setting). A blocked
+//                     UAply request, an app frame that is not same-origin, or storage that throws fails the run. Run it with and without.
 // --out DIR           also saves a screenshot of each step there.   --google-host HOST   where Google's page must be (default accounts.google.com).
 const fs = require("fs");
 const path = require("path");
@@ -30,6 +34,7 @@ const EMAIL = (arg("email", "") || "").trim().toLowerCase();
 const STRIPE = flag("stripe-test");
 const OUT = arg("out", "");
 const GHOST = arg("google-host", "accounts.google.com");
+const SHIELDS = flag("shields"), LISTS = arg("lists", "");
 function secondAddress(a) {                         // you+tag@gmail.com -> you+tag2@gmail.com; you@gmail.com -> you+uaply2@gmail.com
   const [user, dom] = a.split("@");
   return (user.includes("+") ? user + "2" : user + "+uaply2") + "@" + dom;
@@ -83,7 +88,20 @@ async function main(api) {
     await click("#tipsClose"); await sleep(300);
   };
 
-  console.log("UAply browser check of " + BASE + " at " + new Date().toISOString().slice(0, 19).replace("T", " ") + " UTC");
+  const blocked = [];
+  if (SHIELDS) {
+    if (!LISTS || !fs.existsSync(LISTS)) { console.log("TEST SCRIPT FAILED: --shields needs --lists DIR with the filter lists (.txt)"); return; }
+    const sh = require("./shields.js"), eng = sh.create(LISTS);
+    info("shields mode: third-party cookies blocked, " + eng.size + " filter rules from " + LISTS + ", applied to first-party requests too");
+    await send("Fetch.enable", { patterns: [{ urlPattern: "*", requestStage: "Request" }] });
+    on("Fetch.requestPaused", (p) => {
+      let rule = null;
+      try { if (/^https?:/.test(p.request.url)) rule = eng.match(p.request.url, sh.CDP_TYPES[p.resourceType] || "other", BASE + "/", true); } catch (e) {}
+      if (rule) { blocked.push(p.request.url + "  by " + rule); send("Fetch.failRequest", { requestId: p.requestId, errorReason: "BlockedByClient" }); }
+      else send("Fetch.continueRequest", { requestId: p.requestId });
+    });
+  }
+  console.log("UAply browser check of " + BASE + (SHIELDS ? " (shields mode)" : "") + " at " + new Date().toISOString().slice(0, 19).replace("T", " ") + " UTC");
   await send("Network.enable");
   await nav(BASE + "/healthz");
   // what the server says is on (/api/status, or the older endpoints the app itself reads)
@@ -103,6 +121,12 @@ async function main(api) {
     await send("Emulation.setTouchEmulationEnabled", { enabled: phone });
     const before = logs.length;
     await fresh();
+    if (SHIELDS) {
+      const fr = await ev("(()=>{const w=document.querySelector('iframe').contentWindow;let ls='ok';try{w.localStorage.setItem('uaply.t','1');w.localStorage.removeItem('uaply.t')}catch(e){ls=e.name}return JSON.stringify({origin:w.origin,ls})})()");
+      const o = JSON.parse(fr || "{}");
+      check(tag + "shields: the app frame is same-origin with the site (its cookies and storage are first-party)", o.origin === new URL(BASE).origin, fr);
+      check(tag + "shields: the app's storage works", o.ls === "ok", fr);
+    }
     // 1. the agreement, at first open
     const box = await waitFor(() => secText("#kitConsent"), 8000);
     check(tag + "a clean browser is asked for the agreement at first open", /Before you start swiping/.test(box || ""), (box || "no box").slice(0, 80));
@@ -313,6 +337,11 @@ async function main(api) {
       !!said && /stripe\.com$/.test(await ev("location.host")), String(await ev("location.href")).slice(0, 100) + " | " + (await F.text()).slice(0, 160));
   }
 
+  if (SHIELDS) {
+    const own = blocked.filter((u) => u.startsWith(BASE));
+    check("shields: no UAply request was blocked by the filter lists", !own.length, own.slice(0, 5).join(" | "));
+    info("shields: requests blocked in all: " + blocked.length + (blocked.length ? " (" + blocked.slice(0, 6).join(" | ") + ")" : ""));
+  }
   console.log("\n" + count.PASS + " passed, " + count.FAIL + " failed, " + count.SKIP + " skipped");
   console.log(count.PASS + " / " + (count.PASS + count.FAIL));
 }

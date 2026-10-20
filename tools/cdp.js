@@ -31,6 +31,9 @@ function findChrome() {
 const CHROME = findChrome();
 // Chrome refuses to start as root on Linux (containers) unless its sandbox is off
 const EXTRA = process.platform === "linux" && process.getuid && process.getuid() === 0 ? ["--no-sandbox"] : [];
+// UAPLY_CHROME_FLAGS: more Chrome switches, space separated (tools/ui-live.js --shields uses it to block third-party cookies like Brave Shields)
+if (process.argv.includes("--shields")) EXTRA.push("--test-third-party-cookie-phaseout");
+for (const f of String(process.env.UAPLY_CHROME_FLAGS || "").split(" ").filter(Boolean)) EXTRA.push(f);
 // Chrome keeps a socket file under TMPDIR, and on Linux/Mac a socket path longer than about 100 characters fails, so Chrome
 // never answers. A long TMPDIR (a test runner's own folder) did that: then Chrome and its profile use /tmp instead.
 const TMP = process.platform !== "win32" && os.tmpdir().length > 60 && fs.existsSync("/tmp") ? "/tmp" : os.tmpdir();

@@ -7,6 +7,10 @@ Options:
   --google-host HOST    where "Continue with Google" must send the browser (default accounts.google.com; the test suite's stand-in Google
                         runs on 127.0.0.1)
   --no-rate-limit       leave out the six wrong logins that prove the sign-in lock-out still answers
+  --shields LISTDIR     also checks the site the way Brave Shields sees it: every UAply address the app loads (pages, scripts, /api paths,
+                        images) against the ad-block filter lists in LISTDIR (EasyList, EasyPrivacy, uBlock filters, brave/adblock-lists:
+                        plain .txt files), in Brave's standard mode (third-party only) and aggressive mode (first-party too), through
+                        `node tools/shields.js`; and that the sign-in cookie is first-party (SameSite=Lax, Path=/, Secure on https).
 Every line is PASS, FAIL or SKIP (needs ...). The exit code is 1 when any line is FAIL. Standard library only.
 
 What it never does: sign up, sign in, swipe, send email to anyone, open a payment, or read a key. The wrong logins use a made-up address
@@ -31,6 +35,7 @@ ap.add_argument("--base", required=True, help="the site's address, e.g. https://
 ap.add_argument("--expect", default="", help="comma list of features that must be on: email, google, payments, persistent (or all)")
 ap.add_argument("--google-host", default="accounts.google.com")
 ap.add_argument("--no-rate-limit", action="store_true")
+ap.add_argument("--shields", default="", help="folder of ad-block filter lists (.txt): check no UAply address is blocked (Brave Shields)")
 ap.add_argument("--branch", default="dev", help="the branch the site deploys from; its head on GitHub must be the commit the site runs (default dev)")
 ap.add_argument("--commit", default="", help="the commit the site must run, instead of asking GitHub for the head of --branch")
 ap.add_argument("--timeout", type=float, default=60)
@@ -449,6 +454,34 @@ def help_and_apply():
 
 
 safe(help_and_apply, "help and apply settings")
+
+# ---------- Brave Shields: filter lists and the sign-in cookie ----------
+SHIELD_URLS = ["/", "/legal/terms.html", "/legal/support.html", "/prod-index.html", "/help/articles.json", "/favicon-32.png?v=2", "/favicon-192.png?v=2",
+               "/apple-touch-icon.png?v=2"] + ["/uaply-%s.js" % n for n in ("nav", "live", "profile", "chat", "learn", "envs")] + [
+               "/api/" + n for n in ("auth/me", "auth/providers", "auth/signup", "auth/login", "auth/logout", "auth/verify", "auth/google/start",
+                                     "billing/status", "billing/checkout", "billing/portal", "apply", "apply/config", "decision", "jobs", "profile",
+                                     "feedback", "chat", "chat/config", "status")] + ["/outbox", "/feedback"]
+
+
+def shields():
+    kind = lambda u: "script" if u.endswith(".js") else "image" if ".png" in u else "document" if u in ("/", "/legal/support.html", "/outbox") else \
+        "subdocument" if u.startswith("/legal/") else "xmlhttprequest"
+    lst = [[BASE + u, kind(u)] for u in SHIELD_URLS]
+    here = os.path.dirname(os.path.abspath(__file__))
+    r = subprocess.run(["node", os.path.join(here, "shields.js"), A.shields, "-", "x", BASE + "/"], input=json.dumps(lst), capture_output=True, text=True, timeout=900)
+    rows = [json.loads(x) for x in r.stdout.splitlines() if x.startswith("{")]
+    t("shields: the filter lists were read (%d addresses checked)" % len(rows), r.returncode == 0 and len(rows) == len(lst), (r.stderr or "")[-200:])
+    for mode in ("standard", "aggressive"):
+        bad = [x["url"] + " by " + x[mode] for x in rows if x[mode]]
+        t("shields (%s mode): no UAply address is blocked by any filter rule" % mode, not bad, " | ".join(bad[:4]))
+    s2, h, _ = req("POST", "/api/auth/logout", {})
+    ck = h.get("set-cookie", "")
+    t("shields: the sign-in cookie is first-party: HttpOnly, SameSite=Lax, Path=/" + (", Secure" if HTTPS else ""),
+      bool(ck) and "SameSite=Lax" in ck and "Path=/" in ck and "HttpOnly" in ck and (not HTTPS or "Secure" in ck), "%s %r" % (s2, ck[:160]))
+
+
+if A.shields:
+    safe(shields, "Brave Shields")
 
 print("\n%d passed, %d failed, %d skipped" % (COUNT["PASS"], COUNT["FAIL"], COUNT["SKIP"]))
 print("%d / %d" % (COUNT["PASS"], COUNT["PASS"] + COUNT["FAIL"]))
