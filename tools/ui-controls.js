@@ -194,6 +194,8 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
       const st = await ctlState();
       if (!st.focused) { res = "does not take the focus"; }
       else if (p.readonly) { ok = true; res = "takes the focus (read-only)"; }
+      // date and time boxes ignore inserted text (they take digits per segment or the picker), so typing "7" would always look broken
+      else if (p.tag === "INPUT" && /^(date|time|datetime-local|month|week)$/.test(p.type)) { ok = true; res = "takes the focus (" + p.type + " box, typing not tried)"; }
       else {
         await send("Input.insertText", { text: "7" }); await sleep(150);
         const st2 = await ctlState();

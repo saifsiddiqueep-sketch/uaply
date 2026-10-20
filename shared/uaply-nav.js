@@ -1704,8 +1704,9 @@ function apply(w,host){
   function apiPost(path,body){
     if(preview())return Promise.resolve({ok:false,j:{error:PREVIEW_TEXT,code:"preview"}});   /* nothing to send it to: say so, never "could not reach" */
     return w.fetch(path,{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
-      /* 502, 503 and 504 come from the host while UAply restarts (each deploy takes it away for a few seconds): say that, not "unexpected reply" */
-      .then(function(r){if(r.status>=502&&r.status<=504)return {ok:false,j:{error:BUSY,code:"busy"}};return r.json().then(function(j){return {ok:r.ok,j:j}},function(){return {ok:false,j:{error:r.ok?"The server sent an unexpected reply.":BUSY,code:r.ok?"":"busy"}}})})
+      /* 502, 503 and 504 come from the host while UAply restarts (each deploy takes it away for a few seconds): say that, not "unexpected reply".
+         Any other error without a JSON answer (413 too large, 500...) is a real failure: say so plainly, never "restarting" */
+      .then(function(r){if(r.status>=502&&r.status<=504)return {ok:false,j:{error:BUSY,code:"busy"}};return r.json().then(function(j){return {ok:r.ok,j:j}},function(){return {ok:false,j:{error:r.ok?"The server sent an unexpected reply.":r.status===413?"That is too large for the server to accept.":"The server could not do that (error "+r.status+"). Try again, or ask for help if it keeps happening.",code:""}}})})
       .catch(function(){return {ok:false,j:{error:"Could not reach the server."}}});
   }
   var hb=d.createElement("button");hb.type="button";hb.id="hdrAcct";hb.className="hdrbtn";

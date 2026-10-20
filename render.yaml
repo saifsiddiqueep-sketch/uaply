@@ -37,6 +37,7 @@ services:
       - key: STRIPE_SECRET_KEY        # LIVE mode only on dev (the real site): sk_live_..., or none until payments start (DEPLOY.md, section 4)
         sync: false
       - key: STRIPE_WEBHOOK_SECRET    # whsec_... of the live webhook endpoint https://uaply.onrender.com/api/billing/webhook
+                                      # moves to https://uaply.net/api/billing/webhook when the live keys go in; keep the onrender address enabled in Stripe until then
         sync: false
       - key: STRIPE_PRICE_PLUS        # the live UAply Plus price, $9.99 a month (price_...)
         sync: false

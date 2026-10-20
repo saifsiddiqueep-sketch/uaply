@@ -102,6 +102,7 @@ for sz in 390x844 375x667 440x956 1280x800; do
 done
 run "sandbox: learns from swipes (remote first, explore card, reset)" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-learn.js
 run "sandbox: fill from your resume (fills empty fields, keeps typed ones, Replace, errors, fits the phone)" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-resume.js
+run "dev: the stranger-walk fixes (messages fit the phone, Save and continue, LinkedIn links, empty deck, restore, Sign in wording, a restarting server, help, rating)" env W=390 H=844 PORT=18767 CDP_LIMIT_MS=600000 node tools/cdp.js tools/ui-walk.js
 
 step "Google sign-in (against a stand-in Google)"
 PIDS="$PIDS $(start python tools/mock-google.py 8790)"
