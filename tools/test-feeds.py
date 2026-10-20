@@ -28,6 +28,9 @@ for v in ("UAPLY_FEEDS", "UAPLY_FEEDS_OFF"):
     os.environ.pop(v, None)
 
 import jobs_api as J  # noqa: E402
+# The recorded answers in tools/fixtures/ are fixed in time, so the 60-day rule would drop more of them every week and these counts would
+# drift. It is switched off here; tools/test-jobs.py tests the rule itself against a fixed clock.
+J.MAX_AGE_DAYS = 10 ** 6
 import setup_api  # noqa: E402
 import uaply_api  # noqa: E402
 import emails  # noqa: E402
@@ -319,6 +322,31 @@ t("Remove drops one key and keeps the other", (s, sorted(json.load(open(uaply_ap
 t("...and the page says so", setup_api.page("localhost:8767", "http").decode("utf-8").count("not added yet") >= 1, True)
 uaply_api.CONFIG_PATH = uaply_api.REAL_CONFIG_PATH
 
+# ---------------- UAPLY_USAJOBS_KEY / UAPLY_USAJOBS_EMAIL: the key as its own host variable ----------------
+ENV_KEY = "FAKEenvUsajobsKey9876543210zyxwvuZYXWVU+/="
+cfg(feed_keys={"usajobs": KEY, "usajobs_email": "config.mail@example.com"})
+os.environ["UAPLY_USAJOBS_KEY"], os.environ["UAPLY_USAJOBS_EMAIL"] = ENV_KEY, "env.mail@example.com"
+try:
+    k = J.feed_keys()
+    t("UAPLY_USAJOBS_KEY and UAPLY_USAJOBS_EMAIL win over feed_keys", (k["usajobs"], k["usajobs_email"]), (ENV_KEY, "env.mail@example.com"))
+    os.environ["UAPLY_USAJOBS_KEY"], os.environ["UAPLY_USAJOBS_EMAIL"] = "not a key!", "not-an-address"
+    k = J.feed_keys()
+    t("a malformed variable is ignored and feed_keys is used", (k["usajobs"], k["usajobs_email"]), (KEY, "config.mail@example.com"))
+    cfg()
+    os.environ["UAPLY_USAJOBS_KEY"], os.environ["UAPLY_USAJOBS_EMAIL"] = " " + ENV_KEY + "\n", "env.mail@example.com"
+    t("the variable alone switches USAJOBS on (trimmed)", J.feed_keys().get("usajobs"), ENV_KEY)
+    t("...and the setup page counts it as saved", setup_api.feed_status()["usajobs"], True)
+    CALLS.clear()
+    J._fetch_source(USA_PHL)
+    t("the USAJOBS request carries the variable's key and email", [(h.get("Authorization-Key"), h.get("User-Agent")) for u, h in CALLS][:1],
+      [(ENV_KEY, "env.mail@example.com")])
+    t("the variable's key is scrubbed from error text like any other key", J._scrub("HTTP 401 for key " + ENV_KEY), "HTTP 401 for key [key]")
+finally:
+    os.environ.pop("UAPLY_USAJOBS_KEY", None)
+    os.environ.pop("UAPLY_USAJOBS_EMAIL", None)
+    cfg()
+t("without the variable or feed_keys USAJOBS is skipped again", J._fetch_source(USA_PHL), ([], "no key"))
+
 
 # ---------------- over HTTP, on a throwaway copy of the server ----------------
 def http_checks(port):
@@ -328,7 +356,11 @@ def http_checks(port):
     os.makedirs(data)
     # the job list starts from a saved copy of the recorded City jobs, so the server needs no network
     with open(os.path.join(data, "jobs-cache.json"), "w", encoding="utf-8") as f:
-        json.dump({"|".join(CITY): {"at": time.time(), "jobs": city_jobs, "status": "67 jobs"}, "_version": J.CACHE_VERSION}, f)
+        # the server applies the real 60-day rule: 40 of the recorded jobs are dated five days ago, the other 27 ninety days ago
+        now_ms = int(time.time() * 1000)
+        dated = [dict(x, posted=now_ms - (5 if i < 40 else 90) * J.DAY_MS) for i, x in enumerate(city_jobs)]
+        dated = [{k: v for k, v in x.items() if k != "updated"} for x in dated]
+        json.dump({"|".join(CITY): {"at": time.time(), "jobs": dated, "status": "67 jobs"}, "_version": J.CACHE_VERSION}, f)
     env = dict(os.environ, UAPLY_CONFIG_FILE="none", UAPLY_DATA_DIR=data, HOST="127.0.0.1",
                UAPLY_CONFIG_JSON=json.dumps({"feeds": ["smartrecruiters", "usajobs"], "delivery": "test", "smtp": {}, "google": {}, "owner_copy": ""}))
     env.pop("OWNER_PASSWORD", None)
@@ -369,7 +401,8 @@ def http_checks(port):
         s, body = call("GET", "/api/jobs")
         data_out = json.loads(body)
         city = [j for j in data_out["jobs"] if j.get("via") == "City of Philadelphia on SmartRecruiters"]
-        t("HTTP: the job list serves the City's 67 jobs, each with its via label", len(city), 67)
+        t("HTTP: the job list serves the City's 40 jobs from the last 60 days (not the 27 older ones; two postings with one title stay two), each with its via label and postedDays",
+          (len(city), sorted({j["postedDays"] for j in city}), data_out.get("aged_out"), data_out.get("merged")), (40, [5], 27, 0))
         t("HTTP: USAJOBS is listed as skipped (this server reads no settings file)", data_out["sources"].get("USAJOBS/philadelphia"), "no key")
         t("HTTP: the job list never contains a key", (KEY in body, MUSE in body), (False, False))
         with open(os.path.join(TMP, "server.log"), encoding="utf-8", errors="replace") as f:

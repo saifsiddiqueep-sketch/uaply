@@ -29,7 +29,15 @@ SIZES = {"gh-databricks": 9851537, "gh-cloudflare": 7570351, "gh-stripe": 570483
          "gh-verkada": 3773269, "gh-block": 3449237, "gh-waymo": 2903208, "gh-roblox": 2567055, "gh-coinbase": 2497078,
          "gh-affirm": 2321223, "gh-scaleai": 2156181, "gh-robinhood": 1953522, "gh-pinterest": 1859076, "gh-lyft": 1690681,
          "gh-figma": 1651143, "gh-imc": 1214228, "gh-duolingo": 762838, "gh-dropbox": 411026, "gh-discord": 405085,
-         "gh-squarespace": 328959, "lever-spotify": 791140, "ashby-webflow": 437195, "ashby-linear": 397002}
+         "gh-squarespace": 328959, "lever-spotify": 791140, "ashby-webflow": 437195, "ashby-linear": 397002,
+         # the 31 boards added on October 20, 2026, at the size they answered that day (Carvana is the largest board UAply reads)
+         "gh-carvana": 18777519, "gh-doordashusa": 8412796, "gh-axon": 8032352, "gh-mongodb": 4436423, "gh-toast": 3924689,
+         "gh-charliehealth": 3369628, "gh-airbnb": 2609305, "gh-oscar": 2555113, "gh-brex": 2540530, "gh-mejuri": 2335330,
+         "gh-reddit": 2078111, "gh-strivehealth": 2021153, "gh-twilio": 1890764, "gh-point72": 1598630, "gh-instacart": 1499607,
+         "gh-gusto": 1422711, "gh-chime": 1220483, "gh-motional": 1090329, "gh-shipmonk": 1055235, "gh-faire": 1028700,
+         "gh-sweetgreen": 723729, "gh-ziprecruiter": 444256, "gh-twochairs": 332578, "gh-glossier": 278838, "gh-vynamic": 276452,
+         "gh-perpay": 246496, "gh-wonderschool": 245434, "gh-elationhealth": 157040, "lever-gopuff": 8127467, "lever-zoox": 2454408,
+         "ashby-ramp": 2847202}
 R = []
 
 
@@ -48,6 +56,10 @@ TITLES = ["Software Engineering Intern", "Senior Software Engineer, Payments", "
 PLACES = ["San Francisco, CA", "New York, NY", "Remote - US", "Seattle, WA", "London, UK", "Toronto, Canada", "Austin, TX"]
 
 
+# posted five days before the run, so the 60-day rule (jobs_api.MAX_AGE_DAYS) never ages the made-up boards out
+RECENT = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 5 * 86400))
+
+
 def make_board(path, kind, size, seed):
     rnd = random.Random(seed)
     jobs, total, i = [], 0, 0
@@ -57,17 +69,17 @@ def make_board(path, kind, size, seed):
         title, place = rnd.choice(TITLES), rnd.choice(PLACES)
         if kind == "gh":
             j = {"absolute_url": "https://boards.greenhouse.io/x/jobs/%d" % (seed * 10000 + i), "data_compliance": [], "internal_job_id": i,
-                 "location": {"name": place}, "metadata": None, "id": seed * 10000 + i, "updated_at": "2026-10-01T12:00:00-04:00",
-                 "requisition_id": "R%d" % i, "title": title, "company_name": "Board %d" % seed, "first_published": "2026-09-20T12:00:00-04:00",
+                 "location": {"name": place}, "metadata": None, "id": seed * 10000 + i, "updated_at": RECENT,
+                 "requisition_id": "R%d" % i, "title": title, "company_name": "Board %d" % seed, "first_published": RECENT,
                  "language": "en", "content": html.escape(body), "departments": [{"id": 1, "name": "Engineering"}], "offices": [{"id": 1, "name": place}]}
         elif kind == "lever":
             j = {"id": "lv-%d-%d" % (seed, i), "text": title, "categories": {"location": place, "team": "Engineering"}, "workplaceType": "onsite",
                  "descriptionPlain": re.sub(r"<[^>]+>", " ", body), "description": body, "additionalPlain": "", "additional": "",
-                 "hostedUrl": "https://jobs.lever.co/x/%d" % i, "createdAt": 1790000000000}
+                 "hostedUrl": "https://jobs.lever.co/x/%d" % i, "createdAt": int(time.time() * 1000) - 5 * 86400000}
         else:
             j = {"id": "ab-%d-%d" % (seed, i), "title": title, "location": place, "isRemote": "Remote" in place, "isListed": True,
                  "descriptionPlain": re.sub(r"<[^>]+>", " ", body), "descriptionHtml": body, "jobUrl": "https://jobs.ashbyhq.com/x/%d" % i,
-                 "publishedAt": "2026-09-20T12:00:00Z"}
+                 "publishedAt": RECENT}
         s = json.dumps(j, ensure_ascii=False)
         jobs.append(s)
         total += len(s.encode("utf-8")) + 1
@@ -223,8 +235,11 @@ def main():
         for scenario, r in (("cold", cold), ("refresh", ref)):
             t("%s: Python's own allocations peak under %d MB (%s MB)" % (scenario, LIMIT_MB, r.get("trace_peak_mb")), (r.get("trace_peak_mb") or 1e9) < LIMIT_MB)
             t("%s: the process's peak memory stays under %d MB (%s MB)" % (scenario, LIMIT_MB, r.get("rss_peak_mb")), (r.get("rss_peak_mb") or 1e9) < LIMIT_MB)
-        t("refresh: the saved list answered at once (%s s) while every board refreshed behind it (%s s)" % (ref.get("answered_s"), ref.get("took_s")),
-          (ref.get("answered_s") or 99) < 3 and ref.get("jobs") == cold.get("jobs"))
+        # The first visitor on an empty disk waits at most FIRST_WAIT (90 s); with 55 boards some finish after that and are only in the saved
+        # copy, so the refresh (which serves that copy) can show more jobs than the cold answer did, never fewer.
+        t("refresh: the saved list answered at once (%s s, %s jobs; cold %s) while every board refreshed behind it (%s s)" % (
+          ref.get("answered_s"), ref.get("jobs"), cold.get("jobs"), ref.get("took_s")),
+          (ref.get("answered_s") or 99) < 3 and (ref.get("jobs") or 0) >= (cold.get("jobs") or 1))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     print(sum(R), "/", len(R))

@@ -226,10 +226,13 @@ FEED_NAMES = {"usajobs": "USAJOBS key", "muse": "The Muse key"}
 
 
 def feed_status():
-    """Which job feed keys are set (in uaply-config.json or the host's UAPLY_CONFIG_JSON). Only yes or no; a key is never read back out."""
+    """Which job feed keys are set (in uaply-config.json, the host's UAPLY_CONFIG_JSON, or UAPLY_USAJOBS_KEY). Only yes or no; a key is never
+    read back out. A well-formed UAPLY_USAJOBS_KEY counts, as it does for the feed itself (jobs_api.feed_keys)."""
     k = uaply_api.config().get("feed_keys")
     k = k if isinstance(k, dict) else {}
-    return {n: isinstance(k.get(n), str) and bool(jobs_api.KEY_RE.match(k[n].strip())) for n in FEED_NAMES}
+    out = {n: isinstance(k.get(n), str) and bool(jobs_api.KEY_RE.match(k[n].strip())) for n in FEED_NAMES}
+    out["usajobs"] = out["usajobs"] or bool(jobs_api.KEY_RE.match((os.environ.get("UAPLY_USAJOBS_KEY") or "").strip()))
+    return out
 
 
 def save_feed_keys(payload):
@@ -374,7 +377,7 @@ def page(host, proto):
     feeds_help = _linkify("USAJOBS lists every federal job near Philadelphia, internships included: request a free key at https://developer.usajobs.gov/APIRequest/ "
                           "(it arrives by email; give the email you used below). The Muse asks every app to register: get a key at https://www.themuse.com/developers/api/v2 . "
                           "Keys are saved only in uaply-config.json on this computer and are never shown again. On a hosted server, put them in UAPLY_CONFIG_JSON "
-                          "as feed_keys instead.").replace("%", "%%")
+                          "as feed_keys instead, or give the USAJOBS key its own variables UAPLY_USAJOBS_KEY and UAPLY_USAJOBS_EMAIL.").replace("%", "%%")
     here = origins(host, proto)
     every = here + [o for o in LIVE_ORIGINS if o not in here]
     copy = '<p><code>%s</code> <button type="button" class="cp" data-v="%s">Copy</button></p>'

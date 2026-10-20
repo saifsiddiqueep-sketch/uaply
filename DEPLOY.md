@@ -22,6 +22,17 @@ simulated payments (paid plans appear only once live Stripe keys are set, sectio
    "Job feed keys" box at `/setup`; on Render put them in `UAPLY_CONFIG_JSON`, e.g.
    `{"feeds":["smartrecruiters","usajobs","muse","jobicy"],"feed_keys":{"usajobs":"","usajobs_email":"","muse":""}}`.
    To switch one source off by name without touching the rest: `"feeds_off":["remotive"]` (or `UAPLY_FEEDS_OFF=remotive`).
+   **USAJOBS key as its own variable (simplest on Render):** request the key at https://developer.usajobs.gov/APIRequest/ with the
+   company address `uaplytechnologies@gmail.com`; it arrives by email. Then in Render, service `uaply`, **Environment**, **Add Environment
+   Variable**: `UAPLY_USAJOBS_KEY` = the key, and `UAPLY_USAJOBS_EMAIL` = the address the key was requested with (USAJOBS checks it;
+   without it `feed_keys.usajobs_email`, then `owner_copy`, then `uaplytechnologies@gmail.com` is used). **Save** restarts the service
+   (a few seconds offline). A well-formed `UAPLY_USAJOBS_KEY` wins over `feed_keys.usajobs`; a malformed one is ignored. `usajobs` must
+   also be switched on (in `UAPLY_FEEDS` or `"feeds"`). Check: `/setup` shows "USAJOBS key: saved", and the job list's sources show
+   "USAJOBS/philadelphia: N jobs" instead of "no key".
+   **Freshness and duplicates:** a posting whose newest date (posted, or updated where the board gives one) is more than 60 days old is
+   not shown (`jobs_api.MAX_AGE_DAYS`); every job carries `postedDays` (and `updatedDays` when the board gives an update date). The same
+   job reached through two different feeds (same company, title and place, ignoring case, punctuation and Inc/LLC/Corp) is shown once, the
+   employer's own board winning. Each employer board keeps up to 14 roles plus up to 10 more in Pennsylvania (`LOCAL_PER_SOURCE`).
 6. **Legal pages:** fill every yellow blank in `legal/` (company legal name, street address, contact and privacy email, launch date,
    DMCA agent, liability amount, governing state and county, how long records are kept, host, response time) and have a lawyer
    review them. They say "draft, not reviewed by a lawyer" until you do.

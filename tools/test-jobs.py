@@ -98,5 +98,97 @@ t("the description ends on a whole sentence", d.rstrip().endswith("."), True)
 t("a posting with no role heading still gets a clean summary", j._role_summary("We build robots. " * 100).endswith("robots."), True)
 t("a short posting is kept whole", j._role_summary("A short posting."), "A short posting.")
 
+# ---------------- stale postings: older than MAX_AGE_DAYS (60) by their newest date are left out ----------------
+NOW = 1792540800000                                    # a fixed clock: 2026-10-20 00:00 UTC, in ms
+D = j.DAY_MS
+t("the rule is 60 days", j.MAX_AGE_DAYS, 60)
+t("posted 61 days ago, never updated: too old", j._too_old({"posted": NOW - 61 * D}, NOW), True)
+t("posted 59 days ago: kept", j._too_old({"posted": NOW - 59 * D}, NOW), False)
+t("posted 3 years ago but updated last week (Greenhouse): kept", j._too_old({"posted": NOW - 1100 * D, "updated": NOW - 7 * D}, NOW), False)
+t("no date at all: kept (nothing says it is old)", j._too_old({"posted": 0}, NOW), False)
+a = j._with_age({"id": 1, "posted": NOW - 3 * D - 5000, "updated": NOW - D}, NOW)
+t("postedDays and updatedDays are whole days", (a["postedDays"], a["updatedDays"]), (3, 1))
+t("a job with no date gets no postedDays", "postedDays" in j._with_age({"id": 1, "posted": 0}, NOW), False)
+src_job = {"id": 1, "posted": NOW}
+j._with_age(src_job, NOW)
+t("the cached job itself is not changed (a copy is returned)", "postedDays" in src_job, False)
+gh = j._normalize(dict(raw("Engineer", "Austin, TX"), posted=NOW - 900 * D, updated=NOW - 2 * D), "greenhouse", "Acme")
+t("a Greenhouse posting keeps its update date next to its first-published date", (gh["posted"], gh["updated"]), (NOW - 900 * D, NOW - 2 * D))
+t("an update date no newer than the posting date is not stored", "updated" in j._normalize(dict(raw("Engineer", "Austin, TX"), posted=NOW, updated=NOW), "greenhouse", "Acme"), False)
+
+# ---------------- one board read: stale postings skipped before the caps, Pennsylvania roles kept past them ----------------
+real_iter, real_time = j._iter_raw, j.time.time
+
+
+def board(*postings):
+    j._iter_raw = lambda kind, token, name: iter([dict(raw(title, loc), id=i, posted=posted) for i, (title, loc, posted) in enumerate(postings)])
+
+
+j.time.time = lambda: NOW / 1000
+try:
+    fresh, old = NOW - 5 * D, NOW - 90 * D
+    # 20 stale roles first, then 14 fresh ones: the stale ones must not use up the 14 places
+    board(*([("Old Engineer %d" % i, "Austin, TX", old) for i in range(20)] + [("Engineer %d" % i, "Austin, TX", fresh) for i in range(14)]))
+    js, status = j._fetch_source(("greenhouse", "acme", "Acme"))
+    t("stale postings are skipped before the caps: all 14 fresh ones are kept", (len(js), all(x["role"].startswith("Engineer") for x in js)), (14, True))
+    t("the status says how many were left out for age", status, "14 jobs; 20 older than 60 days left out")
+    # 30 roles elsewhere first, then 12 in Pennsylvania: 14 + 10 Pennsylvania extras
+    board(*([("Engineer %d" % i, "Austin, TX", fresh) for i in range(30)] + [("PA Engineer %d" % i, "Philadelphia, PA", fresh) for i in range(12)]))
+    js, status = j._fetch_source(("greenhouse", "acme", "Acme"))
+    pa = [x for x in js if x["loc"] == "Philadelphia, PA"]
+    t("a board keeps up to 10 Pennsylvania roles past its 14", (len(js), len(pa)), (24, 10))
+    t("...each one once", len({x["id"] for x in js}), 24)
+    board(*[("Engineer %d" % i, "Pittsburgh, PA" if i % 2 else "Austin, TX", fresh) for i in range(40)])
+    js, _ = j._fetch_source(("greenhouse", "acme", "Acme"))
+    t("Pennsylvania roles inside the first 14 are not counted twice", (len(js), len({x["id"] for x in js})), (24, 24))
+    board(*[("Engineer %d" % i, "Austin, TX", fresh) for i in range(30)])
+    t("a board with no Pennsylvania roles still keeps 14", len(j._fetch_source(("greenhouse", "acme", "Acme"))[0]), 14)
+    board(*[("Program Analyst %d" % i, "Philadelphia, PA", old) for i in range(5)])
+    os.environ["UAPLY_USAJOBS_KEY"] = "FAKEtestKey0123456789abcdefABCDEF"          # made up: only so the source is not skipped as "no key"
+    try:
+        t("USAJOBS announcements open for 90 days are kept (USAJOBS lists only open ones)", j._fetch_source(("usajobs", "philadelphia", "USAJOBS")),
+          (j._cache[("usajobs", "philadelphia", "USAJOBS")]["jobs"], "5 jobs"))
+    finally:
+        os.environ.pop("UAPLY_USAJOBS_KEY", None)
+    t("', Pennsylvania' and ', PA' both count as Pennsylvania", (bool(j.LOCAL_RE.search("Erie, Pennsylvania")), bool(j.LOCAL_RE.search("Erie, PA"))), (True, True))
+    t("'Palo Alto' and 'Spain' do not", (bool(j.LOCAL_RE.search("Palo Alto, CA")), bool(j.LOCAL_RE.search("Madrid, Spain"))), (False, False))
+finally:
+    j._iter_raw, j.time.time = real_iter, real_time
+    j._cache.clear()
+
+# ---------------- the same job from two feeds is shown once ----------------
+def job(i, co, role, loc, posted=None):
+    return {"id": i, "co": co, "role": role, "loc": loc, "posted": NOW - D if posted is None else posted}
+
+
+feeds = {("greenhouse", "acme", "Acme"): [job(1, "Acme", "Data Analyst", "Philadelphia, PA"), job(2, "Acme", "Data Analyst", "Austin, TX"),
+                                          job(3, "Acme", "Data Analyst", "Philadelphia, PA")],                 # the employer listed it twice: kept
+         ("usajobs", "philadelphia", "USAJOBS"): [job(10, "Department of the Navy", "Program Analyst", "Philadelphia, PA", NOW - 90 * D)],   # open: kept
+         ("muse", "Entry Level", "The Muse"): [job(4, "Acme, Inc.", "Data  Analyst", "philadelphia, pa"),     # the same job via The Muse
+                                               job(5, "Acme Robotics", "Data Analyst", "Philadelphia, PA"),   # another company
+                                               job(6, "Acme", "Senior Data Analyst", "Philadelphia, PA"),     # another title
+                                               job(7, "Acme", "Old Analyst", "Philadelphia, PA", NOW - 70 * D)]}
+real_partners = j.partner_jobs
+j.SOURCES = list(feeds)
+j.feeds_allowed = lambda: {"greenhouse", "muse", "usajobs"}
+j._load_source = lambda src: (feeds[src], "%d jobs" % len(feeds[src]))
+j.partner_jobs = lambda: [dict(job(8, "Partner Co", "Cashier", "Philadelphia, PA"), apply="direct"),
+                          dict(job(9, "Partner Co", "Cashier", "Philadelphia, PA"), apply="direct")]     # a partner's two openings stay two
+real_clock = j.time.time
+j.time.time = lambda: NOW / 1000
+try:
+    out = j.get_jobs()
+finally:
+    j._load_source, j.feeds_allowed, j.SOURCES, j.partner_jobs, j.time.time = real_load, real_feeds, real_sources, real_partners, real_clock
+ids = [x["id"] for x in out["jobs"]]
+t("the employer's own copies are kept (both: one board listing a title twice can be two openings); The Muse's copy is not", ids, [8, 9, 1, 2, 3, 10, 5, 6])
+t("merged counts the copy left out, aged_out the stale one (not the open federal announcement)", (out["merged"], out["aged_out"]), (1, 1))
+t("every served job says how many days ago it was posted", [x.get("postedDays") for x in out["jobs"]], [1] * 5 + [90] + [1] * 2)
+t("a feed's copy of a partner's posting is dropped (the partner's can really be applied to)",
+  j._same_job_key(job(0, "Partner Co.", "Cashier", "Philadelphia, PA")) == j._same_job_key(job(8, "Partner Co", "Cashier", "Philadelphia, PA")), True)
+t("company suffixes, case, punctuation and spacing are set aside; words inside names are not",
+  (j._same_job_key(job(0, "The Acme Co.", "Data-Analyst", "Austin,  TX")) == j._same_job_key(job(0, "acme", "data analyst", "austin tx")),
+   j._same_job_key(job(0, "Coinbase", "x", "y"))[0]), (True, "coinbase"))
+
 print(sum(R), "/", len(R))
 sys.exit(0 if all(R) else 1)

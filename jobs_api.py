@@ -27,7 +27,9 @@ LEGAL STATUS OF EACH SOURCE (checked October 2026; this is not legal advice, hav
   Third-party feeds are OFF unless the owner lists them under "feeds" in uaply-config.json. Jobs from a feed are never
   emailed to anyone (the recruiter address is dropped); swiping right only opens the employer's own page.
 
-get_jobs() returns {"fetched_at", "sources", "jobs"} where each job already matches the shape the app expects.
+get_jobs() returns {"fetched_at", "sources", "jobs", "merged", "aged_out"} where each job already matches the shape the app expects
+(with postedDays, and updatedDays where the feed gives an update date). Postings older than MAX_AGE_DAYS are left out, and the same
+job from two feeds is shown once ("merged" counts the copies left out).
 """
 import datetime
 import hashlib
@@ -59,9 +61,26 @@ OTHER_PER_SOURCE = 6
 # instead of the 14 an employer board gets. SmartRecruiters is also read no further than this (so at most this many description reads).
 KEEP = {"usajobs": 120, "smartrecruiters": 120}
 SR_DESC_TTL = 24 * 3600          # a SmartRecruiters posting's description is read once, then again only after a day or when the posting is re-released
+# UAply launches in the Philadelphia region: a board may keep this many Pennsylvania roles on top of its 14, so a national employer's
+# PA openings are not cut just because they come after its first 14 postings. Matched on the posting's own location (case matters: ", PA").
+LOCAL_PER_SOURCE = 10
+LOCAL_RE = re.compile(r"\bPennsylvania\b|, PA\b|\bPhiladelphia\b|\bPittsburgh\b|\bKing of Prussia\b|\bConshohocken\b|\bAllentown\b|\bHarrisburg\b")
+# A posting whose newest date (posted, or updated where the feed gives one) is older than this is not shown: it is most likely filled
+# or forgotten. A posting with no date at all is kept (nothing says it is old). Partner employers' own postings are never aged out here:
+# the employer opens and closes those itself.
+MAX_AGE_DAYS = 60
+DAY_MS = 86400 * 1000
+# USAJOBS' search returns only announcements that are open now, each with its own closing date, so a long-open federal announcement
+# (some run for months) is not stale and is not aged out.
+AGE_EXEMPT = ("usajobs",)
 
 # (kind, board token, display name). Boards are the employer's own public careers feed.
 SOURCES = [
+    # The local public lists first: on a fresh start the boards are read FEED_PARALLEL at a time in this order, and with 60 sources the
+    # City (120 description reads) came last and missed the first visitor's wait. They share no jobs with the boards below.
+    ("smartrecruiters", "CityofPhiladelphia", "City of Philadelphia"),   # the City's own public SmartRecruiters postings (no key)
+    ("usajobs", "philadelphia", "USAJOBS"),   # every federal posting within 25 miles of Philadelphia (needs a key: feed_keys.usajobs or UAPLY_USAJOBS_KEY)
+    ("usajobs", "students", "USAJOBS"),       # the same area, only the Students and Recent graduates hiring paths (Pathways)
     ("greenhouse", "discord", "Discord"),
     ("greenhouse", "dropbox", "Dropbox"),
     ("greenhouse", "duolingo", "Duolingo"),
@@ -88,15 +107,45 @@ SOURCES = [
     ("lever", "spotify", "Spotify"),
     ("workable", "huggingface", "Hugging Face"),  # Workable's public jobs feed (no key); most roles are remote, some US-based
     ("ashby", "linear", "Linear"),
+    # Employers with Pennsylvania openings (checked October 20, 2026: total postings / of them in PA on the public board)
+    ("lever", "gopuff", "Gopuff"),                # Philadelphia HQ: 810 / 44
+    ("greenhouse", "perpay", "Perpay"),           # Philadelphia HQ: 22 / 22
+    ("greenhouse", "motional", "Motional"),       # Pittsburgh office: 81 / 45
+    ("greenhouse", "vynamic", "Vynamic"),         # Philadelphia HQ: 17 / 4
+    ("greenhouse", "carvana", "Carvana"),         # 1,719 / 30 (inspection centers, customer advocates)
+    ("greenhouse", "shipmonk", "ShipMonk"),       # 74 / 22 (Lehigh Valley warehouses)
+    ("greenhouse", "doordashusa", "DoorDash"),    # 452 / 10
+    ("greenhouse", "toast", "Toast"),             # 310 / 9
+    ("greenhouse", "mongodb", "MongoDB"),         # 395 / 8
+    ("greenhouse", "mejuri", "Mejuri"),           # 179 / 8 (stores)
+    ("greenhouse", "charliehealth", "Charlie Health"),   # 258 / 6 (clinical)
+    ("greenhouse", "strivehealth", "Strive Health"),     # 60 / 4 (clinical)
+    # Large national boards with many US roles across functions: healthcare, retail, restaurants, operations, finance, support
+    ("greenhouse", "oscar", "Oscar Health"),      # 248, all US
+    ("greenhouse", "sweetgreen", "Sweetgreen"),   # 65
+    ("greenhouse", "glossier", "Glossier"),       # 22 (stores)
+    ("greenhouse", "twochairs", "Two Chairs"),    # 34 (therapists)
+    ("greenhouse", "elationhealth", "Elation Health"),   # 18
+    ("greenhouse", "axon", "Axon"),               # 486
+    ("greenhouse", "instacart", "Instacart"),     # 123
+    ("greenhouse", "airbnb", "Airbnb"),           # 182
+    ("greenhouse", "chime", "Chime"),             # 71
+    ("greenhouse", "brex", "Brex"),               # 261
+    ("greenhouse", "point72", "Point72"),         # 215
+    ("greenhouse", "gusto", "Gusto"),             # 101
+    ("greenhouse", "twilio", "Twilio"),           # 133
+    ("greenhouse", "reddit", "Reddit"),           # 153
+    ("greenhouse", "faire", "Faire"),             # 78
+    ("greenhouse", "ziprecruiter", "ZipRecruiter"),   # 43
+    ("greenhouse", "wonderschool", "Wonderschool"),   # 39 (child care)
+    ("lever", "zoox", "Zoox"),                    # 239, all US
+    ("ashby", "ramp", "Ramp"),                    # 168, all US
     ("remotive", "software-dev", "Remotive"),
     ("jobicy", "engineering", "Jobicy"),      # credit Jobicy and link to its canonical job URL
     ("jobicy", "marketing", "Jobicy"),
     ("jobicy", "data-science", "Jobicy"),
     ("muse", "Internship", "The Muse"),       # The Muse public jobs API; links go to the posting on The Muse
     ("muse", "Entry Level", "The Muse"),
-    ("smartrecruiters", "CityofPhiladelphia", "City of Philadelphia"),   # the City's own public SmartRecruiters postings (no key)
-    ("usajobs", "philadelphia", "USAJOBS"),   # every federal posting within 25 miles of Philadelphia (needs feed_keys.usajobs)
-    ("usajobs", "students", "USAJOBS"),       # the same area, only the Students and Recent graduates hiring paths (Pathways)
 ]
 VIA = {"greenhouse": "%s on Greenhouse", "lever": "%s on Lever", "ashby": "%s on Ashby", "smartrecruiters": "%s on SmartRecruiters", "workable": "%s on Workable",
        "jobicy": "Jobicy", "muse": "The Muse", "usajobs": "USAJOBS", "remotive": "Remotive"}       # the short credit line each source's jobs carry
@@ -165,7 +214,7 @@ _disk = {"loaded": False, "dirty": False, "filled": False}   # filled: a saved l
 _load_lock = threading.Lock()
 hide_errors = False                # serve.py sets this on a hosted server: the public job list then says "unavailable right now" instead of a raw network error
 DISK_MAX_AGE = 24 * 3600          # never trust a saved copy older than a day
-CACHE_VERSION = 8                # raise this whenever the rules for keeping or classifying postings change: older saved copies are then ignored
+CACHE_VERSION = 9               # raise this whenever the rules for keeping or classifying postings change: older saved copies are then ignored
 
 
 def _cache_file():
@@ -249,12 +298,18 @@ KEY_RE = re.compile(r"^[A-Za-z0-9+/=_.-]{16,200}$")      # what a feed's API key
 def feed_keys():
     """The job feeds' own API keys the owner pasted on the setup page ('feed_keys' in uaply-config.json, or in UAPLY_CONFIG_JSON on a
     host): {"usajobs": ..., "usajobs_email": ..., "muse": ...}. Only well-formed values are returned. These are secrets: never logged, never
-    sent to a browser, never shown on a page (see _scrub)."""
+    sent to a browser, never shown on a page (see _scrub).
+    On a host the USAJOBS key can also be its own variable, UAPLY_USAJOBS_KEY (with UAPLY_USAJOBS_EMAIL, the address the key was requested
+    with), so it is pasted once in the dashboard instead of inside the UAPLY_CONFIG_JSON line. A well-formed variable wins over feed_keys."""
     cfg = _cfg()
     k = cfg.get("feed_keys") if isinstance(cfg.get("feed_keys"), dict) else {}
     out = {n: k[n].strip() for n in ("usajobs", "muse") if isinstance(k.get(n), str) and KEY_RE.match(k[n].strip())}
+    env_key = (os.environ.get("UAPLY_USAJOBS_KEY") or "").strip()
+    if KEY_RE.match(env_key):
+        out["usajobs"] = env_key
     EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")   # one plain address (the module-level one was removed as unused)
-    mail = next((m.strip() for m in (k.get("usajobs_email"), cfg.get("owner_copy")) if isinstance(m, str) and EMAIL_RE.fullmatch(m.strip())), "")
+    mail = next((m.strip() for m in (os.environ.get("UAPLY_USAJOBS_EMAIL"), k.get("usajobs_email"), cfg.get("owner_copy"))
+                 if isinstance(m, str) and EMAIL_RE.fullmatch(m.strip())), "")
     out["usajobs_email"] = mail or USAJOBS_EMAIL
     return out
 
@@ -359,7 +414,7 @@ def _iter_raw(kind, token, name):
             yield dict(id=j["id"], title=j["title"], company=j.get("company_name") or name,
                        loc=(j.get("location") or {}).get("name", ""), remote=None,
                        text=_text(j.get("content")), url=j["absolute_url"], salary_text="",
-                       posted=_ts(j.get("first_published") or j.get("updated_at")))
+                       posted=_ts(j.get("first_published") or j.get("updated_at")), updated=_ts(j.get("updated_at")))
     elif kind == "lever":
         for j in _get("https://api.lever.co/v0/postings/%s?mode=json" % token):
             cat = j.get("categories") or {}
@@ -556,6 +611,45 @@ def _usajobs(token):
     return out
 
 
+def _newest(j):
+    """The newest date a posting carries (epoch ms; 0 when it has none): posted, or updated where the feed gives that too."""
+    return max(j.get("posted") or 0, j.get("updated") or 0)
+
+
+def _too_old(j, now_ms):
+    """True when the posting's newest date is more than MAX_AGE_DAYS ago. No date at all is not 'old'."""
+    newest = _newest(j)
+    return bool(newest) and now_ms - newest > MAX_AGE_DAYS * DAY_MS
+
+
+def _days(ms, now_ms):
+    return max(0, int((now_ms - ms) // DAY_MS))
+
+
+def _with_age(j, now_ms):
+    """A copy of a job with postedDays (whole days since it was posted) and, when the feed gives a later update, updatedDays. The cached
+    job itself is shared by every request, so it is never changed here."""
+    out = dict(j)
+    if j.get("posted"):
+        out["postedDays"] = _days(j["posted"], now_ms)
+    if j.get("updated"):
+        out["updatedDays"] = _days(j["updated"], now_ms)
+    return out
+
+
+_CO_SUFFIX = re.compile(r"\b(?:inc|llc|ltd|corp|corporation|co|company|the)\b")
+
+
+def _norm(s):
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).split())
+
+
+def _same_job_key(j):
+    """Two postings from two different feeds are the same job when company, title and place match after letter case, punctuation, spacing
+    and company suffixes (Inc, LLC, Corp ...) are set aside: the same opening reached through two feeds (see get_jobs)."""
+    return (_norm(_CO_SUFFIX.sub(" ", (j.get("co") or "").lower())), _norm(j.get("role")), _norm(j.get("loc")))
+
+
 def _type(raw):
     """internship, coop, parttime or job, from the title (and the start of the text for part-time). Cheap, so it is known before the costly part."""
     t = raw["title"].lower()
@@ -607,6 +701,8 @@ def _normalize(raw, kind, name, board=None):
                sal=raw.get("sal") or _salary(raw["salary_text"], text), yrs=yrs, edu=edu, skills=skills, blurb=blurb, desc=desc,
                type=typ, url=raw["url"], source=src, contact="", apply="link", live=True, ats=ats,
                posted=raw.get("posted", 0), perks=_perks(text), comm=bool(COMM_RE.search(text)))
+    if (raw.get("updated") or 0) > (raw.get("posted") or 0):
+        out["updated"] = raw["updated"]                           # Greenhouse: the employer touched the posting after first publishing it
     # Credit every feed, on the card ("via ...") and in the application record ("credit"): each free feed asks for it, and an employer board is the employer's own
     out["via"] = VIA.get(kind, "%s").replace("%s", name)
     out["credit"] = "via USAJOBS; apply on the official announcement" if kind == "usajobs" else "via " + out["via"]
@@ -722,15 +818,24 @@ def _fetch_source(src):
             _cache.pop(src, None)               # a key that was removed stops the source at once (no copy is served from before)
         return [], "no key"                     # skipped, nothing fetched or cached: the source starts the moment the owner adds the key
     try:
-        student, other = [], []
+        student, other, local, old = [], [], [], 0
+        now_ms = time.time() * 1000
         with _feed_slots:                        # at most FEED_PARALLEL boards downloaded and parsed at once (memory, see FEED_PARALLEL)
             for raw in _iter_raw(kind, token, name):
+                if kind not in AGE_EXEMPT and _too_old(raw, now_ms):   # before the caps, so a stale posting never takes a fresh one's place
+                    old += 1
+                    continue
                 # only the first STUDENT_PER_SOURCE student roles and PER_SOURCE others can be kept below, so a posting past those is not worked
                 # through at all (a big board lists hundreds; reading every one cost about 35 CPU seconds, a minute or more on a small host)
                 bucket, cap = (other, PER_SOURCE) if _type(raw) == "job" else (student, STUDENT_PER_SOURCE)
                 if kind in KEEP:                                     # the City and USAJOBS keep up to 120 (student roles first), so read them all
                     cap = KEEP[kind]
                 if len(bucket) >= cap:
+                    # past the caps only a Pennsylvania role is still worked through, up to LOCAL_PER_SOURCE of them
+                    if kind not in KEEP and len(local) < LOCAL_PER_SOURCE and LOCAL_RE.search(raw.get("loc") or ""):
+                        j = _normalize(raw, kind, name, token)
+                        if j:
+                            local.append(j)
                     continue
                 j = _normalize(raw, kind, name, token)
                 if j:
@@ -739,8 +844,12 @@ def _fetch_source(src):
         if kind in KEEP:
             jobs = (student + other)[:KEEP[kind]]
         else:
-            jobs = student[:STUDENT_PER_SOURCE] + other[:max(OTHER_PER_SOURCE, PER_SOURCE - len(student[:STUDENT_PER_SOURCE]))]
-        status = "%d jobs" % len(jobs)
+            n_other = max(OTHER_PER_SOURCE, PER_SOURCE - len(student[:STUDENT_PER_SOURCE]))
+            jobs = student[:STUDENT_PER_SOURCE] + other[:n_other]
+            # Pennsylvania roles cut by the split above go first among the extras, then the ones found past the caps
+            spill = [j for j in other[n_other:] if LOCAL_RE.search(j["loc"])]
+            jobs += (spill + local)[:LOCAL_PER_SOURCE]
+        status = "%d jobs" % len(jobs) + ("; %d older than %d days left out" % (old, MAX_AGE_DAYS) if old else "")
     except Exception as e:                      # keep serving the last good copy if the feed is down
         c = _cache.get(src)
         jobs = c["jobs"] if c else []
@@ -978,24 +1087,39 @@ def get_jobs():
     with ThreadPoolExecutor(max_workers=max(1, len(sources))) as ex:     # each mostly waits (the reads themselves are limited by _feed_slots)
         results = list(ex.map(_load_source, sources))
     _disk["filled"] = True
-    jobs, seen, summary = [], set(), {}
+    jobs, seen, same, summary = [], set(), {}, {}            # same: a job's _same_job_key -> the source that listed it first
+    now_ms = time.time() * 1000
+    merged = aged = 0
     for pj in partner_jobs():
         seen.add(pj["id"])
-        jobs.append({k: v for k, v in pj.items() if k != "contact"} if pj.get("emp") else pj)    # an employer's account email stays on this server
+        same[_same_job_key(pj)] = "partner"  # a feed's copy of a partner's posting is dropped below: the partner's own one can really be applied to
+        jobs.append(_with_age({k: v for k, v in pj.items() if k != "contact"} if pj.get("emp") else pj, now_ms))    # an employer's account email stays on this server
     summary["Partner employers"] = "%d jobs" % len(jobs)
+    # Feeds in SOURCES order, so when two feeds carry the same job the employer's own board (listed first) is the copy that is kept.
+    # Only copies from two different feeds are merged: one employer listing a title twice in one place (the City's two "Technical Support
+    # Specialist" postings are for different departments) keeps both, as they can be two openings.
     for src, (js, status) in zip(sources, results):
         summary[src[2] + ("/" + src[1] if src[0] in MULTI else "")] = "unavailable right now" if hide_errors and status.startswith("error") else status
         for j in js:
-            if j["id"] not in seen:
-                seen.add(j["id"])
-                jobs.append(j)
+            if j["id"] in seen:
+                continue
+            if src[0] not in AGE_EXEMPT and _too_old(j, now_ms):    # a saved copy can be up to a day old: one that turned 60 days since goes now
+                aged += 1
+                continue
+            key = _same_job_key(j)
+            if same.get(key, src) != src:
+                merged += 1
+                continue
+            seen.add(j["id"])
+            same.setdefault(key, src)
+            jobs.append(_with_age(j, now_ms))
     if not sources:
         summary["Third-party feeds"] = "off (not verified as permitted)"
     conns = ats_connections()
     if conns:           # a posting whose employer connected is marked here, on a copy, so the shared cache stays as fetched
         jobs = [dict(j, apply="direct", instant=True) if _connected(j, conns) else j for j in jobs]
     _save_disk()
-    return {"fetched_at": int(time.time()), "sources": summary, "jobs": jobs}
+    return {"fetched_at": int(time.time()), "sources": summary, "jobs": jobs, "merged": merged, "aged_out": aged}
 
 
 def get_json():
