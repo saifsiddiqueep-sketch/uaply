@@ -478,12 +478,23 @@ def _owner_copy(cfg):
     return r.strip() if isinstance(r, str) and EMAIL_RE.match(r.strip()) else ""
 
 
+PUBLIC_URL_RE = re.compile(r"^https://([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+)(:\d{1,5})?$")
+
+
+def public_url_env():
+    """UAPLY_PUBLIC_URL (e.g. https://uaply.net): the one public address of the live site, set on the host. It wins over public_url in
+    UAPLY_CONFIG_JSON, and serve.py sends visitors on any other address to it. Only a bare https address is taken (no path, no spaces,
+    no user name), lower-cased, without the trailing /. '' when unset or not valid (the server log says so at start)."""
+    v = (os.environ.get("UAPLY_PUBLIC_URL") or "").strip().lower().rstrip("/")
+    return v if PUBLIC_URL_RE.match(v) else ""
+
+
 def _site_base(cfg, site=""):
-    """The public address of this site for links in emails ('' when it only runs on this computer). The configured public_url wins;
-    otherwise the address the person is using (serve.py passes it), so a host such as Render gets its link without extra settings.
-    Only an https address is ever put in an email."""
+    """The public address of this site for links in emails ('' when it only runs on this computer). UAPLY_PUBLIC_URL wins, then the
+    configured public_url; otherwise the address the person is using (serve.py passes it), so a host such as Render gets its link without
+    extra settings. Only an https address is ever put in an email."""
     g = cfg.get("google") if isinstance(cfg.get("google"), dict) else {}
-    for v in (cfg.get("public_url"), g.get("public_url"), site):
+    for v in (public_url_env(), cfg.get("public_url"), g.get("public_url"), site):
         if isinstance(v, str) and v.startswith("https://") and " " not in v:
             return v.rstrip("/")
     return ""

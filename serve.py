@@ -116,6 +116,38 @@ if api:
 
 OOPS ="Something went wrong on our side. Try again in a moment."
 
+# UAPLY_PUBLIC_URL (e.g. https://uaply.net), set on the live host only: the one address search engines and visitors should use. With it set,
+# a page asked for on any other address (www.uaply.net, uaply.onrender.com) is answered with a 301 to the same page there, and the pages say
+# so (canonical link, sitemap). Unset (the sandbox, dev, this computer): nothing changes.
+PUBLIC_BASE = uaply_api.public_url_env() if api else ""
+PUBLIC_HOST = PUBLIC_BASE[len("https://"):]
+if api and (os.environ.get("UAPLY_PUBLIC_URL") or "").strip() and not PUBLIC_BASE:
+    sys.stderr.write("[uaply] UAPLY_PUBLIC_URL is ignored: it must be a bare https address such as https://uaply.net (no path, no spaces)\n")
+
+
+def no_redirect_path(p):
+    """The API (webhooks, the Google sign-in callback, scripts) and the health check answer on every address; only pages are moved."""
+    return p == "/api" or p.startswith("/api/") or p == "/healthz"
+
+
+def search_tags(canon, home=False):
+    """The tags added to a page served on the public host: its canonical address, and on the home page the site's name for search results."""
+    import html as _html
+    out = '<link rel="canonical" href="%s">' % _html.escape(PUBLIC_BASE + canon, quote=True)
+    if home:
+        ld = json.dumps({"@context": "https://schema.org", "@type": "WebSite", "name": "UAply", "alternateName": PUBLIC_HOST, "url": PUBLIC_BASE + "/"})
+        out += '<script type="application/ld+json">%s</script>' % ld.replace("<", "\\u003c")
+    return out.encode("utf-8")
+
+
+def sitemap_xml():
+    """/sitemap.xml on the public host: the home page and every legal and support page."""
+    from xml.sax.saxutils import escape
+    names = sorted(n for n in os.listdir(os.path.join(HERE, "legal")) if n.endswith(".html") and n != "index.html" and LEGAL_NAME.match(n))
+    urls = ["/", "/legal/"] + ["/legal/" + n for n in names]
+    body = "".join("<url><loc>%s</loc></url>" % escape(PUBLIC_BASE + u) for u in urls)
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">%s</urlset>\n' % body).encode("utf-8")
+
 
 def log_oops(where, e):
     """The real reason goes to the server's own log (the owner can read it there); a visitor only ever sees the plain sentence above."""
@@ -399,10 +431,10 @@ class H(http.server.SimpleHTTPRequestHandler):
         return host, ("https" if self.headers.get("X-Forwarded-Proto") == "https" else "http")
 
     def _site_base(self):
-        """The public address of this site, for links in emails."""
+        """The public address of this site, for links in emails (UAPLY_PUBLIC_URL first)."""
         cfg = uaply_api.config()
         g = cfg.get("google") if isinstance(cfg.get("google"), dict) else {}
-        for v in (cfg.get("public_url"), g.get("public_url")):
+        for v in (uaply_api.public_url_env(), cfg.get("public_url"), g.get("public_url")):
             if isinstance(v, str) and v.startswith(("http://", "https://")):
                 return v.rstrip("/")
         host, proto = self._origin_parts()
@@ -415,6 +447,59 @@ class H(http.server.SimpleHTTPRequestHandler):
         for k, v in headers:
             self.send_header(k, v)
         self.end_headers()
+
+    def _to_public_host(self):
+        """GET or HEAD of a page on another address than UAPLY_PUBLIC_URL: 301 to the same path and query there. True when answered.
+        The Location is always PUBLIC_BASE plus this request's own path, so a forged Host header can only ever lead to the public host."""
+        if not PUBLIC_BASE or no_redirect_path(self.path.split("?", 1)[0]):
+            return False
+        host = (self.headers.get("Host") or "").strip().lower()
+        if host.endswith(":443") and ":" not in PUBLIC_HOST:
+            host = host[:-4]
+        if not host or host == PUBLIC_HOST:
+            return False
+        # only an ordinary path: never "http://other.site/..." (an absolute address in the request line) or control characters in a header
+        if not self.path.startswith("/") or any(ord(c) < 33 or ord(c) == 127 for c in self.path):
+            return False
+        self.send_response(301)
+        self.send_header("Location", PUBLIC_BASE + self.path)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+        return True
+
+    def _tagged_page(self, head=False):
+        """On the public host, the home page and the legal and support pages are sent with their canonical link (and the home page with
+        the site's name for search results). True when answered; False leaves the page to the ordinary file serving."""
+        if not PUBLIC_BASE:
+            return False
+        p = self.path.split("?", 1)[0].split("#", 1)[0]
+        if p in ("/", "/index.html"):
+            f, canon, home = os.path.join(root, "index.html"), "/", True
+        elif p == "/prod-index.html":                                   # the page the app frames: the same app, so the same address
+            f, canon, home = alias.get(p, ""), "/", False
+        elif p.startswith("/legal/"):
+            name = p[len("/legal/"):] or "index.html"
+            if not (LEGAL_NAME.match(name) and name.endswith(".html")):
+                return False
+            f, canon, home = os.path.join(HERE, "legal", name), ("/legal/" if name == "index.html" else "/legal/" + name), False
+        else:
+            return False
+        try:
+            with open(f, "rb") as fh:
+                body = fh.read()
+        except OSError:
+            return False
+        at = body.lower().find(b"</head>")
+        if at < 0:
+            return False
+        body = body[:at] + search_tags(canon, home) + body[at:]
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if not head:
+            self.wfile.write(body)
+        return True
 
     def _oauth_cookie(self, value):
         secure = "; Secure" if (self.headers.get("X-Forwarded-Proto") == "https") else ""
@@ -456,9 +541,15 @@ class H(http.server.SimpleHTTPRequestHandler):
         p = self.path.split("?", 1)[0]
         if p == "/healthz":                                                 # for the host's health check
             return self._health()
+        if self._to_public_host():
+            return
         if p == "/robots.txt":
-            return self._send(200, ROBOTS, "text/plain; charset=utf-8")
-        if api and p == "/legal":                                           # a typed uaply.net/legal (no slash) finds the legal pages too
+            return self._send(200, ROBOTS + (("Sitemap: %s/sitemap.xml\n" % PUBLIC_BASE).encode() if PUBLIC_BASE else b""), "text/plain; charset=utf-8")
+        if PUBLIC_BASE and p == "/sitemap.xml":
+            return self._send(200, sitemap_xml(), "application/xml; charset=utf-8")
+        if self._tagged_page():
+            return
+        if api and p == "/legal":                                         # a typed uaply.net/legal (no slash) finds the legal pages too
             return self._redirect("/legal/")
         if api and p in OWNER_PAGES and not self._owner_ok():
             if not OWNER_PASSWORD:
@@ -520,6 +611,8 @@ class H(http.server.SimpleHTTPRequestHandler):
     def do_HEAD(self):
         if self.path.split("?", 1)[0] == "/healthz":                     # uptime monitors often ask with HEAD
             return self._health(head=True)
+        if self._to_public_host() or self._tagged_page(head=True):
+            return
         super().do_HEAD()
 
     def do_POST(self):

@@ -54,6 +54,20 @@ simulated payments (paid plans appear only once live Stripe keys are set, sectio
      sign-up codes and receipts only appear in the test inbox.
    - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_PLUS`, `STRIPE_PRICE_PRO`: `none` until you set up Stripe (section 4).
      Sandbox: test-mode keys. Dev (the real site): live keys only.
+   - `UAPLY_PUBLIC_URL` (dev, the real site, once `uaply.net` opens the site): `https://uaply.net`. It must be a bare `https://` address (no
+     path, no spaces; a trailing `/` is dropped), otherwise it is ignored and the log says so. It wins over `public_url` in
+     `UAPLY_CONFIG_JSON`. With it set, a page opened on any other address (`www.uaply.net`, `uaply-dev.onrender.com`) is answered with a
+     301 to the same page and query on `https://uaply.net`, for GET and HEAD only. Addresses under `/api/` and `/healthz` are never moved,
+     so the Stripe webhook, the Google sign-in callback and Render's health check keep working on every address. The home page and the
+     legal and support pages then carry a canonical link, the home page names the site for search results, `/sitemap.xml` lists them,
+     and `robots.txt` points to it. Leave it unset on the sandbox: nothing is redirected or added there.
+     Before you set it: a browser keeps each address's data apart. Someone who used `uaply-dev.onrender.com` or `www.uaply.net` is
+     signed out once and arrives at `uaply.net` without the profile and swipes their browser kept at the old address. Their account,
+     applications and anything saved to the account stay on the server; they sign in again at `uaply.net`. So set it before you tell people
+     the address, or ask early users to save a backup (Profile, Data & privacy) and restore it on `uaply.net`.
+   - `UAPLY_PLANS_HIDDEN` (optional): `1` for a free-only launch. Plan and billing shows only the Free plan and "Plus and Pro are coming
+     soon", with no Choose buttons; `/api/billing/checkout` answers 403; the assistant never says to tap Choose Plus. The same switch in
+     `UAPLY_CONFIG_JSON` is `"plans_hidden": true`. Remove it (or set `0`) when paid plans start.
 4. Your sites: `https://uaply-dev.onrender.com` and `https://uaply-sandbox.onrender.com` (Render shows the exact names).
 5. Check each one: `/healthz` answers `{"ok": true}`, and the service's **Logs** show one line starting `[uaply] dev on 0.0.0.0:10000 (public)`.
    It must say `data: /var/data (persistent disk)`, `email: on` and `UAPLY_CONFIG_JSON: valid` (and, once set up, `Google sign-in: on (full-page

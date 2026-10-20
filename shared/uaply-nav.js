@@ -1391,8 +1391,10 @@ function apply(w,host){
     if(!!BILL.signedIn!==!!SRV.user&&BILL._asked!==who){BILL._asked=who;loadBilling()}       /* signed in or out since the plan was last read: read it again (the screen redraws when it arrives) */
     if(earlyAccess())return '<div class="plan" data-cur="true" style="display:flex;flex-direction:column;gap:6px"><b>Current plan: Free (early access)</b>'+
       '<ul><li>No weekly limit on applications</li><li>Full dashboard and tracking</li><li>Every filter</li><li>Message the hiring manager</li></ul>'+
-      '<small>Nothing is charged and no card is ever asked for. Before any paid plan starts, you will see its price here first.</small></div>';
+      '<small>Nothing is charged and no card is ever asked for. Before any paid plan starts, you will see its price here first.</small>'+(BILL.hidden?'<small id="plansSoon"><b>Plus and Pro are coming soon.</b></small>':'')+'</div>';
     var keys=["free","plus","pro"],cur=BILL.plan||"free",P=BILL.plans;
+    /* a free-only launch (billing_api.hidden): only Free, and an existing paid plan's own card so Manage billing stays reachable; no Choose buttons */
+    if(BILL.hidden)keys=cur==="free"?["free"]:["free",cur];
     var h='<div class="plan" style="display:flex;flex-direction:column;gap:6px">'+(testMode()?'<span class="tag">Test mode: no real charges</span>':'')+'<b>Current plan: '+E(P[cur].name)+(BILL.canceling?' (ends '+new Date(BILL.renews*1000).toLocaleDateString()+')':'')+'</b>'+
       (BILL.signedIn?'<small>'+(P[cur].cap?(BILL.used||0)+' of '+P[cur].cap+' applications used this week':(BILL.used||0)+' applications this week, no limit')+(cur!=="free"&&BILL.renews&&!BILL.canceling?' · renews '+new Date(BILL.renews*1000).toLocaleDateString():'')+'</small>'+(P[cur].cap?'<div class="bar"><i style="width:'+Math.min(100,Math.round((BILL.used||0)/P[cur].cap*100))+'%"></i></div>':''):'<small>Sign in to choose a plan. Your plan is saved to your account.</small>')+
       /* a renewal failed (billing_api._problem): Stripe retries the card; after the third failed try the plan is paused until a payment works */
@@ -1409,6 +1411,7 @@ function apply(w,host){
           (cur!=="free"||BILL.problem?'<button type="button" class="btn ghost" data-bill="portal">Switch in Manage billing</button>':'<button type="button" class="btn" data-bill="'+k+'">Choose '+p.name+'</button>'))));
       h+='<div class="plan" data-cur="'+isCur+'"><b>'+p.name+'</b><span class="pr">'+(p.price?"$"+p.price.toFixed(2)+'<small>/month</small>':"$0")+'</span><ul>'+p.perks.map(function(x){return '<li>'+E(x)+'</li>'}).join("")+'</ul>'+btn+'</div>';
     });
+    if(BILL.hidden)return h+'</div><p class="note" id="plansSoon"><b>Plus and Pro are coming soon.</b> You will see their prices here before anything can be bought.'+(cur==="free"?' Nothing is charged and no card is asked for.':'')+'</p>';
     return h+'</div><p class="note">Payments are handled by Stripe on its own secure page. UAply never sees or stores your card number. Cancel any time in Manage billing; the plan stays until the end of the paid month.</p>';
   }
   /* Data and privacy: "You agreed to the Terms and Privacy Policy on <date>" (the date this browser said yes) */

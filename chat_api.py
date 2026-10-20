@@ -101,7 +101,17 @@ def _paid():
     access" next to a screen that sells Plus."""
     try:
         import billing_api
-        return bool(billing_api.buttons())
+        return bool(billing_api.buttons()) and not billing_api.hidden()
+    except Exception:
+        return False
+
+
+def _hidden():
+    """Whether Plus and Pro are hidden for a free-only launch (billing_api.hidden): articles then use their "hidden" wording, which never
+    says to tap Choose Plus."""
+    try:
+        import billing_api
+        return bool(billing_api.hidden())
     except Exception:
         return False
 
@@ -112,14 +122,16 @@ def articles():
         mtime = os.path.getmtime(HELP_PATH)
     except OSError:
         return []
-    paid = _paid()
+    paid, hid = _paid(), _hidden()
     with _lock:
-        if _help["mtime"] != mtime or _help.get("paid") != paid:
+        if _help["mtime"] != mtime or _help.get("paid") != paid or _help.get("hidden") != hid:
             try:
                 with open(HELP_PATH, encoding="utf-8") as f:
                     raw = json.load(f).get("articles", [])
                 def rel(a):
                     r = a.get("release") if isinstance(a.get("release"), dict) else {}
+                    if hid and isinstance(r.get("hidden"), dict):
+                        return r["hidden"]
                     if RELEASE and paid and isinstance(r.get("paid"), dict):
                         return r["paid"]
                     return r if RELEASE else {}
@@ -128,10 +140,10 @@ def articles():
                      "body": _s(rel(a).get("body") or a.get("body"), 1500), "go": _s(rel(a).get("go") or a.get("go"), 40)}
                     for a in raw if isinstance(a, dict) and a.get("id") and a.get("title") and a.get("body")
                     and not rel(a).get("hide")]
-                _help["mtime"], _help["paid"] = mtime, paid
+                _help["mtime"], _help["paid"], _help["hidden"] = mtime, paid, hid
             except Exception as e:                  # a typo in the file: keep the last good articles, and tell the owner why answers are missing
                 print("UAply Assistant: help/articles.json could not be read (%s: %s)" % (type(e).__name__, str(e)[:160]), file=sys.stderr)
-                _help["mtime"], _help["paid"] = mtime, paid     # said once per change of the file, not on every question
+                _help["mtime"], _help["paid"], _help["hidden"] = mtime, paid, hid     # said once per change of the file, not on every question
         return list(_help["articles"])
 
 

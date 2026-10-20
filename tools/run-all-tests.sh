@@ -62,6 +62,7 @@ run "applications go straight into an employer's SmartRecruiters" python tools/t
 run "applications go straight into an employer's Workable" python tools/test-ats-workable.py
 run "swipe right to apply instantly, end to end" python tools/test-ats-flow.py
 run "paid plans: Stripe checkout, signed webhook, limits" python tools/test-billing.py
+run "the public address (UAPLY_PUBLIC_URL): 301 to uaply.net for pages only, never /api/ or /healthz, canonical links, sitemap, plans hidden" python tools/test-public-url.py 18820
 run "Stripe Checkout form filler of ui-live.js: card fields inside another site's iframe, Save my info, a decline, test cards only" node tools/cdp.js tools/ui-stripe-form.js
 run "autofill: real employers' forms answered from the profile, questions asked once" python tools/test-autofill.py
 run "Hiring mode: company, postings, feed, applicants (sandbox only)" python tools/test-employers.py
@@ -103,6 +104,9 @@ done
 run "sandbox: learns from swipes (remote first, explore card, reset)" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-learn.js
 run "sandbox: fill from your resume (fills empty fields, keeps typed ones, Replace, errors, fits the phone)" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-resume.js
 run "dev: the stranger-walk fixes (messages fit the phone, Save and continue, LinkedIn links, empty deck, restore, Sign in wording, a restarting server, help, rating)" env W=390 H=844 PORT=18767 CDP_LIMIT_MS=600000 node tools/cdp.js tools/ui-walk.js
+PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/ph" UAPLY_PLANS_HIDDEN=1 UAPLY_CONFIG_JSON='{"feeds":[],"smtp":{},"owner_copy":""}' start python serve.py 18832 dev --api)"
+wait_port 18832
+run "a free-only launch (UAPLY_PLANS_HIDDEN=1): Plan & billing shows Free and coming soon, no Choose buttons; dev without it still offers them" env W=390 H=844 PORT=18832 SHOWN_PORT=18767 node tools/cdp.js tools/ui-plans-hidden.js
 
 step "Google sign-in (against a stand-in Google)"
 PIDS="$PIDS $(start python tools/mock-google.py 8790)"

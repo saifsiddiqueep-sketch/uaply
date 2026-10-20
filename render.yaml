@@ -34,6 +34,10 @@ services:
         sync: false
       - key: UAPLY_CONFIG_JSON        # optional: the rest of uaply-config.json as one line of JSON (smtp, public_url, google, delivery); see DEPLOY.md
         sync: false
+      # UAPLY_PUBLIC_URL (add it in the dashboard, Environment, when uaply.net is live): https://uaply.net. It wins over public_url above,
+      # sends pages on www.uaply.net and uaply.onrender.com to it with a 301 (never /api/ or /healthz, so webhooks and Google keep working),
+      # and adds the canonical link, /sitemap.xml and the Sitemap line in robots.txt. Leave it unset on the sandbox. DEPLOY.md, section 1.
+      # UAPLY_PLANS_HIDDEN=1 (optional): a free-only launch. Plan and billing shows only Free and "Plus and Pro are coming soon"; checkout is refused.
       - key: STRIPE_SECRET_KEY        # LIVE mode only on dev (the real site): sk_live_..., or none until payments start (DEPLOY.md, section 4)
         sync: false
       - key: STRIPE_WEBHOOK_SECRET    # whsec_... of the live webhook endpoint https://uaply.onrender.com/api/billing/webhook

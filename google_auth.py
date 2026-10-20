@@ -81,7 +81,7 @@ def _settings():
     ok = cid.strip().endswith(".apps.googleusercontent.com") or bool(g.get("auth_url"))      # ignore the example placeholder text
     return {"on": ok and bool(sec.strip()), "gis": ok, "id": cid.strip(), "secret": sec.strip(),
             "certs_url": g.get("certs_url") or jwt_rs256.GOOGLE_CERTS,
-            "public_url": (g.get("public_url") or "").rstrip("/") if isinstance(g.get("public_url"), str) else "",
+            "public_url": uaply_api.public_url_env() or ((g.get("public_url") or "").rstrip("/") if isinstance(g.get("public_url"), str) else ""),
             "auth_url": g.get("auth_url") or AUTH_URL, "token_url": g.get("token_url") or TOKEN_URL,
             "issuers": tuple(g.get("issuers")) if isinstance(g.get("issuers"), list) else ISSUERS}
 
