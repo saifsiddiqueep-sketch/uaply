@@ -4,7 +4,7 @@
 //   PORT=<server with UAPLY_PLANS_HIDDEN=1> SHOWN_PORT=<the same server without it> node tools/cdp.js tools/ui-plans-hidden.js
 const PORT = process.env.PORT || "8767";
 const SHOWN = process.env.SHOWN_PORT || "";
-module.exports = async ({ ev, sleep, nav, send }) => {
+module.exports = async ({ ev, sleep, nav, send, on }) => {
   let pass = 0, fail = 0;
   const check = (name, ok, extra) => { ok ? pass++ : fail++; console.log((ok ? "PASS " : "FAIL ") + name + (ok || !extra ? "" : "  -> " + extra)); return ok; };
   const F = "document.querySelector('iframe').contentDocument";
@@ -29,6 +29,17 @@ module.exports = async ({ ev, sleep, nav, send }) => {
   check("hidden: no Choose Plus or Choose Pro button, and nothing that starts a checkout", h.choose.length === 0 && h.buy === 0, JSON.stringify(h.choose) + " " + h.buy);
   check("hidden: only the Free plan is shown", JSON.stringify(h.cards) === '["Free"]', JSON.stringify(h.cards));
   check("hidden: it says Plus and Pro are coming soon", h.soon && /Plus and Pro are coming soon/.test(h.text), h.text.slice(0, 300));
+  // a past subscriber (a Stripe customer, now on Free): Manage billing stays for the invoices, still no Choose button. The billing status is
+  // answered here (no Stripe needed), as the server would for that account
+  const past = { enabled: true, test: false, buttons: false, early: false, hidden: true, signedIn: true, plan: "free", used: 3, cap: 50, renews: 0, canceling: false,
+    status: "canceled", hasCustomer: true, problem: "", plans: { free: { name: "Free", price: 0, cap: 50 }, plus: { name: "Plus", price: 9.99, cap: 250 }, pro: { name: "Pro", price: 19.99, cap: 0 } } };
+  const stop = on("Fetch.requestPaused", (p) => send("Fetch.fulfillRequest", { requestId: p.requestId, responseCode: 200, responseHeaders: [{ name: "Content-Type", value: "application/json" }], body: Buffer.from(JSON.stringify(past)).toString("base64") }));
+  await send("Fetch.enable", { patterns: [{ urlPattern: "*/api/billing/status*" }] });
+  const c = await plan(PORT);
+  await send("Fetch.disable");
+  if (typeof stop === "function") stop();
+  check("hidden, a past subscriber: Manage billing is still there (invoices), and no Choose button", c.choose.length === 0 && c.buy === 0 && /Manage billing/.test(c.text), JSON.stringify(c.choose) + " " + c.text.slice(0, 200));
+  check("hidden, a past subscriber: it does not claim no card was ever asked for", !/no card is asked for/.test(c.text), c.text.slice(0, 300));
   if (SHOWN) {
     const s = await plan(SHOWN);
     check("shown (the default): the same screen offers Choose Plus and Choose Pro", s.choose.includes("Choose Plus") && s.choose.includes("Choose Pro") && !s.soon, JSON.stringify(s.choose));

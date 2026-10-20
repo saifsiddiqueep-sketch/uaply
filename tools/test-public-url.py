@@ -99,7 +99,7 @@ def start(port, extra):
         if k not in extra:
             env.pop(k, None)
     p = subprocess.Popen([sys.executable, os.path.join(ROOT, "serve.py"), str(port), os.path.join(ROOT, "dev"), "--api"], env=env,
-                         stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, cwd=ROOT)
+                         stdout=subprocess.DEVNULL, stderr=open(os.path.join(TMP, "log-%d.txt" % port), "w"), cwd=ROOT)
     for _ in range(80):
         try:
             c = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
@@ -152,7 +152,19 @@ pa = start(A, {"UAPLY_PUBLIC_URL": "https://uaply.net/", "UAPLY_PLANS_HIDDEN": "
 pb = start(B, {})
 try:
     # ---------- 2. the move to the public host ----------
-    t("GET / on www.uaply.net: 301 to https://uaply.net/", req(A, "GET", "/", "www.uaply.net")[:2], (301, "https://uaply.net/"))
+    mv = req(A, "GET", "/", "www.uaply.net")
+    t("GET / on www.uaply.net: 200, the 'UAply has moved to uaply.net' page (not a blind 301)", (mv[0], mv[1], "UAply has moved to uaply.net" in mv[2]), (200, None, True))
+    t("the moved page: with nothing to keep it goes on to https://uaply.net/ at once (script and, without script, a meta refresh)",
+      ('location.replace("https://uaply.net/")' in mv[2], '<meta http-equiv="refresh" content="0;url=https://uaply.net/">' in mv[2]), (True, True))
+    t("the moved page: it looks for this instance's own storage key (dev/index.html's KEY)", 'var K="hireswipe.dev.v1"' in mv[2], True)
+    t("the moved page: offers Save a backup and Continue to uaply.net with the ?moved=1 hint",
+      ('id="save"' in mv[2], 'href="https://uaply.net/?moved=1"' in mv[2]), (True, True))
+    t("the moved page: its canonical is the public home page, and it sends nothing anywhere (no fetch, no form)",
+      ('<link rel="canonical" href="https://uaply.net/">' in mv[2], "fetch(" in mv[2] or "<form" in mv[2]), (True, False))
+    mq = req(A, "GET", "/?billing=success", "uaply-dev.onrender.com")
+    t("GET /?billing=success on the onrender.com address: the moved page goes on to the same query on uaply.net",
+      (mq[0], 'location.replace("https://uaply.net/?billing=success")' in mq[2]), (200, True))
+    t("the home page of uaply.net itself is never the moved page", "UAply has moved" in req(A, "GET", "/", "uaply.net")[2], False)
     t("GET a legal page with a query on the onrender.com address: 301 to the same path and query",
       req(A, "GET", "/legal/terms.html?a=1&b=2", "uaply-dev.onrender.com")[:2], (301, "https://uaply.net/legal/terms.html?a=1&b=2"))
     t("HEAD / on www.uaply.net: 301 too", req(A, "HEAD", "/", "www.uaply.net")[:2], (301, "https://uaply.net/"))
@@ -170,8 +182,20 @@ try:
     t("/api (no slash) is not moved either", req(A, "GET", "/api", "www.uaply.net")[0] != 301, True)
     st = req(A, "GET", "//evil.example.com/x", "www.uaply.net")
     t("GET //evil.example.com/x: the move stays on uaply.net (the path, not another host)", (st[0], urllib.parse.urlsplit(st[1] or "").netloc), (301, "uaply.net"))
+    st = req(A, "GET", "/legal/", "evil.example.com")
+    t("a forged Host header: the 301 still goes only to https://uaply.net/", st[:2], (301, "https://uaply.net/legal/"))
     st = req(A, "GET", "/", "evil.example.com")
-    t("a forged Host header: the 301 still goes only to https://uaply.net/", st[:2], (301, "https://uaply.net/"))
+    t("a forged Host header on the home page: the moved page names only uaply.net", ("evil" in st[2], 'location.replace("https://uaply.net/")' in st[2]), (False, True))
+    line, loc = raw(A, "GET /legal/café x HTTP/1.1\r\nHost: www.uaply.net\r\nConnection: close\r\n\r\n".replace(" x ", " ").encode("utf-8"))
+    t("a path with non-ASCII letters: the Location is percent-encoded (UTF-8 bytes kept)", loc, "https://uaply.net/legal/caf%C3%A9")
+    line, loc = raw(A, b"GET /legal/?q=a%20b&c=d HTTP/1.1\r\nHost: www.uaply.net\r\nConnection: close\r\n\r\n")
+    t("an already-encoded query is kept as it is (not encoded twice)", loc, "https://uaply.net/legal/?q=a%20b&c=d")
+    # a request line with a valid version but too many words: Python answers 400 with headers before it has read any (self.headers unset)
+    line, loc = raw(A, b"GET / extra HTTP/1.1\r\nHost: www.uaply.net\r\n\r\n")
+    t("a malformed request line (four words): a plain 400 with headers, no crash", line.split(" ")[1:2], ["400"])
+    line, loc = raw(A, b"GET /a b c HTTP/1.0\r\n\r\n")
+    t("the same with HTTP/1.0: a plain 400", line.split(" ")[1] if " " in line else line, "400")
+    t("...and the server still answers afterwards", req(A, "GET", "/healthz", "uaply.net")[0], 200)
     line, loc = raw(A, b"GET http://evil.example.com/steal HTTP/1.1\r\nHost: www.uaply.net\r\nConnection: close\r\n\r\n")
     t("an absolute address in the request line is never turned into a move to it", loc is None or loc.startswith("https://uaply.net/"), True)
     line, loc = raw(A, b"GET / HTTP/1.0\r\n\r\n")
@@ -223,6 +247,7 @@ try:
     t("plans hidden: /api/billing/status says hidden, and offers no Choose buttons", (sa.get("hidden"), sa.get("buttons")), (True, False))
     co = req(A, "POST", "/api/billing/checkout", "uaply.net", body={"plan": "plus"}, headers={"Origin": "https://uaply.net"})
     t("plans hidden: /api/billing/checkout answers 403 with a friendly reason", (co[0], json.loads(co[2]).get("code"), "coming soon" in co[2]), (403, "plans_hidden", True))
+    t("plans hidden: ...which says plans are not open yet, never that every account is on Free", ("not open yet" in co[2], "every account" in co[2]), (True, False))
     sb = json.loads(req(B, "GET", "/api/billing/status", "uaply.net")[2])
     t("not hidden (the default): hidden is false", sb.get("hidden"), False)
     cb = req(B, "POST", "/api/billing/checkout", "uaply.net", body={"plan": "plus"}, headers={"Origin": "https://uaply.net"})
@@ -234,6 +259,14 @@ finally:
             p.wait(10)
         except subprocess.TimeoutExpired:
             p.kill()
+    logs = ""
+    for port in (A, B):
+        try:
+            with open(os.path.join(TMP, "log-%d.txt" % port), encoding="utf-8", errors="replace") as f:
+                logs += f.read()
+        except OSError:
+            pass
+    t("no traceback in either server's log (malformed requests included)", "Traceback" in logs, False)
     shutil.rmtree(TMP, ignore_errors=True)
 
 print(sum(R), "/", len(R))

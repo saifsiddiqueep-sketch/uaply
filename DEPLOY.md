@@ -61,10 +61,11 @@ simulated payments (paid plans appear only once live Stripe keys are set, sectio
      so the Stripe webhook, the Google sign-in callback and Render's health check keep working on every address. The home page and the
      legal and support pages then carry a canonical link, the home page names the site for search results, `/sitemap.xml` lists them,
      and `robots.txt` points to it. Leave it unset on the sandbox: nothing is redirected or added there.
-     Before you set it: a browser keeps each address's data apart. Someone who used `uaply-dev.onrender.com` or `www.uaply.net` is
-     signed out once and arrives at `uaply.net` without the profile and swipes their browser kept at the old address. Their account,
-     applications and anything saved to the account stay on the server; they sign in again at `uaply.net`. So set it before you tell people
-     the address, or ask early users to save a backup (Profile, Data & privacy) and restore it on `uaply.net`.
+     A browser keeps each address's data apart, so the home page of an old address is not moved blindly: it shows "UAply has moved to
+     uaply.net". If that browser holds a UAply profile or swipes, the page offers **Save a backup** (the same file as Profile, Data &
+     privacy, Back up, made in the browser) and **Continue to uaply.net**, which opens Data & privacy at Restore once. With nothing to keep
+     it goes straight on to `uaply.net`. Every other page still gets the 301. People are signed out once (the sign-in cookie belongs to the
+     old address); their account and applications stay on the server and they sign in again at `uaply.net`.
    - `UAPLY_PLANS_HIDDEN` (optional): `1` for a free-only launch. Plan and billing shows only the Free plan and "Plus and Pro are coming
      soon", with no Choose buttons; `/api/billing/checkout` answers 403; the assistant never says to tap Choose Plus. The same switch in
      `UAPLY_CONFIG_JSON` is `"plans_hidden": true`. Remove it (or set `0`) when paid plans start.
@@ -79,7 +80,9 @@ simulated payments (paid plans appear only once live Stripe keys are set, sectio
 6. Your address (Cloudflare): in Render, uaply-dev, Settings, Custom Domains, add `uaply.net` (Render adds `www` and redirects it). In Cloudflare,
    DNS: delete any AAAA record for `uaply.net`, add CNAME `@` and CNAME `www`, both to `uaply-dev.onrender.com` with Proxy status **DNS only**,
    and set SSL/TLS to **Full**. Back in Render press Verify; https://uaply.net works once the certificate shows as issued. Leave the MX and TXT
-   (email) records alone. Add `https://uaply.net` to the Google client ID's Authorized JavaScript origins.
+   (email) records alone. Add `https://uaply.net` to the Google client ID's Authorized JavaScript origins. If you ever switch the CNAMEs to
+   **Proxied** (orange cloud), SSL/TLS must be **Full (strict)**: plain Full accepts any certificate between Cloudflare and Render, and
+   Flexible sends the traffic to Render unencrypted and loops on Render's own https redirect.
 
 How deploys behave: every push to `dev` (or `sandbox`) redeploys that service, once auto-deploy works (it did not on October 17: see
 "Auto-deploy" below). Because it has a disk, Render stops the old copy before starting the new one (Render offers no zero-downtime deploy for a

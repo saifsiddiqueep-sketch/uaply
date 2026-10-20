@@ -36,7 +36,7 @@ Serves ROOT; each urlpath=file alias maps one URL to a file outside ROOT (e.g. /
   POST /api/email/events  Brevo's webhook: bounces and complaints put an address on the bounce list (needs email_events_secret; mailer.py)
   GET  /api/status        what is switched on, as yes/no facts only (never a key, an address or a path), and the deployed commit: for tools/live-check.py
 Accounts use an HttpOnly session cookie. When a signed-in user swipes right, a receipt goes to their email."""
-import sys, os, re, json, http.server, base64, hmac, threading, time, signal, random
+import sys, os, re, json, http.server, base64, hmac, threading, time, signal, random, urllib.parse
 
 LEGAL_NAME = re.compile(r"^[A-Za-z0-9_-]+\.(html|css|png)$")       # the files in legal/: terms.html, style.css, favicon-32.png ...
 
@@ -123,6 +123,59 @@ PUBLIC_BASE = uaply_api.public_url_env() if api else ""
 PUBLIC_HOST = PUBLIC_BASE[len("https://"):]
 if api and (os.environ.get("UAPLY_PUBLIC_URL") or "").strip() and not PUBLIC_BASE:
     sys.stderr.write("[uaply] UAPLY_PUBLIC_URL is ignored: it must be a bare https address such as https://uaply.net (no path, no spaces)\n")
+
+
+def _storage_key():
+    """The browser storage key of this instance's app (var KEY="..." in its index.html), so the moved page can find what this browser keeps."""
+    try:
+        with open(os.path.join(root, "index.html"), encoding="utf-8") as f:
+            m = re.search(r'var KEY="([A-Za-z0-9._-]{1,60})"', f.read())
+        return m.group(1) if m else ""
+    except OSError:
+        return ""
+
+
+# The home page on an old address (www.uaply.net, the onrender.com address) once UAPLY_PUBLIC_URL is set. A browser keeps each address's data
+# apart, so a blind 301 would leave someone's profile and swipes behind at the old address. This page looks: with UAply data in this browser
+# it offers "Save a backup" (the same file as Profile, Data & privacy, Back up) and "Continue to uaply.net" with ?moved=1, where the app opens
+# Restore once; with none it goes on to the same address on the public host at once. Nothing is sent anywhere: the file is made in the browser.
+MOVED_PAGE = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UAply has moved</title><link rel="canonical" href="%(base)s/"><link rel="icon" type="image/png" href="/favicon.ico">
+<noscript><meta http-equiv="refresh" content="0;url=%(go)s"></noscript>
+<style>body{font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;margin:0;padding:24px 16px;color:#1d1d1f;background:#fff}main{max-width:520px;margin:0 auto}
+h1{font-size:24px;margin:0 0 8px}.btn{display:inline-block;min-height:44px;padding:10px 18px;border-radius:10px;border:0;font:inherit;font-weight:600;cursor:pointer;text-decoration:none;margin:6px 8px 0 0}
+.pri{background:#e0245e;color:#fff}.sec{background:#f1f1f4;color:#1d1d1f}@media (prefers-color-scheme:dark){body{background:#111;color:#eee}.sec{background:#2a2a2e;color:#eee}}</style>
+</head><body><main><h1>UAply has moved to %(host)s</h1>
+<p id="msg">Taking you to <a href="%(go)s">%(host)s</a>&hellip;</p>
+<div id="keep" hidden><p>This browser holds your UAply profile and swipes from this address. A browser keeps each address's data apart, so save a
+backup here first. On %(host)s, open Profile, then Data &amp; privacy, and choose the file under Restore.</p>
+<button type="button" class="btn pri" id="save">Save a backup</button><a class="btn sec" id="cont" href="%(base)s/?moved=1">Continue to %(host)s</a>
+<p id="saved" hidden>Saved as uaply-backup.json in your downloads.</p></div>
+<p><a href="%(go)s">Continue to %(host)s</a></p>
+<script>(function(){
+var K=%(key)s,S=null,A=null;
+try{S=JSON.parse(localStorage.getItem(K)||"null");A=JSON.parse(localStorage.getItem(K+".acct")||"null")}catch(e){}
+var has=!!(S&&typeof S==="object"&&S.profile&&typeof S.profile==="object"&&(S.profile.custom||Object.keys(S.decisions||{}).length||(S.history||[]).length));
+if(A&&typeof A==="object"&&["phone","linkedin","portfolio","summary","cover","resumeName","resumeUrl"].some(function(k){return typeof A[k]==="string"&&A[k].trim()})||(A&&A.apps&&typeof A.apps==="object"&&Object.keys(A.apps).length))has=true;
+if(has&&!(S&&S.profile&&typeof S.profile==="object"))S={profile:{},decisions:{}};
+if(!has){location.replace(%(go_js)s);return}
+document.getElementById("msg").hidden=true;document.getElementById("keep").hidden=false;
+document.getElementById("save").onclick=function(){
+  var o={app:"uaply",v:1,exported:new Date().toISOString(),profile:S.profile,decisions:S.decisions||{}};if(A&&typeof A==="object")o.acct=A;
+  var u=URL.createObjectURL(new Blob([JSON.stringify(o)],{type:"application/json"})),a=document.createElement("a");
+  a.href=u;a.download="uaply-backup.json";document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(u)},5000);
+  document.getElementById("saved").hidden=false;
+};
+})();</script></main></body></html>
+"""
+
+
+def moved_page(go):
+    """MOVED_PAGE for this request; go is where it leads when there is nothing to keep (the same path and query on the public host)."""
+    import html as _html
+    return (MOVED_PAGE % {"base": PUBLIC_BASE, "host": _html.escape(PUBLIC_HOST), "go": _html.escape(go, quote=True),
+                          "go_js": json.dumps(go).replace("<", "\\u003c"), "key": json.dumps(_storage_key())}).encode("utf-8")
 
 
 def no_redirect_path(p):
@@ -461,8 +514,18 @@ class H(http.server.SimpleHTTPRequestHandler):
         # only an ordinary path: never "http://other.site/..." (an absolute address in the request line) or control characters in a header
         if not self.path.startswith("/") or any(ord(c) < 33 or ord(c) == 127 for c in self.path):
             return False
+        # the raw bytes of the path, percent-encoded where they are not plain ASCII, so the header is always valid
+        go = PUBLIC_BASE + urllib.parse.quote(self.path.encode("latin-1", "replace"), safe="/?&=%:+,;@!$'()*~-._")
+        if self.command == "GET" and self.path.split("?", 1)[0] == "/":
+            body = moved_page(go)                                       # the home page: look for this browser's data before moving on
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return True
         self.send_response(301)
-        self.send_header("Location", PUBLIC_BASE + self.path)
+        self.send_header("Location", go)
         self.send_header("Content-Length", "0")
         self.end_headers()
         return True
@@ -853,7 +916,8 @@ class H(http.server.SimpleHTTPRequestHandler):
         # or style rules: the pages carry their own inline code, and Google's and Stripe's pages are reached by full-page redirects.
         self.send_header("Content-Security-Policy", "frame-ancestors 'self'; object-src 'none'; base-uri 'self'")
         self.send_header("Permissions-Policy", "camera=(), microphone=(), usb=(), payment=()")   # never used; location stays the browser's default (the app asks)
-        if self.headers.get("X-Forwarded-Proto") == "https":
+        h = getattr(self, "headers", None)                              # not there yet when the request line itself was malformed (a 400)
+        if h is not None and h.get("X-Forwarded-Proto") == "https":
             self.send_header("Strict-Transport-Security", "max-age=31536000")
         super().end_headers()
 

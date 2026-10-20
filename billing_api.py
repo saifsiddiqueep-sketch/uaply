@@ -179,7 +179,7 @@ def status(user):
 
 def checkout(user, plan, site):
     if hidden():
-        return 403, {"error": "Plus and Pro are coming soon. For now every account is on the Free plan.", "code": "plans_hidden"}
+        return 403, {"error": "Plus and Pro are not open yet. They are coming soon; nothing was charged.", "code": "plans_hidden"}
     s = settings()
     if not s["on"]:
         return 503, {"error": "Payments are not switched on yet."}

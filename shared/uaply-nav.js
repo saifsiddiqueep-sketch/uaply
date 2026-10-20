@@ -1411,7 +1411,9 @@ function apply(w,host){
           (cur!=="free"||BILL.problem?'<button type="button" class="btn ghost" data-bill="portal">Switch in Manage billing</button>':'<button type="button" class="btn" data-bill="'+k+'">Choose '+p.name+'</button>'))));
       h+='<div class="plan" data-cur="'+isCur+'"><b>'+p.name+'</b><span class="pr">'+(p.price?"$"+p.price.toFixed(2)+'<small>/month</small>':"$0")+'</span><ul>'+p.perks.map(function(x){return '<li>'+E(x)+'</li>'}).join("")+'</ul>'+btn+'</div>';
     });
-    if(BILL.hidden)return h+'</div><p class="note" id="plansSoon"><b>Plus and Pro are coming soon.</b> You will see their prices here before anything can be bought.'+(cur==="free"?' Nothing is charged and no card is asked for.':'')+'</p>';
+    /* hidden: a past subscriber (a Stripe customer now on Free) keeps Manage billing for invoices; a paid plan's own card already has it */
+    if(BILL.hidden)return h+'</div><p class="note" id="plansSoon"><b>Plus and Pro are coming soon.</b> You will see their prices here before anything can be bought.'+(cur==="free"&&!BILL.hasCustomer?' Nothing is charged and no card is asked for.':'')+'</p>'+
+      (cur==="free"&&BILL.hasCustomer?'<div class="acts"><button type="button" class="btn ghost" data-bill="portal">Manage billing</button></div>':'');
     return h+'</div><p class="note">Payments are handled by Stripe on its own secure page. UAply never sees or stores your card number. Cancel any time in Manage billing; the plan stays until the end of the paid month.</p>';
   }
   /* Data and privacy: "You agreed to the Terms and Privacy Policy on <date>" (the date this browser said yes) */
@@ -1436,6 +1438,19 @@ function apply(w,host){
       msg((r.j&&r.j.error)||"Could not open the payment page. Try again.");
     });
   }
+  /* ?moved=1: the person came from the old address's "UAply has moved" page (serve.py MOVED_PAGE) after saving a backup there. Open
+     Data & privacy at Restore, once per browser, and drop the hint from the address so a reload or a shared link does not do it again */
+  (function movedReturn(){
+    var q=null;try{q=new w.URLSearchParams(w.top.location.search)}catch(e){return}
+    if(q.get("moved")!=="1")return;
+    try{q.delete("moved");var s=q.toString();w.top.history.replaceState(null,"",w.top.location.pathname+(s?"?"+s:""))}catch(e){}
+    var MK=w.__uaplyKey+".moved";try{if(w.localStorage.getItem(MK))return;w.localStorage.setItem(MK,String(Date.now()))}catch(e){}
+    setTimeout(function(){
+      sub.prof="data";cur="prof";go("prof");renderAcct("data");
+      var f=d.getElementById("aImp");if(f&&f.scrollIntoView)f.scrollIntoView({block:"center"});
+      msg("Welcome to the new address. If you saved a backup at the old one, choose that file under Restore to bring your profile and swipes here.");
+    },300);
+  })();
   (function billingReturn(){
     var q=null;try{q=new w.URLSearchParams(w.top.location.search)}catch(e){return}
     var b=q.get("billing");if(!b)return;
@@ -1746,6 +1761,7 @@ function apply(w,host){
     SRV.google=!!(j&&j.google);SRV.googleClientId=(j&&j.googleClientId)||"";SRV.googleRedirect=!!(j&&j.googleRedirect);SRV.canEmail=!!(j&&j.canEmail);SRV.mailKnown=!!j;
     if((SRV.google||!SRV.canEmail)&&!acctSec.hidden&&sub.prof==="account")redrawAcct();
   }).catch(function(){});
+  var GSTART="uaply.gstart";   /* sessionStorage of the top page: set when this tab leaves for Google, read once when it comes back */
   var GERR={agree:"Tick the box to confirm you are 18 or older and agree to the Terms and Privacy Policy, then try Google again.",cancelled:"Google sign-in was cancelled.",expired:"That Google sign-in expired or could not be checked. Try again.",failed:"Google sign-in did not work. Try again, or use your email and password.",unverified:"Google says that email address is not verified, so UAply cannot use it.",off:"Google sign-in is not switched on.",email_in_use:"That email already has a UAply account. Sign in with your email and password instead.",disposable:"Please use an email address you'll keep — temporary addresses can't be used for job applications."};
   function googleReturn(){
     var tp=null,q=null;
@@ -1759,9 +1775,14 @@ function apply(w,host){
       return;
     }
     if(!er&&!ok)return;
+    var st=0;try{st=+tp.sessionStorage.getItem(GSTART)||0;tp.sessionStorage.removeItem(GSTART)}catch(e){}
+    var real=st>0&&Date.now()-st<15*60e3;                                  /* this tab pressed Continue with Google in the last 15 minutes */
     try{tp.history.replaceState(null,"",tp.location.pathname)}catch(e){}
     sub.prof="account";cur="prof";go("prof");renderAcct("account");
-    if(!er&&HELP&&!SRV.user){SHIELD.cookie=true;renderAcct("account");msg(GERR.failed);return}   /* Google said yes but no session cookie arrived */
+    if(!er&&!SRV.user){                                                     /* Google said yes but no session cookie arrived */
+      if(real){if(HELP){SHIELD.cookie=true;renderAcct("account")}msg(GERR.failed)}   /* only after a real round trip: a bare ?signed_in= link claims nothing */
+      return;
+    }
     msg(er?(GERR[er]||GERR.failed):(q.get("password_removed")?PW_GONE:"Signed in with Google."));
   }
   w.__uaplyAuth=function(){return {up:SRV.up,user:SRV.user}};
@@ -2059,6 +2080,7 @@ function apply(w,host){
       var ga=(d.getElementById("gAgree")||{}).checked;
       b.disabled=true;msg("Opening Google…");
       var gu="/api/auth/google/start"+(ga?"?agree=1":"");
+      try{w.top.sessionStorage.setItem(GSTART,String(Date.now()))}catch(e){}   /* so the return can tell a real round trip from a typed ?signed_in= link */
       try{w.top.location.assign(gu)}catch(e){w.location.assign(gu)}
       return;
     }
