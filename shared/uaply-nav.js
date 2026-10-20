@@ -84,7 +84,11 @@ var CSS=`
 .nb{flex:1;border:0;background:none;border-radius:999px;padding:6px 8px;min-height:48px;font-weight:600;color:var(--muted);display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.15;min-width:0}
 .nb small{font:500 11px var(--mono);opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 #bnav.simple .nb small{display:none}#bnav.simple .nb{font-size:15px;min-height:44px}
-@media (max-width:700px){#bnav.simple~#legalbar{display:none}#bnav.simple~#toastHost{margin-top:-12px}body:has(#bnav.simple){padding-bottom:calc(var(--nav-lift,1px) + env(safe-area-inset-bottom,0px))}}
+/* the screen's bottom safe area (iPhone home indicator). The app runs in a frame: Safari gives a frame no inset, Chrome gives it the
+   whole screen's even where the page around the frame already keeps that space free (the sandbox's app mode), so the page around the
+   frame works out what is still needed and passes it as --sab (uaply-envs.js, syncSafeArea); env() is only the fallback without it */
+:root{--safe-b:var(--sab,env(safe-area-inset-bottom,0px))}
+@media (max-width:700px){#bnav.simple~#legalbar{display:none}#bnav.simple~#toastHost{margin-top:-12px}body:has(#bnav.simple){padding-bottom:calc(var(--nav-lift,1px) + var(--safe-b))}}
 .nb[aria-current="true"]{background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink)}
 .nmenu{position:absolute;bottom:calc(100% + 10px);left:50%;transform:translateX(-50%);min-width:220px;max-height:calc(100vh - 96px);overflow-y:auto;overscroll-behavior:contain;background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:6px;display:flex;flex-direction:column;gap:2px;z-index:20}
 .nwrap:first-child .nmenu{left:0;transform:none}
@@ -93,13 +97,23 @@ var CSS=`
 .nitem:hover,.nitem:focus-visible{background:var(--bg)}
 .nitem[aria-checked="true"]{color:var(--accent);background:var(--bg)}
 .nitem .c{font:500 12px var(--mono);color:var(--muted)}
-.toast{bottom:var(--toast-at,var(--above-nav,calc(88px + env(safe-area-inset-bottom,0px))));pointer-events:none;width:max-content;max-width:min(600px,calc(100vw - 32px))}.toast button{pointer-events:auto}
-body{padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
+.toast{bottom:var(--toast-at,var(--above-nav,calc(88px + var(--safe-b))));pointer-events:none;width:max-content;max-width:min(600px,calc(100vw - 32px))}.toast button{pointer-events:auto}
+body{padding-bottom:calc(12px + var(--safe-b))}
+/* laptops: the header, the screens and the bottom bar share one centred column about 960 px wide, and the Account, Plan & billing,
+   Data & privacy, Filters and Profile setup screens sit in its middle instead of against its left edge (Hiring mode keeps its own width) */
+@media (min-width:701px){
+ body:not(.hire)>header.bar,#main,#bnav{max-width:960px}
+ #acctSec,#form{margin-inline:auto}
+}
 /* Pass / Undo / Apply always in sight, just above the bottom bar. The deck scrolls inside #main, and on first open the tips, the
    example-profile notice, the location box, the filters and the card's 430 px minimum pushed the row below the bottom of #main,
    under the bar (Oct 17 audit, "Start does not work"). Sticky to the bottom of #main the row stays where it is when everything
    fits and holds the bottom edge when it does not; its own space stays in the flow, so scrolled to the end the card ends above it. */
 #pane-swipe .actions{position:sticky;bottom:0;z-index:3;background:var(--bg);box-shadow:0 -10px 12px -2px var(--bg)}
+/* while that row lies over the lower part of the card (a short phone, before the deck is scrolled to its end), the card's own
+   scrolling area gets that much room after its last line, so scrolled to its end the last line sits above Pass / Undo / Apply.
+   The height is measured each time (cardCover below); nothing is added when the row does not reach the card. */
+#deck[data-covered] .card.top::after{content:"";flex:none;height:var(--card-cover,0px)}
 #pane-track .stats{grid-template-columns:repeat(4,1fr)}
 #pane-track .row{flex-wrap:wrap}
 #pane-track .acts{display:flex;gap:6px;flex-wrap:wrap;flex-basis:100%}
@@ -345,6 +359,22 @@ function apply(w,host){
     d.documentElement.style.setProperty("--toast-at",(Math.max(0,Math.round(w.innerHeight-y))+8)+"px");
   }
   new w.MutationObserver(function(ms){for(var i=0;i<ms.length;i++)for(var j=0;j<ms[i].addedNodes.length;j++){var n=ms[i].addedNodes[j];if(n.nodeType===1&&(n.classList.contains("toast")||n.querySelector&&n.querySelector(".toast"))){toastAt();return}}}).observe(d.body,{childList:true,subtree:true});
+  /* how much of the top card lies under the sticky Pass / Undo / Apply row (see #deck[data-covered] in the CSS). Worked out again when
+     anything scrolls or changes size, when a new card comes up and when a notice above the deck opens or closes; at most once a frame. */
+  var deckEl=d.getElementById("deck"),coverQueued=false;
+  function cardCover(){
+    coverQueued=false;if(!deckEl)return;
+    var c=deckEl.querySelector(".card.top"),a=d.querySelector("#pane-swipe:not([hidden]) .actions"),v=0;
+    if(c&&a){var cr=c.getBoundingClientRect(),ar=a.getBoundingClientRect();if(cr.height&&ar.height&&ar.top<cr.bottom&&ar.bottom>cr.top)v=Math.round(Math.min(cr.bottom-ar.top,cr.height))}
+    if(v>0){deckEl.setAttribute("data-covered","");deckEl.style.setProperty("--card-cover",v+"px")}
+    else if(deckEl.hasAttribute("data-covered")){deckEl.removeAttribute("data-covered");deckEl.style.removeProperty("--card-cover")}
+  }
+  function queueCover(){if(!coverQueued){coverQueued=true;(w.requestAnimationFrame||w.setTimeout)(cardCover)}}
+  w.addEventListener("resize",queueCover);d.addEventListener("scroll",function(e){if(e.target===main||e.target===d)queueCover()},{passive:true,capture:true});
+  var swipePane=d.getElementById("pane-swipe");
+  if(swipePane)new w.MutationObserver(queueCover).observe(swipePane,{childList:true,subtree:true,attributes:true,attributeFilter:["hidden","class"]});
+  if(w.ResizeObserver&&swipePane)new w.ResizeObserver(queueCover).observe(swipePane);
+  queueCover();
   /* fine print: always one tap away (App Store and Google Play also expect a reachable privacy policy) */
   var lp=(host&&host.defaultView&&host.defaultView.location.pathname)||"/",LB=/\/(sandbox|dev)\/(index\.html)?$/.test(lp)?"../legal/":"legal/";   /* also /dev/index.html: the hosted copies have legal/ one folder up */
   var legalbar=d.createElement("div");legalbar.id="legalbar";

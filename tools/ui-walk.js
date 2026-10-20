@@ -13,6 +13,8 @@
 // 8. the one-tap rating question goes away when the person taps anything else (a tap meant for a menu landed on its "3")
 // 9. a right swipe on a hand-off job is quiet ("Saved X to Applied · N% match" with Undo, never "Finish on their site"); Applied shows the
 //    status chip, See the job posting and Finish applying on their site, which copies only name, email, phone and links and tags Greenhouse/Lever links
+// 10. at laptop size (W 1000 or more, October 20 layout pass): one centred column about 960 px wide, with Account and Plan & billing in
+//     its middle
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -186,6 +188,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, on }) => {
   check("8. a tap on the Dashboard tab closes the rating question", (await q("return d.getElementById('uaNudge').hidden")) === true);
   const menuOpen = await q("return [...d.querySelectorAll('.nitem')].some(b=>b.offsetParent&&b.getAttribute('data-v')==='applied')");
   check("8. ...and the Dashboard menu opens for the next tap", menuOpen === true, menuOpen);
+  await q("d.getElementById('nb-dash').click();return 1"); await sleep(300);    // close that menu again
 
   // 9. quiet swipe (Oct 20): a right swipe on a job that takes applications on its own site never interrupts with "Finish on their
   //    site"; the message is the short "Saved X to Applied · N% match" with Undo, and the Applied row carries the status and both links
@@ -245,6 +248,25 @@ module.exports = async ({ ev, sleep, nav, send, logs, on }) => {
   await sleep(600);
   check("9. Undo on the saved message takes that job back (no longer in Applied, back among the jobs to swipe, as Undo always did)", undo === "yes" && (await q("return !w.__uaply.S.decisions[" + id10 + "]&&w.__uaply.S.history.indexOf(" + id10 + ")<0")) === true, "undo button " + undo + ", decision " + (await q("return JSON.stringify(w.__uaply.S.decisions[" + id10 + "]||null)")) + ", top " + (await q("return (d.querySelector('.card.top')||{getAttribute:()=>0}).getAttribute('data-id')")) + " want " + id10);
 
+  // 10. laptops (from 1000 px wide): the app is one centred column about 960 px wide, and Account and Plan & billing sit in its middle
+  //     (they used to sit against the left edge of a 1100 px column, with empty space on their right)
+  //     The walk above, run last because it leaves the phone size, runs at phone size whatever the window (it sets 390x844 itself), so this part first goes back to the real window.
+  if (+(process.env.W || 1100) >= 1000) {
+    await send("Emulation.clearDeviceMetricsOverride"); await send("Emulation.setTouchEmulationEnabled", { enabled: false });
+    await nav(BASE + "/"); await waitFor("return !!d.getElementById('bnav')&&!!d.getElementById('acctSec')", 15000); await sleep(600);
+    const col = JSON.parse(await q("const m=d.getElementById('main').getBoundingClientRect(),n=d.getElementById('bnav').getBoundingClientRect(),h=d.querySelector('header.bar').getBoundingClientRect();return JSON.stringify({w:w.innerWidth,ml:m.left,mr:m.right,nl:n.left,nr:n.right,hl:h.left,hr:h.right})"));
+    const mid = (l, r) => (l + r) / 2;
+    check("10. laptop (" + col.w + " px): the screens, the header and the bottom bar share one column at most 960 px wide, centred in the window",
+      col.w >= 1000 && col.mr - col.ml <= 960.5 && Math.abs(mid(col.ml, col.mr) - col.w / 2) <= 1.5 && Math.abs(col.nl - col.ml) <= 1.5 && Math.abs(col.nr - col.mr) <= 1.5 && Math.abs(col.hl - col.ml) <= 1.5 && Math.abs(col.hr - col.mr) <= 1.5,
+      JSON.stringify(col));
+    for (const [v, name] of [["account", "Account"], ["plan", "Plan & billing"]]) {
+      await q("d.getElementById('nb-prof').click();return 1"); await sleep(300);
+      await q("const b=[...d.querySelectorAll('.nitem')].find(b=>b.offsetParent&&b.getAttribute('data-v')==='" + v + "');if(b)b.click();return !!b"); await sleep(700);
+      const s = JSON.parse(await q("const a=d.getElementById('acctSec'),m=d.getElementById('main');if(!a||a.hidden)return 'null';const r=a.getBoundingClientRect(),mr=m.getBoundingClientRect();return JSON.stringify({l:r.left,r:r.right,ml:mr.left,mr:mr.right,sb:m.offsetWidth-m.clientWidth})"));
+      check("10. laptop: " + name + " sits in the middle of the column (not against its left edge)",
+        !!s && s.l - s.ml > 40 && Math.abs((s.l + s.r) / 2 - (s.ml + s.mr - s.sb) / 2) <= 2, JSON.stringify(s));
+    }
+  }
 
   const errs = logs.filter((l) => l.startsWith("EXC"));
   check("no script errors", errs.length === 0, errs.slice(0, 3).join(" | "));

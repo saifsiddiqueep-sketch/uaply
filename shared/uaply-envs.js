@@ -273,6 +273,24 @@ function build(on,key){
     return {src:src,err:err};
   });
 }
+/* The bottom safe area (an iPhone's home indicator) reaches the app only through this page: inside the frame env(safe-area-inset-bottom)
+   reads 0. This page reads it with a hidden probe and hands the frame the part it does not already leave free below the frame (the
+   sandbox's app mode pads its stage), as --sab on the frame's root. 0 wherever the browser reports no inset (most pages, every computer). */
+function syncSafeArea(frame){
+  var d=document,p=d.getElementById("uaSafeProbe");
+  if(!p&&d.body){p=d.createElement("div");p.id="uaSafeProbe";p.setAttribute("aria-hidden","true");
+    p.style.cssText="position:fixed;left:0;bottom:0;width:0;height:0;overflow:hidden;visibility:hidden;pointer-events:none;padding-bottom:env(safe-area-inset-bottom,0px)";d.body.appendChild(p)}
+  function set(){
+    try{
+      var inset=p?parseFloat(getComputedStyle(p).paddingBottom)||0:0,below=Math.max(0,window.innerHeight-frame.getBoundingClientRect().bottom);
+      var root=frame.contentDocument&&frame.contentDocument.documentElement;
+      if(root)root.style.setProperty("--sab",Math.max(0,Math.round(inset-below))+"px");
+    }catch(e){}
+  }
+  set();
+  /* once per frame: a reload (the sandbox's experiment switches) reuses the same listeners, which read the new document each time */
+  if(!frame.__uaSafe){frame.__uaSafe=true;window.addEventListener("resize",set);window.addEventListener("orientationchange",set)}
+}
 /* Load the patched copy into frame. `on` = {featureKey:true}. `key` = this instance's own localStorage key. */
 function run(frame,on,key,done){
   if(on.submit)on=Object.assign({},on,{nav:true,live:true,kit:true});   /* sending applications needs these three */
@@ -281,6 +299,7 @@ function run(frame,on,key,done){
   return build(on,key).then(function(b){
     frame.onload=function(){
       var w=frame.contentWindow;w.__uaplyKey=key;
+      syncSafeArea(frame);
       ORDER.forEach(function(k){if(on[k]&&FEATURES[k].apply){try{FEATURES[k].apply(w,document)}catch(e){b.err+=FEATURES[k].name+": "+e.message+". "}}});
       if(done)done(b.err);
     };

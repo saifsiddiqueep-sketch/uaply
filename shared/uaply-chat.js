@@ -7,7 +7,7 @@
    Nothing here sees or sends the person's profile: only what they type into the chat. */
 (function(){
 var CSS=`
-#uaChatBtn{position:fixed;right:16px;bottom:var(--above-nav,calc(96px + env(safe-area-inset-bottom,0px)));z-index:40;display:flex;align-items:center;gap:8px;min-height:48px;padding:0 18px 0 14px;border:0;border-radius:999px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);font-weight:700;font-size:14.5px;box-shadow:var(--shadow);cursor:pointer}
+#uaChatBtn{position:fixed;right:16px;bottom:var(--above-nav,calc(96px + var(--safe-b,env(safe-area-inset-bottom,0px))));z-index:40;display:flex;align-items:center;gap:8px;min-height:48px;padding:0 18px 0 14px;border:0;border-radius:999px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);font-weight:700;font-size:14.5px;box-shadow:var(--shadow);cursor:pointer}
 #uaChatBtn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 #uaChatBtn:focus-visible,#uaChat button:focus-visible,#uaChat input:focus-visible,#uaNudge button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 #uaChat{position:fixed;right:16px;bottom:calc(var(--above-nav,96px) + 60px);z-index:45;width:min(390px,calc(100vw - 24px));height:min(580px,calc(100vh - 190px));display:flex;flex-direction:column;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);overflow:hidden}
@@ -40,6 +40,19 @@ var CSS=`
 #uaNudge .row button{flex:1;min-height:44px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:12px;font-weight:700;cursor:pointer}
 #uaNudge .row button:hover{border-color:var(--accent)}
 @media (max-width:520px){#uaChat{left:12px;right:12px;width:auto;bottom:calc(var(--above-nav,96px) + 54px)}#uaChatBtn span{display:none}#uaChatBtn{padding:0 13px}}
+/* phones: the Help button sits at the right end of the header row instead of in the thumb's path to Apply (it lay 17 px from the
+   Apply button at 390x844). The header keeps room for it, the panel and the rating question open under the header, and the bottom
+   corner belongs to Pass / Undo / Apply and the tabs again. Hiring mode hides the button, so the header keeps its full width there. */
+@media (max-width:700px){
+ #uaChatBtn{top:10px;bottom:auto;min-height:44px;height:44px}
+ body:not(.hire):has(>#uaChatBtn)>header.bar{padding-right:106px}
+ #uaChat{top:62px;bottom:var(--above-nav,96px);height:auto}
+ #uaNudge{top:62px;bottom:auto}
+}
+@media (max-width:520px){#uaChatBtn{padding:0 11px}body:not(.hire):has(>#uaChatBtn)>header.bar{padding-right:56px;column-gap:8px}}
+/* the account button shows the email from 481 px (below that only the initial, uaply-nav.js): there it gives up the Help button's room */
+@media (min-width:481px) and (max-width:520px){.hdrbtn{max-width:min(60vw,calc(100vw - 190px))}}
+@media (min-width:521px) and (max-width:700px){.hdrbtn{max-width:min(60vw,calc(100vw - 240px))}}
 @media (prefers-reduced-motion:no-preference){#uaChat:not([hidden]),#uaNudge:not([hidden]){animation:uaUp .18s ease-out}@keyframes uaUp{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}}
 `;
 

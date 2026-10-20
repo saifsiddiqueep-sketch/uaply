@@ -9,8 +9,11 @@
 //   3. the buttons never cover the job card's own controls: scrolled to the end, the card ends above the buttons, and every card
 //      control that is on screen can be reached;
 //   4. after a swipe the message ("Passed on ...", Undo) sits clear of the three buttons and of the bar.
+// Since October 20 (layout pass), also: 2a. on phones the Help button is out of the thumb's path to Apply and lies on nothing in the
+// header; 3a. on a short phone, before the deck is scrolled, the card scrolled inside to its own end shows its last line above the
+// buttons; 5. with an emulated 34 px bottom safe area the bar keeps clear of it, counted once.
 const PORT = process.env.PORT || "8767";
-module.exports = async ({ ev, sleep, nav, shot }) => {
+module.exports = async ({ ev, sleep, nav, shot, send }) => {
   const F = "document.querySelector('iframe').contentDocument";
   let bad = 0, n = 0;
   const check = (name, ok, extra) => { n++; if (!ok) bad++; console.log((ok ? "PASS " : "FAIL ") + name + (extra ? "  " + extra : "")); };
@@ -62,6 +65,22 @@ module.exports = async ({ ev, sleep, nav, shot }) => {
   check(size + " after Agree: a tap anywhere on Pass, Undo and Apply reaches the button", !cov, cov);
   if (process.env.SHOTS) await shot(process.env.SHOTS + "-" + size + "-2-agreed.png");
 
+  // 2a. phones: the Help button is out of the thumb's path to Apply (it sat 17 px to the right of Apply at 390x844), and where it sits
+  //     now (the right end of the header) it lies on nothing in the header: the brand and the Sign in / account button keep their room
+  if (+(process.env.W || 1100) <= 700) {
+    const Hp = JSON.parse(await ev(`JSON.stringify((()=>{const d=${F},h=d.getElementById('uaChatBtn');if(!h)return null;const r=e=>{const b=e.getBoundingClientRect();return {l:b.left,r:b.right,t:b.top,b:b.bottom}};
+      const hb=r(h),gap=(a,b)=>Math.hypot(Math.max(0,a.l-b.r,b.l-a.r),Math.max(0,a.t-b.b,b.t-a.b));
+      const near=Math.round(Math.min(...['btnNo','btnUndo','btnYes'].map(id=>gap(hb,r(d.getElementById(id))))));
+      const hdr=d.querySelector('header.bar'),hit=hdr?[...hdr.querySelectorAll('*')].filter(e=>e.offsetParent&&e.getBoundingClientRect().width&&!e.closest('.tabs')).filter(e=>{const b=r(e);return b.l<hb.r-0.5&&hb.l<b.r-0.5&&b.t<hb.b-0.5&&hb.t<b.b-0.5}).map(e=>e.className||e.tagName):[];
+      const top=d.elementFromPoint((hb.l+hb.r)/2,(hb.t+hb.b)/2);
+      return {near,hit:hit.join(','),own:!!top&&(top===h||h.contains(top)),onScreen:hb.t>=0&&hb.r<=d.defaultView.innerWidth+0.5,hdrRows:hdr?Math.round(hdr.getBoundingClientRect().height):0}})())`));
+    if (Hp) {
+      check(size + " phone: the Help button is at least 96 px from Pass, Undo and Apply", Hp.near >= 96, "closest " + Hp.near + " px");
+      check(size + " phone: the Help button covers nothing in the header, is on screen and a tap on it reaches it", !Hp.hit && Hp.own && Hp.onScreen, (Hp.hit ? "lies on " + Hp.hit + " " : "") + (Hp.own ? "" : "something lies on it ") + (Hp.onScreen ? "" : "off screen"));
+      check(size + " phone: the header stays one row with the Help button in it", Hp.hdrRows <= 56, "header " + Hp.hdrRows + " px tall");
+    }
+  }
+
   // 2b. on a short phone with the notices and the location card up, the useful top of the card (title, company, pay) shows
   //     above the buttons without scrolling (before: only the card's top edge did, at 375x667)
   if (+(process.env.W || 1100) <= 430 && +(process.env.H || 900) <= 700) {   // short phones only (375x667, 360x640)
@@ -73,6 +92,21 @@ module.exports = async ({ ev, sleep, nav, shot }) => {
     check(size + " after Agree" + (T.loc ? " with the location card open" : "") + ": the card's title, company" + (+(process.env.H || 900) < 667 ? "" : " and pay") + " sit above the buttons without scrolling",
       inView(T.h2) && inView(T.co) && (!T.pay || +(process.env.H || 900) < 667 || inView(T.pay)), "title " + T.h2 + ", company " + T.co + ", pay " + T.pay + ", visible " + T.top + "-" + T.lim);
   }
+
+  // 3a. before the deck is scrolled, the row lies over the lower part of the card on a short phone (375x667: about 280 px of it). The
+  //     card scrolls inside itself; scrolled to its own end, its last line of text must sit above Pass / Undo / Apply, not under them.
+  //     Measured on the text itself (the lowest line box of any shown text in the card), against the top of the row.
+  const lastLine = () => ev(`(()=>{const d=${F},c=d.querySelector('.card.top'),a=d.querySelector('#pane-swipe .actions');if(!c||!a)return null;
+    c.scrollTop=c.scrollHeight;const ar=a.getBoundingClientRect(),cr=c.getBoundingClientRect(),tw=d.createTreeWalker(c,NodeFilter.SHOW_TEXT);let n,low=-1e9,what='';
+    while((n=tw.nextNode())){if(!n.textContent.trim())continue;const p=n.parentElement,s=d.defaultView.getComputedStyle(p);if(!p.offsetParent||s.visibility==='hidden'||+s.opacity===0)continue;
+      const rg=d.createRange();rg.selectNodeContents(n);for(const b of rg.getClientRects())if(b.height&&b.bottom>low){low=b.bottom;what=n.textContent.trim().slice(-30)}}
+    return JSON.stringify({over:Math.round(cr.bottom-ar.top),low:Math.round(low),row:Math.round(ar.top),what:what,inner:c.scrollHeight>c.clientHeight})})()`);
+  await ev("(()=>{const m=(" + F + ").getElementById('main');m.scrollTop=0})()"); await sleep(400);
+  const L = JSON.parse((await lastLine()) || "null");
+  if (L && +(process.env.H || 900) <= 700) check(size + " not scrolled: the button row lies over the lower part of the card (the next check is not empty here)", L.over > 0, "overlap " + L.over + " px");
+  if (L && L.over > 0) check(size + " not scrolled, the card scrolled inside to its end: its last line sits above the buttons", L.low <= L.row + 0.5,
+    "last line \"" + L.what + "\" ends " + L.low + ", buttons start " + L.row + " (row over the card by " + L.over + " px)");
+  await ev("(()=>{const c=(" + F + ").querySelector('.card.top');if(c)c.scrollTop=0})()"); await sleep(200);
 
   // 3. the buttons never sit on the card's own controls
   let cc = await cardCovered();
@@ -99,6 +133,28 @@ module.exports = async ({ ev, sleep, nav, shot }) => {
   } else check(size + " after a swipe: a message says what happened", false, "no message shown");
   allVisible("after a swipe", B);
   if (process.env.SHOTS) await shot(process.env.SHOTS + "-" + size + "-3-swiped.png");
+
+  // 5. phones: a 34 px bottom safe area (an iPhone's home indicator, emulated by Chrome) keeps the bottom bar clear of it, counted once:
+  //    the app's frame gets only the part the page around it does not already leave free (the sandbox's app mode pads its stage; before,
+  //    that and the frame's own env() added up, 56 px at 390x844). The bar's distance from the screen's bottom must be
+  //    max(34, the space below the frame) plus the bar's own lift.
+  if (+(process.env.W || 1100) <= 700) {
+    const ok = await send("Emulation.setSafeAreaInsetsOverride", { insets: { top: 0, bottom: 34, left: 0, right: 0 } });
+    if (ok && ok.error) console.log("NOTE " + size + " this Chrome cannot emulate a safe area (" + ok.error.message + "): check 5 skipped");
+    else {
+      await nav("http://127.0.0.1:" + PORT + "/");
+      for (let i = 0; i < 40 && !(await ev("!!(" + F + ") && !!(" + F + ").getElementById('bnav')")); i++) await sleep(250);
+      await sleep(800);
+      const S = JSON.parse(await ev(`JSON.stringify((()=>{const d=${F},f=document.querySelector('iframe').getBoundingClientRect(),n=d.getElementById('bnav').getBoundingClientRect();
+        const lv=getComputedStyle(d.documentElement).getPropertyValue('--nav-lift').trim(),simple=d.getElementById('bnav').classList.contains('simple');
+        return {gap:innerHeight-(f.top+n.bottom),below:innerHeight-f.bottom,lift:lv?parseFloat(lv)||0:1,simple}})())`));
+      const want = Math.max(34, S.below) + S.lift;
+      if (!S.simple) console.log("NOTE " + size + " the bar has two-line tabs here (the legal links sit below it): check 5 skipped");
+      else check(size + " with a 34 px bottom safe area the bar sits clear of it, counted once (" + Math.round(S.gap) + " px from the bottom, want " + Math.round(want) + ")",
+        Math.abs(S.gap - want) <= 1.5, "space below the frame " + Math.round(S.below) + ", lift " + S.lift);
+      await send("Emulation.setSafeAreaInsetsOverride", { insets: { top: 0, bottom: 0, left: 0, right: 0 } });
+    }
+  }
 
   console.log(n - bad + " / " + n);
   if (bad) process.exitCode = 1;
