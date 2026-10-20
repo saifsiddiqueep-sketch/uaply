@@ -88,7 +88,8 @@ t("the hiring team's email stays on the server for the Plus/Pro message", employ
 
 # ---- applying ----
 APPLY = {"consent": True, "match": 92, "job": {"id": jid, "co": "Northwind Freight", "role": "Junior Logistics Analyst", "url": "https://northwind.example", "contact": ""},
-         "profile": {"name": "Maya Chen", "email": "maya@example.test", "skills": ["Excel"], "ext": {"auth": "citizen", "sponsor": "no", "gpa": "3.4", "grad": "2026-05"}}}
+         "profile": {"name": "Maya Chen", "email": "maya@example.test", "skills": ["Excel"], "loc": "Philadelphia",   # a complete profile: the sandbox refuses one without phone, city and resume (readiness.py)
+                     "ext": {"auth": "citizen", "sponsor": "no", "gpa": "3.4", "grad": "2026-05", "phone": "215 555 0100", "resume": "https://maya.example/cv.pdf"}}}
 code, out = uaply_api.submit(APPLY)
 t("an application is delivered to the employer's verified email (test mode)", (code, out.get("status"), out.get("to")), (200, "delivered_test", "hiring@northwind.test"))
 t("another employer cannot change this posting", employers_api.save_job(dict(OTHER), dict(JOB, id=jid))[0] in (400, 404), True)
