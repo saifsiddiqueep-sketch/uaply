@@ -1,7 +1,7 @@
-"""Fill from your resume (resume_parse.py and POST /api/profile/resume): the parser on six made-up resumes, the layouts and date styles
+"""Fill from your resume (resume_parse.py and POST /api/profile/resume): the parser on seven made-up resumes, the layouts and date styles
 resumes use, every file it must refuse with a plain sentence, and the endpoint on a real server.
   python tools/test-resume.py [PORT]
-The six resumes are in tools/fixtures/resumes/ (written by tools/make-resume-fixtures.py) with the right answers in expected.json.
+The seven resumes are in tools/fixtures/resumes/ (written by tools/make-resume-fixtures.py) with the right answers in expected.json.
 PDF cases need pypdf (pip install pypdf); without it they are skipped with a message and the rest still runs."""
 import base64
 import io
@@ -58,7 +58,7 @@ def val(f, k):
 
 
 # ---------------------------------------------------------------------------------------------------------------------------------
-print("== The six made-up resumes")
+print("== The seven made-up resumes")
 EXPECTED = json.load(open(os.path.join(FIX, "expected.json"), encoding="utf-8"))
 ACCURACY = []
 
@@ -113,6 +113,12 @@ for txt, start, end in (("01/2024 - 05/2025", "2024-01", "2025-05"), ("2024-01 �
     t("date range %r" % txt, (val(f, "job_start"), val(f, "job_end")), (start, end))
 f = fields_of("Lee Wong\nlee@example.com\n\nExperience\nData Analyst\nOld Bank   2018 - 2020\n\nData Engineer\nNew Labs Inc   2021 - Present\n- pipelines")
 t("the most recent job wins even when it is listed second", (val(f, "employer"), val(f, "job_title"), val(f, "job_start")), ("New Labs Inc", "Data Engineer", "2021"))
+f = fields_of("Jo Park\njo@example.edu\n\nExperience\nCashier, Corner Store   2023 - Present\n\nLeadership & Activities\nPresident, Finance Club   2024 - Present\n- ran meetings")
+t("a club office under 'Leadership & Activities' is not the most recent job", (val(f, "job_title"), val(f, "employer"), val(f, "job_start")), ("Cashier", "Corner Store", "2023"))
+f = fields_of("Jo Park\njo@example.edu\n\nSkills\nMicrosoft Excel (pivot tables, VLOOKUP), SQL (basic), Canva")
+t("a note in brackets after a skill is not split into skills of its own", [s for s in val(f, "skills") if s in ("Excel", "SQL", "Canva") or "(" in s or ")" in s], ["Excel", "SQL", "Canva"])
+f = fields_of("Jo Park\njo@example.edu\n\nExperience\nBarista (part-time)   Sep 2023 - Present\nRiver Cafe")
+t("a job title keeps its own bracket: 'Barista (part-time)'", val(f, "job_title"), "Barista (part-time)")
 f = fields_of("Ana Silva\nana@example.com\nWORK HISTORY:\n2019 - 2022  Cashier, Corner Store\nSkills: Excel, customer service, Spanish")
 t("'WORK HISTORY:' heading, dates first, skills on the heading line", (val(f, "job_title"), val(f, "employer"), val(f, "skills")),
   ("Cashier", "Corner Store", ["Excel", "Customer Service", "Spanish"]))
@@ -197,6 +203,9 @@ if HAS_PDF:
     b = io.BytesIO()
     w.write(b)
     t("a password-protected PDF", err_code(b.getvalue(), "locked.pdf"), "encrypted")
+    biz = rp.read_text(open(os.path.join(FIX, "business.pdf"), "rb").read(), "business.pdf")[1]
+    t("a PDF's bullets and accents arrive whole, whatever the computer's code page (no replacement characters)",
+      ("�" in biz, "Jordan Álvarez" in biz, "• Ran weekly" in biz), (False, True, True))
     t("a PDF renamed .txt is still read as a PDF", val(rp.parse(open(os.path.join(FIX, "twocolumn.pdf"), "rb").read(), "cv.txt")["fields"], "name"), "Sam Okafor")
 else:
     skip("scanned, broken and password-protected PDFs")

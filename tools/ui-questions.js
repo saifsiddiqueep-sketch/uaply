@@ -59,6 +59,8 @@ module.exports = async ({ ev, sleep, nav, send, shot }) => {
   await sleep(3000);
   const head = await q("#kitAsk h2", "e.textContent");
   check("the question box opens with the employer's questions", /^8 questions from Every Kind Co$/.test(head || ""), head);
+  check("while the box is open the job is marked Not sent yet (never a plain 'Applied' if the person walks away)",
+    (await ev("(()=>{const x=" + FW + ".__uaply.S.decisions[" + ID["Every Kind Co|Data Analyst"] + "];return x&&x.sent?x.sent.status:'none'})()")) === "needs_answers");
   check("the box fits the screen (no sideways scrolling)", (await fits("#kitAsk form")) === "ok", await fits("#kitAsk form"));
   const kinds = await ev("JSON.stringify([..." + F + ".querySelectorAll('#kitAsk .kaF')].map(b=>b.getAttribute('data-kind')))");
   check("each kind is asked with its own control", kinds === JSON.stringify(["textarea", "search", "multi", "month", "date", "number", "select", "consent"]), kinds);
@@ -121,6 +123,8 @@ module.exports = async ({ ev, sleep, nav, send, shot }) => {
   await sleep(3000);
   const t1 = await toast();
   check("with every answer, the application goes", /Applied to Every Kind Co \(test\)/.test(t1) && !(await ev("!!" + F + ".getElementById('kitAsk')")), t1);
+  check("...and the Not sent yet mark is replaced by what really happened",
+    (await ev("(()=>{const x=" + FW + ".__uaply.S.decisions[" + ID["Every Kind Co|Data Analyst"] + "];return x&&x.sent?x.sent.status:'none'})()")) === "delivered_test");
   const a = await saved(), vals = Object.values(a);
   check("the answers are saved on this device, in the shape the form takes", ["Philadelphia", "Python\nSQL", "2027-06", "2027-07-01", "20", "Yes", "I acknowledge"].every((v) => vals.includes(v)),
     JSON.stringify(vals).slice(0, 300));

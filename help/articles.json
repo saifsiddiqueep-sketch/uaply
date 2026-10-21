@@ -78,7 +78,7 @@
    "id": "services",
    "title": "Full-time, part-time, internships and Coop",
    "tags": "services full-time part-time internship internships co-op coop job type",
-   "body": "Tap Services at the bottom to switch between Full-time, Part-time, Internships and Coop. Each one has its own stack of jobs. The types you tick in Profile setup, under Jobs you want, open first.",
+   "body": "Tap Jobs at the bottom to switch between Full-time, Part-time, Internships and Coop (co-op). Each one has its own stack of jobs. The types you tick in Profile setup, under Jobs you want, open first.",
    "go": "svc:job"
   },
   {

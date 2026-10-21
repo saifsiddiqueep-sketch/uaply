@@ -1,4 +1,4 @@
-"""Writes the six made-up resumes in tools/fixtures/resumes/ that tools/test-resume.py reads (and the PDF and Word files among them).
+"""Writes the seven made-up resumes in tools/fixtures/resumes/ that tools/test-resume.py reads (and the PDF and Word files among them).
     python tools/make-resume-fixtures.py
 Every person, school, employer, phone number and address here is invented. The PDF and Word files are written by hand with the standard
 library only, so this needs nothing installed. The expected answers for each resume are in tools/fixtures/resumes/expected.json."""
@@ -118,6 +118,24 @@ TWO_RIGHT = [
     ("Software Engineer", 10), ("Midway Freight Technologies", 9), ("July 2018 - February 2022", 9), ("• Built the shipment tracking API in Node.js", 9),
 ]
 
+# a business student's one-page PDF: right-aligned dates, bullets, a club office under "Leadership & Activities" (not a job), skills
+# with notes in brackets "Microsoft Excel (pivot tables, VLOOKUP)", and a part-time job title "(part-time)"
+BUSINESS = [
+    ("Jordan Álvarez", 18), ("Philadelphia, PA 19104 | (267) 555-0182 | jordan.alvarez@example.edu", 9), ("linkedin.com/in/jordan-alvarez-example", 9),
+    ("", 9), ("EDUCATION", 11), ("Drexel University, LeBow College of Business                              Philadelphia, PA", 10),
+    ("Bachelor of Science in Business Administration, Marketing and Business Analytics      Expected June 2028", 10),
+    ("GPA: 3.58/4.00  |  Dean's List (4 terms)", 10), ("", 9), ("EXPERIENCE", 11),
+    ("Marketing Co-op                                                                        Apr 2025 - Sep 2025", 10),
+    ("Schuylkill Health Partners, Philadelphia, PA", 10), ("• Ran weekly email campaigns to 18,000 patients; open rate up from 21% to 29%", 10),
+    ("Barista and Shift Lead (part-time)                                                     Sep 2023 - Present", 10),
+    ("Lancaster Avenue Coffee Co., Philadelphia, PA", 10), ("• Train new baristas and close the store three nights a week", 10),
+    ("", 9), ("LEADERSHIP & ACTIVITIES", 11),
+    ("Vice President of Events, Drexel American Marketing Association                       2024 - Present", 10),
+    ("• Planned 6 speaker nights with Philadelphia agencies", 10), ("", 9), ("SKILLS", 11),
+    ("Technical: Microsoft Excel (pivot tables, VLOOKUP), Tableau, SQL (basic), Canva, HubSpot", 10),
+    ("Languages: English (native), Spanish (fluent)", 10),
+]
+
 NEWGRAD_PARAS = [
     "Elena Rossi", "Marketing Coordinator", "Boston, MA 02115 · elena.rossi@example.com · 617-555-0110", "", "Objective",
     "Recent marketing graduate who has run social campaigns for a nonprofit and a campus startup, looking for a full-time marketing role "
@@ -190,7 +208,12 @@ def main():
         runs.append((220, y, size, text))
         y -= size + 6
     pdf(os.path.join(HERE, "twocolumn.pdf"), runs)
-    print("wrote 6 resumes to", HERE)
+    runs, y = [], 750
+    for text, size in BUSINESS:
+        runs.append((50, y, size, text))
+        y -= size + 6
+    pdf(os.path.join(HERE, "business.pdf"), runs)
+    print("wrote 7 resumes to", HERE)
 
 
 if __name__ == "__main__":

@@ -617,6 +617,9 @@ function kitApply(w,host){
         if(j.status==="needs_answers"){
           var qs=Array.isArray(j.questions)?j.questions:[];
           if(retry||!qs.length){mark("needs_answers");return}      /* asked when the person taps Answer now in Applied */
+          /* marked before the box opens: if the person leaves it open, goes to Applied or closes the app, the job says "Not sent yet",
+             never a plain "Applied" for an application nothing was sent for. Sending replaces the mark; Not now takes the swipe back */
+          mark("needs_answers");
           askSheet(job,qs,j.filled||0,j.total||0,deliver,function(){revert();toast("Not sent. "+job.co+" is back in your deck.")});
           return;
         }
