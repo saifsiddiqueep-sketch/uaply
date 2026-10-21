@@ -106,6 +106,7 @@ done
 run "sandbox: learns from swipes (remote first, explore card, reset)" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-learn.js
 run "sandbox: fill from your resume (fills empty fields, keeps typed ones, Replace, errors, fits the phone)" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-resume.js
 run "dev: the stranger-walk fixes (messages fit the phone, Save and continue, LinkedIn links, empty deck, restore, Sign in wording, a restarting server, help, rating)" env W=390 H=844 PORT=18767 CDP_LIMIT_MS=600000 node tools/cdp.js tools/ui-walk.js
+run "dev on a laptop (1280x800): one centred column about 960 px wide, Account and Plan & billing in its middle" env W=1280 H=800 PORT=18767 CDP_LIMIT_MS=600000 node tools/cdp.js tools/ui-walk.js
 PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/ph" UAPLY_PLANS_HIDDEN=1 UAPLY_CONFIG_JSON='{"feeds":[],"smtp":{},"owner_copy":""}' start python serve.py 18832 dev --api)"
 wait_port 18832
 run "a free-only launch (UAPLY_PLANS_HIDDEN=1): Plan & billing shows Free and coming soon, no Choose buttons; dev without it still offers them" env W=390 H=844 PORT=18832 SHOWN_PORT=18767 node tools/cdp.js tools/ui-plans-hidden.js
