@@ -50,10 +50,10 @@
    "id": "no-jobs",
    "title": "Why don't I see any jobs (or only a few)?",
    "tags": "no jobs empty nothing few listings missing where jobs come from source feed",
-   "body": "Three things can hide jobs. Your filters (Profile, Filters) may be too strict: try Clear all filters. Your target titles hide roles that don't match: add more titles or turn that filter off. And UAply currently lists jobs from employers that agreed to work with it, plus example listings, so there are not many real openings yet. More employers are being added.",
+   "body": "Three things can hide jobs. Your filters (Profile, Filters) may be too strict: try Clear all filters. Your target titles hide full-time and part-time roles that don't match (never internships or co-ops, and when nothing in a section matches, all its roles are shown): add more titles or turn that filter off. And UAply currently lists jobs from employers that agreed to work with it, plus example listings, so there are not many real openings yet. More employers are being added.",
    "go": "prof:filters",
    "release": {
-    "body": "Three things can hide jobs. Your filters (Profile, Filters) may be too strict: try Clear all filters. Your target titles hide roles that don't match: add more titles or turn that filter off. And UAply lists real postings from employers' own public career pages, so the mix changes as employers add and remove openings. Most listings are full-time jobs and internships; part-time and Coop roles are rare, so those lists can be short or empty."
+    "body": "Three things can hide jobs. Your filters (Profile, Filters) may be too strict: try Clear all filters. Your target titles hide full-time and part-time roles that don't match (never internships or co-ops, and when nothing in a section matches, all its roles are shown): add more titles or turn that filter off. And UAply lists real postings from employers' own public career pages, so the mix changes as employers add and remove openings. Most listings are full-time jobs and internships; part-time and Coop roles are rare, so those lists can be short or empty."
    }
   },
   {
