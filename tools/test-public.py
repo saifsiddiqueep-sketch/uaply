@@ -49,7 +49,8 @@ cookie = h.get("set-cookie", "")
 t("session cookie is HttpOnly, Secure and SameSite=Lax", all(x in cookie for x in ("HttpOnly", "Secure", "SameSite=Lax")), True)
 t("HSTS header is sent over HTTPS", "strict-transport-security" in h, True)
 t("no-sniff and frame protection headers are sent", "x-content-type-options" in h and h.get("x-frame-options") == "SAMEORIGIN", True)
-t("CSP: only this site may frame it, no plugins, no <base> elsewhere", h.get("content-security-policy"), "frame-ancestors 'self'; object-src 'none'; base-uri 'self'")
+t("CSP: only this site may frame it, no plugins, no <base> elsewhere, and the web manifest and service worker come only from this site",
+  h.get("content-security-policy"), "frame-ancestors 'self'; object-src 'none'; base-uri 'self'; manifest-src 'self'; worker-src 'self'")
 t("Permissions-Policy switches off camera, microphone, USB and the payment API (location is left to the app's own prompt)",
   h.get("permissions-policy"), "camera=(), microphone=(), usb=(), payment=()")
 t("the Server header names no Python version (Render passes it on as x-render-origin-server)", h.get("server"), "UAply")

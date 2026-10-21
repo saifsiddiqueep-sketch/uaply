@@ -1,0 +1,20 @@
+{
+  "id": "/",
+  "name": "UAply",
+  "short_name": "UAply",
+  "description": "Swipe right to apply to jobs that match your profile.",
+  "lang": "en",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#FDF0F2",
+  "theme_color": "#FDF0F2",
+  "categories": ["business", "productivity"],
+  "icons": [
+    { "src": "/uaply-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/uaply-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/uaply-icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/uaply-icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

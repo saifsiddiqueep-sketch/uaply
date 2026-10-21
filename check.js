@@ -34,13 +34,13 @@ fs.readdirSync(".").filter((f) => f.endsWith(".py")).forEach((f) => {     /* eve
 });
 
 console.log("JSON files");
-fs.readdirSync(".").filter((f) => f.endsWith(".json") && !["uaply-config.json", "uaply-partners.json"].includes(f)).concat(   /* never the owner's secret files: an error message could quote them */[".claude/launch.json", "help/articles.json", "mobile/capacitor.config.json"]).filter((f) => fs.existsSync(f)).forEach((f) => {
+fs.readdirSync(".").filter((f) => f.endsWith(".json") && !["uaply-config.json", "uaply-partners.json"].includes(f)).concat(   /* never the owner's secret files: an error message could quote them */[".claude/launch.json", "help/articles.json", "mobile/capacitor.config.json", "shared/uaply.webmanifest", "mobile/twa/twa-manifest.json"]).filter((f) => fs.existsSync(f)).forEach((f) => {
   try { JSON.parse(fs.readFileSync(f, "utf8")); ok(f); } catch (e) { bad(f + ": " + e.message); }
 });
 
 console.log("Legal pages");
 try {
-  ["index", "terms", "privacy", "ai-and-employment", "copyright"].forEach((n) => {
+  ["index", "terms", "privacy", "ai-and-employment", "copyright", "delete-account"].forEach((n) => {
     const s = fs.readFileSync("legal/" + n + ".html", "utf8");
     const open = (s.match(/<mark>/g) || []).length, close = (s.match(/<\/mark>/g) || []).length;
     open === close ? ok("legal/" + n + ".html (" + open + " blank" + (open === 1 ? "" : "s") + " to fill in before publishing)") : bad("legal/" + n + ".html has an unclosed <mark>");

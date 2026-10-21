@@ -39,6 +39,8 @@ services:
       # except the home page there, which says "UAply has moved" and offers a backup first when the browser holds UAply data,
       # and adds the canonical link, /sitemap.xml and the Sitemap line in robots.txt. Leave it unset on the sandbox. DEPLOY.md, section 1.
       # UAPLY_PLANS_HIDDEN=1 (optional): a free-only launch. Plan and billing shows only Free and "Plus and Pro are coming soon"; checkout is refused.
+      # UAPLY_ASSETLINKS_SHA256 (dev only, once the Play app exists): the two SHA-256 fingerprints from Play Console, App signing (app signing key
+      # and upload key), comma-separated. /.well-known/assetlinks.json then links the Play app com.uaply.app to the site (mobile/twa/README.md).
       - key: UAPLY_USAJOBS_KEY        # the free USAJOBS key (wins over feed_keys.usajobs); usajobs must also be in UAPLY_FEEDS or feeds
         sync: false
       - key: UAPLY_USAJOBS_EMAIL      # the address the USAJOBS key was requested with (uaplytechnologies@gmail.com)

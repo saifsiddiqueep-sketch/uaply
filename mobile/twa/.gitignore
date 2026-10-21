@@ -1,0 +1,20 @@
+# everything `bubblewrap update` / `bubblewrap build` generates here: rebuilt from twa-manifest.json, never committed
+app/
+gradle/
+build/
+.gradle/
+settings.gradle
+gradle.properties
+build.gradle
+gradlew
+gradlew.bat
+store_icon.png
+manifest-checksum.txt
+assetlinks.json
+*.apk
+*.aab
+*.idsig
+local.properties
+# signing keys: keep them private, backed up outside this folder
+*.jks
+*.keystore

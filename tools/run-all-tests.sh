@@ -89,6 +89,7 @@ run "nothing is cut off at 320 to 430 px" env PORT=18767 node tools/ui-widths.js
 run "sandbox: every screen and button" env PORT=18766 node tools/cdp.js tools/ui-sweep.js
 run "dev: every way of swiping, and what each sends (LinkedIn, resume, one email)" env W=390 H=844 PORT=18767 node tools/cdp.js tools/ui-swipes.js
 run "dev: the app copes when the server fails, goes offline or sends garbage" env W=390 H=844 PORT=18767 node tools/cdp.js tools/ui-errors.js
+run "the installable website: Chrome can install it; its offline screen when the server is down, during a deploy (502) and offline" node tools/cdp.js tools/ui-installable.js
 run "dev: skill chips, the empty Add button and the file downloads" env W=390 H=844 PORT=18767 node tools/cdp.js tools/ui-effects.js
 run "sandbox: the first-application agreement shows once, swipes throw no error" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-consent-once.js
 run "dev: the first-application agreement shows once, swipes throw no error" env W=390 H=844 PORT=18767 node tools/cdp.js tools/ui-consent-once.js
