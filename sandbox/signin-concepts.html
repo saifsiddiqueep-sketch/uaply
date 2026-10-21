@@ -1,0 +1,960 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UAply sign-in concepts</title>
+<meta name="description" content="Five clickable sign-in and sign-up concepts for UAply, each shown live in a desktop and a phone frame.">
+<!-- SANDBOX ONLY: a look-around page for choosing a sign-in design. Nothing here is wired to the real sign-in, accounts or email.
+     The brand fonts load without holding up the page (media="print" until they arrive): offline or blocked, it draws at once in the
+     system fonts named after them in --display, --body and --mono. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" media="print" onload="this.media='all'">
+<style>
+/* ---------- brand tokens, copied from prod/index.html ---------- */
+:root{
+  --bg:#FDF0F2; --surface:#FFFFFF; --ink:#2A1218; --muted:#7B5560; --line:#F3DADF;
+  --accent:#C92A55; --accent2:#F0663B; --accent-ink:#FFFFFF;
+  --yes:#0B8F62; --yes-bg:#DCF5EA; --no:#E03A45; --no-bg:#FDE5E6; --mid:#A86400; --mid-bg:#FCEFD0;
+  --shadow:0 14px 34px -16px rgba(160,30,60,.4);
+  --display:'Bricolage Grotesque','Segoe UI',system-ui,sans-serif;
+  --body:'DM Sans','Segoe UI',system-ui,sans-serif;
+  --mono:'DM Mono',ui-monospace,Menlo,monospace;
+  --page:#E4EFF5; --bezel:#1A0A0F; --scrim:rgba(6,24,32,.48);
+  --g-bg:#FFFFFF; --g-ink:#1F1F1F; --g-line:#747775;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#190B10; --surface:#26131A; --ink:#FBE9EE; --muted:#C79BA6; --line:#40222B;
+  --accent:#FF7A98; --accent2:#FFA86B; --accent-ink:#1A0A0F;
+  --yes:#4ADE9C; --yes-bg:#123A2B; --no:#FF7A85; --no-bg:#3D1A25; --mid:#F5C265; --mid-bg:#3A2D10;
+  --shadow:0 14px 34px -16px rgba(0,0,0,.85);
+  --page:#050F14; --bezel:#000; --scrim:rgba(0,0,0,.6);
+  --g-bg:#131314; --g-ink:#E3E3E3; --g-line:#8E918F;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#190B10; --surface:#26131A; --ink:#FBE9EE; --muted:#C79BA6; --line:#40222B;
+  --accent:#FF7A98; --accent2:#FFA86B; --accent-ink:#1A0A0F;
+  --yes:#4ADE9C; --yes-bg:#123A2B; --no:#FF7A85; --no-bg:#3D1A25; --mid:#F5C265; --mid-bg:#3A2D10;
+  --shadow:0 14px 34px -16px rgba(0,0,0,.85);
+  --page:#050F14; --bezel:#000; --scrim:rgba(0,0,0,.6);
+  --g-bg:#131314; --g-ink:#E3E3E3; --g-line:#8E918F;
+  color-scheme:dark}
+
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--page);color:var(--ink);font:15px/1.5 var(--body);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+.sr{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.i{width:1em;height:1em;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;vertical-align:-.15em;flex:none}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+/* ---------- page shell ---------- */
+.top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:18px max(16px,3vw) 10px}
+.top .brand{display:flex;align-items:center;gap:12px;flex:1 1 280px;min-width:0}
+.top h1{margin:0;font:800 22px/1.15 var(--display);letter-spacing:-.01em}
+.top .brand p{margin:2px 0 0;color:var(--muted);font-size:13px}
+.top .brand p.pv{color:var(--ink);font-weight:500}
+.top .brand p.pv b{font:700 11px var(--mono);letter-spacing:.08em;padding:2px 7px;border-radius:6px;background:#E8A317;color:#2A1A00;margin-right:6px}
+.ctrls{display:flex;gap:8px;flex-wrap:wrap}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;background:var(--surface);padding:3px}
+.seg button,.mot{font:600 13px var(--body);color:var(--muted);background:none;border:0;border-radius:999px;padding:6px 12px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.mot{border:1px solid var(--line);background:var(--surface)}
+.mot[aria-pressed="true"]{color:var(--ink)}
+.tabs{display:flex;gap:4px;padding:6px max(16px,3vw) 0;overflow-x:auto;scrollbar-width:thin;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--page);z-index:5}
+.tab{font:600 14px var(--body);color:var(--muted);background:none;border:0;border-bottom:3px solid transparent;padding:10px 14px 9px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:8px;border-radius:10px 10px 0 0}
+.tab .n{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:6px;background:var(--line);color:var(--ink);font:700 11px var(--mono)}
+.tab:hover{color:var(--ink);background:color-mix(in srgb,var(--surface) 60%,transparent)}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.tab[aria-selected="true"] .n{background:var(--accent);color:var(--accent-ink)}
+main{padding:20px max(16px,3vw) 60px}
+.panel[hidden]{display:none}
+.phead{display:flex;gap:14px;align-items:flex-start;margin-bottom:16px;max-width:1100px}
+.phead .big{flex:none;width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:var(--accent);color:var(--accent-ink);font:800 20px var(--display)}
+.phead h2{margin:0;font:800 clamp(20px,2.4vw,28px)/1.15 var(--display);letter-spacing:-.01em}
+.phead p{margin:4px 0 0;color:var(--muted);max-width:75ch}
+
+.stage{display:flex;gap:28px;align-items:flex-start;flex-wrap:wrap}
+.dev{margin:0;min-width:0}
+.dev.desk{flex:1 1 560px}
+.dev.phone{flex:0 0 auto;width:clamp(240px,24vw,330px);margin-inline:auto}
+.dev figcaption{display:flex;align-items:center;justify-content:space-between;gap:10px;font:500 12px var(--mono);color:var(--muted);margin-bottom:8px}
+.dev figcaption button{font:600 12px var(--body);color:var(--accent);background:none;border:1px solid var(--line);border-radius:999px;padding:4px 10px;cursor:pointer}
+.chrome{display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--line);border-bottom:0;border-radius:12px 12px 0 0;padding:8px 12px}
+.chrome i{width:10px;height:10px;border-radius:50%;background:var(--line)}
+.chrome span{margin-left:10px;font:12px var(--mono);color:var(--muted);background:var(--bg);border-radius:6px;padding:3px 10px;flex:1;max-width:320px}
+.fwrap{position:relative;width:100%;overflow:hidden;border:1px solid var(--line)}
+.desk .fwrap{border-radius:0 0 12px 12px;aspect-ratio:1280/720}
+.phone .fwrap{border-radius:clamp(26px,3.4vw,44px);aspect-ratio:390/844;border:clamp(6px,.8vw,10px) solid var(--bezel);box-shadow:var(--shadow)}
+.screen{position:absolute;top:0;left:0;transform-origin:0 0;background:var(--bg)}
+.below{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:20px;margin-top:22px;max-width:1300px}
+@media (max-width:860px){.below{grid-template-columns:1fr}}
+.box{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 20px}
+.box h3{margin:0 0 10px;font:800 16px var(--display)}
+.box ol,.box ul{margin:0;padding-left:20px}
+.box li{margin:6px 0}
+.mi{list-style:none;padding:0!important}
+.mi li{display:flex;gap:10px;align-items:flex-start}
+.tag{flex:none;font:600 11px var(--mono);border-radius:999px;padding:2px 8px;margin-top:2px}
+.tag.b{background:var(--yes-bg);color:var(--yes)}
+.tag.d{background:var(--mid-bg);color:var(--mid)}
+.hint{color:var(--muted);font-size:13px;margin:10px 0 0}
+
+/* why + compare */
+.lead{max-width:78ch;font-size:16px}
+.lead p{margin:0 0 12px}
+.grid5{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:18px 0 26px}
+.rule{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px}
+.rule b{display:block;font:800 15px var(--display);margin-bottom:4px}
+.rule p{margin:0;color:var(--muted);font-size:14px}
+.rule .k{font:600 11px var(--mono);color:var(--accent);text-transform:uppercase;letter-spacing:.06em}
+.cgo{margin-top:10px;font:600 13px var(--body);color:var(--accent);background:none;border:1px solid var(--line);border-radius:999px;padding:6px 12px;cursor:pointer}
+h3.sec{font:800 18px var(--display);margin:26px 0 10px}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:1080px;font-size:13.5px}
+th,td{text-align:left;vertical-align:top;padding:12px 14px;border-bottom:1px solid var(--line)}
+th{font:600 12px var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.04em;background:color-mix(in srgb,var(--bg) 60%,var(--surface))}
+tr:last-child td{border-bottom:0}
+td b{font-family:var(--display)}
+.score{font:800 22px var(--display);color:var(--accent)}
+.eff{font:600 12px var(--mono);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:2px 7px}
+.decide{counter-reset:d;list-style:none;padding:0;margin:0;display:grid;gap:10px;max-width:90ch}
+.decide li{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px 14px 52px;position:relative}
+.decide li::before{counter-increment:d;content:counter(d);position:absolute;left:14px;top:14px;width:26px;height:26px;border-radius:8px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font:800 14px var(--display)}
+
+/* ================================================================
+   APP UI (everything inside a frame). Same HTML and CSS in both
+   frames; container queries on .app switch desktop and phone.
+   ================================================================ */
+.app{container:app/inline-size;width:100%;height:100%;position:relative;overflow:hidden;background:var(--bg);color:var(--ink);font:15px/1.45 var(--body)}
+.app *{box-sizing:border-box}
+.app h1,.app h2,.app h3{font-family:var(--display);letter-spacing:-.01em;margin:0}
+.lg{width:46px;height:46px;border-radius:14px;display:inline-grid;place-items:center;background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);box-shadow:var(--shadow);flex:none}
+.lg svg{width:62%;height:62%;fill:none;stroke:currentColor;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.lg.sm{width:32px;height:32px;border-radius:10px;box-shadow:none}
+.wm{font:800 19px var(--display);letter-spacing:-.01em}
+.btn{font:600 15px/1.1 var(--body);min-height:48px;padding:0 20px;border-radius:999px;border:1px solid transparent;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:10px;transition:transform .12s ease,background-color .15s ease,box-shadow .15s ease;text-decoration:none}
+.btn:active{transform:scale(.98)}
+.btn.pri{background:var(--accent);color:var(--accent-ink)}
+.btn.pri:hover{background:color-mix(in srgb,var(--accent) 86%,var(--ink))}
+.btn.ghost{background:transparent;border-color:var(--line);color:var(--ink)}
+.btn.ghost:hover{background:var(--surface)}
+.btn.wide{width:100%}
+.btn.g{background:var(--g-bg);color:var(--g-ink);border-color:var(--g-line);font-family:'Segoe UI',Roboto,var(--body)}
+.btn.g:hover{box-shadow:0 1px 3px rgba(0,0,0,.18)}
+.btn.g svg{width:20px;height:20px}
+.btn[aria-busy="true"]{pointer-events:none;opacity:.85}
+.btn[aria-busy="true"] .gicon{animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.lnk{font:600 14px var(--body);color:var(--accent);background:none;border:0;padding:6px 4px;cursor:pointer;border-radius:6px}
+.lnk:hover{text-decoration:underline}
+.lnk[disabled]{color:var(--muted);cursor:default;text-decoration:none}
+.sub{color:var(--muted);margin:0}
+.fine{color:var(--muted);font-size:13px;margin:0}
+.or{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:13px}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
+.fld{display:flex;flex-direction:column}
+.fld label{font-weight:600;font-size:14px;margin-bottom:6px}
+.fld .in{position:relative}
+.fld input{width:100%;min-height:50px;border-radius:12px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);font:16px var(--body);padding:0 42px 0 14px;transition:border-color .15s,box-shadow .15s}
+.fld input::placeholder{color:color-mix(in srgb,var(--muted) 75%,transparent)}
+.fld input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 22%,transparent)}
+.fld.bad input{border-color:var(--no)}
+.fld.bad input:focus{box-shadow:0 0 0 4px color-mix(in srgb,var(--no) 20%,transparent)}
+.fld .tick{position:absolute;right:14px;top:50%;transform:translateY(-50%) scale(.6);color:var(--yes);opacity:0;transition:opacity .2s,transform .2s;font-size:18px;display:flex}
+.fld.good .tick{opacity:1;transform:translateY(-50%) scale(1)}
+.fmsg{margin:6px 0 0;font-size:13px;color:var(--muted);min-height:0}
+.fmsg:empty{display:none}
+.fld.bad .fmsg,.fmsg.err{color:var(--no)}
+.fix{font:600 13px var(--body);color:var(--accent);background:none;border:0;padding:0;text-decoration:underline;cursor:pointer}
+.agree{font-size:12.5px;color:var(--muted);margin:0;text-align:center;line-height:1.45}
+.agree a,.agreeck a,.facts a{color:var(--accent)}
+.agreeck{display:flex;gap:10px;align-items:flex-start;font-size:14px;cursor:pointer;line-height:1.4}
+.agreeck input{width:20px;height:20px;margin:0;flex:none;accent-color:var(--accent)}
+.agreeck span{flex:1;min-width:0}
+.card1{background:var(--surface);border:1px solid var(--line);border-radius:24px;box-shadow:var(--shadow);padding:28px;width:100%;max-width:420px;display:flex;flex-direction:column;gap:14px}
+.chead{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;margin-bottom:2px}
+.chead h1{font-size:26px;line-height:1.15}
+.ctr{height:100%;overflow:auto;display:grid;place-items:center;padding:24px 16px}
+.stack{display:flex;flex-direction:column;gap:12px}
+.toast{position:absolute;left:50%;bottom:22px;transform:translate(-50%,20px);background:var(--ink);color:var(--bg);font-size:14px;padding:10px 16px;border-radius:12px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:50;max-width:calc(100% - 32px);text-align:center}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+.pop{animation:rise .3s cubic-bezier(.2,.8,.2,1) both}
+@keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.shake{animation:shake .38s}
+@keyframes shake{20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
+.okc{width:58px;height:58px;border-radius:50%;display:grid;place-items:center;background:var(--yes-bg);color:var(--yes);font-size:28px;margin:0 auto}
+.done{display:flex;flex-direction:column;gap:12px;text-align:center}
+.done h2{font-size:24px}
+.demo{font:12px var(--mono);color:var(--muted);margin:0;text-align:center}
+
+/* code boxes */
+.code{display:flex;gap:8px;justify-content:center}
+.code input{width:46px;height:56px;border-radius:12px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);text-align:center;font:600 22px var(--mono);padding:0}
+.code input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 22%,transparent)}
+.code.err input{border-color:var(--no)}
+.code.ok input{border-color:var(--yes)}
+.codestep{display:flex;flex-direction:column;gap:12px;text-align:center}
+.codestep h2{font-size:22px}
+.codestep h2:focus{outline:none}
+.between{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+
+/* facts (concept 2, 3) */
+.facts{border-top:1px solid var(--line);padding-top:14px;display:flex;flex-direction:column;gap:6px}
+.fh{font:600 11px var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 2px}
+.facts details{border-radius:10px}
+.facts summary{list-style:none;display:flex;gap:10px;align-items:flex-start;cursor:pointer;font-size:13.5px;line-height:1.4;padding:4px;border-radius:8px}
+.facts summary::-webkit-details-marker{display:none}
+.facts summary:hover{background:var(--bg)}
+.facts .fi{flex:none;width:20px;height:20px;border-radius:6px;background:var(--bg);border:1px solid var(--line);display:grid;place-items:center;font:600 11px var(--mono);color:var(--accent);margin-top:1px}
+.facts summary .chev{margin-left:auto;color:var(--muted);transition:transform .2s;margin-top:3px}
+.facts details[open] .chev{transform:rotate(90deg)}
+.facts details p{margin:4px 4px 6px 34px;font-size:13px;color:var(--muted)}
+.facts .agree{margin-top:6px}
+
+/* job deck (concepts 1, 3) */
+.deckbox{display:flex;flex-direction:column;align-items:center;width:100%}
+.deck{position:relative;width:100%;max-width:340px;aspect-ratio:3/4;outline:none;border-radius:24px}
+.deck:focus-visible{outline:3px solid var(--accent);outline-offset:8px}
+.jc{position:absolute;inset:0;background:var(--surface);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:22px;display:flex;flex-direction:column;gap:12px;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;transition:transform .25s ease}
+.jc.top{cursor:grab}
+.jc.grabbing{cursor:grabbing}
+.jc-h{display:flex;gap:12px;align-items:center}
+.jc-h b{display:block;font:800 20px/1.15 var(--display)}
+.jc-h span{color:var(--muted);font-size:14px}
+.app .mono{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;font:800 16px var(--display);color:var(--accent-ink);flex:none}
+.pay{font:800 24px var(--display);letter-spacing:-.01em}
+.meta{display:flex;flex-wrap:wrap;gap:6px}
+.meta span{font-size:12.5px;background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:3px 10px}
+.blurb{margin:0;color:var(--muted);font-size:14px}
+.via{margin-top:auto;align-self:flex-start;display:inline-flex;gap:6px;align-items:center;font-size:12.5px;font-weight:600;padding:6px 11px;border-radius:999px}
+.via.u{background:var(--yes-bg);color:var(--yes)}
+.via.s{background:var(--mid-bg);color:var(--mid)}
+.stamp{position:absolute;top:22px;font:800 20px var(--display);padding:4px 12px;border:3px solid;border-radius:10px;opacity:0;text-transform:uppercase;pointer-events:none;background:var(--surface)}
+.stamp.yes{right:18px;color:var(--yes);transform:rotate(10deg)}
+.stamp.no{left:18px;color:var(--no);transform:rotate(-10deg)}
+.dacts{display:flex;justify-content:center;gap:22px;margin-top:22px}
+.round{width:62px;height:62px;border-radius:50%;border:1px solid var(--line);background:var(--surface);box-shadow:var(--shadow);display:grid;place-items:center;cursor:pointer;font-size:26px;transition:transform .12s}
+.round:hover{transform:scale(1.06)}
+.round:active{transform:scale(.94)}
+.round.no{color:var(--no)}
+.round.yes{background:var(--yes);color:var(--accent-ink);border-color:transparent}
+.empty{position:absolute;inset:0;display:grid;place-content:center;gap:12px;text-align:center;border:2px dashed var(--line);border-radius:22px;padding:20px}
+.keys{font:12px var(--mono);color:var(--muted);margin:10px 0 0}
+.keys kbd,.kh kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 5px;background:var(--surface)}
+.deckbox.compact .deck{max-width:236px;aspect-ratio:4/5}
+.deckbox.compact .jc{padding:16px;gap:8px;border-radius:18px}
+.deckbox.compact .jc-h b{font-size:16px}
+.deckbox.compact .pay{font-size:18px}
+.deckbox.compact .blurb{display:none}
+.app .deckbox.compact .mono{width:38px;height:38px;font-size:13px;border-radius:11px}
+.deckbox.compact .dacts{margin-top:14px;gap:16px}
+.deckbox.compact .round{width:50px;height:50px;font-size:21px}
+
+/* ---------- concept 1: swipe first ---------- */
+.c1{height:100%;display:flex;flex-direction:column}
+.abar{display:flex;align-items:center;gap:12px;padding:14px 24px;background:var(--surface);border-bottom:1px solid var(--line)}
+.search{display:flex;align-items:center;gap:6px;flex:0 1 420px;margin-inline:auto;background:var(--bg);border:1.5px solid var(--line);border-radius:999px;padding:0 6px 0 14px;min-height:42px}
+.search:focus-within{border-color:var(--accent);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 20%,transparent)}
+.search input{flex:1;min-width:0;border:0;background:none;color:var(--ink);font:15px var(--body);padding:8px 0}
+.search input:focus{outline:none}
+.search .dot{color:var(--muted)}
+.heldchip{font:600 13px var(--body);background:var(--yes-bg);color:var(--yes);border-radius:999px;padding:5px 11px;white-space:nowrap}
+.who{display:inline-flex;align-items:center;gap:8px;font:600 14px var(--body)}
+.who i{width:30px;height:30px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-style:normal;font-weight:800}
+.coach{margin:18px auto 0;font-size:14px;color:var(--muted);text-align:center;padding:0 20px}
+.coach b{color:var(--ink)}
+.dz{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:14px 20px 20px;min-height:0}
+.ov{position:absolute;inset:0;background:var(--scrim);display:grid;place-items:center;padding:24px;z-index:20;animation:fade .2s both}
+.ov[hidden]{display:none}
+@keyframes fade{from{opacity:0}}
+.dlg{background:var(--surface);border:1px solid var(--line);border-radius:24px;box-shadow:0 30px 60px -20px rgba(0,0,0,.5);width:100%;max-width:440px;padding:26px;display:flex;flex-direction:column;gap:13px;animation:dlgIn .28s cubic-bezier(.2,.8,.2,1) both;max-height:100%;overflow:auto}
+@keyframes dlgIn{from{opacity:0;transform:translateY(14px) scale(.97)}}
+.dlg h2{font-size:24px;line-height:1.15}
+.held{display:flex;gap:12px;align-items:center;padding:12px;border-radius:16px;background:var(--bg);border:1px solid var(--line)}
+.app .held .mono{width:40px;height:40px;font-size:14px;border-radius:12px}
+.held b{display:block;font:800 16px var(--display)}
+.held span{font-size:13px;color:var(--muted)}
+.held>div{flex:1;min-width:0}
+.held .via{margin:0;white-space:nowrap;font-size:12px}
+.ready{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:1fr 1fr;gap:8px;text-align:left}
+.ready li{display:flex;gap:8px;align-items:center;font-size:14px;border:1px solid var(--line);border-radius:12px;padding:9px 12px}
+.ready li.ok{color:var(--yes);background:var(--yes-bg);border-color:transparent}
+.ready li:not(.ok){border-style:dashed;color:var(--muted)}
+@container app (max-width:600px){
+  .abar{padding:12px 14px;gap:8px}
+  .abar .wm{display:none}
+  .search{margin:0;flex:1}
+  .heldchip b{display:none}
+  .c1 .ov{place-items:end stretch;padding:0}
+  .c1 .dlg{max-width:none;border-radius:26px 26px 0 0;padding:22px 20px 28px;animation-name:sheetIn}
+  .c1 .coach{margin-top:12px}
+  .ready{grid-template-columns:1fr 1fr}
+}
+@keyframes sheetIn{from{transform:translateY(40%);opacity:0}}
+
+/* ---------- concept 2: one card ---------- */
+.c2{background:radial-gradient(1200px 500px at 50% -10%,color-mix(in srgb,var(--accent2) 18%,transparent),transparent 70%),var(--bg)}
+.pwrow{text-align:center;margin:-6px 0 -4px}
+.c2.ctr{padding:12px 16px}
+.c2 .card1{padding:22px 28px;gap:10px;max-width:452px}
+.c2 .chead{gap:8px}
+.c2 .chead .lg{width:40px;height:40px;border-radius:12px}
+.c2 .chead h1{font-size:24px}
+.c2 .facts{padding-top:10px;gap:2px}
+.c2 .facts summary{font-size:13px}
+
+/* ---------- concept 3: deck + card ---------- */
+.c3{height:100%;display:grid;grid-template-columns:1.05fr 1fr}
+.c3d{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:30px;background:linear-gradient(160deg,color-mix(in srgb,var(--accent) 16%,var(--bg)),color-mix(in srgb,var(--accent2) 14%,var(--bg)))}
+.c3d .top3{display:flex;align-items:center;gap:10px;position:absolute;top:22px;left:28px}
+.c3cap{text-align:center;max-width:380px}
+.c3cap h2{font-size:26px;line-height:1.15;margin-top:6px}
+.c3cap p{margin:6px 0 0;color:var(--muted);font-size:14px}
+.pill{display:inline-block;font:600 11px var(--mono);text-transform:uppercase;letter-spacing:.07em;color:var(--mid);background:var(--mid-bg);border-radius:999px;padding:3px 10px}
+.tally{font:500 13px var(--mono);color:var(--muted)}
+.c3a{display:grid;place-items:center;padding:28px;overflow:auto}
+.liked{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+.liked span{display:inline-flex;align-items:center;gap:6px;font-size:13px;background:var(--yes-bg);color:var(--yes);border-radius:999px;padding:4px 10px 4px 4px;animation:rise .3s both}
+.liked span i{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font:800 10px var(--display);color:var(--accent-ink);font-style:normal}
+.ph{display:none}
+@container app (max-width:600px){
+  .c3{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+  .c3d{padding:56px 16px 18px;gap:10px;justify-content:flex-start}
+  .c3d .top3{top:14px;left:16px}
+  .c3cap h2{font-size:19px;margin-top:4px}
+  .c3cap p{display:none}
+  .c3d .tally{display:none}
+  .c3 .c3s{display:none}
+  .c3 .deckbox.compact .deck{max-width:250px;aspect-ratio:5/4}
+  .c3 .deckbox.compact .jc{padding:14px}
+  .c3 .deckbox.compact .dacts{margin-top:10px}
+  .c3d{padding-bottom:30px}
+  .c3d .keys{display:none}
+  .c3a{place-items:stretch;padding:0;margin-top:-18px;z-index:2;overflow:auto}
+  .c3a .card1{max-width:none;border-radius:26px 26px 0 0;padding:20px 20px 24px;gap:11px;box-shadow:0 -10px 30px -18px rgba(0,0,0,.4)}
+  .c3a .chead{flex-direction:row;text-align:left;align-items:center}
+  .c3a .chead .lg{display:none}
+  .c3a .chead h1{font-size:20px}
+  .dk{display:none}.ph{display:inline}
+}
+
+/* ---------- concept 4: profile as you go ---------- */
+.c4{height:100%;display:flex;flex-direction:column}
+.c4b{display:flex;align-items:center;gap:16px;padding:16px 28px}
+.prog{flex:1;display:flex;gap:6px;max-width:520px;margin-inline:auto}
+.prog i{flex:1;height:6px;border-radius:999px;background:var(--line);overflow:hidden;position:relative}
+.prog i::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,var(--accent),var(--accent2));transform:scaleX(0);transform-origin:left;transition:transform .35s ease}
+.prog i.on::after{transform:scaleX(1)}
+.c4m{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:40px;padding:10px 64px 10px;align-items:center;overflow:auto}
+.q{max-width:540px;display:flex;flex-direction:column;gap:16px}
+.q h2{font-size:34px;line-height:1.1}
+.q h2:focus{outline:none}
+.eyebrow{font:600 12px var(--mono);color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin:0}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{font:600 14px var(--body);color:var(--ink);background:var(--surface);border:1.5px solid var(--line);border-radius:999px;padding:9px 15px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background-color .15s,border-color .15s}
+.chip:hover{border-color:var(--accent)}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.pv{align-self:center}
+.pvh{font:600 11px var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 8px}
+.pvcard{background:var(--surface);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);padding:20px;display:flex;flex-direction:column;gap:10px}
+.pvn{font:800 22px var(--display)}
+.pvn.ph0{color:var(--muted)}
+.pvr{display:grid;grid-template-columns:96px 1fr;gap:8px;font-size:14px;border-top:1px solid var(--line);padding-top:9px}
+.pvr span{color:var(--muted)}
+.pvr b{font-weight:600}
+.pvr.later b{font-weight:400;color:var(--muted);font-style:italic}
+.flash{animation:flash .6s}
+@keyframes flash{0%{background:color-mix(in srgb,var(--accent2) 30%,transparent)}100%{background:transparent}}
+.meter{height:8px;border-radius:999px;background:var(--line);overflow:hidden;margin-top:12px}
+.meter i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .4s ease}
+.pvmini{display:none}
+.c4f{display:flex;align-items:center;gap:12px;padding:14px 28px 18px;border-top:1px solid var(--line);background:var(--surface)}
+.c4f .next{margin-left:0}
+.c4f .sp{flex:1}
+.kh{font:12px var(--mono);color:var(--muted)}
+@container app (max-width:600px){
+  .c4b{padding:14px 16px 8px;gap:10px;flex-wrap:wrap}
+  .c4b .prog{order:3;flex-basis:100%;max-width:none}
+  .c4b .have{margin-left:auto}
+  .c4m{grid-template-columns:1fr;padding:6px 20px 16px;gap:14px;align-content:start}
+  .pv{order:-1}
+  .pvh,.pvcard{display:none}
+  .pv.open .pvcard{display:flex}
+  .pvmini{display:flex;width:100%;align-items:center;gap:10px;font:600 13px var(--body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px 12px;cursor:pointer;margin-bottom:8px}
+  .pvmini .meter{flex:1;margin:0;height:6px}
+  .q h2{font-size:27px}
+  .kh{display:none}
+  .c4f{padding:12px 16px 22px}
+  .c4f .btn{min-height:46px;padding:0 16px}
+  .two{grid-template-columns:1fr}
+}
+
+/* ---------- concept 5: glass box ---------- */
+.c5{height:100%;overflow:auto}
+.c5g{min-height:100%;display:grid;grid-template-columns:380px minmax(0,1fr);gap:28px;align-items:center;padding:28px 32px;max-width:1240px;margin:0 auto}
+.c5f .chead{align-items:flex-start;text-align:left}
+.c5f .chead h1{font-size:26px}
+.map h2{font-size:22px;margin-bottom:4px}
+.map>p{margin:0 0 14px;color:var(--muted);font-size:14px}
+.lanes{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.lane{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:8px;min-height:250px;transition:border-color .2s,box-shadow .2s}
+.lane h3{font:800 15px var(--display);display:flex;gap:8px;align-items:center}
+.lane h3 .i{color:var(--accent);font-size:18px}
+.lane>p{margin:0;font-size:12.5px;color:var(--muted)}
+.lane .chips{flex-direction:column;align-items:flex-start;gap:7px;margin-top:4px}
+.dchip{display:inline-flex;gap:6px;align-items:center;font-size:13px;border-radius:10px;padding:6px 10px;background:var(--bg);border:1.5px solid var(--line);max-width:100%;transition:all .25s}
+.dchip .v{font-family:var(--mono);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px}
+.dchip.wait{border-style:dashed;color:var(--muted);background:transparent}
+.dchip.lock{background:var(--yes-bg);border-color:transparent;color:var(--yes)}
+.dchip.pend{border-style:dashed;color:var(--muted);background:transparent}
+.dchip.filled{background:color-mix(in srgb,var(--accent) 14%,var(--surface));border-color:var(--accent);color:var(--ink)}
+.dchip.hl{box-shadow:0 0 0 4px color-mix(in srgb,var(--accent2) 35%,transparent);border-color:var(--accent2)}
+.dchip.in{animation:chipIn .45s cubic-bezier(.2,.9,.3,1.3)}
+@keyframes chipIn{0%{transform:scale(.7);opacity:.2}100%{transform:none;opacity:1}}
+.gnote{margin-top:12px;font-size:13px;background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:12px;padding:10px 12px}
+.never{margin:12px 0 0;font-size:13px;color:var(--muted)}
+@container app (max-width:600px){
+  .c5g{grid-template-columns:1fr;padding:18px 16px 28px;gap:18px;align-items:start}
+  .c5f{padding:20px}
+  .c5f .chead h1{font-size:22px}
+  .lanes{grid-template-columns:1fr}
+  .lane{min-height:0;padding:12px 14px}
+  .lane .chips{flex-direction:row;flex-wrap:wrap}
+}
+
+/* reduced motion: the system setting, or the Motion toggle at the top of this page */
+@media (prefers-reduced-motion: reduce){
+  .app *,.app *::before,.app *::after{animation-duration:1ms!important;animation-iteration-count:1!important;transition-duration:1ms!important}
+}
+:root[data-motion="reduce"] .app *,:root[data-motion="reduce"] .app *::before,:root[data-motion="reduce"] .app *::after{animation-duration:1ms!important;animation-iteration-count:1!important;transition-duration:1ms!important}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <span class="lg" aria-hidden="true" style="width:42px;height:42px"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+    <div><h1>Sign-in concepts</h1><p>UAply · five directions, each live in a desktop and a phone frame · click, type and swipe in any frame</p><p class="pv"><b>SANDBOX PREVIEW</b>Design options only: nothing here signs you in, creates an account or sends anything. The app's real sign-in is unchanged.</p></div>
+  </div>
+  <div class="ctrls">
+    <div class="seg" role="group" aria-label="Theme"><button type="button" data-th="auto" aria-pressed="true">Auto</button><button type="button" data-th="light" aria-pressed="false">Light</button><button type="button" data-th="dark" aria-pressed="false">Dark</button></div>
+    <button type="button" class="mot" aria-pressed="false" id="motBtn">Reduce motion: off</button>
+  </div>
+</header>
+<nav class="tabs" role="tablist" aria-label="Concepts" id="tabs"></nav>
+<main id="panels"></main>
+
+<script>
+(function(){
+"use strict";
+var d=document,root=d.documentElement;
+
+/* ---------- small helpers ---------- */
+function h(html){var t=d.createElement("template");t.innerHTML=html.trim();return t.content.firstElementChild}
+var _id=0;function uid(p){return (p||"u")+(++_id)}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]})}
+function RM(){return root.dataset.motion==="reduce"||matchMedia("(prefers-reduced-motion: reduce)").matches}
+function fx(el){if(el)try{el.focus({preventScroll:true})}catch(e){el.focus()}}
+function store(k,v){try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v)}catch(e){return null}}
+
+var SVG=function(p){return '<svg class="i" viewBox="0 0 24 24" aria-hidden="true">'+p+'</svg>'};
+var I={
+  check:SVG('<path d="M5 12.5l4.5 4.5L19 7.5"/>'),
+  x:SVG('<path d="M6 6l12 12M18 6L6 18"/>'),
+  ext:SVG('<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>'),
+  dev:SVG('<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>'),
+  user:SVG('<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>'),
+  brief:SVG('<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M3 13h18"/>'),
+  lock:SVG('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>'),
+  clock:SVG('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+  chev:SVG('<path d="M9 6l6 6-6 6"/>'),
+  pin:SVG('<path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>'),
+  mail:SVG('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>')
+};
+var LOGO='<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+var GLOGO='<svg class="gicon" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>';
+var GBTN='<button type="button" class="btn g wide gbtn">'+GLOGO+'<span class="gl">Continue with Google</span></button>';
+var AGREE='<p class="agree">By continuing you confirm you are 18 or older and agree to the <a href="terms.html" data-demo>Terms</a> and <a href="privacy.html" data-demo>Privacy&nbsp;Policy</a>.</p>';
+var KNOWN=["sam.rivera@gmail.com"];
+function HEAD(t,s){return '<div class="chead"><span class="lg" aria-hidden="true">'+LOGO+'</span><h1>'+t+'</h1>'+(s?'<p class="sub">'+s+'</p>':'')+'</div>'}
+
+/* example listings (fictional employers, monograms instead of logos) */
+var JOBS=[
+  {t:"Barista",co:"Juniper & Rye Coffee",pay:"$16–18 an hour",loc:"Austin, TX",meta:["Part time","1.2 mi"],b:"Morning shifts at a busy neighborhood cafe. Training on the espresso bar included.",via:"u",c:"var(--accent)"},
+  {t:"Warehouse Associate",co:"Northline Logistics",pay:"$19 an hour",loc:"Round Rock, TX",meta:["Nights","14 mi"],b:"Pick, pack and load on the night crew. Steel-toe boots provided.",via:"s",c:"var(--mid)"},
+  {t:"Front Desk Associate",co:"Lakeshore Family Clinic",pay:"$17–20 an hour",loc:"Austin, TX",meta:["Full time","3.4 mi"],b:"Greet patients, book visits and keep the waiting room calm.",via:"u",c:"var(--accent2)"},
+  {t:"Line Cook",co:"Oak & Ember",pay:"$18–21 an hour",loc:"Austin, TX",meta:["Full time","2.0 mi"],b:"Grill and prep station in a wood-fire kitchen. Family meal every shift.",via:"u",c:"var(--yes)"},
+  {t:"Junior Product Designer",co:"Calloway Studios",pay:"$52–60k a year",loc:"Remote (US)",meta:["Full time","Remote"],b:"Help a small studio design onboarding screens for a budgeting app.",via:"s",c:"var(--accent)"},
+  {t:"Retail Sales Associate",co:"Bright Lane Outfitters",pay:"$15–17 an hour",loc:"Austin, TX",meta:["Weekends","4.8 mi"],b:"Help customers find gear for camping and trail running.",via:"u",c:"var(--accent2)"}
+];
+function initials(s){return s.replace(/&/g,"").split(/\s+/).filter(Boolean).slice(0,2).map(function(w){return w[0]}).join("").toUpperCase()}
+function viaHTML(j){return j.via==="u"?'<span class="via u">'+I.check+' Applies through UAply</span>':'<span class="via s">'+I.ext+' Opens the employer’s site</span>'}
+
+/* toast inside a frame */
+function toast(app,msg){var t=app.querySelector(":scope > .toast");if(!t){t=h('<div class="toast" role="status"></div>');app.appendChild(t)}t.textContent=msg;t.classList.add("on");clearTimeout(t._t);t._t=setTimeout(function(){t.classList.remove("on")},2400)}
+
+/* ---------- email field: validation, typo fix, disposable check ---------- */
+var DOMS=["gmail.com","yahoo.com","outlook.com","hotmail.com","icloud.com","aol.com","live.com","proton.me","msn.com","comcast.net"];
+var DISP=["mailinator.com","10minutemail.com","guerrillamail.com","tempmail.com","temp-mail.org","yopmail.com","trashmail.com","sharklasers.com"];
+function lev(a,b){var m=[],i,j;for(i=0;i<=a.length;i++){m[i]=[i]}for(j=0;j<=b.length;j++)m[0][j]=j;for(i=1;i<=a.length;i++)for(j=1;j<=b.length;j++)m[i][j]=Math.min(m[i-1][j]+1,m[i][j-1]+1,m[i-1][j-1]+(a[i-1]===b[j-1]?0:1));return m[a.length][b.length]}
+function checkEmail(v){
+  v=v.trim();if(!v)return {s:"empty",msg:"Enter your email address."};
+  var at=v.lastIndexOf("@");
+  if(at<1)return {s:"bad",msg:"Add the @ and the rest of your address."};
+  var dom=v.slice(at+1).toLowerCase();
+  if(!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(v))return {s:"bad",msg:"That email looks unfinished. Check the part after the @."};
+  if(DISP.indexOf(dom)>-1)return {s:"bad",msg:"Please use an email address you’ll keep. Temporary addresses can’t be used for job applications."};
+  if(DOMS.indexOf(dom)<0){var best=null;DOMS.forEach(function(x){var k=lev(dom,x);if(k>0&&k<=2&&(!best||k<best.k))best={x:x,k:k}});if(best)return {s:"typo",fix:v.slice(0,at+1)+best.x}}
+  return {s:"ok"};
+}
+function emailFieldHTML(label,ph,val){var id=uid("em");return '<div class="fld" data-email><label for="'+id+'">'+(label||"Email")+'</label><div class="in"><input id="'+id+'" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" placeholder="'+(ph||"you@example.com")+'" aria-describedby="'+id+'m" value="'+esc(val||"")+'"><span class="tick" aria-hidden="true">'+I.check+'</span></div><p class="fmsg" id="'+id+'m" aria-live="polite"></p></div>'}
+function textFieldHTML(label,ac,ph,val){var id=uid("tx");return '<div class="fld"><label for="'+id+'">'+label+'</label><div class="in"><input id="'+id+'" type="text" autocomplete="'+ac+'" placeholder="'+(ph||"")+'" value="'+esc(val||"")+'"><span class="tick" aria-hidden="true">'+I.check+'</span></div></div>'}
+/* "reward early, punish late": an error waits for blur or submit, but clears the moment the address becomes valid */
+function wireEmail(fld,opt){
+  opt=opt||{};var inp=fld.querySelector("input"),m=fld.querySelector(".fmsg"),tmr;
+  function paint(r,strict){
+    var good=r.s==="ok"||r.s==="typo";
+    fld.classList.toggle("good",good);
+    var showBad=r.s==="bad"||(strict&&r.s==="empty");
+    if(showBad&&(strict||fld.classList.contains("bad"))){fld.classList.add("bad");inp.setAttribute("aria-invalid","true");m.textContent=r.msg;return}
+    if(good||r.s==="empty"){fld.classList.remove("bad");inp.removeAttribute("aria-invalid")}
+    if(r.s==="typo"){m.innerHTML='Did you mean <button type="button" class="fix">'+esc(r.fix)+'</button>?';m.querySelector(".fix").onclick=function(){inp.value=r.fix;run(true);fx(inp)};return}
+    m.textContent=good&&opt.okMsg?opt.okMsg(inp.value.trim()):(fld.classList.contains("bad")?m.textContent:"");
+  }
+  function run(now){var r=checkEmail(inp.value);clearTimeout(tmr);if(now)paint(r,false);else{if(r.s==="ok"||r.s==="empty"||fld.classList.contains("bad"))paint(r,false);else{fld.classList.remove("good");m.textContent="";tmr=setTimeout(function(){paint(checkEmail(inp.value),false)},550)}}opt.onChange&&opt.onChange(inp.value.trim(),r)}
+  inp.addEventListener("input",function(){run(false)});
+  inp.addEventListener("blur",function(){var r=checkEmail(inp.value);if(inp.value.trim()&&r.s==="bad")paint(r,true);else paint(r,false)});
+  if(inp.value)paint(checkEmail(inp.value),false);
+  return {input:inp,value:function(){return inp.value.trim()},validate:function(){var r=checkEmail(inp.value);paint(r,true);if(r.s==="bad"||r.s==="empty"){fx(inp);fld.classList.remove("shake");void fld.offsetWidth;if(!RM())fld.classList.add("shake");return false}return true}};
+}
+
+/* ---------- 6-digit code ---------- */
+function codeStep(email,opt){
+  var el=h('<div class="codestep pop"><h2 tabindex="-1">Check your email</h2><p class="sub">We sent a 6-digit code to <b style="color:var(--ink)">'+esc(email)+'</b>. It works for 10 minutes.</p>'+
+    '<div class="code" role="group" aria-label="6-digit code"></div><p class="fmsg cmsg" aria-live="polite"></p><p class="demo">Demo: any 6 digits work. 000000 shows the error.</p>'+
+    '<div class="between"><button type="button" class="lnk chg">Use a different email</button><button type="button" class="lnk resend" disabled>New code in <span>30</span>s</button></div></div>');
+  var box=el.querySelector(".code"),msg=el.querySelector(".cmsg");
+  for(var i=0;i<6;i++)box.appendChild(h('<input inputmode="numeric" pattern="[0-9]*" maxlength="6" aria-label="Digit '+(i+1)+'"'+(i===0?' autocomplete="one-time-code"':' autocomplete="off"')+'>'));
+  var ins=[].slice.call(box.querySelectorAll("input")),checking=false;
+  function fill(t,start){for(var k=0;k+start<6&&k<t.length;k++)ins[start+k].value=t[k];fx(ins[Math.min(5,start+t.length)]);check()}
+  function check(){var c=ins.map(function(x){return x.value}).join("");if(c.length<6||checking)return;checking=true;box.classList.remove("err");msg.classList.remove("err");msg.textContent="Checking…";
+    setTimeout(function(){checking=false;
+      if(c==="000000"){box.classList.add("err");msg.classList.add("err");msg.textContent="That code doesn’t match. Check the newest email from UAply.";box.classList.remove("shake");void box.offsetWidth;if(!RM())box.classList.add("shake");ins.forEach(function(x){x.value=""});fx(ins[0]);return}
+      box.classList.add("ok");msg.textContent="Code accepted.";ins.forEach(function(x){x.disabled=true});setTimeout(opt.onOk,RM()?50:350)},RM()?50:450)}
+  ins.forEach(function(inp,i){
+    inp.addEventListener("input",function(){var v=inp.value.replace(/\D/g,"");if(v.length>1){inp.value="";fill(v,i);return}inp.value=v;if(v&&i<5)fx(ins[i+1]);check()});
+    inp.addEventListener("keydown",function(e){
+      if(e.key==="Backspace"&&!inp.value&&i>0){e.preventDefault();ins[i-1].value="";fx(ins[i-1])}
+      else if(e.key==="ArrowLeft"&&i>0){e.preventDefault();fx(ins[i-1])}
+      else if(e.key==="ArrowRight"&&i<5){e.preventDefault();fx(ins[i+1])}});
+    inp.addEventListener("paste",function(e){var t=((e.clipboardData||window.clipboardData).getData("text")||"").replace(/\D/g,"");if(t){e.preventDefault();fill(t.slice(0,6),0)}});
+    inp.addEventListener("focus",function(){inp.select()});
+  });
+  el.querySelector(".chg").onclick=opt.onBack;
+  var rs=el.querySelector(".resend"),n=30,iv=setInterval(function(){if(!el.isConnected){clearInterval(iv);return}n--;if(n<=0){clearInterval(iv);rs.disabled=false;rs.textContent="Send a new code"}else rs.querySelector("span").textContent=n},1000);
+  rs.onclick=function(){msg.classList.remove("err");msg.textContent="A new code is on its way.";rs.disabled=true;rs.innerHTML="Sent";};
+  el.start=function(){fx(el.querySelector("h2"));setTimeout(function(){fx(ins[0])},RM()?0:250)};
+  return el;
+}
+function googleSim(btn,done){if(btn.getAttribute("aria-busy")==="true")return;btn.setAttribute("aria-busy","true");var l=btn.querySelector(".gl"),o=l.textContent;l.textContent="Opening Google…";setTimeout(function(){btn.removeAttribute("aria-busy");l.textContent=o;done({email:"sam.rivera@gmail.com",name:"Sam Rivera",first:"Sam",last:"Rivera"})},RM()?250:900)}
+function trap(rootEl,onEsc){rootEl.addEventListener("keydown",function(e){
+  if(e.key==="Escape"){e.preventDefault();onEsc();return}
+  if(e.key!=="Tab")return;
+  var f=[].slice.call(rootEl.querySelectorAll('button:not([disabled]),input:not([disabled]),a[href],summary,[tabindex]:not([tabindex="-1"])')).filter(function(x){return x.offsetParent!==null});
+  if(!f.length)return;var a=f[0],b=f[f.length-1];
+  if(e.shiftKey&&d.activeElement===a){e.preventDefault();fx(b)}else if(!e.shiftKey&&d.activeElement===b){e.preventDefault();fx(a)}})}
+
+/* ---------- swipeable deck (concepts 1, 3) ---------- */
+function makeDeck(host,opt){
+  host.innerHTML='<div class="deckbox'+(opt.compact?' compact':'')+'"><div class="deck" tabindex="0" role="group" aria-roledescription="job deck" aria-label="Job cards. Left arrow passes, right arrow says yes."></div>'+
+    '<div class="dacts"><button type="button" class="round no" aria-label="Pass">'+I.x+'</button><button type="button" class="round yes" aria-label="'+(opt.yesLabel||"Apply")+'">'+I.check+'</button></div>'+
+    '<p class="keys"><kbd>←</kbd> pass &nbsp; <kbd>→</kbd> '+(opt.yesWord||"apply")+' &nbsp;· or drag a card</p><p class="sr" aria-live="polite"></p></div>';
+  var deck=host.querySelector(".deck"),live=host.querySelector(".sr"),jobs=opt.jobs,idx=0,busy=false;
+  function card(j){return '<article class="jc" aria-label="'+esc(j.t)+' at '+esc(j.co)+'"><div class="jc-h"><span class="mono" style="background:'+j.c+'">'+initials(j.co)+'</span><div><b>'+esc(j.t)+'</b><span>'+esc(j.co)+'</span></div></div><div class="pay">'+esc(j.pay)+'</div><div class="meta">'+[j.loc].concat(j.meta).map(function(m){return '<span>'+esc(m)+'</span>'}).join("")+'</div><p class="blurb">'+esc(j.b)+'</p>'+viaHTML(j)+'<span class="stamp yes">'+(opt.stamp?opt.stamp(j):"Yes")+'</span><span class="stamp no">Pass</span></article>'}
+  function render(){
+    deck.innerHTML="";var rest=jobs.slice(idx,idx+3);
+    if(!rest.length){deck.appendChild(h('<div class="empty"><b>That’s the example deck.</b><button type="button" class="btn ghost again">Start over</button></div>'));deck.querySelector(".again").onclick=function(){idx=0;render();fx(deck)};return}
+    for(var n=rest.length-1;n>=0;n--){var c=h(card(rest[n]));c.style.transform="translateY("+(n*12)+"px) scale("+(1-n*.05)+")";c.style.zIndex=10-n;if(n===0){c.classList.add("top");drag(c)}else{c.setAttribute("aria-hidden","true");c.style.opacity=n===2?".6":"1"}deck.appendChild(c)}
+  }
+  function decide(dir){
+    if(busy)return;var j=jobs[idx];if(!j)return;var c=deck.querySelector(".jc.top");busy=true;
+    function after(){idx++;busy=false;render();live.textContent=(dir>0?"Yes to ":"Passed on ")+j.t;opt.onDecide&&opt.onDecide(j,dir)}
+    if(!c||RM()){after();return}
+    c.style.transition="transform .32s cubic-bezier(.3,.7,.3,1),opacity .32s";c.style.transform="translateX("+(dir*560)+"px) rotate("+(dir*18)+"deg)";c.style.opacity="0";
+    c.querySelector(dir>0?".stamp.yes":".stamp.no").style.opacity=1;setTimeout(after,300);
+  }
+  function drag(c){
+    var x0=null,dx=0;
+    function sc(){var s=host.closest(".screen");return s?(+s.dataset.s||1):1}
+    c.addEventListener("pointerdown",function(e){if(busy||e.button>0)return;x0=e.clientX;dx=0;try{c.setPointerCapture(e.pointerId)}catch(_){}c.style.transition="none";c.classList.add("grabbing")});
+    c.addEventListener("pointermove",function(e){if(x0===null)return;dx=(e.clientX-x0)/sc();c.style.transform="translateX("+dx+"px) rotate("+(dx/18)+"deg)";c.querySelector(".stamp.yes").style.opacity=Math.max(0,Math.min(1,dx/100));c.querySelector(".stamp.no").style.opacity=Math.max(0,Math.min(1,-dx/100))});
+    function up(){if(x0===null)return;x0=null;c.classList.remove("grabbing");if(Math.abs(dx)>100)decide(dx>0?1:-1);else{c.style.transition="transform .25s";c.style.transform="";[].forEach.call(c.querySelectorAll(".stamp"),function(s){s.style.opacity=0})}}
+    c.addEventListener("pointerup",up);c.addEventListener("pointercancel",up);
+  }
+  deck.addEventListener("keydown",function(e){if(e.key==="ArrowRight"){e.preventDefault();decide(1)}else if(e.key==="ArrowLeft"){e.preventDefault();decide(-1)}});
+  host.querySelector(".round.no").onclick=function(){decide(-1)};
+  host.querySelector(".round.yes").onclick=function(){decide(1)};
+  render();
+  return {focus:function(){fx(deck)},decide:decide};
+}
+
+/* =====================================================================
+   CONCEPT 1 · Swipe first, sign in when it matters
+   ===================================================================== */
+function C1(app){
+  var sid=uid("s"),wid=uid("w");
+  app.innerHTML='<div class="c1"><header class="abar"><span class="lg sm" aria-hidden="true">'+LOGO+'</span><b class="wm">UAply</b>'+
+    '<div class="search" role="search"><label class="sr" for="'+sid+'">What job</label><input id="'+sid+'" value="Barista" placeholder="Any job" autocomplete="off"><span class="dot" aria-hidden="true">·</span><label class="sr" for="'+wid+'">Where</label><input id="'+wid+'" value="Austin, TX" placeholder="Near me" autocomplete="off"></div>'+
+    '<span class="heldchip" hidden>Saved <b>0</b></span><span class="acct"><button type="button" class="lnk sin">Sign in</button></span></header>'+
+    '<p class="coach"><b>Swipe right on a job you’d apply to.</b> You sign in then, not before.</p><div class="dz"></div><div class="ov" hidden></div></div>';
+  var ov=app.querySelector(".ov"),held=0,draft="",user=null,lastFocus=null;
+  var q=function(){var a=app.querySelector("#"+sid).value.trim(),b=app.querySelector("#"+wid).value.trim();return [a,b].filter(Boolean).join(" · ")};
+  var deck=makeDeck(app.querySelector(".dz"),{jobs:JOBS,yesWord:"apply",stamp:function(j){return j.via==="u"?"Apply":"Open site"},onDecide:function(j,dir){
+    if(dir<0)return;
+    if(!user){openCard(j);return}
+    toast(app,j.via==="u"?"Sent to "+j.co+". Receipt on its way (demo).":"Opening "+j.co+"’s own application page (demo).");
+  }});
+  app.querySelector(".sin").onclick=function(){openCard(null)};
+  function close(keep){
+    var j=ov._job;ov.hidden=true;ov.innerHTML="";
+    if(keep&&j&&!user){held++;var c=app.querySelector(".heldchip");c.hidden=false;c.querySelector("b").textContent=held;c.innerHTML='Saved <b>'+held+'</b>';toast(app,j.t+" is saved on this device. Sign in any time to send it.")}
+    fx(lastFocus&&lastFocus.isConnected?lastFocus:app.querySelector(".deck"));
+  }
+  function openCard(job){
+    lastFocus=d.activeElement;ov._job=job;ov.hidden=false;
+    var search=q(),site=job&&job.via==="s",head,sub;
+    if(!job){head="Sign in to UAply";sub="Free during early access."+(search?" Your search ("+esc(search)+") comes with you.":"")}
+    else if(site){head="Sign in to keep this one";sub=esc(job.co)+" takes applications on its own site. Sign in and we’ll keep the job and open their page when you’re ready."}
+    else {head="Sign in to send this one";sub=(search?"Your search ("+esc(search)+") and this job come with you. ":"This job comes with you. ")+"About 20 seconds."}
+    var hid=uid("dh");
+    ov.innerHTML='<div class="dlg" role="dialog" aria-modal="true" aria-labelledby="'+hid+'"><div class="st stack" style="gap:13px">'+
+      (job?'<div class="held"><span class="mono" style="background:'+job.c+'">'+initials(job.co)+'</span><div><b>'+esc(job.t)+'</b><span>'+esc(job.co)+'</span></div>'+viaHTML(job)+'</div>':'')+
+      '<h2 id="'+hid+'">'+head+'</h2><p class="sub">'+sub+'</p>'+GBTN+'<div class="or">or</div><form class="stack ef" novalidate style="gap:10px">'+emailFieldHTML("Email","you@example.com",draft)+'<button type="submit" class="btn pri wide">Email me a code</button></form>'+AGREE+
+      '<button type="button" class="lnk notnow" style="align-self:center">'+(job?"Not now, keep swiping":"Not now")+'</button></div></div>';
+    var dlg=ov.querySelector(".dlg"),st=ov.querySelector(".st");trap(dlg,function(){close(true)});
+    ov.onclick=function(e){if(e.target===ov)close(true)};
+    var em=wireEmail(ov.querySelector("[data-email]"),{onChange:function(v){draft=v}});
+    ov.querySelector(".notnow").onclick=function(){close(true)};
+    ov.querySelector(".gbtn").onclick=function(){googleSim(this,function(u){done(u,job)})};
+    ov.querySelector(".ef").onsubmit=function(e){e.preventDefault();if(!em.validate())return;var mail=em.value();
+      var cs=codeStep(mail,{onOk:function(){done({email:mail,first:mail.split("@")[0].split(/[._]/)[0].replace(/^./,function(c){return c.toUpperCase()})},job)},onBack:function(){close(false);openCard(job)}});
+      st.innerHTML="";st.appendChild(cs);cs.start()};
+    fx(ov.querySelector(".gbtn"));
+  }
+  function done(u,job){
+    user=u;draft="";var st=ov.querySelector(".st");
+    app.querySelector(".acct").innerHTML='<span class="who"><i>'+esc(u.first.charAt(0))+'</i>'+esc(u.first)+'</span>';
+    var hc=app.querySelector(".heldchip");
+    var body;
+    if(job&&job.via==="u")body='<p class="sub">'+esc(job.co)+' needs two more details before UAply can send your application.</p><ul class="ready"><li class="ok">'+I.check+' Name</li><li class="ok">'+I.check+' Email</li><li>Phone</li><li>Resume</li></ul><button type="button" class="btn pri wide fin">Add the 2 details</button>';
+    else if(job)body='<p class="sub">'+esc(job.t)+' is saved to your account. '+esc(job.co)+' takes applications on its own site, so we’ll open it for you.</p><button type="button" class="btn pri wide fin">'+I.ext+' Open their application page</button>';
+    else body='<p class="sub">Swipe right on any job to apply, or to open the employer’s page when they don’t take UAply applications.</p>';
+    st.innerHTML='<div class="done pop"><span class="okc">'+I.check+'</span><h2 tabindex="-1">You’re in, '+esc(u.first)+'.</h2>'+body+(held?'<p class="fine">'+held+' saved job'+(held>1?'s':'')+' moved to your account.</p>':'')+'<button type="button" class="lnk later">Keep swiping</button></div>';
+    if(hc&&held){hc.innerHTML='Saved <b>'+held+'</b>'}
+    var f=st.querySelector(".fin");if(f)f.onclick=function(){toast(app,job.via==="u"?"Next: phone and resume, then it sends (demo).":"Opening "+job.co+" (demo).");close(false)};
+    st.querySelector(".later").onclick=function(){close(false)};
+    fx(st.querySelector("h2"));
+  }
+}
+
+/* =====================================================================
+   CONCEPT 2 · One centered card
+   ===================================================================== */
+var FACTS='<div class="facts"><p class="fh">Three things to know</p>'+
+  '<details><summary><span class="fi">1</span><span>Swiping right sends your profile only to employers that take applications through UAply. For the rest, we open their own page.</span><span class="chev">'+I.chev+'</span></summary><p>Your profile means your name, email and anything else you filled in, such as phone, resume, education or work authorization, plus a short message if you turned that on. UAply never emails a company that has not agreed.</p></details>'+
+  '<details><summary><span class="fi">2</span><span>Your voluntary answers (race, gender, veteran or disability status) never leave your device.</span><span class="chev">'+I.chev+'</span></summary><p>They stay on this device unless you copy them yourself.</p></details>'+
+  '<details><summary><span class="fi">3</span><span>The match % only sorts jobs. Employers make every hiring decision.</span><span class="chev">'+I.chev+'</span></summary><p>It is worked out from your profile and never rejects you. <a href="ai-and-employment.html" data-demo>How matching works</a></p></details>'+AGREE+'</div>';
+function C2(app){
+  app.innerHTML='<div class="c2 ctr"><main class="card1">'+HEAD("Swipe into your next job","Sign in or create an account. Same steps either way. Free during early access.")+'<div class="st stack"></div>'+FACTS+'</main></div>';
+  var st=app.querySelector(".st");start("");
+  function start(val){
+    st.innerHTML=GBTN+'<div class="or">or use your email</div><form class="stack ef" novalidate style="gap:10px">'+emailFieldHTML("Email","you@example.com",val)+'<div class="pwbox"></div><button type="submit" class="btn pri wide go">Continue</button></form><p class="pwrow"><button type="button" class="lnk pw">Prefer a password?</button></p>';
+    var em=wireEmail(st.querySelector("[data-email]"),{okMsg:function(v){return KNOWN.indexOf(v.toLowerCase())>-1?"Welcome back. We’ll email you a sign-in code.":"New here? We’ll create your account with this address."}});
+    var pw=false;
+    st.querySelector(".gbtn").onclick=function(){googleSim(this,done)};
+    st.querySelector(".pw").onclick=function(){pw=!pw;var b=st.querySelector(".pwbox");if(pw){var id=uid("pw");b.innerHTML='<div class="fld pop" style="margin-top:2px"><label for="'+id+'">Password</label><div class="in"><input id="'+id+'" type="password" autocomplete="current-password" minlength="8"></div><p class="fmsg">At least 8 characters.</p></div>';fx(b.querySelector("input"));this.textContent="Use a code instead";st.querySelector(".go").textContent="Continue with password"}else{b.innerHTML="";this.textContent="Prefer a password?";st.querySelector(".go").textContent="Continue"}};
+    st.querySelector(".ef").onsubmit=function(e){e.preventDefault();if(!em.validate())return;var mail=em.value();
+      if(pw){var p=st.querySelector(".pwbox input");if(p.value.length<8){var m=st.querySelector(".pwbox .fmsg");m.classList.add("err");m.textContent="Passwords are at least 8 characters.";fx(p);return}done({first:mail.split("@")[0].split(/[._]/)[0]});return}
+      var cs=codeStep(mail,{onOk:function(){done({first:mail.split("@")[0].split(/[._]/)[0]})},onBack:function(){start(mail);fx(st.querySelector("input[type=email]"))}});
+      st.innerHTML="";st.appendChild(cs);cs.start()};
+  }
+  function done(u){var f=u.first.charAt(0).toUpperCase()+u.first.slice(1);st.innerHTML='<div class="done pop"><span class="okc">'+I.check+'</span><h2 tabindex="-1">You’re signed in, '+esc(f)+'</h2><p class="sub">Next: a few profile details, then the cards.</p><button type="button" class="btn pri wide">Start swiping</button></div>';st.querySelector(".btn").onclick=function(){toast(app,"On to Profile setup (demo).")};fx(st.querySelector("h2"))}
+}
+
+/* =====================================================================
+   CONCEPT 3 · Live deck + centered card
+   ===================================================================== */
+function C3(app){
+  app.innerHTML='<div class="c3"><section class="c3d" aria-label="Example job deck"><div class="top3"><span class="lg sm" aria-hidden="true">'+LOGO+'</span><b class="wm">UAply</b></div>'+
+    '<div class="c3cap"><span class="pill">Example listings</span><h2>Try a swipe while you sign in</h2><p>Right means “I’m interested”, left means pass. Nothing is sent from here.</p></div><div class="dk3" style="width:100%"></div><p class="tally" aria-live="polite">Liked 0 · Passed 0</p></section>'+
+    '<section class="c3a"><div class="card1"><div class="chead"><span class="lg" aria-hidden="true">'+LOGO+'</span><h1 class="c3h">Sign in to UAply</h1></div><p class="sub c3s" style="text-align:center">Try the cards <span class="dk">on the left</span><span class="ph">above</span> while you’re here. Free during early access.</p><div class="liked"></div><div class="st stack"></div>'+
+    '<details class="facts" style="border-top:1px solid var(--line);padding-top:10px"><summary style="font-size:13.5px"><span class="fi">?</span><span>What happens when I swipe right?</span><span class="chev">'+I.chev+'</span></summary><p style="margin:6px 4px 4px 34px">If the employer takes applications through UAply, your profile goes to them. If not, we open their own application page. Your voluntary answers never leave your device, and the match % only sorts jobs.</p></details>'+AGREE+'</div></section></div>';
+  var liked=[],passed=0,user=null,st=app.querySelector(".st");
+  makeDeck(app.querySelector(".dk3"),{jobs:JOBS,compact:true,yesLabel:"Interested",yesWord:"like",stamp:function(){return "Like"},onDecide:function(j,dir){
+    if(dir>0)liked.push(j);else passed++;
+    app.querySelector(".tally").textContent="Liked "+liked.length+" · Passed "+passed;
+    if(dir>0)paintLiked();
+  }});
+  function paintLiked(){
+    var L=app.querySelector(".liked");
+    L.innerHTML=liked.slice(-4).map(function(j){return '<span><i style="background:'+j.c+'">'+initials(j.co)+'</i>'+esc(j.t)+'</span>'}).join("")+(liked.length>4?'<span>+'+(liked.length-4)+'</span>':'');
+    if(user)return;
+    app.querySelector(".c3h").textContent=liked.length===1?"Keep the job you liked":"Keep the "+liked.length+" jobs you liked";
+    app.querySelector(".c3s").textContent="Sign in and they’ll be waiting in Saved. Nothing is sent until you swipe right in the app.";
+  }
+  start("");
+  function start(val){
+    st.innerHTML=GBTN+'<div class="or">or</div><form class="stack ef" novalidate style="gap:10px">'+emailFieldHTML("Email","you@example.com",val)+'<button type="submit" class="btn pri wide">Email me a code</button></form>';
+    var em=wireEmail(st.querySelector("[data-email]"));
+    st.querySelector(".gbtn").onclick=function(){googleSim(this,done)};
+    st.querySelector(".ef").onsubmit=function(e){e.preventDefault();if(!em.validate())return;var mail=em.value();var cs=codeStep(mail,{onOk:function(){done({first:mail.split("@")[0].split(/[._]/)[0]})},onBack:function(){start(mail)}});st.innerHTML="";st.appendChild(cs);cs.start()};
+  }
+  function done(u){user=u;var f=u.first.charAt(0).toUpperCase()+u.first.slice(1);app.querySelector(".c3h").textContent="You’re in, "+f+".";app.querySelector(".c3s").textContent=liked.length?liked.length+" liked job"+(liked.length>1?"s are":" is")+" in Saved.":"Your cards are ready.";st.innerHTML='<div class="done pop"><span class="okc">'+I.check+'</span><button type="button" class="btn pri wide">Start swiping</button></div>';st.querySelector(".btn").onclick=function(){toast(app,"On to the full deck (demo).")};fx(st.querySelector(".btn"))}
+}
+
+/* =====================================================================
+   CONCEPT 4 · Profile as you go
+   ===================================================================== */
+function C4(app){
+  var S={work:[],other:"",where:"",remote:false,first:"",last:"",email:"",verified:false},k=0,STEPS=["work","where","name","acct","code","done"];
+  app.innerHTML='<div class="c4"><header class="c4b"><span class="lg sm" aria-hidden="true">'+LOGO+'</span><div class="prog" role="progressbar" aria-label="Sign-up progress" aria-valuemin="1" aria-valuemax="4" aria-valuenow="1"><i></i><i></i><i></i><i></i></div><button type="button" class="lnk have">I have an account</button><button type="button" class="lnk look">Just look around</button></header>'+
+    '<div class="c4m"><section class="q"></section><aside class="pv" aria-label="Preview of your application card"></aside></div>'+
+    '<footer class="c4f"><button type="button" class="btn ghost back">Back</button><span class="sp"></span><span class="kh">Press <kbd>Enter</kbd> to continue</span><button type="button" class="lnk skip">Skip</button><button type="button" class="btn pri next">Continue</button></footer></div>';
+  var q=app.querySelector(".q"),pv=app.querySelector(".pv"),em=null;
+  var WORK=["Barista","Retail","Warehouse","Front desk","Cook","Delivery","Office","Healthcare"];
+  function paintPV(flashKey){
+    var filled=[S.work.length||S.other,S.where||S.remote,S.first,S.email].filter(Boolean).length,pct=Math.round(filled/6*100);
+    var name=(S.first+" "+S.last).trim();
+    var looking=S.work.concat(S.other?[S.other]:[]).join(", ");
+    pv.innerHTML='<button type="button" class="pvmini" aria-expanded="'+pv.classList.contains("open")+'">Your card · '+filled+' of 6<span class="meter"><i style="width:'+pct+'%"></i></span>'+I.chev+'</button>'+
+      '<p class="pvh">What an employer sees when you apply through UAply</p><div class="pvcard"><div class="pvn'+(name?'':' ph0')+'" data-k="name">'+(name?esc(name):"Your name")+'</div>'+
+      '<div class="pvr" data-k="work"><span>Looking for</span><b>'+(looking?esc(looking):"—")+'</b></div>'+
+      '<div class="pvr" data-k="where"><span>Where</span><b>'+esc([S.where,S.remote?"Remote is fine":""].filter(Boolean).join(" · ")||"—")+'</b></div>'+
+      '<div class="pvr" data-k="email"><span>Email</span><b>'+(S.email?esc(S.email)+(S.verified?' <span style="color:var(--yes)">'+I.check+' verified</span>':''):"—")+'</b></div>'+
+      '<div class="pvr later"><span>Phone</span><b>Asked only when a job needs it</b></div><div class="pvr later"><span>Resume</span><b>Same</b></div>'+
+      '<div class="meter"><i style="width:'+pct+'%"></i></div><p class="fine">'+filled+' of 6 filled. Voluntary answers are never shown to employers.</p></div>';
+    pv.querySelector(".pvmini").onclick=function(){pv.classList.toggle("open");this.setAttribute("aria-expanded",pv.classList.contains("open"))};
+    if(flashKey){var el=pv.querySelector('[data-k="'+flashKey+'"]');if(el&&!RM())el.classList.add("flash")}
+  }
+  function prog(){var n=Math.min(4,k+1);[].forEach.call(app.querySelectorAll(".prog i"),function(x,i){x.classList.toggle("on",i<(STEPS[k]==="done"?4:k))});app.querySelector(".prog").setAttribute("aria-valuenow",n)}
+  function foot(){var s=STEPS[k],f=app.querySelector(".c4f");f.style.display=(s==="code"||s==="done")?"none":"";app.querySelector(".back").style.visibility=k===0?"hidden":"visible";
+    app.querySelector(".skip").textContent=s==="acct"?"Skip, keep it on this device":"Skip";app.querySelector(".next").textContent=s==="acct"?"Email me a code":"Continue"}
+  function render(){
+    var s=STEPS[k],html="";em=null;
+    if(s==="work")html='<p class="eyebrow">1 of 4</p><h2 tabindex="-1">What kind of work are you after?</h2><p class="sub">Pick any. You can change this later.</p><div class="chips">'+WORK.map(function(w){return '<button type="button" class="chip" aria-pressed="'+(S.work.indexOf(w)>-1)+'">'+w+'</button>'}).join("")+'</div>'+textFieldHTML("Something else","off","e.g. dental assistant",S.other);
+    if(s==="where")html='<p class="eyebrow">2 of 4</p><h2 tabindex="-1">Where do you want to work?</h2>'+textFieldHTML("City or ZIP code","address-level2","Austin, TX",S.where)+'<div class="chips"><button type="button" class="chip rem" aria-pressed="'+S.remote+'">Remote is fine</button><button type="button" class="chip loc">'+I.pin+' Use my location</button></div><p class="fine">Your browser asks before it shares your location.</p>';
+    if(s==="name")html='<p class="eyebrow">3 of 4</p><h2 tabindex="-1">What should employers call you?</h2><div class="two">'+textFieldHTML("First name","given-name","",S.first)+textFieldHTML("Last name","family-name","",S.last)+'</div><p class="fine">This goes on your applications. Use the name on your resume.</p>';
+    if(s==="acct")html='<p class="eyebrow">4 of 4</p><h2 tabindex="-1">Where should your application receipts go?</h2><p class="sub">This creates your account. Each time you apply, we email you a receipt.</p>'+GBTN+'<div class="or">or</div>'+emailFieldHTML("Email","you@example.com",S.email)+AGREE.replace('class="agree"','class="agree" style="text-align:left"');
+    if(s==="done")html='<div class="done pop" style="text-align:left"><span class="okc" style="margin:0">'+I.check+'</span><h2 tabindex="-1">Your card is ready to start.</h2><p class="sub">At your first swipe right on a job that needs a phone number or resume, we’ll ask for just that, then send it.</p><button type="button" class="btn pri start" style="align-self:flex-start">Start swiping</button></div>';
+    q.innerHTML='<div class="stack pop" style="gap:16px">'+html+'</div>';
+    if(s==="code"){var cs=codeStep(S.email,{onOk:function(){S.verified=true;paintPV("email");go(5)},onBack:function(){go(3)}});cs.style.textAlign="left";q.innerHTML="";q.appendChild(cs);cs.start()}
+    wire(s);prog();foot();
+    if(s!=="code")fx(q.querySelector("h2"));
+  }
+  function wire(s){
+    var ins=q.querySelectorAll("input");
+    if(s==="work"){[].forEach.call(q.querySelectorAll(".chip"),function(c){c.onclick=function(){var on=c.getAttribute("aria-pressed")!=="true";c.setAttribute("aria-pressed",on);var w=c.textContent;if(on)S.work.push(w);else S.work=S.work.filter(function(x){return x!==w});paintPV("work")}});ins[0].oninput=function(){S.other=this.value;paintPV()}}
+    if(s==="where"){ins[0].oninput=function(){S.where=this.value;paintPV()};q.querySelector(".rem").onclick=function(){S.remote=!S.remote;this.setAttribute("aria-pressed",S.remote);paintPV("where")};q.querySelector(".loc").onclick=function(){ins[0].value=S.where="Austin, TX";paintPV("where");toast(app,"Your browser would ask first. Demo filled Austin, TX.")}}
+    if(s==="name"){ins[0].oninput=function(){S.first=this.value;paintPV()};ins[1].oninput=function(){S.last=this.value;paintPV()}}
+    if(s==="acct"){em=wireEmail(q.querySelector("[data-email]"),{onChange:function(v,r){S.email=r.s==="ok"?v:"";paintPV()}});
+      q.querySelector(".gbtn").onclick=function(){googleSim(this,function(u){S.email=u.email;S.verified=true;if(!S.first){S.first=u.first;S.last=u.last}paintPV("email");go(5)})}}
+    if(s==="done")q.querySelector(".start").onclick=function(){toast(app,"On to the cards (demo).")};
+    [].forEach.call(ins,function(i){i.addEventListener("keydown",function(e){if(e.key==="Enter"){e.preventDefault();next()}})});
+  }
+  function go(n){k=n;render()}
+  function next(){var s=STEPS[k];if(s==="acct"){if(!em.validate())return;S.email=em.value();paintPV("email");go(4);return}go(k+1)}
+  app.querySelector(".next").onclick=next;
+  app.querySelector(".skip").onclick=function(){STEPS[k]==="acct"?go(5):go(k+1)};
+  app.querySelector(".back").onclick=function(){if(k>0)go(k===5&&!S.verified?3:Math.max(0,k-1))};
+  app.querySelector(".look").onclick=function(){toast(app,"Straight to the cards. Your answers so far are kept on this device.")};
+  app.querySelector(".have").onclick=function(){go(3)};
+  q.addEventListener("keydown",function(e){if(e.key==="Escape"&&k>0){e.preventDefault();app.querySelector(".back").click()}});
+  paintPV();render();
+}
+
+/* =====================================================================
+   CONCEPT 5 · Glass box
+   ===================================================================== */
+function C5(app){
+  app.innerHTML='<div class="c5"><div class="c5g"><section class="card1 c5f">'+HEAD("Sign up with nothing hidden","Type, and watch where each detail goes.")+'<div class="st stack">'+
+    GBTN+'<div class="or">or</div><form class="stack f5" novalidate style="gap:12px">'+emailFieldHTML("Email","you@example.com")+textFieldHTML("First name","given-name","")+
+    '<label class="agreeck"><input type="checkbox" class="ag"><span>I am 18 or older and agree to the <a href="terms.html" data-demo>Terms</a> and <a href="privacy.html" data-demo>Privacy Policy</a></span></label><p class="fmsg amsg err" aria-live="polite"></p><button type="submit" class="btn pri wide">Create my account</button></form></div></section>'+
+    '<section class="map" aria-label="Where your details go"><h2>Where your details go</h2><p>This map is the privacy summary. It updates as you type.</p><div class="lanes">'+
+      '<div class="lane"><h3>'+I.dev+' Only this device</h3><p>Stays here unless you copy it yourself.</p><div class="chips"><span class="dchip lock">'+I.lock+' Voluntary answers: race, gender, veteran, disability</span><span class="dchip">Your profile (not synced to a server yet)</span></div></div>'+
+      '<div class="lane"><h3>'+I.user+' Your UAply account</h3><p>So you can sign in and get a receipt for each application.</p><div class="chips"><span class="dchip wait" data-k="email">Email</span><span class="dchip wait" data-k="name">First name</span><span class="dchip">Application receipts</span></div></div>'+
+      '<div class="lane"><h3>'+I.brief+' An employer</h3><p>Only when you swipe right on one that takes applications through UAply. Otherwise you apply on their own site.</p><div class="chips"><span class="dchip pend" data-k="email2">'+I.clock+' Email, at your swipe right</span><span class="dchip pend" data-k="name2">'+I.clock+' Name, at your swipe right</span><span class="dchip pend">'+I.clock+' Phone and resume, if you add them</span></div></div>'+
+    '</div><div class="gnote" hidden></div><p class="never">UAply never emails a company that has not agreed. The match % only sorts jobs; employers make every decision.</p></section></div></div>';
+  var st=app.querySelector(".st"),viaG=null;
+  var emf=st.querySelector("[data-email]"),nmIn=st.querySelectorAll(".f5 input[type=text]")[0],ag=st.querySelector(".ag"),amsg=st.querySelector(".amsg");
+  function chip(k,label,val){var c=app.querySelector('[data-k="'+k+'"]');var was=c.classList.contains("filled");if(val){c.classList.remove("wait");c.classList.add("filled");c.innerHTML=I.check+' '+label+' <span class="v">'+esc(val)+'</span>';if(!was&&!RM()){c.classList.remove("in");void c.offsetWidth;c.classList.add("in")}}else{c.classList.add("wait");c.classList.remove("filled","in");c.textContent=label}}
+  function hl(keys,on){keys.forEach(function(k){var c=app.querySelector('[data-k="'+k+'"]');if(c)c.classList.toggle("hl",on)})}
+  var em=wireEmail(emf,{onChange:function(v,r){chip("email","Email",r.s==="ok"||r.s==="typo"?v:"")}});
+  em.input.addEventListener("focus",function(){hl(["email","email2"],true)});em.input.addEventListener("blur",function(){hl(["email","email2"],false)});
+  nmIn.addEventListener("focus",function(){hl(["name","name2"],true)});nmIn.addEventListener("blur",function(){hl(["name","name2"],false)});
+  nmIn.addEventListener("input",function(){chip("name","First name",nmIn.value.trim())});
+  ag.addEventListener("change",function(){if(ag.checked)amsg.textContent=""});
+  st.querySelector(".gbtn").onclick=function(){googleSim(this,function(u){viaG=u;em.input.value=u.email;nmIn.value=u.first;chip("email","Email",u.email);chip("name","First name",u.first);emf.classList.add("good");
+    var g=app.querySelector(".gnote");g.hidden=false;g.innerHTML='<b>From Google:</b> your name and verified email, nothing else. UAply never sees your Google password.';
+    amsg.classList.remove("err");amsg.textContent=ag.checked?"":"Almost done: tick the box, then Create my account.";amsg.style.color=ag.checked?"":"var(--accent)";fx(ag)})};
+  st.querySelector(".f5").onsubmit=function(e){e.preventDefault();amsg.style.color="";amsg.classList.add("err");
+    if(!viaG&&!em.validate()){amsg.textContent="";return}
+    if(!ag.checked){amsg.textContent="Tick the box to confirm you’re 18 or older and agree, then try again.";fx(ag);return}
+    if(viaG){done(viaG.first);return}
+    var mail=em.value(),first=nmIn.value.trim()||mail.split("@")[0];var keep=st.innerHTML;
+    var cs=codeStep(mail,{onOk:function(){done(first)},onBack:function(){C5(app)}});st.innerHTML="";st.appendChild(cs);cs.start()};
+  function done(first){st.innerHTML='<div class="done pop"><span class="okc">'+I.check+'</span><h2 tabindex="-1">Account created, '+esc(first)+'.</h2><p class="sub">Everything on the map is now true for you. It stays in Data and privacy, so you can check it any time.</p><button type="button" class="btn pri wide">Start swiping</button></div>';st.querySelector(".btn").onclick=function(){toast(app,"On to the cards (demo).")};fx(st.querySelector("h2"))}
+}
+
+/* =====================================================================
+   page content
+   ===================================================================== */
+var CONCEPTS=[
+ {id:"c1",tab:"Swipe first",title:"Swipe first, sign in when it matters",idea:"The cards open with no account. The sign-in card appears at the first swipe right, holding that exact job and the search you typed.",mount:C1,
+  why:["People came to swipe, so the deck is the first screen. Asking for an account before anyone has seen a job is where most sign-ups are lost.",
+       "The ask arrives at the moment of intent and names the job, so “Sign in” reads as “send this one”, not as a chore.",
+       "It keeps the honesty rule in the card itself: it says whether this employer takes UAply applications or whether we’ll open their own page."],
+  mi:[["b","Deck opens with no account. Drag, arrow keys or the buttons all swipe; the stamp reads “Apply” or “Open site” depending on that employer’s path."],
+      ["b","First swipe right opens the sign-in card, centered by grid on desktop (it can’t drift) and as a thumb-height sheet on phone."],
+      ["b","The swiped job is pinned in the card, and the search typed in the top bar is carried into the copy."],
+      ["b","“Not now” (or Esc, or a click outside) keeps the job in a Saved counter and remembers any email you started typing; the next card is pre-filled."],
+      ["b","Focus lands on Continue with Google, Tab stays inside the card, and focus returns to the deck when it closes."],
+      ["b","Email typo fix (gmial.com becomes a one-tap “Did you mean gmail.com?”) and 6 code boxes with paste and auto-advance."],
+      ["d","Real app: the held job survives the Google redirect (sessionStorage) and is sent or opened right after sign-in. The swipe lock in uaply-onboard.js moves from “before any swipe” to this card."]]},
+ {id:"c2",tab:"One card",title:"One centered card, Google first, a code instead of a password",idea:"A single card in the middle of the screen: Google first, one email field, a 6-digit code, and the agreement as three short facts.",mount:C2,
+  why:["One card fixes all three complaints at once: it is centered by grid, Google is the first button, and the agreement is one full-width line.",
+       "One field and a 6-digit code replace email, password, confirm password and a tick box. Nobody has a password to forget, and the server already sends verification codes.",
+       "The 165-word agreement becomes three facts and one line, each fact opening to its full wording, so nothing is lost."],
+  mi:[["b","Google first. The email field waits for you to leave it before showing an error, and clears the error the moment it’s fixed."],
+      ["b","Typo fix button and the temporary-address warning, using the app’s existing wording."],
+      ["b","Returning or new: a hint under the field says which (try sam.rivera@gmail.com)."],
+      ["b","6 code boxes: paste a whole code, auto-advance, Backspace steps back, a wrong code shakes (or only turns red with reduced motion), and the resend link counts down."],
+      ["b","“Prefer a password?” reveals a password field for people who want one."],
+      ["b","Each fact expands to the full original sentence."],
+      ["d","Real app: the card is min(420px, 100% − 32px) wide inside a min-height:100dvh grid, so it stays centered on any window, and it never needs a scroll at 1280×720."]]},
+ {id:"c3",tab:"Deck + card",title:"A live deck beside the sign-in card",idea:"Half the screen is a real mini deck you can swipe; the other half is the centered sign-in card, which reacts to what you liked.",mount:C3,
+  why:["On desktop half the window was empty. Here the product sells itself in that space while you sign in.",
+       "The sign-in card reacts to what you liked, so the reason to sign in is your own picks, not our pitch.",
+       "Every card shows its honest path (applies through UAply, or opens the employer’s site) before anyone has an account."],
+  mi:[["b","Swipeable example deck (drag, arrows, buttons), labelled “Example listings”; nothing is sent."],
+      ["b","Liked jobs appear as chips on the sign-in card and its heading changes to “Keep the jobs you liked”."],
+      ["b","Phone: deck on top, sign-in as a bottom sheet with Google and email visible without scrolling."],
+      ["b","The same email checks and code boxes as concept 2."],
+      ["d","Real app: the deck shows real listings from the feed (three cards, no personal data) and pauses when the tab is hidden."]]},
+ {id:"c4",tab:"Profile as you go",title:"Profile as you go",idea:"One short question per screen. The account is question four, framed as “where should receipts go”, while a live card shows what an employer would see.",mount:C4,
+  why:["Sign-up and onboarding become the same three short questions, so by the time we ask for an account the person can see the card they’re building.",
+       "The account question is framed as “where should your receipts go”, which is the honest reason we need an email.",
+       "Every screen can be skipped and “Just look around” is always there, matching today’s onboarding promise."],
+  mi:[["b","One question per screen; Enter continues, Esc goes back, Back and Skip are on every screen except the code."],
+      ["b","Live preview of what an employer sees, filling as you type; on phone it folds into a one-line strip you can open."],
+      ["b","Focus lands on each new question’s heading; the progress bar is a real progressbar for screen readers."],
+      ["b","Job chips are toggle buttons (aria-pressed), so Space and Enter both work."],
+      ["b","“I have an account” jumps straight to the sign-in question."],
+      ["d","Phone keyboard: the action bar rides above the on-screen keyboard using visualViewport, the same approach as fitKb in uaply-onboard.js."]]},
+ {id:"c5",tab:"Glass box",title:"Glass box: watch where your details go",idea:"Sign-up beside a live map of where each detail goes: this device, your account, or an employer at your swipe right. The consent is something you see, not read.",mount:C5,
+  why:["Nobody reads 165 words, but everybody looks at a picture of where their name and email go. The consent becomes something you watch happen as you type.",
+       "It turns UAply’s honesty rules (nothing to employers who haven’t agreed, voluntary answers stay on device) into the product’s signature instead of small print.",
+       "One tick box covers both Google and email, replacing today’s two separate boxes."],
+  mi:[["b","Focus a field and its destinations light up on the map; typing fills the chips live."],
+      ["b","Continue with Google fills the map with exactly what Google shares, then asks for the one tick."],
+      ["b","Create my account says what’s missing instead of being greyed out."],
+      ["b","Employer chips stay dashed, marked “at your swipe right”, until that moment."],
+      ["d","The same map lives in Data and privacy after sign-up, and changes only with a legal review, because the map is a promise."]]}
+];
+
+function whyHTML(){
+  return '<div class="phead"><span class="big">?</span><div><h2>Why these five</h2><p>What’s wrong today, the rules every concept follows, and the five bets.</p></div></div>'+
+  '<div class="lead"><p><b>What’s on the screen today.</b> The Account screen in <code>shared/uaply-nav.js</code> asks for email, password, confirm password and a tick box before it offers Google, and Google comes with its own second tick box. At 1280×720 that pushes Continue with Google below the fold, and the tick box label wraps into columns beside its checkbox. The first-open agreement in <code>uaply-live.js</code> is 165 words in one dialog.</p>'+
+  '<p><b>What a person wants.</b> To see jobs, swipe, and trust that a swipe right does what it says. Every concept below gets someone to a useful screen faster and says less, while keeping the honest hand-off and the 18+ agreement.</p></div>'+
+  '<h3 class="sec">Rules every concept follows</h3><div class="grid5">'+
+  [["Centered by construction","A grid with place-items:center on a full-height box, not margins, so the card can’t drift on any window."],
+   ["Google first, above the fold","At 1280×720 Continue with Google and the email path are both visible without scrolling. Inside the phone apps Google is hidden today, so the email path is complete on its own."],
+   ["One agreement line","“18 or older and agree to the Terms and Privacy Policy” stays, as one full-width line or one tick box that covers Google and email alike."],
+   ["Honest by default","Never “every swipe applies”. Cards show whether the employer takes UAply applications or whether we open their own page."],
+   ["Plain and buildable","Plain HTML, CSS and JavaScript with the prod tokens. Every frame on this page is real markup you can click, type in and tab through."]]
+   .map(function(r,i){return '<div class="rule"><span class="k">Rule '+(i+1)+'</span><b>'+r[0]+'</b><p>'+r[1]+'</p></div>'}).join("")+'</div>'+
+  '<h3 class="sec">The five bets</h3><div class="grid5">'+CONCEPTS.map(function(c,i){return '<div class="rule"><span class="k">Concept '+(i+1)+'</span><b>'+c.title+'</b><p>'+c.idea+'</p><button type="button" class="cgo" data-go="'+c.id+'">Open concept '+(i+1)+'</button></div>'}).join("")+'</div>'+
+  '<p class="hint">Use the tabs (or ← and → once a tab has focus). Each frame has a Restart button. Theme and Reduce motion at the top apply to every frame.</p>';
+}
+function compareHTML(){
+  var R=[
+   ["1","Swipe first","Cards first; the sign-in card appears at the first swipe right, holding that job.","0 taps to the cards. At sign-in: Google in 2 taps, or 1 field + code.","“Value before account” from consumer apps; deferred login from travel and shopping checkouts.","The ask names the exact job and tells the truth about that employer’s path; Not now keeps the job and the typed email.","The swipe lock moves to the first swipe right; the held job must survive the Google redirect; a slow sign-in at a high-intent moment loses that swipe.","M",9],
+   ["2","One card","Centered card: Google first, one email field, 6-digit code, three short facts.","Google: 2 taps. Email: 1 field + 6-digit code.","Code-instead-of-password sign-in from workplace tools; a single centered card.","The 3-fact agreement with each fact opening to its full text; typo fix and returning-or-new hints.","Needs a sign-in-by-code endpoint (the server already sends verification codes). “By continuing” versus a tick box is a legal call.","S",8],
+   ["3","Deck + card","A live mini deck on one side, the sign-in card on the other, reacting to what you liked.","Same as concept 2; the deck is optional.","Split-screen sign-in pages from marketplaces and payment companies.","The card’s heading and chips change with your likes; honest path badges on every card.","Busier phone layout; example listings must be labelled or come from the real feed; can pull attention from signing in.","M",6],
+   ["4","Profile as you go","One question per screen; the account is question four, “where should receipts go”.","3 skippable questions (about 4 taps), then Google in 2 taps or 1 field + code.","One-question-per-screen forms and language-app onboarding.","A live “what an employer sees” card; sign-in framed by the honest reason we need an email.","Longest path to the first swipe; overlaps Profile setup; must stay skippable or it becomes a wall.","L",6],
+   ["5","Glass box","Sign-up beside a live map of where each detail goes; consent you see rather than read.","Google: 2 taps + 1 tick. Email: 2 fields + 1 tick + code.","Privacy labels from app stores.","Focus a field, see who gets it; Google fills the map with what it actually shares. Nobody in job search does this.","The map must stay exactly true as the product changes (legal review on every change); more on screen for people who don’t care.","M",7]
+  ];
+  return '<div class="phead"><span class="big">≡</span><div><h2>Compare</h2><p>Friction counts taps and fields to the first useful screen (the cards, or a signed-in account). Effort runs XS to L.</p></div></div>'+
+  '<div class="tablewrap"><table><thead><tr><th>Concept</th><th>The idea</th><th>Friction</th><th>Borrows</th><th>Invents</th><th>Risks</th><th>Effort</th><th>Score</th></tr></thead><tbody>'+
+  R.map(function(r){return '<tr><td><b>'+r[0]+'. '+r[1]+'</b></td><td>'+r[2]+'</td><td>'+r[3]+'</td><td>'+r[4]+'</td><td>'+r[5]+'</td><td>'+r[6]+'</td><td><span class="eff">'+r[7]+'</span></td><td><span class="score">'+r[8]+'</span>/10</td></tr>'}).join("")+'</tbody></table></div>'+
+  '<h3 class="sec">My recommendation</h3><div class="lead"><p><b>Ship concept 2 now and make it the card that concept 1 opens.</b> Concept 2 fixes all three complaints with the smallest change. Then move the ask to the first swipe right (concept 1), which is the biggest gain in sign-ups. Borrow the glass-box map (concept 5) for Data and privacy and for the “more” view of the three facts. Keep concept 3 for the desktop landing page, and concept 4’s questions for Profile setup after sign-in, not before.</p></div>'+
+  '<h3 class="sec">What the owner should decide</h3><ol class="decide">'+
+  '<li><b>Passwords:</b> keep email and password, or switch to a 6-digit email code with “Prefer a password?” as the backup.</li>'+
+  '<li><b>When to ask:</b> at Get started (today), or at the first swipe right (concept 1). Asking later changes the swipe lock.</li>'+
+  '<li><b>How to agree:</b> a “By continuing…” line (saves a tap) or one tick box covering Google and email (safest). Either replaces today’s two boxes.</li>'+
+  '<li><b>The 165 words:</b> whether three short facts, each opening to the full text, can replace the first-open agreement dialog.</li></ol>';
+}
+
+/* build tabs and panels */
+var TABS=[{id:"why",label:"Why these 5",n:"?"}].concat(CONCEPTS.map(function(c,i){return {id:c.id,label:c.tab,n:String(i+1)}})).concat([{id:"compare",label:"Compare",n:"≡"}]);
+var tabsEl=d.getElementById("tabs"),panels=d.getElementById("panels");
+TABS.forEach(function(t){
+  tabsEl.appendChild(h('<button type="button" role="tab" class="tab" id="t-'+t.id+'" aria-controls="p-'+t.id+'" aria-selected="false" tabindex="-1"><span class="n">'+t.n+'</span>'+t.label+'</button>'));
+  var p=h('<section class="panel" role="tabpanel" id="p-'+t.id+'" aria-labelledby="t-'+t.id+'" tabindex="0" hidden></section>');
+  if(t.id==="why")p.innerHTML=whyHTML();
+  else if(t.id==="compare")p.innerHTML=compareHTML();
+  else{
+    var c=CONCEPTS.filter(function(x){return x.id===t.id})[0],i=CONCEPTS.indexOf(c)+1;
+    p.innerHTML='<div class="phead"><span class="big">'+i+'</span><div><h2>'+c.title+'</h2><p>'+c.idea+'</p></div></div>'+
+      '<div class="stage">'+
+        '<figure class="dev desk"><figcaption><span>Desktop · 1280 × 720</span><button type="button" class="rst">Restart</button></figcaption><div class="chrome" aria-hidden="true"><i></i><i></i><i></i><span>UAply · sign in</span></div><div class="fwrap" data-w="1280" data-h="720"><div class="screen" style="width:1280px;height:720px"><div class="app" data-kind="desk"></div></div></div></figure>'+
+        '<figure class="dev phone"><figcaption><span>Phone · 390 × 844</span><button type="button" class="rst">Restart</button></figcaption><div class="fwrap" data-w="390" data-h="844"><div class="screen" style="width:390px;height:844px"><div class="app" data-kind="phone"></div></div></div></figure>'+
+      '</div><div class="below"><div class="box"><h3>Rationale</h3><ol>'+c.why.map(function(w){return '<li>'+w+'</li>'}).join("")+'</ol></div>'+
+      '<div class="box"><h3>Micro-interactions</h3><ul class="mi">'+c.mi.map(function(m){return '<li><span class="tag '+m[0]+'">'+(m[0]==="b"?"built":"described")+'</span><span>'+m[1]+'</span></li>'}).join("")+'</ul></div></div>';
+    p._concept=c;
+  }
+  panels.appendChild(p);
+});
+
+/* scale each frame to its box */
+var ro=new ResizeObserver(function(es){es.forEach(function(e){fit(e.target)})});
+function fit(fw){var W=+fw.dataset.w,s=fw.clientWidth/W;if(!s)return;var sc=fw.firstElementChild;sc.style.transform="scale("+s+")";sc.dataset.s=s}
+function mountPanel(p){
+  if(p._mounted||!p._concept)return;p._mounted=true;
+  [].forEach.call(p.querySelectorAll(".dev"),function(fig){
+    var app=fig.querySelector(".app"),fw=fig.querySelector(".fwrap");ro.observe(fw);fit(fw);
+    p._concept.mount(app);
+    fig.querySelector(".rst").onclick=function(){app.innerHTML="";p._concept.mount(app)};
+  });
+}
+/* demo links never leave the page */
+d.addEventListener("click",function(e){var a=e.target.closest&&e.target.closest("a[data-demo]");if(a){e.preventDefault();var app=a.closest(".app");if(app)toast(app,"In the app this opens "+a.getAttribute("href")+" in a new tab.")}});
+
+/* tabs: click, ←/→, Home/End (automatic activation) */
+var tabBtns=[].slice.call(tabsEl.querySelectorAll(".tab"));
+function select(id,focus){
+  tabBtns.forEach(function(b){var on=b.id==="t-"+id;b.setAttribute("aria-selected",on);b.tabIndex=on?0:-1;d.getElementById(b.getAttribute("aria-controls")).hidden=!on;if(on&&focus)b.focus();if(on)b.scrollIntoView({block:"nearest",inline:"nearest"})});
+  mountPanel(d.getElementById("p-"+id));
+  store("uaply-concepts-tab",id);
+  if(location.hash!=="#"+id)history.replaceState(null,"","#"+id);
+}
+tabBtns.forEach(function(b,i){
+  b.addEventListener("click",function(){select(b.id.slice(2))});
+  b.addEventListener("keydown",function(e){var n=null;if(e.key==="ArrowRight")n=(i+1)%tabBtns.length;else if(e.key==="ArrowLeft")n=(i-1+tabBtns.length)%tabBtns.length;else if(e.key==="Home")n=0;else if(e.key==="End")n=tabBtns.length-1;if(n!==null){e.preventDefault();select(tabBtns[n].id.slice(2),true)}});
+});
+panels.addEventListener("click",function(e){var g=e.target.closest(".cgo");if(g){select(g.dataset.go,true);window.scrollTo({top:0})}});
+var start=(location.hash||"").slice(1);if(!TABS.some(function(t){return t.id===start}))start=store("uaply-concepts-tab")||"why";if(!TABS.some(function(t){return t.id===start}))start="why";
+select(start);
+
+/* theme + motion */
+function setTheme(t){if(t==="auto")delete root.dataset.theme;else root.dataset.theme=t;[].forEach.call(d.querySelectorAll("[data-th]"),function(b){b.setAttribute("aria-pressed",b.dataset.th===t)});store("uaply-concepts-theme",t)}
+[].forEach.call(d.querySelectorAll("[data-th]"),function(b){b.onclick=function(){setTheme(b.dataset.th)}});
+setTheme(store("uaply-concepts-theme")||"auto");
+var mot=d.getElementById("motBtn");
+function setMot(on){if(on)root.dataset.motion="reduce";else delete root.dataset.motion;mot.setAttribute("aria-pressed",on);mot.textContent="Reduce motion: "+(on?"on":"off");store("uaply-concepts-motion",on?"1":"0")}
+mot.onclick=function(){setMot(root.dataset.motion!=="reduce")};
+setMot(store("uaply-concepts-motion")==="1");
+window.__concepts={select:select,TABS:TABS};
+})();
+</script>
+</body>
+</html>
