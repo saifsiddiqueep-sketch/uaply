@@ -5,7 +5,7 @@ The listings come from employers' own public hiring systems and career pages (Gr
 
 WHAT A RIGHT SWIPE DOES, HONESTLY
 - At a connected employer (the card says Apply instantly), UAply fills in that employer's real application form from your profile and sends it into their hiring system. If their form asks something your profile does not answer yet, UAply asks you for it right there.
-- Everywhere else (the card says Opens employer site), UAply takes you to the door: the job is saved in your Dashboard as Finish on their site, and one tap opens the employer's own page and copies your name, email, phone and links so you can paste them into their form. Nothing is sent for you.
+- Everywhere else (the card says Opens employer site), UAply takes you to the door: the job is saved in your Job Tracker as Finish on their site, and one tap opens the employer's own page and copies your name, email, phone and links so you can paste them into their form. Nothing is sent for you.
 - You can undo a swipe right after you make it. A left swipe only hides the job.
 
 A MATCH SCORE YOU CAN READ

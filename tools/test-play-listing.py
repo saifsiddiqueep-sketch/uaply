@@ -1,7 +1,7 @@
 """The Google Play listing pack (mobile/store/play/) against Google Play's rules. No network, a second or two.
   python tools/test-play-listing.py
 1. Pictures: the icon is a 512 x 512 PNG under 1 MB; the feature graphic is 1024 x 500 without transparency; phone and tablet screenshots
-   are 9:16, the right size, without transparency, under 8 MB, at least 4 of each, and each of Jobs, Job tracker, Profile and Filters is there.
+   are 9:16, the right size, without transparency, under 8 MB, at least 4 of each, and each of Jobs, Job Tracker, Profile and Filters is there.
 2. Texts: app name 30 characters at most, short description 80, full description 4000, test release notes 500; no emoji, no ranking
    claims Google refuses ("best", "#1", "top"), and the wording promises nothing the app does not do (free during early access, no ads).
 3. Forms: the Data safety answers give the deletion page, the App content answers give the privacy policy, and both pages exist in legal/.
@@ -65,7 +65,7 @@ for kind, lo, hi in (("phone", 320, 3840), ("tablet", 1080, 7680)):
     names = {re.sub(r"^\d+-", "", os.path.splitext(os.path.basename(f))[0]) for f in files}
     t("%s screenshots: 4 to 8 of them, each 1080 x 1920 (9:16), 24-bit PNG without transparency, under 8 MB" % kind, 4 <= len(files) <= 8 and not bad,
       "%d files; %s" % (len(files), "; ".join(bad)))
-    t("%s screenshots include Jobs, Job tracker, Profile and Filters" % kind, set(NEEDED) <= names, sorted(names))
+    t("%s screenshots include Jobs, Job Tracker, Profile and Filters" % kind, set(NEEDED) <= names, sorted(names))
 
 # ---------- 2. texts ----------
 EMOJI = re.compile("[\U0001F000-\U0001FAFF☀-➿️]")

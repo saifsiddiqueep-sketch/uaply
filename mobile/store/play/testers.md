@@ -31,7 +31,7 @@ Play Store, Google needs 12 people to test it for 14 days, and I would be gratef
    [OPT-IN LINK]
 2. Tap "Become a tester", then "Download it on Google Play", and install UAply.
 3. Please stay in the test for at least 14 days (do not leave the test or uninstall), and open UAply on a few different days:
-   swipe through some jobs, set up your profile, look at the Dashboard. You do not have to apply to anything.
+   swipe through some jobs, set up your profile, look at the Job Tracker. You do not have to apply to anything.
 4. If something is confusing or broken, tap Help in the app, then Report a problem, or reply to this email.
 
 Your test copy may update by itself during the 14 days. Nothing you do in the test is shown publicly.
