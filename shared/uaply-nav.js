@@ -273,6 +273,8 @@ input[type=range]{accent-color:var(--accent);min-height:44px}
 #fMilesWrap .rngrow .m{color:var(--muted);font-size:12px}
 #fLoc{display:flex;flex-direction:column;gap:6px;align-items:flex-start;margin-top:4px}
 @media (max-width:480px){.hdrbtn .em{display:none}.hdrbtn{padding:5px;max-width:none}}
+/* taps and focus: the same rule as every UAply page (shared/uaply-focus.css) */
+html{-webkit-tap-highlight-color:transparent}a,button,input,select,textarea,summary,label,[role=button],[tabindex]{-webkit-tap-highlight-color:transparent}:focus:not(:focus-visible){outline:none}:focus-visible{outline:3px solid var(--accent,#C92A55);outline-offset:2px}
 `;
 
 function apply(w,host){

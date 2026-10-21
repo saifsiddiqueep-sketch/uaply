@@ -21,6 +21,8 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--ink);fo
 .bar[hidden]{display:none}
 .bar>span:last-child{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .badge{flex:none;font:700 11px ui-monospace,Menlo,monospace;letter-spacing:.08em;padding:3px 8px;border-radius:6px;background:#2F7BD9;color:#fff}
+/* taps and focus: shared/uaply-focus.css */
+html{-webkit-tap-highlight-color:transparent}a,button,input,select,textarea,summary,label,[role=button],[tabindex]{-webkit-tap-highlight-color:transparent}:focus:not(:focus-visible){outline:none}:focus-visible{outline:3px solid var(--accent,#C92A55);outline-offset:2px}
 iframe{flex:1;min-height:0;border:0;width:100%;background:var(--bg)}
 </style>
 </head>

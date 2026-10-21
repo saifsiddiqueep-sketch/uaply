@@ -6,7 +6,7 @@
    seen at once), never /api/ (accounts, applications, payments), never another site. It answers page loads (navigations) and that
    screen's own icon only; every other request (scripts, /api/ calls, images, Google, Stripe) is not touched and goes to the network
    exactly as without it. */
-var CACHE = "uaply-shell-v1";      /* change the number whenever uaply-offline.html or the icon changes, so phones fetch the new copy */
+var CACHE = "uaply-shell-v2";      /* change the number whenever uaply-offline.html or the icon changes, so phones fetch the new copy */
 var PAGE = "/uaply-offline.html", ICON = "/uaply-icon-192.png", SHELL = [PAGE, ICON];
 
 self.addEventListener("install", function (e) {

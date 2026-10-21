@@ -22,3 +22,5 @@ nav.docs{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:14px;margin:0 0 20px
 nav.docs a.home{font-weight:700;flex-basis:100%}   /* the way back to the app, on its own line above the other legal pages */
 footer{max-width:46rem;margin:18px auto 0;color:var(--muted);font-size:13px;text-align:center}
 @media (max-width:520px){main{padding:20px 16px}h1{font-size:25px}}
+/* taps and focus: the same rule as every UAply page (shared/uaply-focus.css) */
+html{-webkit-tap-highlight-color:transparent}a,button,input,select,textarea,summary,label,[role=button],[tabindex]{-webkit-tap-highlight-color:transparent}:focus:not(:focus-visible){outline:none}:focus-visible{outline:3px solid var(--accent,#C92A55);outline-offset:2px}

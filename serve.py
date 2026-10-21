@@ -39,6 +39,7 @@ Serves ROOT; each urlpath=file alias maps one URL to a file outside ROOT (e.g. /
   GET  /uaply.webmanifest, /uaply-sw.js, /uaply-offline.html, /uaply-icon-*.png   the installable website (shared/)
 Accounts use an HttpOnly session cookie. When a signed-in user swipes right, a receipt goes to their email."""
 import sys, os, re, json, http.server, base64, hmac, threading, time, signal, random, urllib.parse
+import ui_rules
 
 LEGAL_NAME = re.compile(r"^[A-Za-z0-9_-]+\.(html|css|png)$")       # the files in legal/: terms.html, style.css, favicon-32.png ...
 
@@ -183,8 +184,8 @@ document.getElementById("save").onclick=function(){
 def moved_page(go):
     """MOVED_PAGE for this request; go is where it leads when there is nothing to keep (the same path and query on the public host)."""
     import html as _html
-    return (MOVED_PAGE % {"base": PUBLIC_BASE, "host": _html.escape(PUBLIC_HOST), "go": _html.escape(go, quote=True),
-                          "go_js": json.dumps(go).replace("<", "\\u003c"), "key": json.dumps(_storage_key())}).encode("utf-8")
+    return ui_rules.with_focus(MOVED_PAGE % {"base": PUBLIC_BASE, "host": _html.escape(PUBLIC_HOST), "go": _html.escape(go, quote=True),
+                          "go_js": json.dumps(go).replace("<", "\\u003c"), "key": json.dumps(_storage_key())}, pressed=True).encode("utf-8")
 
 
 def no_redirect_path(p):
@@ -257,7 +258,7 @@ def log_oops(where, e):
 # robots.txt: the app and the legal pages may be indexed; the API and the owner-only pages are not pages for search engines
 ROBOTS = b"User-agent: *\nDisallow: /api/\nDisallow: /outbox\nDisallow: /feedback\nDisallow: /setup\nAllow: /\n"
 # the app's own page for an address that does not exist (it used to be Python's bare "Error response" page)
-NOT_FOUND_PAGE = """<!doctype html>
+NOT_FOUND_PAGE = ui_rules.with_focus("""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Page not found - UAply</title><link rel="icon" type="image/png" href="/favicon.ico"><meta name="robots" content="noindex">
 <style>
@@ -273,7 +274,7 @@ nav{margin-top:18px;font-size:14px;color:var(--muted)}nav a{color:inherit}
 <body><main><h1>Page not found</h1><p>There is nothing at this address. It may have moved, or the link may have a typo.</p>
 <a class="btn" href="/">Back to UAply</a>
 <nav><a href="/legal/">Terms and policies</a> &middot; <a href="/legal/support.html">Support</a></nav></main></body></html>
-""".encode("utf-8")
+""", pressed=True).encode("utf-8")
 
 MAX_BODY = 40000
 MAX_APPLY_BODY = 1500000

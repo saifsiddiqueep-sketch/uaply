@@ -23,6 +23,7 @@ import billing_api
 import google_auth
 import jobs_api
 import uaply_api
+import ui_rules
 
 CLIENT_RE = re.compile(r"^\d+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$")
 # the live site's addresses, which Google must be told about (Render's own address keeps working next to the custom domain)
@@ -387,7 +388,7 @@ def page(host, proto):
         n = auth_api.counts()
     except Exception:
         n = {"users": 0, "mail": 0}
-    return ("""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    return ui_rules.with_focus("""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>UAply setup</title><style>
 :root{--bg:#FDF0F2;--surface:#FFFFFF;--ink:#2A1218;--muted:#7B5560;--line:#F3DADF;--accent:#C92A55;--good:#1E7A4C}
 @media (prefers-color-scheme: dark){:root{--bg:#190B10;--surface:#26131A;--ink:#FBE9EE;--muted:#C79BA6;--line:#40222B;--accent:#FF7A98;--good:#5FD39A}}

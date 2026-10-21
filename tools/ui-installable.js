@@ -54,7 +54,7 @@ module.exports = async ({ ev, sleep, nav, send }) => {
     await ev("Promise.all(['/api/auth/me','/api/jobs','/api/billing/status','/uaply-nav.js'].map(u=>fetch(u).then(r=>r.text()).catch(()=>0)))");
     await nav(base + "/legal/terms.html");
     const saved = await ev("caches.keys().then(ks=>Promise.all(ks.map(k=>caches.open(k).then(c=>c.keys()).then(rs=>k+': '+rs.map(r=>new URL(r.url).pathname).sort().join(','))))).then(a=>a.join(' | '))");
-    check("its cache holds only the offline screen and its icon: nothing from /api/, no app code, no pages", saved === "uaply-shell-v1: /uaply-icon-192.png,/uaply-offline.html", saved);
+    check("its cache holds only the offline screen and its icon: nothing from /api/, no app code, no pages", /^uaply-shell-v\d+: \/uaply-icon-192\.png,\/uaply-offline\.html$/.test(saved), saved);
     const ctl = await ev("!!navigator.serviceWorker.controller");
     check("pages are controlled by it (so the next checks test the worker, not the browser)", ctl === true, String(ctl));
     await nav(base + "/legal");

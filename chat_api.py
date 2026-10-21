@@ -22,6 +22,7 @@ import sys
 import threading
 import time
 import uuid
+import ui_rules
 
 import uaply_api
 
@@ -462,7 +463,7 @@ def feedback_html():
                                              "saved": "not emailed (no real email connected)",
                                              "held": "held: emailed later (the daily email limit, or the mail service was down)"}.get(r.get("delivery"), "saved"))
         for r in recs[:200]) or "<p class='m'>No feedback yet.</p>"
-    return ("""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    return ui_rules.with_focus("""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>UAply feedback</title><style>
 :root{--bg:#FDF0F2;--surface:#FFFFFF;--ink:#2A1218;--muted:#7B5560;--line:#F3DADF;--accent:#C92A55}
 @media (prefers-color-scheme: dark){:root{--bg:#190B10;--surface:#26131A;--ink:#FBE9EE;--muted:#C79BA6;--line:#40222B;--accent:#FF7A98}}

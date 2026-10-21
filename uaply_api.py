@@ -29,6 +29,7 @@ import re
 import sys
 import threading
 import time
+import ui_rules
 import urllib.error
 import urllib.request
 import uuid
@@ -1053,7 +1054,7 @@ def outbox_html():
             e(mail_badge.get(m["status"], m["status"].upper())), e(m["subject"]), e(m["to_addr"]),
             time.strftime("%b %d, %H:%M", time.localtime(m["at"])), e(m["body"])) for m in mails)
         or "<p class='m'>No receipts yet. Sign in to UAply, then swipe right on a job.</p>")
-    return ("""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    return ui_rules.with_focus("""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>UAply test inbox</title><style>
 :root{--bg:#FDF0F2;--surface:#FFFFFF;--ink:#2A1218;--muted:#7B5560;--line:#F3DADF;--accent:#C92A55}
 @media (prefers-color-scheme: dark){:root{--bg:#190B10;--surface:#26131A;--ink:#FBE9EE;--muted:#C79BA6;--line:#40222B;--accent:#FF7A98}}

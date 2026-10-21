@@ -6,6 +6,19 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 
+### Taps and focus: no blue tap box, a keyboard ring that matches the app
+- On Android, tapping "Try again" on the starting-up screen painted Chrome's default light-blue rectangle over the round button (the
+  owner saw it on a Galaxy A17). One rule, `shared/uaply-focus.css`, now goes word for word into every page UAply serves (the app,
+  dev's and the sandbox's outer pages, every legal page, the offline / starting-up screen, the 404 and "moved" pages, /setup, /feedback,
+  the test inbox, the phone app's "can't connect" screen): no tap highlight, no ring after a tap or a click, a 3 px ring in the accent
+  colour for keyboard users. The standalone pages also get a pressed state. Server-built pages take it from `ui_rules.py`.
+- The starting-up screen checks `/healthz` every 3 seconds for the first minute, then 1.5 times longer each try (15 seconds at most),
+  and reopens the page on the first 200 (the page is sent with `Cache-Control: no-store`, so it is never a saved copy). Its cached copy
+  in the service worker is now `uaply-shell-v2`.
+- Tests: `tools/test-focus.py` (12 checks: every copy word for word; `--sync` rewrites them after a change) and `tools/ui-focus.js`
+  (28 checks in Chrome at 390 px with touch: the computed tap highlight of every element on every page, no ring after a real touch,
+  the keyboard ring, the retries against a /healthz answering 503). Before this change 26 of its 28 checks failed.
+
 ### Google Play listing pack
 - `mobile/store/play/`: app name, short (80) and full (3,5xx of 4,000) descriptions in the app's own honest wording, the 512 px icon, the
   1024 x 500 feature graphic, five phone and five 7-inch tablet screenshots at 1080 x 1920 (Jobs, Dashboard, Profile setup, Filters, Help),

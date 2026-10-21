@@ -1,0 +1,4 @@
+/* UAply's one rule for taps and focus, copied word for word into every page UAply serves (tools/test-focus.py checks the copies and
+   what Chrome makes of them): no grey or blue flash where a finger taps, no ring after a mouse click or a tap, and a clear ring in the
+   app's accent colour for keyboard users. Change it here, then run tools/test-focus.py --sync to copy it everywhere. */
+html{-webkit-tap-highlight-color:transparent}a,button,input,select,textarea,summary,label,[role=button],[tabindex]{-webkit-tap-highlight-color:transparent}:focus:not(:focus-visible){outline:none}:focus-visible{outline:3px solid var(--accent,#C92A55);outline-offset:2px}
