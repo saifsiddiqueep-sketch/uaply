@@ -1,5 +1,5 @@
 /* "nav" experiment for the sandbox and dev instances (never loaded by prod).
-   Bottom navigation with three dropdowns: Services (Full-time, Part-time, Internships, Coop), Dashboard (Overview, Applied,
+   Bottom navigation with three dropdowns: Services (Full-time, Part-time, Internships, Coop), Job Tracker (Overview, Applied,
    Accepted, Rejected, Interviews), Profile (Profile setup, Filters, Account, Plan & billing, Data & privacy).
    patch() edits an in-memory copy of index.html; apply() builds the UI. */
 (function(){
@@ -39,7 +39,7 @@ function patch(s){
   s=once(s,'&&(F==="all"||j.mode===F)}).map(function(j){return {j:j,m:evaluate(j,S.profile)}}).sort(',
            '&&(j.type||"job")===TYPE&&!(window.__uaplyHide&&window.__uaplyHide(j))&&(F==="all"||j.mode===F)}).map(function(j){return {j:j,m:evaluate(j,S.profile)}}).filter(function(x){return x.m.pct>=MINPCT}).sort(');
   s=once(s,'<h2>You have seen every job</h2><p>Jobs you passed on can come back, and your applications are in the Applied tab.</p>',
-    `<h2>'+(window.__uaplyLoadingJobs?"Finding jobs for you…":window.__uaplyJobsFailed?"Could not load jobs":MINPCT>0?"No jobs at "+MINPCT+"% match or higher":(window.__uaplyEmpty||function(){return ["You have seen every one of these"]})(JOBS,S,TYPE)[0])+'</h2><p>'+(window.__uaplyLoadingJobs?"Looking for current postings. This takes a few seconds.":window.__uaplyJobsFailed?"Check your internet connection, then close and reopen UAply.":MINPCT>0?"Lower the minimum match in Profile, then Filters.":(window.__uaplyEmpty||function(){return ["","Jobs you passed on can come back, and your applications are in the Dashboard."]})(JOBS,S,TYPE)[1])+'</p>`);
+    `<h2>'+(window.__uaplyLoadingJobs?"Finding jobs for you…":window.__uaplyJobsFailed?"Could not load jobs":MINPCT>0?"No jobs at "+MINPCT+"% match or higher":(window.__uaplyEmpty||function(){return ["You have seen every one of these"]})(JOBS,S,TYPE)[0])+'</h2><p>'+(window.__uaplyLoadingJobs?"Looking for current postings. This takes a few seconds.":window.__uaplyJobsFailed?"Check your internet connection, then close and reopen UAply.":MINPCT>0?"Lower the minimum match in Profile, then Filters.":(window.__uaplyEmpty||function(){return ["","Jobs you passed on can come back, and your applications are in the Job Tracker."]})(JOBS,S,TYPE)[1])+'</p>`);
   s=once(s,'title:String(x.title||"")};','title:String(x.title||""),st:(x.st==="interview"||x.st==="accepted"||x.st==="rejected")?x.st:"applied",sent:(x.sent&&typeof x.sent==="object")?{at:+x.sent.at||0,to:String(x.sent.to||"").slice(0,120),status:String(x.sent.status||"").slice(0,20)}:undefined};');
   /* profile gets an email so a recruiter can reply */
   s=once(s,'salary:100000,loc:"New York",','salary:100000,loc:"New York",email:"jordan.lee@example.com",');
@@ -87,7 +87,7 @@ var CSS=`
 .nwrap{position:relative;flex:1;display:flex;min-width:0}
 .nb{flex:1;border:0;background:none;border-radius:999px;padding:6px 8px;min-height:48px;font-weight:600;color:var(--muted);display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.15;min-width:0}
 .nb small{font:500 11px var(--mono);opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-#bnav.simple .nb small{display:none}#bnav.simple .nb{font-size:15px;min-height:44px}
+.nb>span{white-space:nowrap}#bnav.simple .nb small{display:none}#bnav.simple .nb{font-size:15px;min-height:44px}
 /* the screen's bottom safe area (iPhone home indicator). The app runs in a frame: Safari gives a frame no inset, Chrome gives it the
    whole screen's even where the page around the frame already keeps that space free (the sandbox's app mode), so the page around the
    frame works out what is still needed and passes it as --sab (uaply-envs.js, syncSafeArea); env() is only the fallback without it */
@@ -298,7 +298,8 @@ function apply(w,host){
   var NK=w.__uaplyKey+".nav";
   var SECS={
     svc:{label:"Services",items:[["job","Full-time"],["parttime","Part-time"],["internship","Internships"],["coop","Coop"]]},
-    dash:{label:"Dashboard",items:[["overview","Overview"],["applied","Applied"],["accepted","Accepted"],["rejected","Rejected"],["interview","Interviews"]]},
+    /* internal "dash"/"dashboard" (ids nb-dash, pane-track, the help's "dash:..." links and its "dashboard" article, saved state) = label "Job Tracker" */
+    dash:{label:"Job Tracker",items:[["overview","Overview"],["applied","Applied"],["accepted","Accepted"],["rejected","Rejected"],["interview","Interviews"]]},
     prof:{label:"Profile",items:[["settings","Profile setup"],["filters","Filters"],["account","Account"],["plan","Plan & billing"],["data","Data & privacy"]]}
   };
   /* Settings, Preferences and Resume are now one guided setup. The old names still work as shortcuts into it. */
@@ -345,7 +346,7 @@ function apply(w,host){
   /* bottom nav */
   var main=d.getElementById("main"),nav=d.createElement("nav");
   nav.id="bnav";nav.setAttribute("aria-label","Main");
-  /* sandbox only: one-word tabs (Jobs, Dashboard, Profile) without the second line naming the open screen */
+  /* short tabs (Jobs, Job Tracker, Profile) without the second line naming the open screen */
   if(OPTS.simpleTabs){SECS.svc.label="Jobs";nav.className="simple";if(typeof OPTS.navLift==="number")d.documentElement.style.setProperty("--nav-lift",Math.max(0,Math.min(80,OPTS.navLift))+"px");[].slice.call(d.querySelectorAll("p.hint")).forEach(function(h){if(/^Keyboard:/.test(h.textContent.trim()))h.remove()})}
   Object.keys(SECS).forEach(function(k){
     var wrap=d.createElement("div");wrap.className="nwrap";wrap.setAttribute("data-k",k);
@@ -451,7 +452,7 @@ function apply(w,host){
   nav.addEventListener("focusout",function(e){if(e.relatedTarget&&!nav.contains(e.relatedTarget))closeMenus()});
   d.addEventListener("pointerdown",function(e){if(!e.target.closest("#bnav"))closeMenus()},true);
 
-  /* dashboard: applications by status */
+  /* Job Tracker: applications by status */
   var tp=d.createElement("section");tp.id="pane-track";tp.className="pane list";tp.setAttribute("aria-label","Applications");tp.hidden=true;main.appendChild(tp);
   var ACTS={
     applied:[["interview","Interview"],["accepted","Accepted"],["rejected","Rejected"],["withdraw","Withdraw"]],
@@ -621,11 +622,11 @@ function apply(w,host){
     if(isWiz)wzOpen();
   }
 
-  /* ---------- account: per-application details, preferences/filters, resume, plan, data, dashboard overview ---------- */
+  /* ---------- account: per-application details, preferences/filters, resume, plan, data, Job Tracker overview ---------- */
   var AK=w.__uaplyKey+".acct",E=A.esc,OPEN={};
   var PLANS={
     /* internal keys stay trial/starter/pro so saved choices keep working; the names and limits are the decided plan */
-    trial:{name:"Free",price:0,cap:50,perks:["50 applications a week","Full dashboard and tracking","Core filters"]},
+    trial:{name:"Free",price:0,cap:50,perks:["50 applications a week","The full Job Tracker","Core filters"]},
     starter:{name:"Plus",price:9.99,cap:250,perks:["250 applications a week","Benefits, applicant and dealbreaker filters","Message the hiring manager"]},
     pro:{name:"Pro",price:19.99,cap:0,perks:["Unlimited applications (fair use)","Everything in Plus","Priority support"]}
   };
@@ -878,7 +879,7 @@ function apply(w,host){
         what={job:"full-time jobs",parttime:"part-time jobs",internship:"internships",coop:"co-ops"}[type]||"jobs";
     if(!all.length)return ["Nothing listed here right now","New postings appear as employers publish them. Try another section or check back soon."];
     if(hid)return [(seen?"No more ":"No ")+what+" match your filters yet",'Widen them in <button type="button" class="linkbtn" data-open-filters="1">Filters</button>, or pick another kind of job in the Jobs menu.'+(seen?" Jobs you passed on can come back.":"")];
-    return ["You have seen every one of these","Jobs you passed on can come back, and your applications are in the Dashboard."];
+    return ["You have seen every one of these","Jobs you passed on can come back, and your applications are in the Job Tracker."];
   };
   /* a short note when you are looking at an opportunity type you did not pick in your profile */
   function typeNote(){
@@ -984,7 +985,7 @@ function apply(w,host){
   function paywall(why){
     if(d.getElementById("paywall"))return;
     var o=d.createElement("div");o.id="paywall";
-    o.innerHTML='<div role="dialog" aria-modal="true" aria-label="Plan required"><h2 style="margin:0 0 6px;font:800 20px var(--display)">Choose a plan to keep applying</h2><p style="margin:0 0 16px;color:var(--muted)">'+E(why)+' Passing on jobs and your dashboard still work.</p><div style="display:flex;gap:10px;justify-content:flex-end"><button class="btn ghost" id="pwNo" type="button">Not now</button><button class="btn" id="pwYes" type="button">See plans</button></div></div>';
+    o.innerHTML='<div role="dialog" aria-modal="true" aria-label="Plan required"><h2 style="margin:0 0 6px;font:800 20px var(--display)">Choose a plan to keep applying</h2><p style="margin:0 0 16px;color:var(--muted)">'+E(why)+' Passing on jobs and your Job Tracker still work.</p><div style="display:flex;gap:10px;justify-content:flex-end"><button class="btn ghost" id="pwNo" type="button">Not now</button><button class="btn" id="pwYes" type="button">See plans</button></div></div>';
     d.body.appendChild(o);
     var yes=d.getElementById("pwYes");yes.focus();
     function close(){o.remove()}
@@ -1012,7 +1013,7 @@ function apply(w,host){
   /* profile completeness */
   function checklist(){
     var p=A.S.profile,a=acct,c=!!p.custom,px=PX(),x=XV();
-    /* [what is missing, done, the setup step it lives in, counts toward that step's check mark]. One list feeds the setup bar, the step marks and the Dashboard. */
+    /* [what is missing, done, the setup step it lives in, counts toward that step's check mark]. One list feeds the setup bar, the step marks and the Job Tracker. */
     var L=[["Your name",c&&!!p.name,"about",true],["An email recruiters can reply to",c&&/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(p.email||""),"about",true],["Phone number",!!phoneOf(),"about",false],
       ["Job title",c&&!!p.title,"jobs",true],["At least 3 skills",c&&p.skills.length>=3,"jobs",true]];
     if(px)L.push(["Opportunity types",Array.isArray(x.types)&&x.types.length>0,"jobs",false]);
@@ -1130,7 +1131,7 @@ function apply(w,host){
     download("uaply-applications.csv","text/csv",rows.map(function(r){return r.map(csvCell).join(",")}).join("\r\n"));
   }
 
-  /* dashboard overview */
+  /* Job Tracker overview */
   function overviewHTML(by){
     var n=by.applied.length+by.interview.length+by.accepted.length+by.rejected.length,answered=by.interview.length+by.accepted.length+by.rejected.length,sum=0;
     ["applied","interview","accepted","rejected"].forEach(function(k){by[k].forEach(function(o){sum+=o.x.pct})});
@@ -1517,7 +1518,7 @@ function apply(w,host){
     }
     if(!!BILL.signedIn!==!!SRV.user&&BILL._asked!==who){BILL._asked=who;loadBilling()}       /* signed in or out since the plan was last read: read it again (the screen redraws when it arrives) */
     if(earlyAccess())return '<div class="plan" data-cur="true" style="display:flex;flex-direction:column;gap:6px"><b>Current plan: Free (early access)</b>'+
-      '<ul><li>No weekly limit on applications</li><li>Full dashboard and tracking</li><li>Every filter</li><li>Message the hiring manager</li></ul>'+
+      '<ul><li>No weekly limit on applications</li><li>The full Job Tracker</li><li>Every filter</li><li>Message the hiring manager</li></ul>'+
       '<small>Nothing is charged and no card is ever asked for. Before any paid plan starts, you will see its price here first.</small>'+(BILL.hidden?'<small id="plansSoon"><b>Plus and Pro are coming soon.</b></small>':'')+'</div>';
     var keys=["free","plus","pro"],cur=BILL.plan||"free",P=BILL.plans;
     /* a free-only launch (billing_api.hidden): only Free, and an existing paid plan's own card so Manage billing stays reachable; no Choose buttons */

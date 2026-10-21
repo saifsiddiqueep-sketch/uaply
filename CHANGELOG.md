@@ -27,6 +27,16 @@ production page and only changes when the owner decides.
 - `tools/make-play-assets.js` draws the pictures from the app itself (a sandbox switched to the release build's features, example jobs and
   an example person); `tools/test-play-listing.py` (22 checks) checks every picture's exact size and format and every text's length.
 
+### "Dashboard" is now "Job Tracker"
+- The job seeker's middle tab and everything that names it say **Job Tracker**: the bottom bar, the Free and early-access plan lists
+  ("The full Job Tracker"), the empty deck's note, the help articles, the swipe-right emails ("Open UAply, then Job Tracker, then
+  Applied"), the email previews in `marketing/email-previews/` and the sandbox's feature note. The tab label stays on one line at 375 px.
+- Nothing internal changed: the ids (`nb-dash`, `pane-track`, `tab-dash`), the `dash:...` links in the help articles, saved state and
+  storage keys are the same, so saved settings and deep links keep working. "dashboard" stays a search word in the help.
+- Hiring mode has no Dashboard screen; nothing there changed.
+- Tests: `tools/ui-buttons-bar.js` checks the tab reads exactly "Job Tracker" on one line inside its tab and the bar at every size it
+  runs (375, 390, 440, 1280; dev and sandbox); the tests that named the screen follow the new word.
+
 ### Google Play: an installable website and the Trusted Web Activity
 - **Installable.** `/uaply.webmanifest` (UAply, start `/`, standalone, the app's `#FDF0F2` background) with 192 and 512 px icons, ordinary and maskable (`shared/uaply-icon-*.png`, made from `mobile/assets/icon-only.png` by `tools/make-web-icons.js`), linked from dev and the sandbox. Chrome reports nothing missing to install it.
 - **Offline and "starting up" screen.** The service worker `/uaply-sw.js` saves only `/uaply-offline.html` and its icon. When a page cannot load (no connection, or the host's 502/503/504 during a deploy) it shows that screen at the same address; the screen checks `/healthz` every few seconds and reopens the page by itself. It never caches the app's code, never touches `/api/`, `/healthz`, `/.well-known/`, the owner pages or other sites. The pages' security policy adds `manifest-src 'self'; worker-src 'self'`. The hosted copies (`share/`) leave both out.

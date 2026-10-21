@@ -51,7 +51,9 @@ module.exports = async ({ ev, sleep, nav, send, logs, on }) => {
     }
     return false;
   };
-  await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+  // 390x844 (a phone) unless W and H ask for another size, e.g. W=1280 H=800 for a computer; taps stay finger taps either way
+  const VW = +(process.env.W || 390), VH = +(process.env.H || 844);
+  await send("Emulation.setDeviceMetricsOverride", { width: VW, height: VH, deviceScaleFactor: VW < 700 ? 2 : 1, mobile: VW < 700 });
   await send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
   await send("Network.enable");
   await nav(BASE + "/healthz");
@@ -59,6 +61,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, on }) => {
   await send("Network.clearBrowserCookies");
   await nav(BASE + "/");
   const jobs = await waitFor("return d.querySelector('.card.top h2')&&d.querySelectorAll('.card').length", 60000);
+  console.log("     size " + VW + "x" + VH + ": the app frame is " + (await q("return w.innerWidth+'x'+w.innerHeight")));
   if (!check("the deck shows job cards", !!jobs, "no card after 60 s (does the server have its job feeds on?)")) { console.log("\n" + pass + " / " + (pass + fail)); return; }
   await waitFor("return d.getElementById('kcYes')", 5000);
   await tap("d.getElementById('kcYes')");
@@ -185,9 +188,9 @@ module.exports = async ({ ev, sleep, nav, send, logs, on }) => {
   // 8. the rating question goes away on any other tap, so a menu opened under it gets the tap
   await q("const n=d.getElementById('uaNudge');n.hidden=false;return 1");
   await tap("d.getElementById('nb-dash')");
-  check("8. a tap on the Dashboard tab closes the rating question", (await q("return d.getElementById('uaNudge').hidden")) === true);
+  check("8. a tap on the Job Tracker tab closes the rating question", (await q("return d.getElementById('uaNudge').hidden")) === true);
   const menuOpen = await q("return [...d.querySelectorAll('.nitem')].some(b=>b.offsetParent&&b.getAttribute('data-v')==='applied')");
-  check("8. ...and the Dashboard menu opens for the next tap", menuOpen === true, menuOpen);
+  check("8. ...and the Job Tracker menu opens for the next tap", menuOpen === true, menuOpen);
   await q("d.getElementById('nb-dash').click();return 1"); await sleep(300);    // close that menu again
 
   // 9. quiet swipe (Oct 20): a right swipe on a job that takes applications on its own site never interrupts with "Finish on their

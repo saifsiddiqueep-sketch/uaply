@@ -26,7 +26,7 @@ module.exports = async ({ ev, sleep, nav, logs, shot }) => {
 
   const sections = [
     ["Services", "nb-svc", ["Full-time", "Part-time", "Internships", "Coop"]],
-    ["Dashboard", "nb-dash", ["Overview", "Applied", "Accepted", "Rejected", "Interviews"]],
+    ["Job Tracker", "nb-dash", ["Overview", "Applied", "Accepted", "Rejected", "Interviews"]],
     ["Profile", "nb-prof", ["Profile setup", "Filters", "Account", "Plan", "Data"]],
   ];
   const DESTRUCTIVE = /delete|wipe|reset my|clear|sign out|log out|remove|cancel plan|go back to free|restore/i;

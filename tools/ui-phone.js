@@ -1,6 +1,6 @@
 // The app on a big phone (iPhone 17 Pro Max: 440 x 956, touch), the way a thumb uses it.
 //   W=440 H=956 PORT=8767 node tools/cdp.js tools/ui-phone.js
-// 1. Every visible button, link, tab and box on every screen (Services, Dashboard, Profile and each of their pages) can be tapped:
+// 1. Every visible button, link, tab and box on every screen (Services, Job Tracker, Profile and each of their pages) can be tapped:
 //    nothing covers it (the toast after a swipe, the chat button, a menu) and a real touch on it reaches it.
 // 2. Swipes the way people really swipe: straight, a quick short flick, a curved thumb swipe that starts slightly downward,
 //    and a vertical scroll that must NOT swipe. Each must do what the person meant.

@@ -9,7 +9,7 @@
 //     or download or file picker or email opened, or the clipboard got text; or it is inert on purpose (disabled, already chosen)
 //   - no script error
 // Screens: the three bottom menus and every item in them, the header (Sign in, Switch to hiring, the logo), the help button
-// and its panel, the footer links, the consent box, the message after a swipe, every Dashboard list (with applications in
+// and its panel, the footer links, the consent box, the message after a swipe, every Job Tracker list (with applications in
 // each status), the five Profile setup steps, Filters, Account (signed out and signed in), Plan & billing, Data & privacy,
 // and in the sandbox the employer-questions box and every Hiring mode screen (with a test account it creates on this server).
 // Links that would leave the app (employer sites, legal pages, mail) are noted instead of opened; the legal and help pages on
@@ -145,7 +145,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
   const reload = async () => { await nav(BASE); await waitFrame(); await sleep(1500); await hook(); };
   const NOTES = [];
 
-  // makes sure the Dashboard lists have something in every status (applied, interview, accepted, rejected, passed)
+  // makes sure the Job Tracker lists have something in every status (applied, interview, accepted, rejected, passed)
   const seed = () => ev(`(()=>{const A=${FW}.__uaply;const want={applied:3,interview:2,accepted:2,rejected:2,passed:2};const have={};
     for(const [k,x] of Object.entries(A.S.decisions)){const st=x.s==='passed'?'passed':(x.st||'applied');have[st]=(have[st]||0)+1}
     const free=A.JOBS.filter(j=>j.live&&!A.S.decisions[j.id]);let n=0;
@@ -158,7 +158,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
   for (const [v, l] of svc) add("Services › " + l, "#pane-swipe", async () => { await menu("svc", v); }, { reset: () => ev("(()=>{const A=" + FW + ".__uaply;if(A.getFilter()!=='all')A.setFilter('all')})()") });
   add("Message after a swipe", "#toastHost,#kitToast", async () => { await menu("svc", "job"); await sleep(300); await ev("(" + F + ").getElementById('btnNo').click()"); await sleep(700); }, { fresh: true });
   for (const [v, l] of [["overview", "Overview"], ["applied", "Applied"], ["interview", "Interviews"], ["accepted", "Accepted"], ["rejected", "Rejected"]])
-    add("Dashboard › " + l, "#pane-track", async () => { await seed(); await menu("dash", v); });
+    add("Job Tracker › " + l, "#pane-track", async () => { await seed(); await menu("dash", v); });
   for (let i = 0; i < 5; i++) add("Profile setup › step " + (i + 1), "#pane-profile", async () => { await menu("prof", "settings"); await sleep(300); await ev("(()=>{const b=" + F + ".querySelector('.wzDots button[data-step=\"" + i + "\"]');if(b)b.click()})()"); });
   add("Profile › Filters", "main > section:not([hidden])", async () => { await menu("prof", "filters"); }, { details: true });
   add("Profile › Account", "main > section:not([hidden])", async () => { await menu("prof", "account"); }, { details: true });
@@ -298,9 +298,9 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
   }
 
   // ---- header, footer, help button (the same on every screen)
-  // (opened from Dashboard, so the UAply logo, which goes home to the job cards, has somewhere to go)
+  // (opened from Job Tracker, so the UAply logo, which goes home to the job cards, has somewhere to go)
   await walk({ name: "Header and footer", root: ".bar,#legalbar,#uaChatBtn,#bnav", open: async () => { await menu("dash", "overview"); }, fresh: true, noShot: true,
-    skip: /^Services|^Dashboard|^Profile/, skipWhy: "the bottom menu buttons are pressed above with each of their items" });
+    skip: /^Services|^Job Tracker|^Profile/, skipWhy: "the bottom menu buttons are pressed above with each of their items" });
   // keyboard in Hiring mode must never swipe the job deck hidden under it
   if (sandbox) {
     await menu("svc", "job"); await sleep(300);

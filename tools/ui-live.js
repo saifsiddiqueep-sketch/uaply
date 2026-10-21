@@ -268,7 +268,7 @@ async function main(api) {
       if (!(await secText("body")).includes(role)) await ev("(()=>{const e=[...(" + F + ").querySelectorAll('button,a,[role=tab]')].find(b=>b.offsetParent&&b.innerText.trim().startsWith('Applied'));if(e)e.click()})()");
       await sleep(800);
       const page = await appText();
-      check("[account 1] the job swiped right appears under Dashboard > Applied", !!role && page.includes(role), role);
+      check("[account 1] the job swiped right appears under Job Tracker > Applied", !!role && page.includes(role), role);
       await snap("signup-account1-2-applied");
     }
     // ---------- Stripe test cards ----------

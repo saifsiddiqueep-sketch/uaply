@@ -53,7 +53,7 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
     await scan("Services > " + tab);
   }
   await ev(F + ".getElementById('nb-dash').click()"); await sleep(400);
-  for (const s of ["Overview", "Applied", "Accepted", "Rejected", "Interviews"]) { await sub(s); await sleep(300); await scan("Dashboard > " + s); }
+  for (const s of ["Overview", "Applied", "Accepted", "Rejected", "Interviews"]) { await sub(s); await sleep(300); await scan("Job Tracker > " + s); }
 
   await ev(F + ".getElementById('nb-prof').click()"); await sleep(500);
   const items = await ev("[...(" + F + ").querySelectorAll('button')].filter(b=>b.offsetParent).map(b=>b.innerText.trim().split(" + nl + ")[0]).join('|')");
@@ -163,7 +163,7 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
   check("swiping right on a real job says only that it was saved (or applied), never 'Finish on their site'", /Saved .+ to Applied · \d+% match|Applied to/.test(after) && !/finish on their site|not sent yet|finish now/i.test(after.slice(-200)), after.slice(-160));
   await ev(F + ".getElementById('nb-dash').click()"); await sleep(400);
   await sub("Applied"); await sleep(600);
-  check("the swiped job appears under Dashboard > Applied", (await ev(F + ".querySelectorAll('.app,.appitem,[data-app],article,.row').length")) > 0 || /intern/i.test(await pageText()));
+  check("the swiped job appears under Job Tracker > Applied", (await ev(F + ".querySelectorAll('.app,.appitem,[data-app],article,.row').length")) > 0 || /intern/i.test(await pageText()));
   // Learns from your swipes is in dev: after a few swipes the learner holds them, and a card carries the "Learned from your swipes" line
   await ev(F + ".getElementById('nb-svc').click()"); await sleep(300); await sub("Full-time"); await sleep(800);
   for (let i = 0; i < 8; i++) { await ev("(()=>{const b=" + F + ".getElementById('btnNo');if(b)b.click()})()"); await sleep(700); }

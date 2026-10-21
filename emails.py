@@ -30,7 +30,7 @@ NEXT_STEPS = [
     "The employer reviews applications in its own time, and many employers get a lot of them, so you may not hear from every one.",
     "A sensible pace: wait one to two weeks; if you have heard nothing after two to three weeks, send a short, polite follow-up; "
     "after three to four weeks it is reasonable to move on to other jobs.",
-    "Keep track in UAply: open Dashboard, then Applied, and mark the application Interview, Accepted or Rejected as things happen.",
+    "Keep track in UAply: open Job Tracker, then Applied, and mark the application Interview, Accepted or Rejected as things happen.",
     "An application cannot be edited after it is sent. To correct something, contact the employer directly.",
 ]
 
@@ -154,7 +154,7 @@ def applicant_receipt(ctx):
     t += ["  %s: %s" % kv for kv in rows] or ["  Your name and email."]
     t += ["  " + NOT_SHARED]
     t += ["", "WHAT HAPPENS NEXT"] + ["  - " + x for x in NEXT_STEPS]
-    t += ["", "TRACK IT", "  Open UAply, then Dashboard, then Applied." + ((" %s" % track) if track else "")]
+    t += ["", "TRACK IT", "  Open UAply, then Job Tracker, then Applied." + ((" %s" % track) if track else "")]
     t += ["", "--", "UAply", "You get this email because you are signed in to UAply as %s." % ctx.get("user_email", "")]
     if ctx.get("support_email"):
         t += ["Questions: %s" % ctx["support_email"]]
@@ -190,7 +190,7 @@ def applicant_receipt(ctx):
     parts.append('<p style="margin:8px 0 0;color:#7B5560;font-size:13px">%s</p>' % e(NOT_SHARED))
     parts.append(h("WHAT HAPPENS NEXT") + '<ul style="margin:0;padding-left:20px;color:#2A1218">%s</ul>' % "".join('<li style="margin:4px 0">%s</li>' % e(x) for x in NEXT_STEPS))
     track_html = ('<a href="%s" style="color:%s">%s</a>' % (e(track, quote=True), BRAND, e(track))) if _https(track) else ""
-    parts.append(h("TRACK IT") + '<p style="margin:0;color:#2A1218">Open UAply, then <b>Dashboard</b>, then <b>Applied</b>. %s</p>' % track_html)
+    parts.append(h("TRACK IT") + '<p style="margin:0;color:#2A1218">Open UAply, then <b>Job Tracker</b>, then <b>Applied</b>. %s</p>' % track_html)
     foot = "You get this email because you are signed in to UAply as %s." % ctx.get("user_email", "")
     if ctx.get("support_email"):
         foot += " Questions: %s." % ctx["support_email"]

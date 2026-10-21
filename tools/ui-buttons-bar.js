@@ -1,4 +1,4 @@
-// Pass / Undo / Apply always in sight above the bottom bar (Jobs / Dashboard / Profile), the way a new visitor first sees the app.
+// Pass / Undo / Apply always in sight above the bottom bar (Jobs / Job Tracker / Profile), the way a new visitor first sees the app.
 //   W=390 H=844 PORT=8767 node tools/cdp.js tools/ui-buttons-bar.js        (also 375x667, 440x956, 1280x800; dev and sandbox)
 // The October 17 audit found the three buttons under the bar on first open at phone sizes (the job card's 430 px minimum height plus
 // the tips, the example-profile notice, the location box and the filters pushed them below the bottom of the scrolling area), so a
@@ -49,6 +49,15 @@ module.exports = async ({ ev, sleep, nav, shot, send }) => {
   await nav("http://127.0.0.1:" + PORT + "/");
   for (let i = 0; i < 30 && !(await ev("!!(" + F + ") && !!(" + F + ").getElementById('btnYes') && !!(" + F + ").querySelector('.card.top')")); i++) await sleep(300);
   await sleep(1200);
+
+  // 0. the Job Tracker tab (the one-word "Dashboard" became two words on October 21; at 375 px the three tabs share about 340 px):
+  //    its label reads exactly "Job Tracker", on one line, and lies inside its tab, which lies inside the bar
+  const tab = JSON.parse(await ev(`JSON.stringify((()=>{const d=${F},b=d.getElementById('nb-dash'),s=b&&b.querySelector('span'),nv=d.getElementById('bnav');if(!s||!nv)return null;
+    const sr=s.getBoundingClientRect(),br=b.getBoundingClientRect(),nr=nv.getBoundingClientRect(),cs=getComputedStyle(s),lh=parseFloat(cs.lineHeight)||parseFloat(cs.fontSize)*1.15;
+    return {text:s.textContent,lines:s.getClientRects().length,h:Math.round(sr.height),lh:Math.round(lh),span:[Math.round(sr.left),Math.round(sr.right)],tab:[Math.round(br.left),Math.round(br.right)],bar:[Math.round(nr.left),Math.round(nr.right)],
+      inTab:sr.width>0&&sr.left>=br.left-0.5&&sr.right<=br.right+0.5,inBar:br.left>=nr.left-0.5&&br.right<=nr.right+0.5}})())`));
+  check(size + " the bottom bar's tab reads exactly \"Job Tracker\"", !!tab && tab.text === "Job Tracker", JSON.stringify(tab));
+  check(size + " ...on one line, not spilling out of its tab, and the tab inside the bar", !!tab && tab.lines === 1 && tab.h <= tab.lh * 1.5 && tab.inTab && tab.inBar, JSON.stringify(tab));
 
   // 1. first open: the agreement box may be up (consentFirst); the buttons must already sit where the visitor will find them
   const consent = await ev("!!(" + F + ").getElementById('kcYes')");

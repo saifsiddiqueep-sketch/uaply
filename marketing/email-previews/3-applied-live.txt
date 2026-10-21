@@ -38,11 +38,11 @@ WHAT WAS SHARED
 WHAT HAPPENS NEXT
   - The employer reviews applications in its own time, and many employers get a lot of them, so you may not hear from every one.
   - A sensible pace: wait one to two weeks; if you have heard nothing after two to three weeks, send a short, polite follow-up; after three to four weeks it is reasonable to move on to other jobs.
-  - Keep track in UAply: open Dashboard, then Applied, and mark the application Interview, Accepted or Rejected as things happen.
+  - Keep track in UAply: open Job Tracker, then Applied, and mark the application Interview, Accepted or Rejected as things happen.
   - An application cannot be edited after it is sent. To correct something, contact the employer directly.
 
 TRACK IT
-  Open UAply, then Dashboard, then Applied. https://uaply.example
+  Open UAply, then Job Tracker, then Applied. https://uaply.example
 
 --
 UAply
