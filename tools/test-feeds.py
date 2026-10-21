@@ -85,15 +85,23 @@ t("USAJOBS without a key is skipped with the status 'no key'", J._fetch_source(U
 t("...and nothing was requested or cached", (len(CALLS), USA_PHL in J._cache), (0, False))
 cfg(feeds=["usajobs"])
 summ = J.get_jobs()["sources"]
-t("the job list names both USAJOBS searches as 'no key'", (summ.get("USAJOBS/philadelphia"), summ.get("USAJOBS/students")), ("no key", "no key"))
+t("the job list names all 15 USAJOBS searches as 'no key'", sorted({v for k, v in summ.items() if k.startswith("USAJOBS/")}) + [len([k for k in summ if k.startswith("USAJOBS/")])],
+  ["no key", 15])
+want_areas = {"philadelphia": ("Philadelphia, Pennsylvania", "50"), "wilmington": ("Wilmington, Delaware", "40"), "trenton": ("Trenton, New Jersey", "40"),
+              "newark": ("Newark, New Jersey", "40"), "camden": ("Camden, New Jersey", "25")}
+t("USAJOBS covers the tri-state: five places and radii, each also for Pathways and part-time schedules",
+  sorted((k, q["LocationName"], q["Radius"], q.get("HiringPath", ""), q.get("PositionScheduleTypeCode", "")) for k, q in J.USAJOBS_QUERIES.items() if k not in ("students", "parttime")),
+  sorted([(a, n, r, "", "") for a, (n, r) in want_areas.items()] + [(a + "-students", n, r, "student;graduates", "") for a, (n, r) in want_areas.items()] +
+         [(a + "-parttime", n, r, "", "2") for a, (n, r) in want_areas.items()]))
+t("15 searches every 3 hours: 120 USAJOBS requests a day", (len([x for x in J.SOURCES if x[0] == "usajobs"]), 24 // (J.TTL["usajobs"] // 3600) * 15), (15, 120))
 
 cfg(feed_keys={"usajobs": KEY})
 CALLS.clear()
 jobs, status = J._fetch_source(USA_PHL)
 url, hdr = CALLS[0]
 t("with a key: one search, answered", (len(CALLS), status), (1, "3 jobs"))
-t("the search is Philadelphia, 25 miles, 500 a page, full fields",
-  url, "https://data.usajobs.gov/api/search?LocationName=Philadelphia,%20Pennsylvania&Radius=25&ResultsPerPage=500&Fields=Full")
+t("the search is Philadelphia, 50 miles, 500 a page, full fields",
+  url, "https://data.usajobs.gov/api/search?LocationName=Philadelphia,%20Pennsylvania&Radius=50&ResultsPerPage=500&Fields=Full")
 t("the headers are the ones USAJOBS documents (Host, User-Agent = email, Authorization-Key)",
   (hdr.get("Host"), hdr.get("User-Agent"), hdr.get("Authorization-Key")), ("data.usajobs.gov", "uaplytechnologies@gmail.com", KEY))
 by = {j["role"]: j for j in jobs}
@@ -225,10 +233,28 @@ def paged(url, headers=None):
 J._get = paged
 J._sr_desc.clear()
 CALLS.clear()
+real_whole, J.SR_WHOLE = J.SR_WHOLE, ("BigCo",)                    # a public body's whole list (the City's rule)
 jobs, status = J._fetch_source(("smartrecruiters", "BigCo", "BigCo"))
 lists = [u.split("?")[1] for u, _ in CALLS if "?" in u]
 t("pages are read 100 at a time by offset", lists, ["limit=100&offset=0", "limit=100&offset=100"])
 t("no more than 120 postings are kept, and no more than 120 descriptions read", (len(jobs), len([1 for u, _ in CALLS if "?" not in u])), (120, 120))
+J.SR_WHOLE = real_whole
+# a company that is not a public body (Equinox, Red Bull): US postings only, tri-state ones first, at most 40 descriptions, 14 + tri-state extras
+mixed = [dict(m, location=dict(m.get("location") or {}, country="de", region="BY", city="Munich")) if i % 3 == 0 else
+         dict(m, location=dict(m.get("location") or {}, country="us", region="TX" if i % 3 == 1 else "NJ", city="Austin" if i % 3 == 1 else "Trenton"))
+         for i, m in enumerate(many)]
+many_saved, many[:] = list(many), mixed
+J._sr_desc.clear()
+CALLS.clear()
+J._cache.pop(("smartrecruiters", "GymCo", "GymCo"), None)
+jobs, status = J._fetch_source(("smartrecruiters", "GymCo", "GymCo"))
+read = [u.rsplit("/", 1)[1] for u, _ in CALLS if "?" not in u]
+by_id = {m["id"]: m for m in mixed}
+t("an employer's SmartRecruiters board: at most 40 descriptions read, none for a posting outside the US",
+  (len(read), sum(1 for i in read if by_id[i]["location"]["country"] != "us")), (40, 0))
+t("...New Jersey postings are read first", sum(1 for i in read if by_id[i]["location"]["region"] == "NJ"), 40)
+t("...and it keeps 14 plus up to 10 tri-state extras, never a German one", (len(jobs) <= 24, any("Munich" in j["loc"] for j in jobs)), (True, False))
+many[:] = many_saved
 
 
 def one(**over):

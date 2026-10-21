@@ -1,0 +1,19 @@
+{
+  "_note": "Made up in the shape of the CareerOneStop List Jobs answer documented at https://www.careeronestop.org/Developers/WebAPI/Jobs/list-jobs.aspx (read October 21, 2026). Not a recorded live answer: UAply has no key yet.",
+  "JobCount": "6",
+  "Jobs": [
+    {"JvId": "25206ecfe4954376b3943722f89fd1c08003", "JobTitle": "Certified Nursing Assistant (Part-Time)", "Company": "Riverside Nursing Center",
+     "DescriptionSnippet": "Part-time evenings. Provide resident care, record vitals, support nurses. Excel and EHR experience a plus.",
+     "AcquisitionDate": "__RECENT__", "URL": "https://de.jobsyn.org/25206ecfe4954376b3943722f89fd1c08003", "Location": "Cherry Hill, NJ", "Fc": false},
+    {"JvId": "7f6f3a72600c4085878258d22d81a9878003", "JobTitle": "Accounting Intern", "Company": "Brandywine Credit Union",
+     "DescriptionSnippet": "Summer internship for an accounting student: reconciliations in Excel, reports for the finance team.",
+     "AcquisitionDate": "__RECENT__", "URL": "https://de.jobsyn.org/7f6f3a72600c4085878258d22d81a9878003", "Location": "Wilmington, DE", "Fc": false},
+    {"JvId": "d1cbdb52e74b4765b80846face358cba8003", "JobTitle": "Data Analyst", "Company": "Acme, Inc.",
+     "DescriptionSnippet": "Python and SQL reporting for operations.", "AcquisitionDate": "__RECENT__",
+     "URL": "https://de.jobsyn.org/d1cbdb52e74b4765b80846face358cba8003", "Location": "Philadelphia, PA", "Fc": false},
+    {"jvid": "aa11", "jobtitle": "Warehouse Associate", "company": "Delaware Valley Logistics", "descriptionsnippet": "Forklift and inventory.",
+     "acquisitiondate": "__RECENT__", "url": "https://de.jobsyn.org/aa11", "location": "Camden, NJ", "fc": false},
+    {"JvId": "bb22", "JobTitle": "Clerk", "Company": "Somewhere", "URL": "http://insecure.example/bb22", "Location": "Trenton, NJ", "AcquisitionDate": "__RECENT__"},
+    {"JvId": "cc33", "JobTitle": "", "Company": "No Title Co", "URL": "https://de.jobsyn.org/cc33", "Location": "Newark, NJ", "AcquisitionDate": "__RECENT__"}
+  ]
+}

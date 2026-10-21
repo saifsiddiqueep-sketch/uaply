@@ -37,7 +37,12 @@ SIZES = {"gh-databricks": 9851537, "gh-cloudflare": 7570351, "gh-stripe": 570483
          "gh-gusto": 1422711, "gh-chime": 1220483, "gh-motional": 1090329, "gh-shipmonk": 1055235, "gh-faire": 1028700,
          "gh-sweetgreen": 723729, "gh-ziprecruiter": 444256, "gh-twochairs": 332578, "gh-glossier": 278838, "gh-vynamic": 276452,
          "gh-perpay": 246496, "gh-wonderschool": 245434, "gh-elationhealth": 157040, "lever-gopuff": 8127467, "lever-zoox": 2454408,
-         "ashby-ramp": 2847202}
+         "ashby-ramp": 2847202,
+         # the boards added on October 21, 2026 for New Jersey, Delaware and on-site roles across the US (SpaceX is the largest board UAply reads)
+         "gh-crossriverbank": 319195, "gh-legendcareers": 1828858, "gh-lgelectronics": 1577742, "gh-genscript": 977528, "gh-nice": 2918229,
+         "gh-mettel": 208174, "gh-fanduel": 1332698, "gh-mcmastercarr": 303070, "gh-onemedical": 6655497, "gh-tia": 593133,
+         "gh-lucidmotors": 11615870, "gh-rocketlab": 10514333, "gh-relativity": 6537194, "gh-spacex": 31800879, "gh-flexport": 2520474,
+         "lever-BestEgg": 168214, "lever-NJStateOfficeofInnovation": 116057}
 R = []
 
 
@@ -283,9 +288,9 @@ def main():
             print("  %-8s %s" % (scenario, json.dumps(r)))
         cold, ref = results.get("cold", {}), results.get("refresh", {})
         t("cold: every board was read (%s of them with jobs, %s jobs)" % (cold.get("sources_ok"), cold.get("jobs")), (cold.get("sources_ok") or 0) >= 20)
-        newer = cold.get("newer") or {}
-        t("cold: the four newer sources were read too, each with jobs (%s)" % newer,
-          len(newer) == 4 and all(re.match(r"[1-9]\d* jobs", v) for v in newer.values()))
+        newer = ref.get("newer") or {}          # read in the refresh, which waits for every board (on a cold start they may come after the first answer)
+        t("the four newer sources were read too, each with jobs (%s)" % newer,
+          len(newer) >= 4 and all(re.match(r"[1-9]\d* jobs", v) for v in newer.values()))
         t("cold: three visitors during the first fill read each board once between them (%s)" % cold.get("most_reads_of_one_board"),
           cold.get("most_reads_of_one_board") == 1)
         for scenario, r in (("cold", cold), ("refresh", ref)):

@@ -4,52 +4,87 @@ Where UAply's jobs come from, what each source allows, and the free keys the own
 not legal advice: have the lawyer confirm before launch. The code is `jobs_api.py` (`SOURCES`, `VIA`, `TTL`, `KEEP`).
 
 Every source is **off** unless its kind is listed in `UAPLY_FEEDS` (Render, Environment) or in `"feeds"` in `UAPLY_CONFIG_JSON`, for
-example `UAPLY_FEEDS=greenhouse,lever,ashby,smartrecruiters,usajobs,jobicy,muse,simplify,himalayas,remoteok`. Jobs from every source are
-**link-out only**: swiping right opens the employer's (or the board's) own page. Nothing is emailed to anyone, unless the employer is
-a partner or connected its own hiring system.
+example `UAPLY_FEEDS=greenhouse,lever,ashby,workable,smartrecruiters,usajobs,careeronestop,jobicy,muse,simplify,himalayas,remoteok`.
+Jobs from every source are **link-out only**: swiping right opens the employer's (or the board's) own page. Nothing is emailed to
+anyone, unless the employer is a partner or connected its own hiring system.
 
 Rules for every source: postings older than 60 days are hidden (USAJOBS and partner jobs exempt), the same job from two feeds is shown
-once, and every job carries `jobType` (full-time, part-time, internship, co-op, contract or temporary) and `postedDays`.
+once (the employer's own board wins), every job carries `jobType` (full-time, part-time, internship, co-op, contract or temporary) and
+`postedDays`, and each employer board keeps 14 roles plus up to 10 more in Pennsylvania, New Jersey or Delaware.
+
+## Coverage
+
+* **Anywhere in the US:** 80+ employer boards (tech, healthcare clinics, retail, restaurants, gyms, warehouses, plants, launch sites),
+  remote jobs from Jobicy (15 industries), Himalayas (all, internships, part-time) and Remote OK, internships and co-ops from the
+  Simplify / Pitt CSC lists. A remote job open to the US is shown to everyone; the distance filter never hides it (except "remote only").
+* **Pennsylvania, New Jersey, Delaware:** USAJOBS around Philadelphia (50 mi), Wilmington DE (40), Trenton NJ (40), Newark NJ (40) and
+  Camden NJ (25), each also for Pathways (students and recent graduates) and part-time schedules; CareerOneStop (the state job banks'
+  jobs) around the same five cities; the City of Philadelphia; employers with PA, NJ and DE offices (`SOURCES` names each with its count).
 
 ## Registry
 
-| Source (kind) | What it is | Terms | Credit shown on the card | Refresh | Apply path | Job types it gives |
-|---|---|---|---|---|---|---|
-| Greenhouse boards (`greenhouse`) | Employers' own public job boards, 50+ listed in `SOURCES` | https://developers.greenhouse.io/job-board.html (public board API; no terms for third-party readers) | "via Acme on Greenhouse" | 30 min | Employer's Greenhouse posting | Custom "Employment Type" field when the employer has one; title words otherwise |
-| Lever boards (`lever`) | Employers' own public postings | https://github.com/lever/postings-api | "via Acme on Lever" | 30 min | Employer's Lever posting | `categories.commitment` |
-| Ashby boards (`ashby`) | Employers' own public job boards | https://developers.ashbyhq.com/docs/public-job-posting-api | "via Acme on Ashby" | 30 min | Employer's Ashby posting | `employmentType` |
-| Workable (`workable`) | Employers' own public jobs feed | https://help.workable.com/hc/en-us/articles/115012771647 | "via Acme on Workable" | 30 min | Employer's Workable posting | `employment_type` |
-| SmartRecruiters (`smartrecruiters`) | City of Philadelphia's public postings | https://developers.smartrecruiters.com/docs/posting-api | "via City of Philadelphia on SmartRecruiters" | 1 h (descriptions daily) | The City's posting | `typeOfEmployment` |
-| USAJOBS (`usajobs`) | Federal jobs within 25 miles of Philadelphia: all, Pathways (students and recent graduates), part-time schedules | https://developer.usajobs.gov/general/terms-of-service (public data; credit and link to the official announcement) | "via USAJOBS; apply on the official announcement" | 3 h | The announcement on usajobs.gov | `PositionSchedule` (part-time), Pathways = internship, `PositionOfferingType` Temporary |
-| Jobicy (`jobicy`) | Remote jobs, US | https://jobicy.com/jobs-rss-feed (credit Jobicy, link to the job on Jobicy, at most one pass an hour) | "via Jobicy" | 1 h | The job on Jobicy | `jobType` |
-| The Muse (`muse`) | Internship and entry-level jobs | https://www.themuse.com/developers/api/v2 (register an app; key recommended) | "via The Muse" | 30 min | The job on The Muse | The Internship level |
-| Simplify and Pitt CSC lists (`simplify`) | GitHub lists of internships and co-ops, https://github.com/SimplifyJobs/Summer2027-Internships (README.md and README-Off-Season.md) | No license file and no reuse terms in the repository; the rows are facts (company, title, place, link). UAply uses only rows whose link is a Greenhouse, Lever or SmartRecruiters posting, reads each posting from the employer's own board, and shows the employer's own data | "via Acme on Greenhouse, listed by Simplify and Pitt CSC" | 6 h (each posting checked at most daily) | Employer's own posting | Internship or co-op (the title, the board's field, the list's own kind) |
-| Himalayas (`himalayas`) | Remote jobs open to the US | https://himalayas.app/api and https://himalayas.app/terms#api: link to the job on Himalayas, use `applicationLink` unchanged, show only on our own app, never pass jobs on to other boards, Google Jobs or LinkedIn, remove expired jobs | "via Himalayas" | 3 h (3 pages of 20) | `applicationLink` (the job on Himalayas) | `employmentType` (Full Time, Part Time, Contractor, Temporary, Intern) |
-| Remote OK (`remoteok`) | Remote jobs | The notice in https://remoteok.com/api: link back to the job on Remote OK (a followed link) and name Remote OK as the source; no logo without permission | "via Remote OK" | 6 h | The job on Remote OK | Title words |
-| Remotive (`remotive`) | Remote jobs | https://remotive.com/api-documentation: forbids using listings to collect sign-ups or emails, which UAply does | n/a | n/a | n/a | **Do not switch on** without written permission |
-| Partner employers | Employers who post on UAply | UAply's own employer terms | "Posted on UAply by ..." | live | Sent to the employer | The employer's own pick |
+Risk: **Low** = a public body's or the source's own published API whose terms we follow; **Medium** = public data with no terms that
+clearly cover a third party showing it; **High** = terms that forbid our use (not switched on).
 
-**Not used, and never scraped:** LinkedIn, Indeed, ZipRecruiter and Handshake (closed or partner-only programs whose terms forbid
-copying listings). Google for Jobs is a search feature, not an API. Arbeitnow's free API lists European jobs only. Reed is UK only.
+| Source (kind) | What it is | Terms | Allowed use | Credit shown on the card | Refresh | Apply path | Job types | Risk |
+|---|---|---|---|---|---|---|---|---|
+| Greenhouse boards (`greenhouse`) | Employers' own public job boards | https://developers.greenhouse.io/job-board.html | A public, keyless API meant for careers pages; no terms for third-party readers | "via Acme on Greenhouse" | 30 min | Employer's posting | Custom "Employment Type" field, else title | **Medium**: public and read only, but no terms say an aggregator may show it; we link out and never copy applications |
+| Lever boards (`lever`) | Employers' own public postings | https://github.com/lever/postings-api | Same as Greenhouse | "via Acme on Lever" | 30 min | Employer's posting | `categories.commitment` | **Medium**: same reason |
+| Ashby boards (`ashby`) | Employers' own public job boards | https://developers.ashbyhq.com/docs/public-job-posting-api | Same as Greenhouse | "via Acme on Ashby" | 30 min | Employer's posting | `employmentType` | **Medium**: same reason |
+| Workable (`workable`) | Employers' own public jobs feed | https://help.workable.com/hc/en-us/articles/115012771647 | Documented for custom careers pages | "via Acme on Workable" | 30 min | Employer's posting | `employment_type` | **Medium**: same reason |
+| SmartRecruiters (`smartrecruiters`) | City of Philadelphia (whole list) and employer boards (Equinox, Red Bull) | https://developers.smartrecruiters.com/docs/posting-api | Public Posting API, no key | "via City of Philadelphia on SmartRecruiters" | 1 h (descriptions daily, 40 a day for an employer board) | Employer's posting | `typeOfEmployment` | **Low** for the City (public body's own postings); **Medium** for employers |
+| USAJOBS (`usajobs`) | Federal jobs around 5 tri-state cities, plus Pathways and part-time searches: 15 searches every 3 h = 120 requests a day | https://developer.usajobs.gov/general/terms-of-service | Public data, may be copied and republished, commercial use included | "via USAJOBS; apply on the official announcement" | 3 h | The announcement on usajobs.gov | Schedule (part-time), Pathways = internship, Temporary offering | **Low**: the government's own API; we credit it and link to the announcement |
+| CareerOneStop (`careeronestop`) | The National Labor Exchange (the PA, NJ and DE state job banks' jobs) around 5 tri-state cities (all, internship, part-time) plus remote: 16 searches every 3 h = 128 requests a day, the last 7 days | License shown on https://www.careeronestop.org/Developers/WebAPI/registration.aspx ; API https://www.careeronestop.org/Developers/WebAPI/Jobs/list-jobs.aspx | Royalty-free for the purpose stated at registration; no altering the data; credit both the U.S. Department of Labor ETA and Minnesota DEED on every page that shows it; key kept secret; license lasts 36 months | "via CareerOneStop (U.S. Department of Labor ETA and Minnesota DEED)" | 3 h | The posting on the NLx (jobsyn.org) | Title words, "part-time" in the summary | **Low**: public, free, attribution only. Note: new Jobs API access now goes through the NLx Research Hub (see the key list) |
+| Jobicy (`jobicy`) | Remote jobs open to the US, 15 industries | https://jobicy.com/jobs-rss-feed | Free; credit Jobicy, link to the job on Jobicy, at most one sync pass an hour | "via Jobicy" | 1 h | The job on Jobicy | `jobType` | **Low**: the source's own published conditions, followed |
+| The Muse (`muse`) | Internship and entry-level jobs | https://www.themuse.com/developers/api/v2 | Public API; register an app (key) for production use | "via The Muse" | 30 min | The job on The Muse | The Internship level | **Medium** until the app is registered (key), then **Low** |
+| Simplify and Pitt CSC lists (`simplify`) | GitHub lists of internships and co-ops, https://github.com/SimplifyJobs/Summer2027-Internships (README.md, README-Off-Season.md) | No license file, no reuse terms | Rows are facts (company, title, place, link); only rows linking to a Greenhouse, Lever or SmartRecruiters posting are used, each read from the employer's own board | "via Acme on Greenhouse, listed by Simplify and Pitt CSC" | 6 h (each posting checked daily) | Employer's own posting | Internship or co-op | **Medium**: no license; we credit the list and show only the employer's own data |
+| Himalayas (`himalayas`) | Remote jobs open to the US: all, internships, part-time (3 pages each) | https://himalayas.app/api , https://himalayas.app/terms#api | Show on our own app only; link to the job on Himalayas; `applicationLink` unchanged; never pass jobs on to other boards, Google Jobs or LinkedIn; remove expired jobs | "via Himalayas" | 3 h | `applicationLink` | `employmentType` | **Low**: its published API terms, followed |
+| Remote OK (`remoteok`) | Remote jobs | The notice in https://remoteok.com/api | Link back to the job on Remote OK (followed link) and name Remote OK; no logo | "via Remote OK" | 6 h | The job on Remote OK | Title words | **Low**: its published conditions, followed |
+| Remotive (`remotive`) | Remote jobs | https://remotive.com/api-documentation | Forbids using listings to collect sign-ups or emails, which UAply does | n/a | n/a | n/a | n/a | **High**: **do not switch on** without written permission |
+| Partner employers | Employers who post on UAply | UAply's own employer terms | The employer gave the posting and agreed to receive applications | "Posted on UAply by ..." | live | Sent to the employer | The employer's own pick | **Low** |
+
+**Checked and not added:** the State of Delaware, Camden County, the cities of Camden, Wilmington, Trenton and Newark, NJ Transit,
+ChristianaCare, Cooper University Health Care, Incyte, Chemours, WSFS, Sallie Mae, Navient, Campbell's, Subaru of America and the
+universities (Rutgers, Princeton, UDel) are not on a public Greenhouse, Lever, Ashby, SmartRecruiters or Workable board (they use
+Workday, iCIMS, NEOGOV, PeopleAdmin or their own sites, which UAply does not read). Anduril's board (44 MB) is over the 40 MB cap.
+Arbeitnow lists European jobs only; Reed is UK only. The Muse's API has no internship filter beyond its levels.
+
+**Never used, never scraped:** LinkedIn, Indeed, ZipRecruiter, Handshake and Glassdoor (closed or partner-only programs whose terms
+forbid copying listings). Google for Jobs is a search feature, not an API.
 
 ## Keys the owner can request (Claude cannot fill in or submit these forms)
 
 1. **USAJOBS** (the owner is submitting this one). https://developer.usajobs.gov/apirequest/ . Email: `uaplytechnologies@gmail.com`.
    Then in Render: `UAPLY_USAJOBS_KEY` = the key, `UAPLY_USAJOBS_EMAIL` = `uaplytechnologies@gmail.com`, and add `usajobs` to `UAPLY_FEEDS`.
-2. **The Muse** (recommended). https://www.themuse.com/developers/api/v2 , "Register an app". App name `UAply`; website `https://uaply.net`;
+2. **CareerOneStop / National Labor Exchange jobs** (recommended for PA, NJ, DE). Registration form:
+   https://www.careeronestop.org/Developers/WebAPI/registration.aspx (Type of request: New Request; Organization: UAply; URL:
+   `https://uaply.net`; name, address, phone and email `uaplytechnologies@gmail.com`). Text to paste under "Where and how will data be used
+   or displayed?": *UAply (https://uaply.net) is a free job-search app for people in the US, starting in Philadelphia, New Jersey and
+   Delaware. We would show job postings from the CareerOneStop Jobs API (title, company, location, posting date and the short
+   description) as cards in the app, unchanged, each linking to the original posting, with the credit "CareerOneStop, sponsored by the
+   U.S. Department of Labor, Employment and Training Administration, and the Minnesota Department of Employment and Economic
+   Development" on every screen that shows them. We do not resell the data or pass it to other sites.* **Important:** CareerOneStop's
+   page says new Jobs API access is now approved by the NLx Research Hub (National Association of State Workforce Agencies): if the
+   registration does not include the Jobs API, send the same text as a data request at https://nlxresearchhub.org or to
+   nlxresearchhub@naswa.org . When the user ID and token arrive: Render, Environment, `UAPLY_COS_USER_ID` and `UAPLY_COS_TOKEN`, and add
+   `careeronestop` to `UAPLY_FEEDS`. Until then the 16 searches show "no key". If the NLx issues a different API shape, the client
+   (`_careeronestop` in `jobs_api.py`) needs a small change. Expected volume once on (an estimate, not measured: there is no key yet): 16
+   searches x up to 100 postings from the last 7 days = at most 1,600; the five areas overlap (Camden lies inside Philadelphia's 50 miles),
+   so after the same-job rule roughly 700-1,200 tri-state jobs, mostly on-site, many part-time.
+3. **The Muse** (recommended). https://www.themuse.com/developers/api/v2 , "Register an app". App name `UAply`; website `https://uaply.net`;
    description: *UAply is a job-search app: people swipe through jobs and open the posting on The Muse to apply. We show the job title,
    company, location and a short summary, credit The Muse on every card, and link to the job page on The Muse.* The key goes in
    `UAPLY_CONFIG_JSON` as `"feed_keys":{"muse":"..."}`.
-3. **Himalayas** (recommended, free). Sign in at https://himalayas.app and create an API key on https://himalayas.app/api . With a key
+4. **Himalayas** (recommended, free). Sign in at https://himalayas.app and create an API key on https://himalayas.app/api . With a key
    UAply gets its own 60 requests a minute instead of the shared public allowance. (Not wired up yet: today UAply calls without a key.)
-4. **Findwork** (optional, free). Sign up at https://findwork.dev/accounts/signup/ , then copy the token on https://findwork.dev/developers/ .
+5. **Findwork** (optional, free). Sign up at https://findwork.dev/accounts/signup/ , then copy the token on https://findwork.dev/developers/ .
    Remote and tech jobs; the terms page must be read before it is switched on (not wired up yet).
-5. **Jooble** (optional). https://jooble.org/api/about , form fields: name, position, email, website (`https://uaply.net`), phone.
+6. **Jooble** (optional). https://jooble.org/api/about , form fields: name, position, email, website (`https://uaply.net`), phone.
    Text to paste where it asks what the key is for: *A job-search app for people in the US (Philadelphia first). We would show Jooble
    results with a link to the job on Jooble and credit Jooble on every card.* Ask them in the same message whether attribution or a
    revenue share is required for commercial use. Not wired up yet.
-6. **Adzuna** (only with a license). https://developer.adzuna.com/signup gives a key at once, but its terms allow commercial use only
+7. **Adzuna** (only with a license). https://developer.adzuna.com/signup gives a key at once, but its terms allow commercial use only
    for a 14-day trial (to check coverage); after that "a licence agreement is required" for a product that earns money or generates leads,
    and every advert must carry the word "Adzuna" (at least 116 x 23 pixels) linking to Adzuna. Ask Adzuna for a license before building it.
-7. **Careerjet** (optional). https://www.careerjet.com/partners/ : a partner (publisher) program. Its attribution and commercial
+8. **Careerjet** (optional). https://www.careerjet.com/partners/ : a partner (publisher) program. Its attribution and commercial
    terms were not checked here; read them before signing up.
