@@ -77,7 +77,7 @@ SR_DESC_TTL = 24 * 3600          # a SmartRecruiters posting's description is re
 LOCAL_PER_SOURCE = 10
 LOCAL_RE = re.compile(r"\bPennsylvania\b|, PA\b|\bPhiladelphia\b|\bPittsburgh\b|\bKing of Prussia\b|\bConshohocken\b|\bAllentown\b|\bHarrisburg\b|"
                       r"\bNew Jersey\b|, NJ\b|\bTrenton\b|\bCamden\b|\bCherry Hill\b|\bJersey City\b|\bHoboken\b|\bPrinceton\b|\bNewark, (?:NJ|New Jersey)\b|"
-                      r"\bDelaware\b|, DE\b|\bWilmington, (?:DE|Delaware)\b")
+                      r"\bDelaware\b|, DE\b|\bWilmington, (?:DE|Delaware)\b|[a-z] (?:PA|NJ|DE)$")
 # A posting whose newest date (posted, or updated where the feed gives one) is older than this is not shown: it is most likely filled
 # or forgotten. A posting with no date at all is kept (nothing says it is old). Partner employers' own postings are never aged out here:
 # the employer opens and closes those itself.
@@ -86,6 +86,11 @@ DAY_MS = 86400 * 1000
 # USAJOBS' search returns only announcements that are open now, each with its own closing date, so a long-open federal announcement
 # (some run for months) is not stale and is not aged out.
 AGE_EXEMPT = ("usajobs",)
+# An hourly part-time or seasonal posting on the employer's own board is usually evergreen: one posting per store or studio, open all
+# year (Insomnia Cookies: 852 of 1,063 part-time postings older than 60 days; solidcore coaches: years). Still listed on the employer's
+# own board means still hiring, so those are not aged out there. An aggregator's copy still is.
+EVERGREEN_KINDS = ("greenhouse", "lever", "ashby", "workable", "smartrecruiters")
+EVERGREEN_TYPES = ("part-time", "temporary")
 
 # (kind, board token, display name). Boards are the employer's own public careers feed.
 SOURCES = [
@@ -178,6 +183,9 @@ SOURCES = [
     ("greenhouse", "relativity", "Relativity Space"),       # 382
     ("greenhouse", "spacex", "SpaceX"),                     # 2,779 (32 MB, read a posting at a time)
     ("greenhouse", "flexport", "Flexport"),                 # 204
+    # Part-time roles students can take: bakery stores and fitness studios (checked October 21, 2026: total / in PA, NJ or DE)
+    ("lever", "insomniacookies", "Insomnia Cookies"),       # Philadelphia HQ: 1,253 / 94 (16.8 MB, read a posting at a time)
+    ("lever", "solidcore", "solidcore"),                    # 253 / 29
     ("remotive", "software-dev", "Remotive"),
     ("jobicy", "engineering", "Jobicy"),      # credit Jobicy and link to its canonical job URL
     ("jobicy", "marketing", "Jobicy"),
@@ -274,10 +282,11 @@ US_CITIES = ("San Francisco|New York|Seattle|Austin|Boston|Chicago|Denver|Los An
              "Columbus|Cleveland|Cincinnati|Indianapolis|Minneapolis|St\\.? Louis|Kansas City|Salt Lake City|Sacramento|New Orleans|Silicon Valley|Bay Area")
 # bare state names count too ("New Jersey", "Remote - Delaware"), except Georgia, which is also a country
 US_STATE_WORDS = "|".join(n for n in STATE_NAMES.split("|") if n != "Georgia")
-US_RE = re.compile(r"United States|\bUSA\b|\bU\.S\.|\bUS\b|, (?:%s)\b|, (?:%s)\b|\b(?:%s)\b|\b(?:%s)\b" % ("|".join(STATES), STATE_NAMES, US_STATE_WORDS, US_CITIES))
+US_RE = re.compile(r"United States|\bUSA\b|\bU\.S\.|\bUS\b|, (?:%s)\b|, (?:%s)\b|\b(?:%s)\b|\b(?:%s)\b|[a-z] (?:%s)$" % (
+    "|".join(STATES), STATE_NAMES, US_STATE_WORDS, US_CITIES, "|".join(STATES)))       # the last: "Abilene TX" (Lever boards write places without the comma)
 # "City, Region, CC" with a country code at the end (SmartRecruiters, Workable): "Munich, BY, DE" is Germany, "Mumbai, MH, IN" India
 FOREIGN_CODE_RE = re.compile(r",\s*[A-Z]{2,3}\s*,\s*(?!US\b|USA\b)[A-Z]{2}\s*$")
-FOREIGN_RE = re.compile(r"Germany|United Kingdom|\bUK\b|India|Canada|Ireland|France|Spain|Brazil|Mexico|Poland|Netherlands|Japan|Australia|New Zealand|\bANZ\b|Singapore|EMEA|APAC|Europe|LATAM|Latin America|Berlin|London|Dublin|Toronto|Vancouver|Montreal|Sydney|Amsterdam|Lisbon|Paris|Tokyo|Seoul|Hong Kong|Israel|Dubai|Philippines|Argentina|Colombia|Chile|Vietnam|Indonesia|Malaysia|Thailand|South Africa|Nigeria|Kenya|Egypt|Turkey|Romania|Ukraine|Czech|Portugal|Italy|Sweden|Norway|Denmark|Finland|Switzerland|Belgium|Austria", re.I)
+FOREIGN_RE = re.compile(r"Germany|Mumbai|Bangalore|Bengaluru|Hyderabad|Chennai|Pune|Delhi|Gurugram|Gurgaon|Noida|Kolkata|Tel Aviv|Bogot|Medell|Manila|Cebu|Lagos|Nairobi|Warsaw|Krak|Prague|Bucharest|Kyiv|Istanbul|Cairo|Riyadh|Shanghai|Beijing|Shenzhen|Taipei|Bangkok|Jakarta|Kuala Lumpur|Ho Chi Minh|Hanoi|Buenos Aires|São Paulo|Sao Paulo|Mexico City|Guadalajara|Monterrey|Madrid|Barcelona|Milan|Rome|Zurich|Zürich|Geneva|Vienna|Stockholm|Copenhagen|Oslo|Helsinki|Brussels|Edinburgh|Manchester|Munich|Frankfurt|Hamburg|Cologne|Stuttgart|Düsseldorf|Dusseldorf|United Kingdom|\bUK\b|India|Canada|Ireland|France|Spain|Brazil|(?<!New )Mexico|Poland|Netherlands|Japan|Australia|New Zealand|\bANZ\b|Singapore|EMEA|APAC|Europe|LATAM|Latin America|Berlin|London|Dublin|Toronto|Vancouver|Montreal|Sydney|Amsterdam|Lisbon|Paris|Tokyo|Seoul|Hong Kong|Israel|Dubai|Philippines|Argentina|Colombia|Chile|Vietnam|Indonesia|Malaysia|Thailand|South Africa|Nigeria|Kenya|Egypt|Turkey|Romania|Ukraine|Czech|Portugal|Italy|Sweden|Norway|Denmark|Finland|Switzerland|Belgium|Austria", re.I)
 EXPLICIT_US = re.compile(r"United States|\bUSA\b|\bU\.S\.|\bUS\b")
 
 
@@ -301,7 +310,7 @@ _disk = {"loaded": False, "dirty": False, "filled": False}   # filled: a saved l
 _load_lock = threading.Lock()
 hide_errors = False                # serve.py sets this on a hosted server: the public job list then says "unavailable right now" instead of a raw network error
 DISK_MAX_AGE = 24 * 3600          # never trust a saved copy older than a day
-CACHE_VERSION = 10              # raise this whenever the rules for keeping or classifying postings change: older saved copies are then ignored
+CACHE_VERSION = 11              # raise this whenever the rules for keeping or classifying postings change: older saved copies are then ignored
 
 
 def _cache_file():
@@ -379,8 +388,20 @@ _feed_slots = threading.BoundedSemaphore(FEED_PARALLEL)
 def _get(url, headers=None, as_text=False):
     """One feed answer, parsed as JSON (or the plain text with as_text=True), refused past MAX_FEED_BYTES."""
     req = urllib.request.Request(url, headers=dict({"User-Agent": UA, "Accept": "text/plain" if as_text else "application/json"}, **(headers or {})))
-    with urllib.request.urlopen(req, timeout=20) as r:
-        body = r.read(MAX_FEED_BYTES + 1)
+    started, parts, size = time.time(), [], 0
+    with urllib.request.urlopen(req, timeout=FEED_TIMEOUT) as r:
+        while True:                                     # in parts, so a feed that trickles is stopped at FEED_DEADLINE
+            part = r.read(STREAM_CHUNK)
+            if not part:
+                break
+            parts.append(part)
+            size += len(part)
+            if size > MAX_FEED_BYTES:
+                break
+            if time.time() - started > FEED_DEADLINE:
+                raise TimeoutError("the feed took longer than %d s; tried again at the next refresh" % FEED_DEADLINE)
+    body = b"".join(parts)
+    del parts
     if len(body) > MAX_FEED_BYTES:
         raise ValueError("the answer is larger than %d MB" % (MAX_FEED_BYTES // 1000000))
     text = body.decode("utf-8", "replace")
@@ -388,6 +409,9 @@ def _get(url, headers=None, as_text=False):
     return text if as_text else json.loads(text)
 
 
+FEED_TIMEOUT = 20                     # seconds one network read may wait (connect, or the next part of the answer)
+FEED_DEADLINE = 90                    # seconds one feed answer may take in all (SpaceX's 32 MB board takes about 10): past that it is dropped,
+#                                       its download slot goes to the next feed, the last good copy stays, and it is tried again 2 minutes later
 STREAM_CHUNK = 256 * 1024              # how much of a board's answer is read from the network at a time
 _DEC = json.JSONDecoder()
 _WS = re.compile(r"[ \t\n\r]*")
@@ -399,7 +423,8 @@ def _get_items(url, key=None):
     the answer not yet worked through is held (a few hundred KB), instead of the whole answer, its text and every parsed posting at once:
     Carvana's 19 MB board cost about 75 MB that way. Past MAX_FEED_BYTES the answer is refused, as in _get."""
     req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=20) as r:
+    started = time.time()
+    with urllib.request.urlopen(req, timeout=FEED_TIMEOUT) as r:
         dec = codecs.getincrementaldecoder("utf-8")("replace")
         st = {"buf": "", "pos": 0, "read": 0, "done": False}
 
@@ -408,6 +433,8 @@ def _get_items(url, key=None):
                 return False
             chunk = r.read(STREAM_CHUNK)
             st["read"] += len(chunk)
+            if time.time() - started > FEED_DEADLINE:
+                raise TimeoutError("the feed took longer than %d s; tried again at the next refresh" % FEED_DEADLINE)
             if st["read"] > MAX_FEED_BYTES:
                 raise ValueError("the answer is larger than %d MB" % (MAX_FEED_BYTES // 1000000))
             if not chunk:
@@ -513,8 +540,9 @@ def feed_keys():
 
 def _scrub(text):
     """Error text with every feed key taken out, so a key can never reach the server's log or the job list's status line."""
+    keys = feed_keys()                     # read once (it reads the settings file), not once per key
     for n in ("usajobs", "muse", "cos_token", "cos_user"):
-        v = feed_keys().get(n)
+        v = keys.get(n)
         if v:
             text = text.replace(v, "[key]").replace(urllib.parse.quote(v, safe=""), "[key]")
     return text
@@ -611,14 +639,16 @@ def _iter_raw(kind, token, name):
             yield dict(id=j["id"], title=j["title"], company=j.get("company_name") or name,
                        loc=(j.get("location") or {}).get("name", ""), remote=None,
                        text=_text(j.get("content")), url=j["absolute_url"], salary_text="",
-                       posted=_ts(j.get("first_published") or j.get("updated_at")), updated=_ts(j.get("updated_at")), emp=_gh_emp(j))
+                       posted=_ts(j.get("first_published") or j.get("updated_at")), updated=_ts(j.get("updated_at")), emp=_gh_emp(j),
+                       fallback=_dept(j.get("departments")))     # a store or clinic role names no software skill: its department is what it is scored on
     elif kind == "lever":
         for j in _get_items("https://api.lever.co/v0/postings/%s?mode=json" % token):
             cat = j.get("categories") or {}
             yield dict(id=j["id"], title=j["text"], company=name, loc=cat.get("location", "") or "",
                        remote=(j.get("workplaceType") == "remote") or None,
                        text=_text((j.get("descriptionPlain") or "") + " " + (j.get("additionalPlain") or "")),
-                       url=j["hostedUrl"], salary_text="", posted=_ts(j.get("createdAt")), emp=cat.get("commitment"))
+                       url=j["hostedUrl"], salary_text="", posted=_ts(j.get("createdAt")), emp=cat.get("commitment"),
+                       fallback=(cat.get("team") or cat.get("department") or "").strip() or None)
     elif kind == "ashby":
         for j in _get_items("https://api.ashbyhq.com/posting-api/job-board/%s" % token, "jobs"):
             if j.get("isListed") is False:
@@ -626,7 +656,8 @@ def _iter_raw(kind, token, name):
             yield dict(id=j["id"], title=j["title"], company=name, loc=j.get("location", "") or "",
                        remote=bool(j.get("isRemote")) or j.get("workplaceType") == "Remote" or None,
                        text=_text(j.get("descriptionPlain") or j.get("descriptionHtml")),
-                       url=j["jobUrl"], salary_text="", posted=_ts(j.get("publishedAt")), emp=j.get("employmentType"))
+                       url=j["jobUrl"], salary_text="", posted=_ts(j.get("publishedAt")), emp=j.get("employmentType"),
+                       fallback=(j.get("department") or j.get("team") or "").strip() or None)
     elif kind == "workable":
         # Workable's public jobs feed (no key): https://www.workable.com/api/accounts/{subdomain}?details=true lists the account's published jobs
         # with their descriptions (help.workable.com/hc/en-us/articles/115012771647, "Build a custom careers page using Workable's API"). It may
@@ -944,6 +975,85 @@ TITLE_TYPES = [("co-op", re.compile(r"\bco-?op\b", re.I)),
                ("contract", re.compile(r"\((?:[^)]*[\s,/])?contract(?:or)?(?:[\s,/][^)]*)?\)|[-–—:,|]\s*contract(?:or)?\s*$|\b1099\b|\bcontract[- ]to[- ]hire\b", re.I))]
 
 
+# Board names that carry a careers-site label: "Perpay - Career's Page", "Point72 ", "DRW - University Jobs", "Hometap Jobs",
+# "ATOMS Careers page", "Astera Labs Early Career - North America 2027", "MORSE Corp Co-op Opportunities", "Jobs at Acme".
+# A label is only taken off the end (or "Jobs at" off the start) when a name is left: "CourseCareers" and "Jobs for Humanity" stay.
+CO_TAIL = re.compile(r"(?:\s*[-–—|:,]\s*|\s+)(?:(?:university|campus|early|student|internship|intern|co-?op)\s+)?"
+                     r"(?:careers?(?:'s)?(?:\s+(?:page|site|portal|board))?|jobs?(?:\s+(?:page|board|site))?|job\s+board|opportunities|openings|"
+                     r"hiring|recruiting|early\s+careers?(?:\b.*)?|university\s+recruiting(?:\b.*)?)\s*$", re.I)
+CO_HEAD = re.compile(r"^\s*(?:jobs|careers)\s+(?:at|with)\s+", re.I)
+
+
+def _clean_company(name, fallback=""):
+    """A company name without the careers-site label a board added to it, spaces trimmed (see CO_TAIL). Empty: the fallback."""
+    n = re.sub(r"\s+", " ", str(name or "")).strip()
+    for _ in range(3):                                  # "Acme University Jobs - Careers Page": labels can be stacked
+        m = CO_HEAD.match(n)
+        cut = n[m.end():].strip() if m else n
+        cut = CO_TAIL.sub("", cut).strip(" -–—|:,")
+        if cut == n or not re.search(r"[A-Za-z0-9]", cut):
+            break
+        n = cut
+    if not n or re.fullmatch(r"(?:careers?|jobs?|job board)(?:\s+page)?", n, re.I):     # nothing but a label: the board's own name
+        n = re.sub(r"\s+", " ", str(fallback or "")).strip() or n
+    return n
+
+
+# Licensed and degree-gated roles, by title (checked against the live feeds' titles, October 2026). The lowest level a person can hold
+# the job with: a Registered Nurse can be licensed with an associate degree, a therapist or counselor needs a master's, a psychologist,
+# pharmacist, physician, dentist, physical therapist or lawyer a doctorate.
+EDU_BY_TITLE = [
+    ("Doctorate", re.compile(r"\bpsychologist|\bpsychiatrist\b|\bphysicians?\b(?!\s+assistant)|\bpharmacists?\b|\bdentists?\b|\bphysical therapist|"
+                             r"\bDPT\b|\bPharmD\b|\battorneys?\b|\blawyers?\b|\bsolicitor\b|\bassociate general counsel|\bveterinarian|\boptometrist|"
+                             r"\bresearch scientist\b.*\bph\.?d|\bph\.?d\b", re.I)),
+    ("Master", re.compile(r"\bnurse practitioner|\bphysician assistant|\bPA-C\b|\bCRNA\b|\bLCSW\b|\bLICSW\b|\bLPCC?\b|\bLMFT\b|\bLMHC\b|\bLCPC\b|"
+                          r"\b(?:licensed|clinical|mental health|staff|primary|outpatient|family|child|telehealth|bilingual)\s+(?:\w+\s+)?(?:therapist|counselor|social worker|clinician)|"
+                          r"\bpsychotherapist|\btherapist\b|\bsocial worker\b|\bspeech[- ]language pathologist|\bSLP\b|\boccupational therapist|\bdietitian|"
+                          r"\bMBA\b|\bmaster'?s\b", re.I)),
+    ("Associate", re.compile(r"\bregistered nurse|\bRN\b|\bLPN\b|\bLVN\b|\bnurse\b|\bradiolog\w* tech|\bsonographer|\brespiratory therapist|"
+                             r"\bdental hygienist|\bsurgical tech|\bmedical lab(?:oratory)? tech", re.I)),
+]
+EDU_RANK = {"High school": 0, "Associate": 1, "Bachelor": 2, "Master": 3, "Doctorate": 4}
+EDU_TEXT = [  # what the text requires (a "preferred" degree is not a requirement)
+    ("Doctorate", re.compile(r"(?:\bmust (?:have|hold|possess)|\brequires?|\brequired:?)\s+(?:an?\s+|the\s+)?(?:ph\.?d|doctoral degree|doctorate|pharm\.?d|psy\.?d|J\.D\.|M\.D\.|juris doctor)|"
+                              r"(?:\bph\.?d\b|\bdoctoral degree|\bdoctorate\b|\bpharm\.?d\b|\bpsy\.?d\b|\bJ\.D\.|\bM\.D\.|\bjuris doctor)[^.;]{0,40}?\b(?:is |are )?(?:required|needed|necessary)\b", re.I)),
+    ("Master", re.compile(r"(?:\bmust (?:have|hold|possess)|\brequires?|\brequired:?)\s+(?:an?\s+)?(?:master'?s|MSW|MBA|graduate degree)|"
+                          r"(?:\bmaster'?s degree|\bMSW\b|\bMBA\b|\bgraduate degree)[^.;]{0,40}?\b(?:is |are )?(?:required|needed|necessary)\b", re.I)),
+    ("Bachelor", re.compile(r"\bbachelor'?s?\b|\bB\.?S\.? degree|\bB\.?A\.? degree|\b4[- ]year degree|\bfour[- ]year degree|\bundergraduate degree|\bcollege degree|"
+                            r"\b(?:BS|BA|B\.S\.|B\.A\.)(?=,|\s*/|\s+(?:or|in)\b)", re.I)),
+    ("Associate", re.compile(r"\bassociate'?s? degree|\btwo[- ]year degree|\b(?:active|current|valid|unrestricted)\s+(?:state\s+)?(?:RN|LPN|LVN|nursing|clinical|professional|medical|pharmacy|therapy|counseling|social work)\s+(?:\w+\s+){0,2}licen[sc]e\b", re.I)),
+]
+# an internship or co-op asks what a student is studying for, not what they hold: graduate-only ones are marked (ranked after the others)
+GRAD_TITLE = re.compile(r"\bph\.?d\b|\bdoctoral\b|\bMBA\b|\bmaster'?s\b|\bgraduate (?:student|intern|research)|\bpostdoc", re.I)
+GRAD_TEXT = re.compile(r"(?:pursuing|enrolled in|candidate for|working toward|studying for|currently in)\s+(?:a|an|your)?\s*(?:ph\.?d|doctoral|doctorate|master'?s|MBA|graduate)", re.I)
+UNDERGRAD_TEXT = re.compile(r"\bundergrad|\bbachelor|\bB\.?S\.?\b|\bB\.?A\.?\b|\bsophomore|\bjunior year|\brising (?:junior|senior|sophomore)|\bfreshm[ae]n|\bassociate'?s? degree|\bhigh school", re.I)
+
+
+def _grad_only(title, text):
+    """True for an internship or co-op only graduate students can take (a PhD, master's or MBA program in the title, or the text asks
+    for one and never mentions undergraduates)."""
+    return bool(GRAD_TITLE.search(title) or (GRAD_TEXT.search(text) and not UNDERGRAD_TEXT.search(text)))
+
+
+def _edu(title, text, jtype="full-time"):
+    """The education level a job needs (High school, Associate, Bachelor, Master, Doctorate): a licensed or degree-gated title first,
+    then what the text requires. For an internship or co-op it is what a student must have finished: High school for an undergraduate
+    one, Bachelor for a graduate-only one."""
+    if jtype in ("internship", "co-op"):
+        return "Bachelor" if _grad_only(title, text) else "High school"
+    by_title = next((lvl for lvl, rx in EDU_BY_TITLE if rx.search(title)), "High school")
+    by_text = next((lvl for lvl, rx in EDU_TEXT if rx.search(text)), "High school")
+    return max(by_title, by_text, key=lambda lvl: EDU_RANK[lvl])
+
+
+def _dept(departments):
+    """Greenhouse's first department name ("Store Operations", "Clinical"), or None."""
+    for d in departments or []:
+        if isinstance(d, dict) and str(d.get("name") or "").strip():
+            return str(d["name"]).strip()[:60]
+    return None
+
+
 def _gh_emp(j):
     """Greenhouse has no standard employment-type field; many employers add one as a custom field ("Employment Type", "Time Type")."""
     for m in j.get("metadata") or []:
@@ -965,6 +1075,23 @@ def _emp_type(v):
     return ""
 
 
+PT_WORDS = re.compile(r"\bpart[- ]time\b(?![- ]?(?:and|or|/)\s*full)|\bPT\b(?=\s*(?:position|role|schedule|shift))|\bweekend (?:and evening )?shifts\b", re.I)
+PT_HOURS = re.compile(r"(?:(\d{1,2})\s*(?:-|–|to)\s*)?(\d{1,2})\+?\s*(?:hours|hrs)\s*(?:per|a|each|/)\s*week", re.I)
+FT_WORDS = re.compile(r"\bfull[- ]time\b(?![- ]?(?:and|or|/)\s*part)|\b40\s*(?:hours|hrs)\s*(?:per|a|/)\s*week", re.I)
+
+
+def _part_time_text(text):
+    """True when the start of a posting describes a part-time schedule: "part-time" (not "full-time or part-time"), or hours a week of
+    30 or fewer ("15-25 hours per week", "up to 20 hrs/week"), and it does not also say full-time first."""
+    # "full-time or part-time" / "part-time and full-time" says neither: taken out before looking
+    head = re.sub(r"\b(?:full|part)[- ]time\s*(?:,|and|or|/|&)\s*(?:full|part)[- ]time\b", " ", text[:1500], flags=re.I)
+    pt, ft = PT_WORDS.search(head), FT_WORDS.search(head)
+    if pt and not (ft and ft.start() < pt.start()):
+        return True
+    hours = [int(m.group(2)) for m in PT_HOURS.finditer(head)]
+    return bool(hours) and max(hours) <= 30 and not ft
+
+
 def _job_type(raw):
     """One of JOB_TYPES for a raw posting: a type the feed forced (USAJOBS Pathways, The Muse's Internship level), then the feed's own
     field, then the title, then "part-time" near the start of the text, then the list's own kind (an internship list), else full-time."""
@@ -982,7 +1109,7 @@ def _job_type(raw):
         return by_title
     if feed == "full-time":
         return "full-time"
-    if re.search(r"part[- ]time", (raw.get("text") or "")[:400], re.I):
+    if _part_time_text(raw.get("text") or ""):
         return "part-time"
     return raw.get("default_type") or "full-time"
 
@@ -1027,21 +1154,24 @@ def _normalize(raw, kind, name, board=None):
     typ = LEGACY_TYPE.get(jtype, "job")
     m = YRS_RE.search(text)
     yrs = min(int(m.group(1)), 15) if m else 0
-    edu = "Bachelor" if re.search(r"bachelor|\bB\.?S\.? degree", text, re.I) else "High school"
+    edu = _edu(title, text, jtype)
     blurb = text[:170].rsplit(" ", 1)[0] + "…" if len(text) > 170 else text
     desc = _role_summary(text)                                                    # what the emails show about the job
     jid = 100000 + int(hashlib.sha1(("%s:%s" % (kind, raw["id"])).encode()).hexdigest()[:6], 16)
-    src = name if kind in ("remotive", "jobicy", "muse", "usajobs", "himalayas", "remoteok", "careeronestop") else "%s's careers page" % raw["company"]
+    company = _clean_company(raw["company"], name)
+    src = name if kind in ("remotive", "jobicy", "muse", "usajobs", "himalayas", "remoteok", "careeronestop") else "%s's careers page" % company
     # Where this posting lives in the employer's own hiring system. It is only an address (not a credential): it is used when, and only when, the
     # employer has connected with their own key (see ats_connections); otherwise it is never used and apply stays "link".
     # Ashby: the job board's own posting id is the jobPostingId its API takes. SmartRecruiters: the posting's uuid (see _smartrecruiters).
     pid = str(raw.get("ats_id") or raw["id"])
     ats = {"kind": kind, "board": board, "id": pid} if (kind in ats_api.KINDS and board and ats_api.TOKEN_RE.match(board) and ats_api.ID_RE.match(pid)) else None
     # contact is deliberately empty and apply is "link": a third-party feed never gets an application emailed to anyone
-    out = dict(id=jid, co=raw["company"], role=title, loc=_place(loc, mode), mode=mode,
+    out = dict(id=jid, co=company, role=title, loc=_place(loc, mode), mode=mode,
                sal=raw.get("sal") or _salary(raw["salary_text"], text), yrs=yrs, edu=edu, skills=skills, blurb=blurb, desc=desc,
                type=typ, jobType=jtype, url=raw["url"], source=src, contact="", apply="link", live=True, ats=ats,
                posted=raw.get("posted", 0), perks=_perks(text), comm=bool(COMM_RE.search(text)))
+    if jtype in ("internship", "co-op") and _grad_only(title, text):
+        out["gradOnly"] = True                                    # the Internship and Co-op stacks show undergraduate roles first
     if (raw.get("updated") or 0) > (raw.get("posted") or 0):
         out["updated"] = raw["updated"]                           # Greenhouse: the employer touched the posting after first publishing it
     # Credit every feed, on the card ("via ...") and in the application record ("credit"): each free feed asks for it, and an employer board is the employer's own
@@ -1166,9 +1296,10 @@ def _start_missing(sources):
     at a time), so the sources can then be collected one after another without a thread per source per visitor."""
     if _disk["filled"]:
         return
+    keys = feed_keys()                     # read before the lock: it reads and parses the settings file
     with _lock:
         for src in sources:
-            if not _no_key(src[0]) and src not in _cache and not (src in _failed and time.time() - _failed[src][0] < 120):
+            if not _no_key(src[0], keys) and src not in _cache and not (src in _failed and time.time() - _failed[src][0] < 120):
                 _start_refresh(src)
 
 
@@ -1186,7 +1317,9 @@ SIMPLIFY_ATS = [
     ("smartrecruiters", re.compile(r"^https://jobs\.smartrecruiters\.com/([A-Za-z0-9_-]{1,80})/(\d{6,20})(?:[-/?#]|$)"),
      "https://api.smartrecruiters.com/v1/companies/%s/postings/%s"),
 ]
-_simplify_checked = {}                 # (kind, board, posting id) -> {"at", "raw"}: raw is None when the posting is gone from its board
+_simplify_checked = {}                 # (kind, board, posting id) -> {"at", "raw", "lists"}: raw is None when the posting is gone from its board
+SIMPLIFY_TEXT = 4000                   # characters of a checked posting kept (skills, pay, schedule and the summary are read from the start)
+SIMPLIFY_FIELDS = ("id", "title", "company", "loc", "remote", "text", "url", "salary_text", "posted", "updated", "emp", "ats_id", "country")
 
 
 def _simplify_rows(text):
@@ -1247,9 +1380,28 @@ def _simplify_check(kind, board, pid, api):
     except Exception:
         ok = False
     if ok:
+        if raw:                                # only what _simplify and _normalize read, and the start of the text (a posting can be 20,000 characters)
+            raw = {k: raw[k] for k in SIMPLIFY_FIELDS if k in raw}
+            raw["text"] = (raw.get("text") or "")[:SIMPLIFY_TEXT]
         with _lock:
-            _simplify_checked[key] = {"at": time.time(), "raw": raw}
+            _simplify_checked[key] = {"at": time.time(), "raw": raw, "lists": set()}
     return raw
+
+
+def _simplify_forget(token, keys_now):
+    """After one list is read: entries this list no longer names lose it, and an entry no list names, or checked more than two days ago,
+    is dropped (the map used to keep every posting ever checked)."""
+    now = time.time()
+    with _lock:
+        for key in list(_simplify_checked):
+            e = _simplify_checked[key]
+            lists = e.setdefault("lists", set())
+            if key in keys_now:
+                lists.add(token)
+            else:
+                lists.discard(token)
+            if not lists or now - e["at"] > 2 * SIMPLIFY_CHECK_TTL:
+                del _simplify_checked[key]
 
 
 def _simplify(token, name):
@@ -1273,6 +1425,7 @@ def _simplify(token, name):
             break
     with ThreadPoolExecutor(max_workers=4) as ex:                # four at a time, as for SmartRecruiters
         found = list(ex.map(lambda t: _simplify_check(t[1], t[2], t[3], t[4]), todo))
+    _simplify_forget(token, {(k, b, i) for _, k, b, i, _ in todo})
     default = "internship" if token == "README.md" else None     # the summer list is internships only; the off-season one mixes co-ops in
     for (company, kind, board, pid, _), raw in zip(todo, found):
         if raw and raw["title"] and raw["url"].startswith("https://"):
@@ -1280,14 +1433,13 @@ def _simplify(token, name):
                        default_type=default or ("co-op" if re.search(r"\bco-?op\b", raw["title"], re.I) else "internship"))
 
 
-def _no_key(kind):
+def _no_key(kind, keys=None):
     """True for a feed that needs a key the owner has not added: USAJOBS (UAPLY_USAJOBS_KEY or feed_keys), CareerOneStop (both
-    UAPLY_COS_USER_ID and UAPLY_COS_TOKEN)."""
-    if kind == "usajobs":
-        return not feed_keys().get("usajobs")
-    if kind == "careeronestop":
-        return not feed_keys().get("cos_token")
-    return False
+    UAPLY_COS_USER_ID and UAPLY_COS_TOKEN). `keys`: feed_keys() already read (it reads uaply-config.json), for a caller checking many."""
+    if kind not in ("usajobs", "careeronestop"):
+        return False
+    keys = feed_keys() if keys is None else keys
+    return not keys.get("usajobs" if kind == "usajobs" else "cos_token")
 
 
 def _fetch_source(src):
@@ -1303,7 +1455,8 @@ def _fetch_source(src):
         keep = KEEP.get(kind) if (kind != "smartrecruiters" or token in SR_WHOLE) else None   # a whole public list, or None for an employer board
         with _feed_slots:                        # at most FEED_PARALLEL boards downloaded and parsed at once (memory, see FEED_PARALLEL)
             for raw in _iter_raw(kind, token, name):
-                if kind not in AGE_EXEMPT and _too_old(raw, now_ms):   # before the caps, so a stale posting never takes a fresh one's place
+                if kind not in AGE_EXEMPT and _too_old(raw, now_ms) and not (kind in EVERGREEN_KINDS and _job_type(raw) in EVERGREEN_TYPES):
+                    # (before the caps, so a stale posting never takes a fresh one's place)
                     old += 1
                     continue
                 # only the first STUDENT_PER_SOURCE student roles and PER_SOURCE others can be kept below, so a posting past those is not worked
@@ -1590,7 +1743,8 @@ def get_jobs():
         for j in js:
             if j["id"] in seen:
                 continue
-            if src[0] not in AGE_EXEMPT and _too_old(j, now_ms):    # a saved copy can be up to a day old: one that turned 60 days since goes now
+            if src[0] not in AGE_EXEMPT and _too_old(j, now_ms) and not (src[0] in EVERGREEN_KINDS and j.get("jobType") in EVERGREEN_TYPES):
+                # (a saved copy can be up to a day old: one that turned 60 days since goes now)
                 aged += 1
                 continue
             key = _same_job_key(j)

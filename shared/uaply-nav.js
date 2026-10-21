@@ -32,6 +32,7 @@ function patch(s){
            'var X=!p.custom;$("pName").value=X?"":p.name;$("pTitle").value=X?"":p.title;$("pYears").value=X?"":p.years;$("pEdu").value=p.edu;');
   s=once(s,'regional cookbooks."}','regional cookbooks."}'+EXTRA);
   s=once(s,'var busy=false,F="all";','var busy=false,F="all",TYPE="job",MINPCT=0;');
+  s=once(s,'.sort(function(a,b){return b.m.pct-a.m.pct});','.sort(window.__uaplyDeckSort?window.__uaplyDeckSort(TYPE):function(a,b){return b.m.pct-a.m.pct});');   /* the Internship and Co-op stacks: see __uaplyDeckSort */
   s=once(s,'&&(F==="all"||j.mode===F)}).map(function(j){return {j:j,m:evaluate(j,S.profile)}}).sort(',
            '&&(j.type||"job")===TYPE&&!(window.__uaplyHide&&window.__uaplyHide(j))&&(F==="all"||j.mode===F)}).map(function(j){return {j:j,m:evaluate(j,S.profile)}}).filter(function(x){return x.m.pct>=MINPCT}).sort(');
   s=once(s,'<h2>You have seen every job</h2><p>Jobs you passed on can come back, and your applications are in the Applied tab.</p>',
@@ -769,6 +770,16 @@ function apply(w,host){
       if(mode!=="again"&&was.indexOf(LOC_TXT[mode][0])===0)c.querySelector("b").textContent=LOC_TXT[mode][0]+" (still, tried again at "+new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit",second:"2-digit"})+")";
     });
   }
+  /* The Internship and Co-op stacks: undergraduate roles before graduate-only ones (PhD, master's, MBA; the server marks them gradOnly),
+     then on-site or hybrid roles within 50 miles of the person, then remote ones, then everything farther; the match decides within each.
+     Where the person is: the device location, else their city and state, else their ZIP code (homeGeo). Other stacks: by match only. */
+  w.__uaplyDeckSort=function(type){
+    var byPct=function(a,b){return b.m.pct-a.m.pct};
+    if(type!=="internship"&&type!=="coop")return byPct;
+    var home=homeGeo(),near=function(j){if(j.mode==="remote")return 1;var t=home&&geo(j.loc);return t?(miles(home,t)<=50?0:2):(home?2:0)};
+    return function(a,b){return ((a.j.gradOnly?1:0)-(b.j.gradOnly?1:0))||(near(a.j)-near(b.j))||byPct(a,b)};
+  };
+  w.__uaplyMilesFromHome=function(loc){var h=homeGeo(),t=h&&geo(loc);return t?Math.round(miles(h,t)):null};   /* for tools/ui-intern-order.js */
   if(NEAR){
     w.__uaplyNearScore=function(job,p){var me=devPos(),there=me&&geo(job.loc);if(!there)return null;var mi=miles(me,there);return mi<=25?1:(mi<=60?0.6:(p&&p.reloc?0.6:0))};
     w.__uaplyNearLabel=function(job){var me=devPos(),there=me&&geo(job.loc);if(!there)return "";var mi=Math.round(miles(me,there));return mi<3?"In your area":"About "+mi+" miles from you"};
