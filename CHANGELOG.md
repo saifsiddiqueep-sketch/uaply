@@ -6,6 +6,14 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 
+### Google Play: an installable website and the Trusted Web Activity
+- **Installable.** `/uaply.webmanifest` (UAply, start `/`, standalone, the app's `#FDF0F2` background) with 192 and 512 px icons, ordinary and maskable (`shared/uaply-icon-*.png`, made from `mobile/assets/icon-only.png` by `tools/make-web-icons.js`), linked from dev and the sandbox. Chrome reports nothing missing to install it.
+- **Offline and "starting up" screen.** The service worker `/uaply-sw.js` saves only `/uaply-offline.html` and its icon. When a page cannot load (no connection, or the host's 502/503/504 during a deploy) it shows that screen at the same address; the screen checks `/healthz` every few seconds and reopens the page by itself. It never caches the app's code, never touches `/api/`, `/healthz`, `/.well-known/`, the owner pages or other sites. The pages' security policy adds `manifest-src 'self'; worker-src 'self'`. The hosted copies (`share/`) leave both out.
+- **`/.well-known/assetlinks.json`** for the package `com.uaply.app`, from `UAPLY_ASSETLINKS_SHA256` (the Play signing and upload key fingerprints, comma-separated): no rebuild when a key changes; a plain 404 when unset; answered on every address without a redirect.
+- **`/legal/delete-account.html`**, the account-deletion page Google Play asks for, linked from the Privacy Policy, Support and the legal index.
+- **`mobile/twa/`**: the Bubblewrap `twa-manifest.json` (host uaply.net, `fallbackType: customtabs`) and the owner's steps in its README.
+- Tests: 20 more checks in `tools/test-pages.py`; `tools/ui-installable.js` (15 checks in Chrome: installable, cache contents, server down, offline, a 502 deploy, back by itself).
+
 ### Workable, the fifth hiring system an employer can connect
 - **Workable jobs in the feed.** Workable's public, keyless jobs list (`www.workable.com/api/accounts/{subdomain}?details=true`) is a new feed kind, `workable`, off like every other feed until the owner lists it under `feeds`. Each posting records its subdomain and shortcode, so it becomes "Apply instantly" the moment that employer connects. First board: Hugging Face.
 - **Swipe right into an employer's Workable.** With the token the employer's Admin made (scopes `r_jobs` and `w_candidates`), UAply reads the job's questions, answers them with the same rules as the other systems, and creates the candidate on that job as an applicant (`"sourced": false`), with the resume file, education, most recent job, LinkedIn and the source `UAply`. Gender, race, veteran and disability questions are never answered; a required question the profile cannot answer is asked once or left to the person; test mode never uses the token. Everything follows Workable's API reference (cited in `ats_api.py`).

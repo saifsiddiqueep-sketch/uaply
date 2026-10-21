@@ -80,6 +80,10 @@ simulated payments (paid plans appear only once live Stripe keys are set, sectio
    - `UAPLY_PLANS_HIDDEN` (optional): `1` for a free-only launch. Plan and billing shows only the Free plan and "Plus and Pro are coming
      soon", with no Choose buttons; `/api/billing/checkout` answers 403; the assistant never says to tap Choose Plus. The same switch in
      `UAPLY_CONFIG_JSON` is `"plans_hidden": true`. Remove it (or set `0`) when paid plans start.
+   - `UAPLY_ASSETLINKS_SHA256` (dev, once the Play Store app exists): the two SHA-256 certificate fingerprints from Play Console, Test and
+     release, Setup, App signing (the app signing key and the upload key), comma-separated as Play shows them (`AB:CD:...`). The server
+     then answers `/.well-known/assetlinks.json` for the package `com.uaply.app`, which lets the Play app open uaply.net full screen.
+     Without it that address is a plain 404. Entries that are not a fingerprint are ignored and the log says how many. See `mobile/twa/README.md`.
 4. Your sites: `https://uaply-dev.onrender.com` and `https://uaply-sandbox.onrender.com` (Render shows the exact names).
 5. Check each one: `/healthz` answers `{"ok": true}`, and the service's **Logs** show one line starting `[uaply] dev on 0.0.0.0:10000 (public)`.
    It must say `data: /var/data (persistent disk)`, `email: on` and `UAPLY_CONFIG_JSON: valid` (and, once set up, `Google sign-in: on (full-page
@@ -195,6 +199,12 @@ cookies with `HttpOnly; Secure; SameSite=Lax`, and `Server: UAply` (it used to n
 rules in the CSP (the pages carry their own inline code). `tools/test-public.py` and `tools/live-check.py` check these.
 
 ## 2. App Store and Google Play (Capacitor, in `mobile/`)
+**Google Play: use the Trusted Web Activity in `mobile/twa/` instead** (real Chrome, so Google sign-in and Stripe work in the app; owner
+steps in `mobile/twa/README.md`). The website is installable for it: `/uaply.webmanifest`, the icons `shared/uaply-icon-*.png` (made by
+`node tools/cdp.js tools/make-web-icons.js` from `mobile/assets/icon-only.png`), the service worker `/uaply-sw.js` (it saves only the
+offline and "starting up" screen `/uaply-offline.html` and its icon; never the app's code and never `/api/`), and the account-deletion page
+Google Play asks for, `https://uaply.net/legal/delete-account.html`. The Capacitor project below stays for the iPhone app.
+
 The apps open https://uaply.net (`mobile/capacitor.config.json`, `server.url`). If the address changes, edit it there and
 in `mobile/www/index.html` (`SITE`, the "can't connect" screen), then run `npx cap sync` in `mobile/`.
 - **What the apps have:** the UAply icon and splash screens; interview reminders (local notifications), a vibration on each

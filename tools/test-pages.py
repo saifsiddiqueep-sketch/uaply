@@ -240,6 +240,155 @@ for p in files("**/*.sh"):
         sh_bad.append("%s: %s" % (os.path.relpath(p, ROOT), r.stderr.strip()[:160]))
 t("every shell script parses (bash -n, %d files)" % len(files("**/*.sh")), bool(bash) and not sh_bad, "; ".join(sh_bad) or ("" if bash else "bash is not installed"))
 
+# ---- 5. the installable website and the Play Store pages, on a running server ------------------------------------------------------------
+# the web manifest and its icons, the service worker and its offline screen, /.well-known/assetlinks.json with UAPLY_ASSETLINKS_SHA256
+# unset, set and set wrongly, and the account-deletion page. tools/ui-installable.js checks the same in Chrome (installable, offline).
+import http.client  # noqa: E402
+import socket  # noqa: E402
+import struct  # noqa: E402
+
+FP1 = ":".join(["AB"] * 32)
+FP2 = "12" * 32                                                     # 64 bare hex digits: accepted and written with colons
+
+
+def free_port():
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    n = s.getsockname()[1]
+    s.close()
+    return n
+
+
+def server(extra):
+    port = free_port()
+    env = dict(os.environ, UAPLY_DATA_DIR=tempfile.mkdtemp(dir=TMP), UAPLY_CONFIG_FILE="none", UAPLY_CONFIG_JSON='{"feeds":[],"smtp":{}}', **extra)
+    for k in ("UAPLY_ASSETLINKS_SHA256", "UAPLY_PUBLIC_URL", "HOST"):
+        if k not in extra:
+            env.pop(k, None)
+    log = open(os.path.join(TMP, "server-%d.log" % port), "w")
+    p = subprocess.Popen([sys.executable, os.path.join(ROOT, "serve.py"), str(port), os.path.join(ROOT, "dev"), "--api"], env=env, cwd=ROOT,
+                         stdout=subprocess.DEVNULL, stderr=log)
+    for _ in range(120):
+        try:
+            c = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+            c.request("GET", "/healthz")
+            if c.getresponse().status == 200:
+                return p, port, log
+        except OSError:
+            time.sleep(0.25)
+    p.kill()
+    raise SystemExit("the test server did not start")
+
+
+def get(port, path, method="GET", host=None):
+    c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+    c.request(method, path, headers={"Host": host} if host else {})
+    r = c.getresponse()
+    out = (r.status, r.getheader("Content-Type") or "", r.read(), r.getheader("Content-Security-Policy") or "", r.getheader("Location"))
+    c.close()
+    return out
+
+
+def png_size(b):
+    return struct.unpack(">II", b[16:24]) if b[:8] == b"\x89PNG\r\n\x1a\n" else None
+
+
+procs = []
+try:
+    pa, A, _ = server({})
+    procs.append(pa)
+    st, ct, body, csp, _ = get(A, "/uaply.webmanifest")
+    man = {}
+    try:
+        man = json.loads(body)
+    except ValueError:
+        pass
+    dev_html = open(os.path.join(ROOT, "dev", "index.html"), encoding="utf-8").read()
+    sb_html = open(os.path.join(ROOT, "sandbox", "index.html"), encoding="utf-8").read()
+    bg_token = re.search(r"--bg:(#[0-9A-Fa-f]{6})", sb_html).group(1).upper()
+    t("/uaply.webmanifest is served as a web manifest and is valid JSON", (st, ct, bool(man)) == (200, "application/manifest+json", True), "%s %s" % (st, ct))
+    t("the manifest: name and short_name UAply, start_url and scope /, display standalone",
+      (man.get("name"), man.get("short_name"), man.get("start_url"), man.get("scope"), man.get("display")) == ("UAply", "UAply", "/", "/", "standalone"),
+      json.dumps(man)[:300])
+    t("the manifest's theme and background colours are the app's own background token (%s)" % bg_token,
+      (str(man.get("theme_color")).upper(), str(man.get("background_color")).upper()) == (bg_token, bg_token), "%s %s" % (man.get("theme_color"), man.get("background_color")))
+    icons, icon_bad = man.get("icons") or [], []
+    for ic in icons:
+        s2, c2, b2, _, _ = get(A, ic.get("src", ""))
+        w = png_size(b2)
+        want = tuple(int(x) for x in str(ic.get("sizes", "0x0")).split("x"))
+        if s2 != 200 or c2 != "image/png" or w != want:
+            icon_bad.append("%s: %s %s %s (wanted %s)" % (ic.get("src"), s2, c2, w, want))
+    kinds = {(ic.get("sizes"), ic.get("purpose")) for ic in icons}
+    t("every manifest icon is served as a PNG of the size it claims", bool(icons) and not icon_bad, "; ".join(icon_bad))
+    t("...and they include 192 and 512 pixel icons, each as an ordinary and a maskable one",
+      {("192x192", "any"), ("512x512", "any"), ("192x192", "maskable"), ("512x512", "maskable")} <= kinds, str(sorted(kinds)))
+    t("dev and the sandbox both link the manifest and register the service worker",
+      all('<link rel="manifest" href="/uaply.webmanifest">' in h and 'serviceWorker.register("/uaply-sw.js")' in h for h in (dev_html, sb_html)))
+    st, ct, sw, csp, _ = get(A, "/uaply-sw.js")
+    t("/uaply-sw.js is served at the site root as JavaScript (so its scope is the whole site)", (st, ct.split(";")[0]) in ((200, "text/javascript"), (200, "application/javascript")), "%s %s" % (st, ct))
+    sws = sw.decode("utf-8", "replace")
+    saved = re.search(r'var PAGE = "([^"]+)", ICON = "([^"]+)"', sws)
+    t("the service worker saves only the offline screen and its icon, and never writes to its cache anywhere else",
+      bool(saved) and saved.groups() == ("/uaply-offline.html", "/uaply-icon-192.png") and ".put(" not in sws and sws.count("addAll(") == 1, sws[:200])
+    owner = re.search(r'var OWNER_PAGES = (\[[^\]]*\])', sws)
+    srv = open(os.path.join(ROOT, "serve.py"), encoding="utf-8").read()
+    srv_owner = re.search(r'^OWNER_PAGES = \(([^)]*)\)', srv, re.M)
+    t("...and leaves /api/, /healthz, /.well-known/ and the owner's pages (the same list as serve.py) alone even for page loads",
+      all(x in sws for x in ('p.indexOf("/api/") === 0', 'p === "/healthz"', 'p.indexOf("/.well-known/") === 0')) and bool(owner) and bool(srv_owner)
+      and sorted(json.loads(owner.group(1))) == sorted(re.findall(r'"(/[a-z]+)"', srv_owner.group(1))),
+      "%s / %s" % (owner and owner.group(1), srv_owner and srv_owner.group(1)))
+    t("the pages' security policy lets the manifest and the worker come only from this site", "manifest-src 'self'" in csp and "worker-src 'self'" in csp
+      and "frame-ancestors 'self'" in csp, csp)
+    st, ct, off, _, _ = get(A, "/uaply-offline.html")
+    offs = off.decode("utf-8", "replace")
+    t("/uaply-offline.html: the offline and starting-up screen, retrying through /healthz and reloading the page asked for",
+      st == 200 and "UAply is starting up" in offs and "You're offline" in offs and 'fetch("/healthz"' in offs and "location.reload()" in offs, str(st))
+    st, ct, body, _, _ = get(A, "/.well-known/assetlinks.json")
+    hs = get(A, "/.well-known/assetlinks.json", "HEAD")[0]
+    t("UAPLY_ASSETLINKS_SHA256 unset: /.well-known/assetlinks.json is a plain 404 (JSON, GET and HEAD), not an empty statement",
+      (st, ct, hs, b"package_name" in body) == (404, "application/json", 404, False), "%s %s %s" % (st, ct, body[:80]))
+
+    pb, B, logb = server({"UAPLY_ASSETLINKS_SHA256": " %s , %s, not-a-fingerprint, %s ,," % (FP1.lower(), FP2, FP1),
+                          "UAPLY_PUBLIC_URL": "https://uaply.net"})
+    procs.append(pb)
+    st, ct, body, _, loc = get(B, "/.well-known/assetlinks.json", host="uaply.net")
+    try:
+        al = json.loads(body)
+    except ValueError:
+        al = None
+    tgt = (al or [{}])[0].get("target", {}) if isinstance(al, list) else {}
+    t("set: assetlinks.json is served as JSON with the handle_all_urls relation for the Android package com.uaply.app",
+      (st, ct, isinstance(al, list) and len(al) == 1 and al[0].get("relation") == ["delegate_permission/common.handle_all_urls"],
+       tgt.get("namespace"), tgt.get("package_name")) == (200, "application/json", True, "android_app", "com.uaply.app"), "%s %s" % (st, body[:200]))
+    t("set: both fingerprints, upper case with colons, each once; the entry that is not a fingerprint is left out",
+      tgt.get("sha256_cert_fingerprints") == [FP1, ":".join(["12"] * 32)], str(tgt.get("sha256_cert_fingerprints")))
+    st2, _, _, _, loc2 = get(B, "/.well-known/assetlinks.json", host="uaply.onrender.com")
+    st3, _, _, _, loc3 = get(B, "/legal/privacy.html", host="uaply.onrender.com")
+    t("set: assetlinks.json answers on every address without a redirect (Android does not follow one), while pages still move",
+      (st2, loc2, st3, loc3) == (200, None, 301, "https://uaply.net/legal/privacy.html"), "%s %s / %s %s" % (st2, loc2, st3, loc3))
+    t("set: HEAD answers 200 too", get(B, "/.well-known/assetlinks.json", "HEAD", host="uaply.net")[0] == 200)
+    logb.flush()
+    time.sleep(0.2)
+    t("set: the server log says one entry was ignored, without repeating it",
+      "1 entry ignored" in open(logb.name, encoding="utf-8").read() and "not-a-fingerprint" not in open(logb.name, encoding="utf-8").read())
+
+    st, ct, dpage, _, _ = get(A, "/legal/delete-account.html")
+    ds = dpage.decode("utf-8", "replace")
+    nav = open(os.path.join(ROOT, "shared", "uaply-nav.js"), encoding="utf-8").read()
+    labels = ["More account options", "Delete my account", "I understand this cannot be undone", "Skip survey", "Send and continue",
+              "Type DELETE to confirm", "Delete all my data", "Forgot password?"]
+    missing = [x for x in labels if x not in nav]
+    t("/legal/delete-account.html is served and gives the steps in the app's own words (each button it names exists in the app)",
+      st == 200 and "Profile</b>, then <b>Account" in ds and "More account options" in ds and "Delete my account" in ds and not missing, "%s missing in the app: %s" % (st, missing))
+    t("...and says what to do without the app or a password, and what is kept", "If you cannot sign in" in ds and "mailto:" in ds and "What may be kept" in ds)
+    linked = [f for f in ("privacy.html", "support.html", "index.html") if 'href="delete-account.html"' not in open(os.path.join(ROOT, "legal", f), encoding="utf-8").read()]
+    t("the Privacy Policy, Support and the legal index link to the deletion page", not linked, "no link in " + ", ".join(linked))
+finally:
+    for p in procs:
+        p.kill()
+        p.wait()
+
 shutil.rmtree(TMP, ignore_errors=True)
 print("\n%d / %d" % (ok, ok + bad))
 sys.exit(1 if bad else 0)

@@ -35,6 +35,8 @@ Serves ROOT; each urlpath=file alias maps one URL to a file outside ROOT (e.g. /
   GET  /healthz           for the host's health check: {"ok": true} from memory, 503 once the server is stopping (HEAD too)
   POST /api/email/events  Brevo's webhook: bounces and complaints put an address on the bounce list (needs email_events_secret; mailer.py)
   GET  /api/status        what is switched on, as yes/no facts only (never a key, an address or a path), and the deployed commit: for tools/live-check.py
+  GET  /.well-known/assetlinks.json   the Play Store app's link to this site, from UAPLY_ASSETLINKS_SHA256 (404 when unset; HEAD too)
+  GET  /uaply.webmanifest, /uaply-sw.js, /uaply-offline.html, /uaply-icon-*.png   the installable website (shared/)
 Accounts use an HttpOnly session cookie. When a signed-in user swipes right, a receipt goes to their email."""
 import sys, os, re, json, http.server, base64, hmac, threading, time, signal, random, urllib.parse
 
@@ -101,7 +103,14 @@ if api:
                      ("/uaply-chat.js", "shared/uaply-chat.js"), ("/uaply-employers.js", "shared/uaply-employers.js"),
                      ("/uaply-learn.js", "shared/uaply-learn.js"), ("/uaply-resume.js", "shared/uaply-resume.js"),
                      ("/help/articles.json", "help/articles.json"),
-                     ("/prod-index.html", "prod/index.html")):
+                     ("/prod-index.html", "prod/index.html"),
+                     # the installable website (Android "Install app", the Play Store app): its manifest, icons, service worker and the
+                     # screen that worker shows when a page cannot load. The worker sits at the site root so it covers every page.
+                     ("/uaply.webmanifest", "shared/uaply.webmanifest"), ("/uaply-sw.js", "shared/uaply-sw.js"),
+                     ("/uaply-offline.html", "shared/uaply-offline.html"),
+                     ("/uaply-icon-192.png", "shared/uaply-icon-192.png"), ("/uaply-icon-512.png", "shared/uaply-icon-512.png"),
+                     ("/uaply-icon-maskable-192.png", "shared/uaply-icon-maskable-192.png"),
+                     ("/uaply-icon-maskable-512.png", "shared/uaply-icon-maskable-512.png")):
         alias.setdefault(url, os.path.join(HERE, rel))
     import jobs_api, uaply_api, auth_api, chat_api, google_auth, setup_api, billing_api, employers_api, resume_parse
     uaply_api.init(os.path.basename(root))
@@ -179,8 +188,45 @@ def moved_page(go):
 
 
 def no_redirect_path(p):
-    """The API (webhooks, the Google sign-in callback, scripts) and the health check answer on every address; only pages are moved."""
-    return p == "/api" or p.startswith("/api/") or p == "/healthz"
+    """The API (webhooks, the Google sign-in callback, scripts), the health check and the Android ownership file answer on every address;
+    only pages are moved. (Android reads assetlinks.json without following redirects.)"""
+    return p == "/api" or p.startswith("/api/") or p == "/healthz" or p == ASSETLINKS_PATH
+
+
+# /.well-known/assetlinks.json: proves to Android that the UAply app in the Play Store (package com.uaply.app, a Trusted Web Activity in
+# mobile/twa/) belongs to this site, so the app opens it full screen without an address bar. It lists the SHA-256 fingerprints of the
+# certificates that sign the app: Play App Signing's key (the app people install from Play) and the upload key (a build installed by
+# hand). They come from UAPLY_ASSETLINKS_SHA256 (comma-separated, as Play Console shows them, AA:BB:...), so adding or changing a key
+# needs only that setting and a restart, never a new build. Unset (or nothing valid in it): a plain 404, the same as before.
+ASSETLINKS_PATH = "/.well-known/assetlinks.json"
+ANDROID_PACKAGE = "com.uaply.app"
+FINGERPRINT_RE = re.compile(r"^[0-9A-F]{2}(?::[0-9A-F]{2}){31}$")
+
+
+def assetlinks_fingerprints(raw):
+    """(valid fingerprints in AA:BB:... form, count of entries that are not a SHA-256 fingerprint). 64 bare hex digits are accepted too."""
+    good, bad = [], 0
+    for v in (raw or "").split(","):
+        v = v.strip().upper()
+        if not v:
+            continue
+        if re.fullmatch(r"[0-9A-F]{64}", v):
+            v = ":".join(v[i:i + 2] for i in range(0, 64, 2))
+        if FINGERPRINT_RE.match(v):
+            if v not in good:
+                good.append(v)
+        else:
+            bad += 1
+    return good, bad
+
+
+_fps, _bad_fps = assetlinks_fingerprints(os.environ.get("UAPLY_ASSETLINKS_SHA256"))
+if _bad_fps:
+    sys.stderr.write("[uaply] UAPLY_ASSETLINKS_SHA256: %d entr%s ignored: each must be a SHA-256 certificate fingerprint such as AB:CD:... "
+                     "(32 pairs of hex digits), copied from Play Console, Setup, App signing\n" % (_bad_fps, "y" if _bad_fps == 1 else "ies"))
+ASSETLINKS = (json.dumps([{"relation": ["delegate_permission/common.handle_all_urls"],
+                           "target": {"namespace": "android_app", "package_name": ANDROID_PACKAGE, "sha256_cert_fingerprints": _fps}}],
+                         indent=2) + "\n").encode("utf-8") if _fps else b""
 
 
 def search_tags(canon, home=False):
@@ -372,6 +418,7 @@ _stopping = threading.Event()                    # set at SIGTERM: /healthz answ
 
 
 class H(http.server.SimpleHTTPRequestHandler):
+    extensions_map = dict(http.server.SimpleHTTPRequestHandler.extensions_map, **{".webmanifest": "application/manifest+json"})
     server_version = "UAply"                     # not "SimpleHTTP/0.6 Python/3.12.7": no version for a scanner to match (Render passes it on)
     sys_version = ""
 
@@ -604,6 +651,8 @@ class H(http.server.SimpleHTTPRequestHandler):
         p = self.path.split("?", 1)[0]
         if p == "/healthz":                                                 # for the host's health check
             return self._health()
+        if p == ASSETLINKS_PATH:                                            # the Play Store app's proof that it belongs to this site
+            return self._assetlinks()
         if self._to_public_host():
             return
         if p == "/robots.txt":
@@ -671,9 +720,21 @@ class H(http.server.SimpleHTTPRequestHandler):
         if not head:
             self.wfile.write(body)
 
+    def _assetlinks(self, head=False):
+        """GET or HEAD /.well-known/assetlinks.json: the statement built at start from UAPLY_ASSETLINKS_SHA256, or a plain 404 without it."""
+        body = ASSETLINKS or json.dumps({"error": "No Android app is linked to this site yet."}).encode("utf-8")
+        self.send_response(200 if ASSETLINKS else 404)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if not head:
+            self.wfile.write(body)
+
     def do_HEAD(self):
         if self.path.split("?", 1)[0] == "/healthz":                     # uptime monitors often ask with HEAD
             return self._health(head=True)
+        if self.path.split("?", 1)[0] == ASSETLINKS_PATH:
+            return self._assetlinks(head=True)
         if self._to_public_host() or self._tagged_page(head=True):
             return
         super().do_HEAD()
@@ -914,7 +975,8 @@ class H(http.server.SimpleHTTPRequestHandler):
         self.send_header("X-Frame-Options", "SAMEORIGIN")               # the app frames itself; other sites may not
         # the same rule for browsers that only read CSP, plus no plugins and no <base> tag pointing scripts elsewhere. Deliberately no script
         # or style rules: the pages carry their own inline code, and Google's and Stripe's pages are reached by full-page redirects.
-        self.send_header("Content-Security-Policy", "frame-ancestors 'self'; object-src 'none'; base-uri 'self'")
+        # The web manifest and the service worker (uaply-sw.js) may only come from this site itself.
+        self.send_header("Content-Security-Policy", "frame-ancestors 'self'; object-src 'none'; base-uri 'self'; manifest-src 'self'; worker-src 'self'")
         self.send_header("Permissions-Policy", "camera=(), microphone=(), usb=(), payment=()")   # never used; location stays the browser's default (the app asks)
         h = getattr(self, "headers", None)                              # not there yet when the request line itself was malformed (a 400)
         if h is not None and h.get("X-Forwarded-Proto") == "https":
