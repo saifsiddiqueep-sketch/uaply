@@ -88,6 +88,17 @@ module.exports = async ({ ev, sleep, nav, send }) => {
     check("the real server comes back", await up());
     const t5 = await waitText(/Privacy Policy/, 20000);
     check("...and within seconds the screen reopens the page that was asked for, by itself", /Privacy Policy/.test(t5) && (await ev("location.pathname")) === "/legal/privacy.html", t5.slice(0, 160));
+
+    // 5. a slow server (a busy computer, a cold start): the worker waits for the real page and never puts the saved screen in its place.
+    //    It answers with the screen only when there is no connection at all or the host says 502/503/504 (sections 3 and 4).
+    await stop();
+    proc = spawn(PY, ["-c", "import http.server,sys,time\nclass H(http.server.BaseHTTPRequestHandler):\n def do_GET(s):\n  time.sleep(6 if s.path=='/' else 0)\n  b=b'<!doctype html><title>slow</title><body><iframe id=app></iframe>the real page, slowly</body>'\n  s.send_response(200);s.send_header('Content-Type','text/html');s.send_header('Content-Length',str(len(b)));s.end_headers();s.wfile.write(b)\n def log_message(s,*a):pass\nhttp.server.ThreadingHTTPServer(('127.0.0.1',int(sys.argv[1])),H).serve_forever()", String(port)], { stdio: "ignore" });
+    check("a slow stand-in server starts", await up());
+    check("...the page is still controlled by the worker", (await ev("!!navigator.serviceWorker.controller")) === true);
+    await nav(base + "/");
+    const t6 = await waitText(/the real page, slowly|starting up|offline/, 15000);
+    check("a page that takes 6 s to answer: the real page opens (with its app frame), never the saved \"starting up\" screen",
+      /the real page, slowly/.test(t6) && !/starting up/.test(t6) && (await ev("!!document.querySelector('iframe')")) === true, t6.slice(0, 120));
   } finally {
     if (proc) proc.kill();
     try { fs.rmSync(data, { recursive: true, force: true }); } catch (e) {}

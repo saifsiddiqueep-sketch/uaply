@@ -46,6 +46,8 @@ t("a 'LATAM' role listed as just Remote is dropped", j._normalize(raw("Developer
 t("a US remote role is kept", j._normalize(raw("Backend Engineer", "Remote - USA", True), "greenhouse", "Acme") is not None, True)
 t("an http:// careers link is opened securely (https://), never as http", (j._normalize(dict(raw("Engineer", "Austin, TX"), url="http://example.com/x"), "greenhouse", "Acme") or {}).get("url"), "https://example.com/x")
 t("a link that is not a web address is dropped", [j._normalize(dict(raw("Engineer", "Austin, TX"), url=u), "greenhouse", "Acme") for u in ("javascript:alert(1)", "mailto:jobs@example.com", "ftp://example.com/x")], [None, None, None])
+t("a role in India is dropped, one in Indiana is kept (the \\b in FOREIGN_RE is a word boundary, not a backspace)",
+  [bool(j.FOREIGN_RE.search(s)) for s in ("India", "Remote, India", "Hybrid - India", "Indiana", "Indianapolis, IN")], [True, True, True, False, False])
 import time as _time  # noqa: E402
 _now = _time.time()
 n = j._normalize(dict(raw("Data Analyst", "Austin, TX"), posted=int(_now) - 86400, updated=int(_now)), "greenhouse", "Acme")

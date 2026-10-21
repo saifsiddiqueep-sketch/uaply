@@ -297,13 +297,26 @@ function run(frame,on,key,done){
   if(on.profile)on=Object.assign({},on,{nav:true});                     /* the profile fields live in the navigation's Profile sections */
   if(on.resume)on=Object.assign({},on,{nav:true});                      /* Fill from your resume sits on Profile setup's Background and links step */
   return build(on,key).then(function(b){
-    frame.onload=function(){
-      var w=frame.contentWindow;w.__uaplyKey=key;
+    /* the features go on as soon as the app's page is parsed (DOMContentLoaded), not at its load event: "load" also waits for every
+       font and image, and a slow fonts.googleapis.com held back the agreement box, the live jobs and the navigation for up to 20 s.
+       The load event stays as the fallback; whichever comes first applies them, once per page. A page the app reloads itself (Data &
+       privacy, Delete everything) is a new document, so its load event applies them again, as before. */
+    var old=frame.contentDocument,doneDoc=null,tries=0,token=frame.__uaplyRun=(frame.__uaplyRun||0)+1;
+    function go(){
+      if(frame.__uaplyRun!==token)return true;          /* a newer run (the sandbox's controls) owns the frame now */
+      var w=frame.contentWindow,doc=frame.contentDocument;
+      if(!w||!doc||doc===old||doc.readyState==="loading")return false;
+      if(doc===doneDoc)return true;
+      doneDoc=doc;w.__uaplyKey=key;
       syncSafeArea(frame);
       ORDER.forEach(function(k){if(on[k]&&FEATURES[k].apply){try{FEATURES[k].apply(w,document)}catch(e){b.err+=FEATURES[k].name+": "+e.message+". "}}});
       if(done)done(b.err);
-    };
+      return true;
+    }
+    function poll(){if(go()!==false)return;if(tries++<1500)setTimeout(poll,20)}   /* up to 30 s; then the load event below */
+    frame.onload=function(){go()};
     frame.srcdoc=b.src;
+    setTimeout(poll,0);
   });
 }
 window.UAplyEnv={FEATURES:FEATURES,ORDER:ORDER,run:run};
