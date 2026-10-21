@@ -6,6 +6,14 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 
+### Google Play listing pack
+- `mobile/store/play/`: app name, short (80) and full (3,5xx of 4,000) descriptions in the app's own honest wording, the 512 px icon, the
+  1024 x 500 feature graphic, five phone and five 7-inch tablet screenshots at 1080 x 1920 (Jobs, Dashboard, Profile setup, Filters, Help),
+  the Data safety answers, the content rating answers, the App content declarations (privacy policy, ads, app access, 18+), the closed-test
+  invite and steps, and a README mapping each Play Console screen to its file. `docs/play-store.md`: the ten steps to production.
+- `tools/make-play-assets.js` draws the pictures from the app itself (a sandbox switched to the release build's features, example jobs and
+  an example person); `tools/test-play-listing.py` (22 checks) checks every picture's exact size and format and every text's length.
+
 ### Google Play: an installable website and the Trusted Web Activity
 - **Installable.** `/uaply.webmanifest` (UAply, start `/`, standalone, the app's `#FDF0F2` background) with 192 and 512 px icons, ordinary and maskable (`shared/uaply-icon-*.png`, made from `mobile/assets/icon-only.png` by `tools/make-web-icons.js`), linked from dev and the sandbox. Chrome reports nothing missing to install it.
 - **Offline and "starting up" screen.** The service worker `/uaply-sw.js` saves only `/uaply-offline.html` and its icon. When a page cannot load (no connection, or the host's 502/503/504 during a deploy) it shows that screen at the same address; the screen checks `/healthz` every few seconds and reopens the page by itself. It never caches the app's code, never touches `/api/`, `/healthz`, `/.well-known/`, the owner pages or other sites. The pages' security policy adds `manifest-src 'self'; worker-src 'self'`. The hosted copies (`share/`) leave both out.
