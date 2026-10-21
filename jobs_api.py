@@ -1169,11 +1169,13 @@ def _normalize(raw, kind, name, board=None):
     out = dict(id=jid, co=company, role=title, loc=_place(loc, mode), mode=mode,
                sal=raw.get("sal") or _salary(raw["salary_text"], text), yrs=yrs, edu=edu, skills=skills, blurb=blurb, desc=desc,
                type=typ, jobType=jtype, url=raw["url"], source=src, contact="", apply="link", live=True, ats=ats,
-               posted=raw.get("posted", 0), perks=_perks(text), comm=bool(COMM_RE.search(text)))
+               posted=_ts(raw.get("posted")), perks=_perks(text), comm=bool(COMM_RE.search(text)))
     if jtype in ("internship", "co-op") and _grad_only(title, text):
         out["gradOnly"] = True                                    # the Internship and Co-op stacks show undergraduate roles first
-    if (raw.get("updated") or 0) > (raw.get("posted") or 0):
-        out["updated"] = raw["updated"]                           # Greenhouse: the employer touched the posting after first publishing it
+    # dates in epoch ms whatever the caller gave (_ts: seconds are converted): a date in seconds reads as January 1970, and the 60-day rule
+    # (MAX_AGE_DAYS) would drop the posting without a word
+    if _ts(raw.get("updated")) > out["posted"]:
+        out["updated"] = _ts(raw.get("updated"))                  # Greenhouse: the employer touched the posting after first publishing it
     # Credit every feed, on the card ("via ...") and in the application record ("credit"): each free feed asks for it, and an employer board is the employer's own
     out["via"] = VIA.get(kind, "%s").replace("%s", name) + (", listed by " + list_credit if list_credit else "")
     out["credit"] = "via USAJOBS; apply on the official announcement" if kind == "usajobs" else "via " + out["via"]

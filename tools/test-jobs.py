@@ -46,6 +46,11 @@ t("a 'LATAM' role listed as just Remote is dropped", j._normalize(raw("Developer
 t("a US remote role is kept", j._normalize(raw("Backend Engineer", "Remote - USA", True), "greenhouse", "Acme") is not None, True)
 t("an http:// careers link is opened securely (https://), never as http", (j._normalize(dict(raw("Engineer", "Austin, TX"), url="http://example.com/x"), "greenhouse", "Acme") or {}).get("url"), "https://example.com/x")
 t("a link that is not a web address is dropped", [j._normalize(dict(raw("Engineer", "Austin, TX"), url=u), "greenhouse", "Acme") for u in ("javascript:alert(1)", "mailto:jobs@example.com", "ftp://example.com/x")], [None, None, None])
+import time as _time  # noqa: E402
+_now = _time.time()
+n = j._normalize(dict(raw("Data Analyst", "Austin, TX"), posted=int(_now) - 86400, updated=int(_now)), "greenhouse", "Acme")
+t("a date given in seconds is kept in epoch ms (never read as 1970 and dropped by the 60-day rule)",
+  (n["posted"] > 1e12, n.get("updated", 0) > n["posted"], j._too_old(n, _now * 1000)), (True, True, False))
 n = j._normalize(raw("Software Engineer Intern", "Austin, TX"), "greenhouse", "Acme")
 t("an intern title is classified as an internship", n and n["type"], "internship")
 n = j._normalize(raw("Hardware Engineer (Winter Co-op)", "Austin, TX"), "greenhouse", "Acme")
