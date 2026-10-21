@@ -33,6 +33,7 @@ get_jobs() returns {"fetched_at", "sources", "jobs", "merged", "aged_out"} where
 (with postedDays, and updatedDays where the feed gives an update date). Postings older than MAX_AGE_DAYS are left out, and the same
 job from two feeds is shown once ("merged" counts the copies left out).
 """
+import codecs
 import datetime
 import hashlib
 import html
@@ -291,9 +292,11 @@ def _save_disk():
 
 
 MAX_FEED_BYTES = 40 * 1000 * 1000    # the largest board (Databricks) answered 9.9 MB on October 17, 2026; anything past this is refused, not parsed
-FEED_PARALLEL = 3                    # boards read and parsed at the same time. Each costs about 4x its size while it is parsed (the bytes, the text,
-#                                      then Python's objects), and memory a process has used is mostly not given back: reading all of them at once
-#                                      took the live server (512 MB plan) from 45 MB to 275 MB, and to 491 MB when two rounds overlapped (Oct 17).
+FEED_PARALLEL = 3                    # boards read and parsed at the same time. A board read whole cost about 4x its size while it was parsed (the
+#                                      bytes, the text, then Python's objects), and memory a process has used is mostly not given back: reading all of
+#                                      them at once took the live server (512 MB plan) from 45 MB to 275 MB, and to 491 MB when two rounds overlapped
+#                                      (Oct 17). Employer boards are now read as they arrive (_get_items), a posting at a time, so a board costs a few
+#                                      hundred KB however big it is; the smaller feeds and single postings still use _get.
 _feed_slots = threading.BoundedSemaphore(FEED_PARALLEL)
 
 
@@ -307,6 +310,104 @@ def _get(url, headers=None, as_text=False):
     text = body.decode("utf-8", "replace")
     del body                              # the bytes go before the parse starts: one copy fewer of a board held at the peak
     return text if as_text else json.loads(text)
+
+
+STREAM_CHUNK = 256 * 1024              # how much of a board's answer is read from the network at a time
+_DEC = json.JSONDecoder()
+_WS = re.compile(r"[ \t\n\r]*")
+
+
+def _get_items(url, key=None):
+    """The postings of one board answer, one at a time, read from the network as they arrive: the items of the list under `key` in the
+    top-level object ({"jobs": [...]}: Greenhouse, Ashby, Workable), or of the top-level list itself (key None: Lever). Only the part of
+    the answer not yet worked through is held (a few hundred KB), instead of the whole answer, its text and every parsed posting at once:
+    Carvana's 19 MB board cost about 75 MB that way. Past MAX_FEED_BYTES the answer is refused, as in _get."""
+    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        dec = codecs.getincrementaldecoder("utf-8")("replace")
+        st = {"buf": "", "pos": 0, "read": 0, "done": False}
+
+        def more():
+            if st["done"]:
+                return False
+            chunk = r.read(STREAM_CHUNK)
+            st["read"] += len(chunk)
+            if st["read"] > MAX_FEED_BYTES:
+                raise ValueError("the answer is larger than %d MB" % (MAX_FEED_BYTES // 1000000))
+            if not chunk:
+                st["done"] = True
+                st["buf"] = st["buf"][st["pos"]:] + dec.decode(b"", final=True)
+            else:
+                st["buf"] = st["buf"][st["pos"]:] + dec.decode(chunk)       # what was worked through is dropped here
+            st["pos"] = 0
+            return True
+
+        def skip_ws():
+            while True:
+                st["pos"] = _WS.match(st["buf"], st["pos"]).end()
+                if st["pos"] < len(st["buf"]) or not more():
+                    return
+
+        def peek():
+            skip_ws()
+            return st["buf"][st["pos"]] if st["pos"] < len(st["buf"]) else ""
+
+        def take(ch):
+            if peek() != ch:
+                raise ValueError("unexpected answer: wanted %r" % ch)
+            st["pos"] += 1
+
+        def value():
+            skip_ws()
+            while True:
+                try:
+                    v, end = _DEC.raw_decode(st["buf"], st["pos"])
+                except ValueError:
+                    if more():                         # most likely cut off by the end of the chunk: read on and try again
+                        continue
+                    raise
+                if end == len(st["buf"]) and not st["done"] and isinstance(v, (int, float)):
+                    more()                             # a number at the very end of the chunk may go on in the next one
+                    continue
+                st["pos"] = end
+                return v
+
+        def items():
+            take("[")
+            if peek() == "]":
+                st["pos"] += 1
+                return
+            while True:
+                yield value()
+                c = peek()
+                st["pos"] += 1
+                if c == "]":
+                    return
+                if c != ",":
+                    raise ValueError("unexpected answer in a list")
+
+        if key is None:
+            yield from items()
+            return
+        take("{")
+        if peek() == "}":
+            return
+        while True:
+            k = value()
+            take(":")
+            if k == key:
+                if peek() == "[":
+                    yield from items()
+                else:
+                    value()
+                return                                 # what follows the list (meta, counts) is not needed
+            value()                                    # a small value before the list (Ashby's apiVersion): read and dropped
+            c = peek()
+            st["pos"] += 1
+            if c == "}":
+                return
+            if c != ",":
+                raise ValueError("unexpected answer in an object")
 
 
 KEY_RE = re.compile(r"^[A-Za-z0-9+/=_.-]{16,200}$")      # what a feed's API key looks like (USAJOBS: about 44 letters, digits, + / =)
@@ -427,20 +528,20 @@ def _iter_raw(kind, token, name):
     """The raw postings of one board, one at a time: dicts with id, title, company, loc, remote, text, url, salary_text. A generator, so a
     board's postings are worked through as they are read instead of all being held (each with up to 20,000 characters of text) first."""
     if kind == "greenhouse":
-        for j in _get("https://boards-api.greenhouse.io/v1/boards/%s/jobs?content=true" % token).get("jobs", []):
+        for j in _get_items("https://boards-api.greenhouse.io/v1/boards/%s/jobs?content=true" % token, "jobs"):
             yield dict(id=j["id"], title=j["title"], company=j.get("company_name") or name,
                        loc=(j.get("location") or {}).get("name", ""), remote=None,
                        text=_text(j.get("content")), url=j["absolute_url"], salary_text="",
                        posted=_ts(j.get("first_published") or j.get("updated_at")), updated=_ts(j.get("updated_at")), emp=_gh_emp(j))
     elif kind == "lever":
-        for j in _get("https://api.lever.co/v0/postings/%s?mode=json" % token):
+        for j in _get_items("https://api.lever.co/v0/postings/%s?mode=json" % token):
             cat = j.get("categories") or {}
             yield dict(id=j["id"], title=j["text"], company=name, loc=cat.get("location", "") or "",
                        remote=(j.get("workplaceType") == "remote") or None,
                        text=_text((j.get("descriptionPlain") or "") + " " + (j.get("additionalPlain") or "")),
                        url=j["hostedUrl"], salary_text="", posted=_ts(j.get("createdAt")), emp=cat.get("commitment"))
     elif kind == "ashby":
-        for j in _get("https://api.ashbyhq.com/posting-api/job-board/%s" % token).get("jobs", []):
+        for j in _get_items("https://api.ashbyhq.com/posting-api/job-board/%s" % token, "jobs"):
             if j.get("isListed") is False:
                 continue
             yield dict(id=j["id"], title=j["title"], company=name, loc=j.get("location", "") or "",
@@ -451,7 +552,7 @@ def _iter_raw(kind, token, name):
         # Workable's public jobs feed (no key): https://www.workable.com/api/accounts/{subdomain}?details=true lists the account's published jobs
         # with their descriptions (help.workable.com/hc/en-us/articles/115012771647, "Build a custom careers page using Workable's API"). It may
         # answer through apply.workable.com/api/v1/widget/accounts/{subdomain}, the same list. The posting id Workable's API takes is the shortcode.
-        for j in _get("https://www.workable.com/api/accounts/%s?details=true" % urllib.parse.quote(token, safe="")).get("jobs", []):
+        for j in _get_items("https://www.workable.com/api/accounts/%s?details=true" % urllib.parse.quote(token, safe=""), "jobs"):
             if not isinstance(j, dict) or not j.get("shortcode") or not j.get("title"):  # "state" is the region here, not a status: the feed lists published jobs only
                 continue
             locs = [l for l in (j.get("locations") or []) if isinstance(l, dict) and not l.get("hidden")]

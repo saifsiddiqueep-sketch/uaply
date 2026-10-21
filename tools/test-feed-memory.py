@@ -23,7 +23,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-LIMIT_MB = 350                      # the brief for launch week: well under the plan's 512 MB, with room for requests on top
+LIMIT_MB = 110                      # October 21, 2026: boards are read a posting at a time; the brief is under 110 MB (it was 350 MB before)
 # The size in bytes of each board's answer as read on October 17, 2026 (curl, content=true). Workable's answered with a redirect page.
 SIZES = {"gh-databricks": 9851537, "gh-cloudflare": 7570351, "gh-stripe": 5704838, "gh-datadog": 5423884, "gh-samsara": 4407135,
          "gh-verkada": 3773269, "gh-block": 3449237, "gh-waymo": 2903208, "gh-roblox": 2567055, "gh-coinbase": 2497078,
@@ -58,6 +58,51 @@ PLACES = ["San Francisco, CA", "New York, NY", "Remote - US", "Seattle, WA", "Lo
 
 # posted five days before the run, so the 60-day rule (jobs_api.MAX_AGE_DAYS) never ages the made-up boards out
 RECENT = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 5 * 86400))
+
+
+# The four sources added on October 21, 2026 (simplify x2, himalayas, remoteok), at the size they answered that day: the two Simplify READMEs
+# (1.13 and 1.64 MB of HTML rows), whose rows link to Greenhouse postings that are then read one by one (about 10 KB each), three
+# Himalayas pages (138 KB each) and Remote OK's list (604 KB).
+EXTRA_SIZES = {"simplify-README.md": 1132223, "simplify-README-Off-Season.md": 1640454, "himalayas-US.json": 138335, "remoteok-all.json": 603914}
+
+
+def make_extras(boards):
+    rnd = random.Random(99)
+    for name, size in EXTRA_SIZES.items():
+        out, total, i = [], 0, 0
+        if name.startswith("simplify"):
+            off = "Off-Season" in name
+            while total < size:
+                row = ('<tr>\n<td><strong><a href="https://simplify.jobs/c/Co%d">Company %d</a></strong></td>\n<td>%s</td>\n<td>%s</td>\n%s'
+                       '<td><div align="center"><a href="https://job-boards.greenhouse.io/simplifymade/jobs/%d?utm_source=Simplify&ref=Simplify">'
+                       '<img src="https://i.imgur.com/x.png" width="50" alt="Apply"></a> <a href="https://simplify.jobs/p/%d"><img src="x" alt="Simplify"></a></div></td>\n'
+                       '<td>%dd</td>\n</tr>\n') % (i, i, rnd.choice(TITLES), rnd.choice(PLACES), "<td>Fall 2027</td>\n" if off else "",
+                                                  (2 if off else 1) * 1000000 + i, i, rnd.randint(0, 90))
+                out.append(row)
+                total += len(row.encode("utf-8"))
+                i += 1
+            text = "# Internships\n<table>\n<thead></thead>\n<tbody>\n" + "".join(out) + "</tbody>\n</table>\n"
+        elif name.startswith("himalayas"):
+            while total < size:
+                j = {"title": rnd.choice(TITLES), "companyName": "Remote Co %d" % i, "employmentType": rnd.choice(["Full Time", "Part Time", "Contractor"]),
+                     "locationRestrictions": ["United States"], "description": PARA * 2, "pubDate": int(time.time()) - 86400 * rnd.randint(0, 30),
+                     "expiryDate": int(time.time()) + 86400 * 30, "applicationLink": "https://himalayas.app/companies/c%d/jobs/j%d" % (i, i),
+                     "guid": "https://himalayas.app/companies/c%d/jobs/j%d" % (i, i), "categories": ["Software-Engineer"]}
+                out.append(json.dumps(j))
+                total += len(out[-1]) + 1
+                i += 1
+            text = '{"comments":"","updatedAt":0,"offset":0,"limit":20,"totalCount":%d,"jobs":[%s]}' % (i, ",".join(out))
+        else:
+            out.append('{"legal":"link back"}')
+            while total < size:
+                j = {"slug": "s%d" % i, "id": str(i), "epoch": int(time.time()), "date": RECENT, "company": "Remote Co %d" % i, "position": rnd.choice(TITLES),
+                     "tags": ["python", "sql"], "description": PARA * 2, "location": "", "url": "https://remoteOK.com/remote-jobs/remote-x-%d" % i}
+                out.append(json.dumps(j))
+                total += len(out[-1]) + 1
+                i += 1
+            text = "[" + ",".join(out) + "]"
+        with open(os.path.join(boards, name), "w", encoding="utf-8", newline="\n") as f:
+            f.write(text)
 
 
 def make_board(path, kind, size, seed):
@@ -121,7 +166,7 @@ def rss_now_mb():
 
 
 def child(scenario, boards, data, mode):
-    os.environ.update(UAPLY_DATA_DIR=data, UAPLY_CONFIG_FILE="none", UAPLY_CONFIG_JSON="{}", UAPLY_FEEDS="greenhouse,lever,ashby,workable")
+    os.environ.update(UAPLY_DATA_DIR=data, UAPLY_CONFIG_FILE="none", UAPLY_CONFIG_JSON="{}", UAPLY_FEEDS="greenhouse,lever,ashby,workable,simplify,himalayas,remoteok")
     os.environ.pop("UAPLY_FEEDS_OFF", None)
     sys.path.insert(0, ROOT)
     import io
@@ -133,19 +178,25 @@ def child(scenario, boards, data, mode):
     def fake_urlopen(req, timeout=None):
         url = req.full_url if hasattr(req, "full_url") else req
         reads[url] = reads.get(url, 0) + 1
+        one = re.search(r"boards-api\.greenhouse\.io/v1/boards/simplifymade/jobs/(\d+)$", url)
+        if one:                              # one posting a Simplify row links to, as Greenhouse's single-job answer gives it (about 10 KB)
+            time.sleep(0.05)
+            n = int(one.group(1))
+            return io.BytesIO(json.dumps({"id": n, "title": TITLES[n % len(TITLES)], "company_name": "Company %d" % (n % 1000000),
+                                          "location": {"name": PLACES[n % len(PLACES)]}, "content": html.escape(PARA * 12),
+                                          "absolute_url": "https://job-boards.greenhouse.io/simplifymade/jobs/%d" % n,
+                                          "first_published": RECENT, "updated_at": RECENT}).encode("utf-8"))
+        extra = (url.startswith(J.SIMPLIFY_REPO) and "simplify-" + url[len(J.SIMPLIFY_REPO):]) or \
+                ("himalayas.app/jobs/api/search" in url and "himalayas-US.json") or (url.startswith("https://remoteok.com/api") and "remoteok-all.json")
         m = (re.search(r"greenhouse\.io/v1/boards/([^/]+)/", url) and ("gh", re.search(r"boards/([^/]+)/", url).group(1))) or \
             (re.search(r"lever\.co/v0/postings/([^?]+)", url) and ("lever", re.search(r"postings/([^?]+)", url).group(1))) or \
             (re.search(r"ashbyhq\.com/posting-api/job-board/(.+)$", url) and ("ashby", re.search(r"job-board/(.+)$", url).group(1))) or \
             (re.search(r"workable\.com/api/accounts/([^?]+)", url) and ("workable", re.search(r"accounts/([^?]+)", url).group(1)))
-        path = os.path.join(boards, "%s-%s.json" % m) if m else ""
+        path = os.path.join(boards, extra) if extra else (os.path.join(boards, "%s-%s.json" % m) if m else "")
         if not path or not os.path.exists(path):
             raise urllib.error.URLError("no recorded answer for %s" % url)
         time.sleep(0.2 + os.path.getsize(path) / 20e6)            # about what the network takes (20 MB/s), so boards overlap as they do live
-        with open(path, "rb") as f:
-            data_bytes = f.read()
-        r = io.BytesIO(data_bytes)
-        del data_bytes
-        return r
+        return open(path, "rb")
     import urllib.error
     urllib.request.urlopen = fake_urlopen
     if mode == "trace":
@@ -181,7 +232,8 @@ def child(scenario, boards, data, mode):
             time.sleep(0.05)
     took = time.time() - t0
     res = {"scenario": scenario, "jobs": len(out["jobs"]), "answered_s": round(answered, 2), "took_s": round(took, 1),
-           "sources_ok": sum(1 for v in out["sources"].values() if re.match(r"\d+ jobs", v)), "most_reads_of_one_board": max(reads.values() or [0])}
+           "sources_ok": sum(1 for v in out["sources"].values() if re.match(r"\d+ jobs", v)), "most_reads_of_one_board": max(reads.values() or [0]),
+           "newer": {k: v for k, v in out["sources"].items() if k.startswith(("Simplify", "Himalayas", "Remote OK"))}}
     if mode == "trace":
         import tracemalloc
         res["trace_peak_mb"] = round(tracemalloc.get_traced_memory()[1] / 1e6, 1)
@@ -207,7 +259,8 @@ def main():
             os.makedirs(boards)
             for n, (name, size) in enumerate(sorted(SIZES.items())):
                 make_board(os.path.join(boards, name + ".json"), name.split("-")[0], size, n + 1)
-            print("made up %d boards, %.0f MB in all" % (len(SIZES), sum(os.path.getsize(os.path.join(boards, f)) for f in os.listdir(boards)) / 1e6))
+            make_extras(boards)
+            print("made up %d boards and the 4 newer sources, %.0f MB in all" % (len(SIZES), sum(os.path.getsize(os.path.join(boards, f)) for f in os.listdir(boards)) / 1e6))
         data = os.path.join(tmp, "data")
         os.makedirs(data)
         results = {}
@@ -230,6 +283,9 @@ def main():
             print("  %-8s %s" % (scenario, json.dumps(r)))
         cold, ref = results.get("cold", {}), results.get("refresh", {})
         t("cold: every board was read (%s of them with jobs, %s jobs)" % (cold.get("sources_ok"), cold.get("jobs")), (cold.get("sources_ok") or 0) >= 20)
+        newer = cold.get("newer") or {}
+        t("cold: the four newer sources were read too, each with jobs (%s)" % newer,
+          len(newer) == 4 and all(re.match(r"[1-9]\d* jobs", v) for v in newer.values()))
         t("cold: three visitors during the first fill read each board once between them (%s)" % cold.get("most_reads_of_one_board"),
           cold.get("most_reads_of_one_board") == 1)
         for scenario, r in (("cold", cold), ("refresh", ref)):

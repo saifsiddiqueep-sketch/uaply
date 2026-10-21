@@ -190,5 +190,45 @@ t("company suffixes, case, punctuation and spacing are set aside; words inside n
   (j._same_job_key(job(0, "The Acme Co.", "Data-Analyst", "Austin,  TX")) == j._same_job_key(job(0, "acme", "data analyst", "austin tx")),
    j._same_job_key(job(0, "Coinbase", "x", "y"))[0]), (True, "coinbase"))
 
+# ---------------- a board read as it arrives (_get_items), a small part at a time ----------------
+import io  # noqa: E402
+import json as _json  # noqa: E402
+real_open, real_chunk = j.urllib.request.urlopen, j.STREAM_CHUNK
+ANSWER = {}
+j.urllib.request.urlopen = lambda req, timeout=None: io.BytesIO(ANSWER["body"])
+try:
+    j.STREAM_CHUNK = 7                                                   # tiny parts: every value, word and letter gets cut somewhere
+    board_ = {"apiVersion": "1", "meta": {"n": [1, 2.5, None, True]}, "jobs": [{"id": i, "title": "Ingénieur № %d — 日本" % i, "n": 10 ** 12 + i,
+              "x": [None, False, {"a": "}]\",["}]} for i in range(40)], "after": {"ignored": 1}}
+    ANSWER["body"] = _json.dumps(board_, ensure_ascii=False).encode("utf-8")
+    t("a {..., \"jobs\": [...]} answer read in 7-byte parts gives every posting, unchanged (UTF-8 cut mid-letter, numbers cut mid-digit)",
+      list(j._get_items("https://x.example/", "jobs")), board_["jobs"])
+    ANSWER["body"] = _json.dumps(board_["jobs"]).encode("utf-8")
+    t("a top-level list (Lever) the same way", list(j._get_items("https://x.example/")), board_["jobs"])
+    for body, want in ((b'{"jobs": []}', []), (b'[]', []), (b' { "other": 1 , "jobs" : [ {"id": 1} ] } ', [{"id": 1}]), (b'{"meta": 1}', [])):
+        ANSWER["body"] = body
+        t("the answer %r gives %r" % (body, want), list(j._get_items("https://x.example/", None if body.strip().startswith(b"[") else "jobs")), want)
+    for body in (b'{"jobs": [{"id": 1}, {"id": 2', b'<html>Not found</html>', b'{"jobs": [{"id": 1} {"id": 2}]}'):
+        ANSWER["body"] = body
+        try:
+            list(j._get_items("https://x.example/", "jobs"))
+            bad = "no error"
+        except ValueError:
+            bad = "refused"
+        t("a cut-off or broken answer %r is refused, not half-read" % body[:30], bad, "refused")
+    j.STREAM_CHUNK = 64 * 1024
+    real_max, j.MAX_FEED_BYTES = j.MAX_FEED_BYTES, 1000
+    ANSWER["body"] = _json.dumps({"jobs": [{"id": i, "t": "x" * 50} for i in range(100)]}).encode("utf-8")
+    try:
+        list(j._get_items("https://x.example/", "jobs"))
+        capped = "read"
+    except ValueError as e:
+        capped = "refused" if "larger than" in str(e) else str(e)
+    finally:
+        j.MAX_FEED_BYTES = real_max
+    t("an answer past MAX_FEED_BYTES is refused (the 40 MB cap still holds)", capped, "refused")
+finally:
+    j.urllib.request.urlopen, j.STREAM_CHUNK = real_open, real_chunk
+
 print(sum(R), "/", len(R))
 sys.exit(0 if all(R) else 1)

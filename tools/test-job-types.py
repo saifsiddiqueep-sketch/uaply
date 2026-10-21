@@ -45,6 +45,7 @@ def fake_get(url, headers=None, as_text=False):
 
 
 J._get = fake_get
+J._get_items = lambda url, key=None: iter((lambda a: a.get(key, []) if key else a)(fake_get(url)))   # the boards' streaming reader, same answers
 
 
 def types_of(src):
