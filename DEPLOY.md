@@ -37,6 +37,10 @@ simulated payments (paid plans appear only once live Stripe keys are set, sectio
    Filters screen has a Job type row). More kinds, each off until named in `UAPLY_FEEDS`: `simplify` (the Simplify / Pitt CSC
    internship and co-op lists, each row checked on the employer's own board), `himalayas` and `remoteok` (remote jobs, credited and
    linked back). The full list of sources, their terms, and the free keys to request: `docs/job-sources.md`.
+   **Tri-state and the whole US:** USAJOBS searches around Philadelphia (50 mi), Wilmington DE, Trenton NJ, Newark NJ (40) and Camden NJ
+   (25), each also for Pathways and part-time (15 searches, 120 requests a day). `careeronestop` (the National Labor Exchange, the PA, NJ
+   and DE state job banks' jobs) needs `UAPLY_COS_USER_ID` and `UAPLY_COS_TOKEN` in Render, Environment; until then it shows "no key".
+   How to request them and the text to paste: `docs/job-sources.md`, Keys. Employer boards keep up to 10 PA, NJ or DE roles beyond their 14.
 6. **Legal pages:** fill every yellow blank in `legal/` (company legal name, street address, contact and privacy email, launch date,
    DMCA agent, liability amount, governing state and county, how long records are kept, host, response time) and have a lawyer
    review them. They say "draft, not reviewed by a lawyer" until you do.

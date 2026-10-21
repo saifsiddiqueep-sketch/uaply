@@ -45,6 +45,10 @@ services:
         sync: false
       - key: UAPLY_USAJOBS_EMAIL      # the address the USAJOBS key was requested with (uaplytechnologies@gmail.com)
         sync: false
+      - key: UAPLY_COS_USER_ID        # CareerOneStop / NLx Jobs API user id (docs/job-sources.md); with UAPLY_COS_TOKEN, and careeronestop in UAPLY_FEEDS
+        sync: false
+      - key: UAPLY_COS_TOKEN          # CareerOneStop / NLx Jobs API token (secret: never logged, never sent to a browser)
+        sync: false
       - key: STRIPE_SECRET_KEY        # LIVE mode only on dev (the real site): sk_live_..., or none until payments start (DEPLOY.md, section 4)
         sync: false
       - key: STRIPE_WEBHOOK_SECRET    # whsec_... of the live webhook endpoint https://uaply.onrender.com/api/billing/webhook

@@ -26,6 +26,9 @@ LEGAL STATUS OF EACH SOURCE (checked October 2026; this is not legal advice, hav
     terms for readers. LINK-OUT ONLY, credited "City of Philadelphia on SmartRecruiters".
   * Simplify / Pitt CSC internship lists (GitHub), Himalayas, Remote OK: added October 21, 2026, LINK-OUT ONLY and credited on the card;
     their terms, and why Remotive, Adzuna and others are not used, are in docs/job-sources.md.
+  * CareerOneStop (U.S. Department of Labor; National Labor Exchange): royalty-free license; credit both DOL ETA and Minnesota DEED
+    where its data shows, do not alter the data, keep the key secret. LINK-OUT ONLY. Off ("no key") until UAPLY_COS_USER_ID and
+    UAPLY_COS_TOKEN are set.
   Third-party feeds are OFF unless the owner lists them under "feeds" in uaply-config.json. Jobs from a feed are never
   emailed to anyone (the recruiter address is dropped); swiping right only opens the employer's own page.
 
@@ -59,18 +62,22 @@ TTL = {"remotive": 6 * 3600,          # Remotive allows roughly 4 requests a day
        "smartrecruiters": 3600,       # the City's list once an hour (each posting's description is read far less often, see SR_DESC_TTL)
        "simplify": 6 * 3600,          # the Simplify / Pitt CSC lists change daily; each listed posting is checked on its own board at most once a day
        "himalayas": 3 * 3600,         # no key: one public allowance shared with every caller, so a few pages every three hours
-       "remoteok": 6 * 3600}          # one request for the whole list
+       "remoteok": 6 * 3600,          # one request for the whole list
+       "careeronestop": 3 * 3600}     # 16 searches every three hours
 PER_SOURCE = 14
 STUDENT_PER_SOURCE = 10          # internships, co-ops and part-time roles are kept first so the student tabs are not empty
 OTHER_PER_SOURCE = 6
 # A public body's own list (the City, the federal government) is local and is kept whole up to this many postings, student roles first,
 # instead of the 14 an employer board gets. SmartRecruiters is also read no further than this (so at most this many description reads).
-KEEP = {"usajobs": 120, "smartrecruiters": 120, "simplify": 120}
+KEEP = {"usajobs": 120, "smartrecruiters": 120, "simplify": 120, "careeronestop": 100}   # CareerOneStop: one page of 100 per search, kept whole
 SR_DESC_TTL = 24 * 3600          # a SmartRecruiters posting's description is read once, then again only after a day or when the posting is re-released
-# UAply launches in the Philadelphia region: a board may keep this many Pennsylvania roles on top of its 14, so a national employer's
-# PA openings are not cut just because they come after its first 14 postings. Matched on the posting's own location (case matters: ", PA").
+# UAply launches in the Philadelphia region: a board may keep this many Pennsylvania, New Jersey or Delaware roles on top of its 14, so a
+# national employer's tri-state openings are not cut just because they come after its first 14 postings. Matched on the posting's own
+# location (case matters: ", PA", ", NJ", ", DE"; a German ", DE" never gets this far, see _us_ok).
 LOCAL_PER_SOURCE = 10
-LOCAL_RE = re.compile(r"\bPennsylvania\b|, PA\b|\bPhiladelphia\b|\bPittsburgh\b|\bKing of Prussia\b|\bConshohocken\b|\bAllentown\b|\bHarrisburg\b")
+LOCAL_RE = re.compile(r"\bPennsylvania\b|, PA\b|\bPhiladelphia\b|\bPittsburgh\b|\bKing of Prussia\b|\bConshohocken\b|\bAllentown\b|\bHarrisburg\b|"
+                      r"\bNew Jersey\b|, NJ\b|\bTrenton\b|\bCamden\b|\bCherry Hill\b|\bJersey City\b|\bHoboken\b|\bPrinceton\b|\bNewark, (?:NJ|New Jersey)\b|"
+                      r"\bDelaware\b|, DE\b|\bWilmington, (?:DE|Delaware)\b")
 # A posting whose newest date (posted, or updated where the feed gives one) is older than this is not shown: it is most likely filled
 # or forgotten. A posting with no date at all is kept (nothing says it is old). Partner employers' own postings are never aged out here:
 # the employer opens and closes those itself.
@@ -85,9 +92,10 @@ SOURCES = [
     # The local public lists first: on a fresh start the boards are read FEED_PARALLEL at a time in this order, and with 60 sources the
     # City (120 description reads) came last and missed the first visitor's wait. They share no jobs with the boards below.
     ("smartrecruiters", "CityofPhiladelphia", "City of Philadelphia"),   # the City's own public SmartRecruiters postings (no key)
-    ("usajobs", "philadelphia", "USAJOBS"),   # every federal posting within 25 miles of Philadelphia (needs a key: feed_keys.usajobs or UAPLY_USAJOBS_KEY)
-    ("usajobs", "students", "USAJOBS"),       # the same area, only the Students and Recent graduates hiring paths (Pathways)
-    ("usajobs", "parttime", "USAJOBS"),       # the same area, only part-time schedules (they were cut by the 120 cap of the full search)
+    # USAJOBS (needs a key: feed_keys.usajobs or UAPLY_USAJOBS_KEY): every federal posting around five tri-state cities, then the same areas
+    # for the Students and Recent graduates hiring paths (Pathways) and for part-time schedules (both were cut by the 120 cap of a full search).
+    # 15 searches, each every 3 hours = 120 requests a day (see USAJOBS_AREAS). The areas overlap on purpose; a posting is shown once.
+] + [("usajobs", area + suffix, "USAJOBS") for suffix in ("", "-students", "-parttime") for area in ("philadelphia", "wilmington", "trenton", "newark", "camden")] + [
     ("greenhouse", "discord", "Discord"),
     ("greenhouse", "dropbox", "Dropbox"),
     ("greenhouse", "duolingo", "Duolingo"),
@@ -147,12 +155,44 @@ SOURCES = [
     ("greenhouse", "wonderschool", "Wonderschool"),   # 39 (child care)
     ("lever", "zoox", "Zoox"),                    # 239, all US
     ("ashby", "ramp", "Ramp"),                    # 168, all US
+    # Employers with New Jersey and Delaware openings (checked October 21, 2026: total postings / of them in NJ or DE)
+    ("greenhouse", "crossriverbank", "Cross River Bank"),   # Fort Lee NJ: 36 / 28
+    ("greenhouse", "legendcareers", "Legend Biotech"),      # Somerset NJ: 79 / 67
+    ("workable", "thorlabs", "Thorlabs"),                   # Newton NJ: 84 / 47 (manufacturing)
+    ("greenhouse", "lgelectronics", "LG Electronics"),      # Englewood Cliffs NJ: 115 / 23
+    ("greenhouse", "genscript", "GenScript"),               # Piscataway NJ: 75 / 23 (labs)
+    ("workable", "ascendis-pharma", "Ascendis Pharma"),     # Princeton NJ: 67 / 14
+    ("greenhouse", "nice", "NICE"),                         # Hoboken NJ: 184 / 10
+    ("lever", "BestEgg", "Best Egg"),                       # Wilmington DE: 10 / 9
+    ("lever", "NJStateOfficeofInnovation", "New Jersey Office of Innovation"),   # the State's own public postings: 7 / 7
+    ("greenhouse", "mettel", "MetTel"),                     # 20 / 6
+    ("greenhouse", "fanduel", "FanDuel"),                   # Jersey City NJ: 83 / 4
+    # National boards with many on-site roles in other states (clinics, warehouses, gyms, plants, launch sites)
+    ("greenhouse", "mcmastercarr", "McMaster-Carr"),        # 30 (Robbinsville NJ and warehouses across the US)
+    ("greenhouse", "onemedical", "One Medical"),            # 396 clinics and offices (10 in NJ)
+    ("greenhouse", "tia", "Tia"),                           # 32 clinics
+    ("smartrecruiters", "Equinox", "Equinox"),              # 740 clubs (97 of the first 100 in the US)
+    ("smartrecruiters", "RedBull", "Red Bull"),             # 1,239 (54 of the first 100 in the US: sales and field roles)
+    ("greenhouse", "lucidmotors", "Lucid Motors"),          # 445 (plant and studios)
+    ("greenhouse", "rocketlab", "Rocket Lab"),              # 581
+    ("greenhouse", "relativity", "Relativity Space"),       # 382
+    ("greenhouse", "spacex", "SpaceX"),                     # 2,779 (32 MB, read a posting at a time)
+    ("greenhouse", "flexport", "Flexport"),                 # 204
     ("remotive", "software-dev", "Remotive"),
     ("jobicy", "engineering", "Jobicy"),      # credit Jobicy and link to its canonical job URL
     ("jobicy", "marketing", "Jobicy"),
     ("jobicy", "data-science", "Jobicy"),
+    # every other Jobicy industry with US-open remote jobs (October 21, 2026): one request each, inside Jobicy's one sync pass an hour
+] + [("jobicy", slug, "Jobicy") for slug in ("supporting", "admin-support", "accounting-finance", "healthcare", "education", "hr", "management",
+                                            "business", "design-multimedia", "copywriting", "project-management", "legal")] + [
     ("muse", "Internship", "The Muse"),       # The Muse public jobs API; links go to the posting on The Muse
     ("muse", "Entry Level", "The Muse"),
+    # CareerOneStop (U.S. Department of Labor): the National Labor Exchange, which the PA, NJ and DE state job banks run on. Needs
+    # UAPLY_COS_USER_ID and UAPLY_COS_TOKEN; "no key" until then. All jobs, internships and part-time jobs posted in the last 7 days
+    # around five tri-state cities, plus remote jobs nationwide: 16 searches, each every 3 hours = 128 requests a day (see COS_SEARCHES).
+] + [("careeronestop", t, "CareerOneStop") for t in ("philadelphia", "wilmington", "trenton", "newark", "camden",
+                                                    "philadelphia-internship", "wilmington-internship", "trenton-internship", "newark-internship", "camden-internship",
+                                                    "philadelphia-parttime", "wilmington-parttime", "trenton-parttime", "newark-parttime", "camden-parttime", "remote")] + [
     # Internship lists kept on GitHub by Simplify and Pitt CSC (SimplifyJobs/Summer2027-Internships, formerly Summer2026). Only rows whose
     # apply link is a Greenhouse, Lever or SmartRecruiters posting are used, and each is read from that employer's own board first: a row
     # whose posting is gone is dropped. Credited on the card. Last: about 240 checks on a fresh start, so they never hold up the boards.
@@ -160,18 +200,38 @@ SOURCES = [
     ("simplify", "README-Off-Season.md", "Simplify and Pitt CSC"),  # fall, winter and spring internships and co-ops
     # Remote-job boards whose free APIs allow display with a link back (terms read October 21, 2026; see docs/job-sources.md)
     ("himalayas", "US", "Himalayas"),         # link to the job on Himalayas, apply link unchanged, never passed on to other boards
+    ("himalayas", "US-intern", "Himalayas"),  # the same, internships only (935 open to the US on October 21, 2026)
+    ("himalayas", "US-parttime", "Himalayas"),   # the same, part-time only (1,952)
     ("remoteok", "all", "Remote OK"),         # link back to the job on Remote OK and name Remote OK as the source
 ]
 VIA = {"greenhouse": "%s on Greenhouse", "lever": "%s on Lever", "ashby": "%s on Ashby", "smartrecruiters": "%s on SmartRecruiters", "workable": "%s on Workable",
        "jobicy": "Jobicy", "muse": "The Muse", "usajobs": "USAJOBS", "remotive": "Remotive",
-       "himalayas": "Himalayas", "remoteok": "Remote OK"}       # the short credit line each source's jobs carry (Simplify rows: see _normalize)
-MULTI = ("jobicy", "muse", "usajobs", "simplify")         # several feeds share one display name
+       "himalayas": "Himalayas", "remoteok": "Remote OK",
+       # the CareerOneStop license: every page showing its data credits both the U.S. Department of Labor (ETA) and Minnesota DEED
+       "careeronestop": "CareerOneStop (U.S. Department of Labor ETA and Minnesota DEED)"}       # the short credit line each source's jobs carry (Simplify rows: see _normalize)
+MULTI = ("jobicy", "muse", "usajobs", "simplify", "careeronestop", "himalayas")
+HIMALAYAS_TYPES = {"intern": "Intern", "parttime": "Part Time"}       # the employment_type filter of Himalayas' search         # several feeds share one display name
 # The two USAJOBS searches (documented at developer.usajobs.gov/api-reference/get-api-search; several values are joined with ';')
-USAJOBS_QUERIES = {
-    "philadelphia": {"LocationName": "Philadelphia, Pennsylvania", "Radius": "25", "ResultsPerPage": "500", "Fields": "Full"},
-    "students": {"LocationName": "Philadelphia, Pennsylvania", "Radius": "25", "ResultsPerPage": "500", "Fields": "Full", "HiringPath": "student;graduates"},
-    "parttime": {"LocationName": "Philadelphia, Pennsylvania", "Radius": "25", "ResultsPerPage": "500", "Fields": "Full", "PositionScheduleTypeCode": "2"},
-}
+USAJOBS_AREAS = {"philadelphia": ("Philadelphia, Pennsylvania", "50"), "wilmington": ("Wilmington, Delaware", "40"),
+                 "trenton": ("Trenton, New Jersey", "40"), "newark": ("Newark, New Jersey", "40"), "camden": ("Camden, New Jersey", "25")}
+USAJOBS_QUERIES = {}
+for _area, (_place_name, _radius) in USAJOBS_AREAS.items():
+    _base = {"LocationName": _place_name, "Radius": _radius, "ResultsPerPage": "500", "Fields": "Full"}
+    USAJOBS_QUERIES[_area] = dict(_base)
+    USAJOBS_QUERIES[_area + "-students"] = dict(_base, HiringPath="student;graduates")
+    USAJOBS_QUERIES[_area + "-parttime"] = dict(_base, PositionScheduleTypeCode="2")
+USAJOBS_QUERIES["students"], USAJOBS_QUERIES["parttime"] = USAJOBS_QUERIES["philadelphia-students"], USAJOBS_QUERIES["philadelphia-parttime"]   # older names
+# CareerOneStop searches: (keyword, place, radius in miles). Keyword "0" means every job around a city; a nationwide search needs a real keyword.
+COS_PLACES = {"philadelphia": ("Philadelphia, PA", "50"), "wilmington": ("Wilmington, DE", "40"), "trenton": ("Trenton, NJ", "40"),
+              "newark": ("Newark, NJ", "40"), "camden": ("Camden, NJ", "25")}
+COS_SEARCHES = {"remote": ("remote", "US", "0")}
+for _area, (_place_name, _radius) in COS_PLACES.items():
+    COS_SEARCHES[_area] = ("0", _place_name, _radius)
+    COS_SEARCHES[_area + "-internship"] = ("internship", _place_name, _radius)
+    COS_SEARCHES[_area + "-parttime"] = ("part time", _place_name, _radius)
+COS_DAYS, COS_PAGE = "7", "100"
+COS_ID_RE = re.compile(r"^[A-Za-z0-9_-]{3,64}$")
+COS_TOKEN_RE = re.compile(r"^[A-Za-z0-9+/=_.-]{16,600}$")
 USAJOBS_EMAIL = "uaplytechnologies@gmail.com"   # USAJOBS wants the email the key was requested with as the User-Agent (feed_keys.usajobs_email, else owner_copy, else this)
 
 SKILLS = [
@@ -208,7 +268,15 @@ STATE_NAMES = ("Alabama|Alaska|Arizona|Arkansas|California|Colorado|Connecticut|
                "Indiana|Iowa|Kansas|Kentucky|Louisiana|Maine|Maryland|Massachusetts|Michigan|Minnesota|Mississippi|Missouri|Montana|Nebraska|Nevada|"
                "New Hampshire|New Jersey|New Mexico|New York|North Carolina|North Dakota|Ohio|Oklahoma|Oregon|Pennsylvania|Rhode Island|South Carolina|"
                "South Dakota|Tennessee|Texas|Utah|Vermont|Virginia|Washington|West Virginia|Wisconsin|Wyoming")
-US_RE = re.compile(r"United States|\bUSA\b|\bU\.S\.|\bUS\b|, (?:%s)\b|, (?:%s)\b|\b(?:San Francisco|New York|Seattle|Austin|Boston|Chicago|Denver|Los Angeles|Atlanta|Portland)\b" % ("|".join(STATES), STATE_NAMES))
+US_CITIES = ("San Francisco|New York|Seattle|Austin|Boston|Chicago|Denver|Los Angeles|Atlanta|Portland|Philadelphia|Pittsburgh|Harrisburg|Allentown|"
+             "King of Prussia|Conshohocken|Trenton|Princeton|Camden|Cherry Hill|Jersey City|Hoboken|Newark|Wilmington|Dover|Baltimore|"
+             "Washington,? D\\.?C|Miami|Dallas|Houston|San Antonio|Phoenix|San Diego|San Jose|Las Vegas|Nashville|Charlotte|Raleigh|Orlando|Tampa|Detroit|"
+             "Columbus|Cleveland|Cincinnati|Indianapolis|Minneapolis|St\\.? Louis|Kansas City|Salt Lake City|Sacramento|New Orleans|Silicon Valley|Bay Area")
+# bare state names count too ("New Jersey", "Remote - Delaware"), except Georgia, which is also a country
+US_STATE_WORDS = "|".join(n for n in STATE_NAMES.split("|") if n != "Georgia")
+US_RE = re.compile(r"United States|\bUSA\b|\bU\.S\.|\bUS\b|, (?:%s)\b|, (?:%s)\b|\b(?:%s)\b|\b(?:%s)\b" % ("|".join(STATES), STATE_NAMES, US_STATE_WORDS, US_CITIES))
+# "City, Region, CC" with a country code at the end (SmartRecruiters, Workable): "Munich, BY, DE" is Germany, "Mumbai, MH, IN" India
+FOREIGN_CODE_RE = re.compile(r",\s*[A-Z]{2,3}\s*,\s*(?!US\b|USA\b)[A-Z]{2}\s*$")
 FOREIGN_RE = re.compile(r"Germany|United Kingdom|\bUK\b|India|Canada|Ireland|France|Spain|Brazil|Mexico|Poland|Netherlands|Japan|Australia|New Zealand|\bANZ\b|Singapore|EMEA|APAC|Europe|LATAM|Latin America|Berlin|London|Dublin|Toronto|Vancouver|Montreal|Sydney|Amsterdam|Lisbon|Paris|Tokyo|Seoul|Hong Kong|Israel|Dubai|Philippines|Argentina|Colombia|Chile|Vietnam|Indonesia|Malaysia|Thailand|South Africa|Nigeria|Kenya|Egypt|Turkey|Romania|Ukraine|Czech|Portugal|Italy|Sweden|Norway|Denmark|Finland|Switzerland|Belgium|Austria", re.I)
 EXPLICIT_US = re.compile(r"United States|\bUSA\b|\bU\.S\.|\bUS\b")
 
@@ -219,6 +287,8 @@ def _us_ok(loc, remote):
     when no foreign place is named. (', CA' is California; 'Toronto, ON, CA' is Canada and must not pass on that.)"""
     parts = [p for p in re.split(r"[;|]", loc) if p.strip()] or [loc]
     for p in parts:
+        if FOREIGN_CODE_RE.search(p):
+            continue
         if EXPLICIT_US.search(p) or (US_RE.search(p) and not FOREIGN_RE.search(p)):
             return True
     return bool(remote and not FOREIGN_RE.search(loc))
@@ -283,9 +353,15 @@ def _save_disk():
             path = _cache_file()
             os.makedirs(os.path.dirname(path), exist_ok=True)
             tmp = path + ".tmp"
+            # one source at a time: json.dump of the whole list built the entire text in memory first (46 MB at the peak of a
+            # fresh start with 80 sources, October 21, 2026); written this way the largest piece is one source's jobs
             with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(snap, f)
+                f.write("{")
+                for i, (k, v) in enumerate(snap.items()):
+                    f.write(("," if i else "") + json.dumps(k) + ":" + json.dumps(v))
+                f.write("}")
             os.replace(tmp, path)
+            _disk["saved_at"] = time.time()
         except Exception as e:                  # jobs still work from memory; only a restart would have to wait for every feed again
             _disk["dirty"] = True               # so the next refresh tries again
             sys.stderr.write("[uaply] could not save the job cache: %s: %s\n" % (type(e).__name__, str(e)[:200]))
@@ -429,12 +505,15 @@ def feed_keys():
     mail = next((m.strip() for m in (os.environ.get("UAPLY_USAJOBS_EMAIL"), k.get("usajobs_email"), cfg.get("owner_copy"))
                  if isinstance(m, str) and EMAIL_RE.fullmatch(m.strip())), "")
     out["usajobs_email"] = mail or USAJOBS_EMAIL
+    cid, ctok = (os.environ.get("UAPLY_COS_USER_ID") or "").strip(), (os.environ.get("UAPLY_COS_TOKEN") or "").strip()
+    if COS_ID_RE.match(cid) and COS_TOKEN_RE.match(ctok):          # both, well formed, or CareerOneStop stays off ("no key")
+        out["cos_user"], out["cos_token"] = cid, ctok
     return out
 
 
 def _scrub(text):
     """Error text with every feed key taken out, so a key can never reach the server's log or the job list's status line."""
-    for n in ("usajobs", "muse"):
+    for n in ("usajobs", "muse", "cos_token", "cos_user"):
         v = feed_keys().get(n)
         if v:
             text = text.replace(v, "[key]").replace(urllib.parse.quote(v, safe=""), "[key]")
@@ -602,7 +681,9 @@ def _iter_raw(kind, token, name):
         # https://himalayas.app/api : link to the job on Himalayas, use applicationLink unchanged, show only on our own app, remove expired jobs
         now = time.time()
         for page in (1, 2, 3):
-            data = _get("https://himalayas.app/jobs/api/search?country=%s&page=%d" % (urllib.parse.quote(token, safe=""), page))
+            country, _, only = token.partition("-")
+            data = _get("https://himalayas.app/jobs/api/search?country=%s&page=%d" % (urllib.parse.quote(country, safe=""), page) +
+                        ("&employment_type=%s" % urllib.parse.quote(HIMALAYAS_TYPES[only], safe="") if only in HIMALAYAS_TYPES else ""))
             for j in data.get("jobs") or []:
                 if not isinstance(j, dict) or not j.get("title") or not str(j.get("guid") or "").startswith("https://himalayas.app/"):
                     continue
@@ -637,6 +718,8 @@ def _iter_raw(kind, token, name):
                        posted=_ts(j.get("date")), fallback=next((t for t in (j.get("tags") or []) if isinstance(t, str)), None))
     elif kind == "simplify":
         yield from _simplify(token, name)
+    elif kind == "careeronestop":
+        yield from _careeronestop(token)
     elif kind == "usajobs":
         yield from _usajobs(token)
     elif kind == "smartrecruiters":
@@ -673,9 +756,16 @@ def _sr_detail(token, pid, released):
     return d
 
 
+SR_WHOLE = ("CityofPhiladelphia",)    # public bodies whose whole list is kept (up to KEEP); any other SmartRecruiters company is an employer board
+SR_BOARD_READ = 40                     # an employer board: at most this many US postings get their description read (once a day each)
+
+
 def _smartrecruiters(token, name):
     """A company's public SmartRecruiters postings: the list page by page (100 at a time, until totalFound, at most KEEP postings),
-    then each posting's own record for its description. Shapes as seen on the live API (October 16, 2026)."""
+    then each posting's own record for its description. Shapes as seen on the live API (October 16, 2026). For a company that is not a
+    public body (Equinox, Red Bull ...), postings outside the US are left out before any description is read, and at most SR_BOARD_READ
+    descriptions are read (it keeps 14 plus tri-state extras, like any employer board)."""
+    whole = token in SR_WHOLE
     cap = KEEP["smartrecruiters"]
     base = "https://api.smartrecruiters.com/v1/companies/%s/postings" % urllib.parse.quote(token, safe="")
     items, offset = [], 0
@@ -686,7 +776,12 @@ def _smartrecruiters(token, name):
         offset += len(got)
         if not got or offset >= int(page.get("totalFound") or 0):
             break
-    items = [p for p in items if isinstance(p, dict) and p.get("id")][:cap]
+    items = [p for p in items if isinstance(p, dict) and p.get("id")]
+    if not whole:                                   # US postings only, Pennsylvania, New Jersey and Delaware ones first
+        items = [p for p in items if ((p.get("location") or {}).get("country") or "us").lower() == "us"]
+        items.sort(key=lambda p: ((p.get("location") or {}).get("region") or "").upper() not in ("PA", "NJ", "DE"))
+        items = items[:SR_BOARD_READ]
+    items = items[:cap]
     with ThreadPoolExecutor(max_workers=4) as ex:                # four at a time: gentle on their API, and quick enough
         details = list(ex.map(lambda p: _sr_detail(token, str(p["id"]), p.get("releasedDate") or ""), items))
     out = []
@@ -709,7 +804,7 @@ def _smartrecruiters(token, name):
         dept = re.split(r"\s[-–—]\s", (p.get("department") or {}).get("label") or "")[0].strip()      # "Law Department – Tax Unit" -> "Law Department"
         func = (p.get("function") or {}).get("label") or ""
         fallback = dept or (func if func.lower() != "other" else "") or (p.get("industry") or {}).get("label") or None
-        out.append(dict(id=p["id"], title=(p.get("name") or "").strip(), company=(p.get("company") or {}).get("name") or name,
+        out.append(dict(id=p["id"], title=(p.get("name") or "").strip(), company=(p.get("company") or {}).get("name") or name, country=L.get("country") or "us",
                         loc=loc or "Not listed", remote=True if L.get("remote") else None,
                         text=_text(text) or (p.get("name") or ""), url="https://jobs.smartrecruiters.com/%s/%s" % (token, p["id"]),
                         salary_text="", sal=sal, posted=_ts(p.get("releasedDate")), fallback=fallback, force_type=force, emp=kind_label,
@@ -767,6 +862,33 @@ def _usajobs(token):
                         force_type="internship" if intern else None,
                         emp=(sched + " " + " ".join(s.get("Name", "") for s in d.get("PositionOfferingType") or [] if isinstance(s, dict) and s.get("Name") == "Temporary")).strip()))
     return out
+
+
+def _careeronestop(token):
+    """One CareerOneStop job search (COS_SEARCHES[token]), as its List Jobs API documents it (careeronestop.org/Developers/WebAPI/Jobs/
+    list-jobs.aspx): GET /v1/jobsearch/{userId}/{keyword}/{location}/{radius}/{sortColumns}/{sortOrder}/{startRecord}/{pageSize}/{days}
+    with "Authorization: Bearer <token>". The answer is {"JobCount", "Jobs": [{"JvId", "JobTitle", "Company", "DescriptionSnippet",
+    "AcquisitionDate", "URL", "Location", "Fc"}]}; field names are matched without regard to case, and a posting without a title or an
+    https link is skipped. Titles, companies and places are shown as given (the license forbids altering the data)."""
+    keys = feed_keys()
+    keyword, place, radius = COS_SEARCHES.get(token) or COS_SEARCHES["philadelphia"]
+    q = lambda v: urllib.parse.quote(v, safe="")              # noqa: E731
+    url = "https://api.careeronestop.org/v1/jobsearch/%s/%s/%s/%s/acquisitiondate/DESC/0/%s/%s" % (
+        q(keys.get("cos_user", "")), q(keyword), q(place), q(radius), COS_PAGE, COS_DAYS)
+    data = _get(url, {"Authorization": "Bearer " + keys.get("cos_token", "")})
+    low = {str(k).lower(): v for k, v in (data or {}).items()} if isinstance(data, dict) else {}
+    for j in low.get("jobs") or []:
+        if not isinstance(j, dict):
+            continue
+        f = {str(k).lower(): v for k, v in j.items()}
+        title, link = str(f.get("jobtitle") or "").strip(), str(f.get("url") or "").strip()
+        if not title or not link.startswith("https://"):
+            continue
+        loc = str(f.get("location") or "").strip()
+        yield dict(id=f.get("jvid") or link, title=title, company=str(f.get("company") or "").strip() or "Employer not named",
+                   loc=loc or ("Remote" if token == "remote" else place), remote=True if token == "remote" or re.search(r"\bremote\b", loc, re.I) else None,
+                   text=_text(f.get("descriptionsnippet") or ""), url=link, salary_text="", posted=_ts(f.get("acquisitiondate")),
+                   fallback="Jobs")
 
 
 def _newest(j):
@@ -875,6 +997,8 @@ def _normalize(raw, kind, name, board=None):
     if list_credit:                                     # a Simplify / Pitt CSC row: it is the employer's own posting, read from its own board
         kind, board, name = raw["ats_kind"], raw["board"], raw["company"]
     title, loc, text = raw["title"], raw["loc"], raw["text"]
+    if str(raw.get("country") or "us").strip().lower() not in ("us", "usa", "united states", "united states of america"):
+        return None
     remote = raw["remote"] if raw["remote"] is not None else bool(re.search(r"\bremote\b", loc, re.I))
     if not _us_ok(loc, remote):
         return None
@@ -907,7 +1031,7 @@ def _normalize(raw, kind, name, board=None):
     blurb = text[:170].rsplit(" ", 1)[0] + "…" if len(text) > 170 else text
     desc = _role_summary(text)                                                    # what the emails show about the job
     jid = 100000 + int(hashlib.sha1(("%s:%s" % (kind, raw["id"])).encode()).hexdigest()[:6], 16)
-    src = name if kind in ("remotive", "jobicy", "muse", "usajobs", "himalayas", "remoteok") else "%s's careers page" % raw["company"]
+    src = name if kind in ("remotive", "jobicy", "muse", "usajobs", "himalayas", "remoteok", "careeronestop") else "%s's careers page" % raw["company"]
     # Where this posting lives in the employer's own hiring system. It is only an address (not a credential): it is used when, and only when, the
     # employer has connected with their own key (see ats_connections); otherwise it is never used and apply stays "link".
     # Ashby: the job board's own posting id is the jobPostingId its API takes. SmartRecruiters: the posting's uuid (see _smartrecruiters).
@@ -977,16 +1101,23 @@ def _trim():
         pass
 
 
+SAVE_EVERY = 30                  # seconds: while many boards are being read, the saved copy is written at most this often (and after the last one)
+
+
 def _refresh_in_background(src, done):
     try:
         _fetch_source(src)
-        _save_disk()
+        with _lock:
+            others = len(_refreshing) > 1
+        if not others or time.time() - _disk.get("saved_at", 0) >= SAVE_EVERY:
+            _save_disk()
     finally:
         with _lock:
             _refreshing.pop(src, None)
             last = not _refreshing
         done.set()
         if last:
+            _save_disk()                         # the last board of a round: whatever a skipped save left unwritten goes to disk now
             _trim()
 
 
@@ -1006,7 +1137,7 @@ def _load_source(src):
     saved list has anything to show (a board that is new, or failed last time, shows up at the next request). Only on an empty disk (the
     very first start) does the first request wait for the boards, as there is nothing else to show."""
     ttl = TTL.get(src[0], DEFAULT_TTL)
-    if src[0] == "usajobs" and not feed_keys().get("usajobs"):
+    if _no_key(src[0]):
         return _fetch_source(src)                # no key: skipped right away, never served from an older copy
     with _lock:
         c = _cache.get(src)
@@ -1020,11 +1151,25 @@ def _load_source(src):
         ev = _start_refresh(src)
         if _disk["filled"]:                      # the saved list has the other boards: do not hold this visitor up for this one
             return [], "loading"
-    ev.wait(FIRST_WAIT)
+    # every visitor of the first fill shares one deadline (FIRST_WAIT from the first wait), so the boards are waited for together
+    with _lock:
+        until = _disk.setdefault("first_wait_until", time.time() + FIRST_WAIT)
+    ev.wait(max(0.0, until - time.time()))
     with _lock:
         c = _cache.get(src)
         f = _failed.get(src)
     return (c["jobs"], c["status"]) if c else ([], f[1] if f else "loading")
+
+
+def _start_missing(sources):
+    """On the very first fill, start reading every board that has nothing saved, all at once (FEED_PARALLEL of them actually download
+    at a time), so the sources can then be collected one after another without a thread per source per visitor."""
+    if _disk["filled"]:
+        return
+    with _lock:
+        for src in sources:
+            if not _no_key(src[0]) and src not in _cache and not (src in _failed and time.time() - _failed[src][0] < 120):
+                _start_refresh(src)
 
 
 # ---------- the Simplify / Pitt CSC internship lists (GitHub) ----------
@@ -1093,6 +1238,7 @@ def _simplify_check(kind, board, pid, api):
             raw = dict(id=j["id"], title=j.get("name") or "", company=(j.get("company") or {}).get("name") or "",
                        loc=", ".join(x for x in (L.get("city"), L.get("region"), (L.get("country") or "").upper()) if x), remote=True if L.get("remote") else None,
                        text=_text(" ".join((secs.get(k) or {}).get("text") or "" for k in ("jobDescription", "qualifications", "additionalInformation"))),
+                       country=L.get("country") or "us",
                        url="https://jobs.smartrecruiters.com/%s/%s" % (board, j["id"]), salary_text="", posted=_ts(j.get("releasedDate")),
                        emp=((j.get("typeOfEmployment") or {}).get("label") or ""), ats_id=str(j.get("uuid") or ""))
         ok = True
@@ -1134,16 +1280,27 @@ def _simplify(token, name):
                        default_type=default or ("co-op" if re.search(r"\bco-?op\b", raw["title"], re.I) else "internship"))
 
 
+def _no_key(kind):
+    """True for a feed that needs a key the owner has not added: USAJOBS (UAPLY_USAJOBS_KEY or feed_keys), CareerOneStop (both
+    UAPLY_COS_USER_ID and UAPLY_COS_TOKEN)."""
+    if kind == "usajobs":
+        return not feed_keys().get("usajobs")
+    if kind == "careeronestop":
+        return not feed_keys().get("cos_token")
+    return False
+
+
 def _fetch_source(src):
     kind, token, name = src
     ttl = TTL.get(kind, DEFAULT_TTL)
-    if kind == "usajobs" and not feed_keys().get("usajobs"):
+    if _no_key(kind):
         with _lock:
             _cache.pop(src, None)               # a key that was removed stops the source at once (no copy is served from before)
         return [], "no key"                     # skipped, nothing fetched or cached: the source starts the moment the owner adds the key
     try:
         student, other, local, old = [], [], [], 0
         now_ms = time.time() * 1000
+        keep = KEEP.get(kind) if (kind != "smartrecruiters" or token in SR_WHOLE) else None   # a whole public list, or None for an employer board
         with _feed_slots:                        # at most FEED_PARALLEL boards downloaded and parsed at once (memory, see FEED_PARALLEL)
             for raw in _iter_raw(kind, token, name):
                 if kind not in AGE_EXEMPT and _too_old(raw, now_ms):   # before the caps, so a stale posting never takes a fresh one's place
@@ -1152,11 +1309,11 @@ def _fetch_source(src):
                 # only the first STUDENT_PER_SOURCE student roles and PER_SOURCE others can be kept below, so a posting past those is not worked
                 # through at all (a big board lists hundreds; reading every one cost about 35 CPU seconds, a minute or more on a small host)
                 bucket, cap = (other, PER_SOURCE) if _type(raw) == "job" else (student, STUDENT_PER_SOURCE)
-                if kind in KEEP:                                     # the City and USAJOBS keep up to 120 (student roles first), so read them all
-                    cap = KEEP[kind]
+                if keep:                                             # the City and USAJOBS keep up to 120 (student roles first), so read them all
+                    cap = keep
                 if len(bucket) >= cap:
-                    # past the caps only a Pennsylvania role is still worked through, up to LOCAL_PER_SOURCE of them
-                    if kind not in KEEP and len(local) < LOCAL_PER_SOURCE and LOCAL_RE.search(raw.get("loc") or ""):
+                    # past the caps only a Pennsylvania, New Jersey or Delaware role is still worked through, up to LOCAL_PER_SOURCE of them
+                    if not keep and len(local) < LOCAL_PER_SOURCE and LOCAL_RE.search(raw.get("loc") or ""):
                         j = _normalize(raw, kind, name, token)
                         if j:
                             local.append(j)
@@ -1165,12 +1322,12 @@ def _fetch_source(src):
                 if j:
                     (student if j["type"] in ("internship", "coop", "parttime") else other).append(j)
         # keep the student-type roles first (a board can list hundreds of senior roles ahead of its internships)
-        if kind in KEEP:
-            jobs = (student + other)[:KEEP[kind]]
+        if keep:
+            jobs = (student + other)[:keep]
         else:
             n_other = max(OTHER_PER_SOURCE, PER_SOURCE - len(student[:STUDENT_PER_SOURCE]))
             jobs = student[:STUDENT_PER_SOURCE] + other[:n_other]
-            # Pennsylvania roles cut by the split above go first among the extras, then the ones found past the caps
+            # tri-state roles cut by the split above go first among the extras, then the ones found past the caps
             spill = [j for j in other[n_other:] if LOCAL_RE.search(j["loc"])]
             jobs += (spill + local)[:LOCAL_PER_SOURCE]
         status = "%d jobs" % len(jobs) + ("; %d older than %d days left out" % (old, MAX_AGE_DAYS) if old else "")
@@ -1404,12 +1561,18 @@ def known_ats(job_id):
     return None
 
 
+_LOAD_SOURCE = _load_source
+
+
 def get_jobs():
     _load_disk()
     allowed = feeds_allowed()
     sources = [s for s in SOURCES if s[0] in allowed]
-    with ThreadPoolExecutor(max_workers=max(1, len(sources))) as ex:     # each mostly waits (the reads themselves are limited by _feed_slots)
-        results = list(ex.map(_load_source, sources))
+    # One after another, not a thread per source: with 80 sources and three visitors on a fresh start that was 240 threads waiting
+    # (about 30 MB of the 135 MB peak, October 21, 2026). The boards themselves are read in the background (_start_refresh).
+    if _load_source is _LOAD_SOURCE:                 # (a test that stands in its own _load_source reads nothing)
+        _start_missing(sources)
+    results = [_load_source(src) for src in sources]
     _disk["filled"] = True
     jobs, seen, same, summary = [], set(), {}, {}            # same: a job's _same_job_key -> the source that listed it first
     now_ms = time.time() * 1000
