@@ -133,8 +133,13 @@ t("no reset link was created or stored", "?reset=" not in page.replace("&amp;", 
 s, _, body = req("GET", "/api/status")
 st = json.loads(body)
 t("/api/status answers with yes/no facts only (and the deployed commit's short id, or null off Render)",
-  (s, all(isinstance(v, bool) or v is None for k, v in st.items() if k != "commit"), st.get("commit") is None or bool(re.fullmatch(r"[0-9a-f]{7}", st["commit"]))),
+  (s, all(isinstance(v, bool) or v is None for k, v in st.items() if k not in ("commit", "apply")), st.get("commit") is None or bool(re.fullmatch(r"[0-9a-f]{7}", st["commit"]))),
   (200, True, True))
+ap = st.get("apply") or {}
+t("/api/status apply: only a yes/no, the delivery mode and job counts per way of applying",
+  (sorted(ap), isinstance(ap.get("ok"), bool), ap.get("mode") in ("test", "live"), all(isinstance(v, int) for v in (ap.get("classes") or {}).values()),
+   all(isinstance(v, bool) for v in (ap.get("configured") or {}).values()), sorted(ap.get("classes") or {})),
+  (["classes", "configured", "mode", "ok"], True, True, True, True, ["ats", "email", "handoff", "webhook"]))
 t("/api/status says what this server has on (public, owner pages on, email off)", (st.get("public"), st.get("ownerPages"), st.get("email")), (True, True, False))
 t("/api/status holds no secret or folder name", any(x in body.decode() for x in ("ownerpw", "uaply-", "/", "\\\\")), False)
 

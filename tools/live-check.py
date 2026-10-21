@@ -173,7 +173,7 @@ def status():
     s, _, j = get_json("/api/status")
     if s == 200 and isinstance(j, dict) and j.get("ok") is True:
         STATUS.update(j, source="/api/status")
-        odd = {k: v for k, v in j.items() if not (isinstance(v, bool) or v is None or (k == "commit" and isinstance(v, str) and re.fullmatch(r"[0-9a-f]{7}", v)))}
+        odd = {k: v for k, v in j.items() if k != "apply" and not (isinstance(v, bool) or v is None or (k == "commit" and isinstance(v, str) and re.fullmatch(r"[0-9a-f]{7}", v)))}
         t("/api/status answers with yes/no facts only (and the deployed commit's short id)", not odd, "a value that is not yes/no: %r" % odd)
         return
     # an older server (before /api/status): the same facts from the endpoints the app already reads
@@ -188,6 +188,31 @@ def status():
 
 
 safe(status, "what is switched on")
+
+
+# ---------- the apply engine (tools/test-swipe-e2e.py proves every path locally; this proves the live one is up) ----------
+def apply_engine():
+    ap = STATUS.get("apply")
+    if not isinstance(ap, dict):
+        skip("the apply engine in /api/status", "a deploy of the commit that adds /api/status apply")
+        return
+    cl, cf = ap.get("classes") or {}, ap.get("configured") or {}
+    shape = isinstance(ap.get("ok"), bool) and ap.get("mode") in ("test", "live") and all(isinstance(cl.get(k), int) for k in ("ats", "email", "webhook", "handoff")) \
+        and all(isinstance(cf.get(k), bool) for k in ("ats", "email", "webhook", "handoff"))
+    t("/api/status apply holds only a yes/no, the delivery mode and job counts (no employer, address or key)", shape and set(ap) == {"ok", "mode", "classes", "configured"}, repr(ap)[:200])
+    t("the apply engine is healthy (its records folder is writable)", ap.get("ok") is True, repr(ap)[:200])
+    info("apply: delivery %s | jobs that go straight into a hiring system %s, by email %s, by webhook %s, hand-off %s"
+         % (ap.get("mode"), cl.get("ats"), cl.get("email"), cl.get("webhook"), cl.get("handoff")))
+    names = {"ats": "straight into a connected hiring system", "email": "by email to an employer who agreed", "webhook": "by an employer's webhook",
+             "handoff": "the hand-off (finish on the employer's site)"}
+    for k in ("ats", "email", "webhook", "handoff"):
+        if cf.get(k):
+            t("at least one listed job applies %s (it is configured)" % names[k], (cl.get(k) or 0) >= 1, "0 jobs of this class are listed")
+        else:
+            skip("a listed job that applies %s" % names[k], "an employer who connected it")
+
+
+safe(apply_engine, "the apply engine")
 if STATUS:
     def yn(v):
         return "unknown" if v is None else ("on" if v else "off")

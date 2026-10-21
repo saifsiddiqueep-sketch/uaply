@@ -72,6 +72,7 @@ run "the server as Render runs it: start, stop mid-request, restart on the same 
 run "reading every job board stays far below the 512 MB plan, and a redeploy answers from the saved list at once" python tools/test-feed-memory.py
 run "backups: pack the data folder, restore it, refuse damaged ones, encrypt, upload to a private GitHub repository" python tools/test-backup.py 18806
 run "every path from swipe right to inbox, replayed in a browser" python tools/ui-apply-paths.py
+run "the swipe guarantee: resume to profile, then swipe right into Greenhouse, Lever, Ashby, SmartRecruiters, Workable, an email employer and a hand-off; a question box, a file it cannot ask, the weekly limit" python tools/test-swipe-e2e.py 18830
 run "the one-time question box: every kind of question, phone and computer" python tools/ui-questions.py
 
 step "Accounts, applying, reset and setup (back end)"

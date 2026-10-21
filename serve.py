@@ -779,7 +779,36 @@ def status_facts():
             "google": bool(google_auth.enabled()), "googleButton": bool(google_auth.button_enabled()),
             "payments": bool(b["on"]), "paymentsTest": bool(b["on"] and b["test"]),
             "paymentsWebhook": bool(b["on"] and str(b.get("webhook_secret") or "").startswith("whsec_")),
-            "ai": bool(chat_api.ai_ready()), "ownerPages": bool(OWNER_PASSWORD) if PUBLIC else True, "commit": COMMIT}
+            "ai": bool(chat_api.ai_ready()), "ownerPages": bool(OWNER_PASSWORD) if PUBLIC else True, "commit": COMMIT,
+            "apply": apply_facts()}
+
+
+_apply_memo = {"at": 0, "v": None}
+
+
+def apply_facts():
+    """The apply engine in /api/status: whether it can record applications (its folder is writable), the delivery mode, and how many listed jobs
+    take each way of applying (counts only, never an employer, address or key). "configured" says which ways the owner set up, so a check can
+    demand at least one such job. Read at most once a minute: it walks the job list the app already serves."""
+    if _apply_memo["v"] and time.time() - _apply_memo["at"] < 60:
+        return _apply_memo["v"]
+    try:
+        folder = uaply_api.DATA
+        writable = bool(folder) and os.path.isdir(folder) and os.access(folder, os.W_OK)
+        jobs = jobs_api.get_jobs()["jobs"]
+        partners = jobs_api.partner_jobs()
+        classes = {"ats": sum(1 for j in jobs if j.get("instant") and not j.get("contact") and not j.get("webhook")),
+                   "email": sum(1 for j in jobs if j.get("instant") and j.get("contact")),
+                   "webhook": sum(1 for j in jobs if j.get("instant") and j.get("webhook")),
+                   "handoff": sum(1 for j in jobs if not j.get("instant"))}
+        configured = {"ats": bool(jobs_api.ats_connections() or jobs_api._ats_jobs), "email": any(j.get("contact") for j in partners),
+                      "webhook": any(j.get("webhook") for j in partners), "handoff": True}
+        v = {"ok": writable, "mode": uaply_api.config().get("delivery"), "classes": classes, "configured": configured}
+    except Exception as e:
+        log_oops("/api/status", e)
+        v = {"ok": False, "mode": None, "classes": {}, "configured": {}}
+    _apply_memo.update(at=time.time(), v=v)
+    return v
 
 
 # The commit this copy runs: Render sets RENDER_GIT_COMMIT (the full id) for every deploy. Only its first 7 hex digits are shown (public
