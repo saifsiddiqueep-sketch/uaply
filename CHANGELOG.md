@@ -17,7 +17,7 @@ production page and only changes when the owner decides.
   in the service worker is now `uaply-shell-v2`.
 - Tests: `tools/test-focus.py` (12 checks: every copy word for word; `--sync` rewrites them after a change) and `tools/ui-focus.js`
   (28 checks in Chrome at 390 px with touch: the computed tap highlight of every element on every page, no ring after a real touch,
-  the keyboard ring, the retries against a /healthz answering 503). Before this change 26 of its 28 checks failed.
+  the keyboard ring, the retries against a /healthz answering 503). Run against the code before this change, 23 of its first 25 checks failed.
 
 ### Google Play listing pack
 - `mobile/store/play/`: app name, short (80) and full (3,5xx of 4,000) descriptions in the app's own honest wording, the 512 px icon, the
