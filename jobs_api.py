@@ -24,6 +24,8 @@ LEGAL STATUS OF EACH SOURCE (checked October 2026; this is not legal advice, hav
     free key (feed_keys.usajobs); without one the source is skipped with the status "no key".
   * SmartRecruiters public Posting API (City of Philadelphia): public postings of a public body, no key, no published
     terms for readers. LINK-OUT ONLY, credited "City of Philadelphia on SmartRecruiters".
+  * Simplify / Pitt CSC internship lists (GitHub), Himalayas, Remote OK: added October 21, 2026, LINK-OUT ONLY and credited on the card;
+    their terms, and why Remotive, Adzuna and others are not used, are in docs/job-sources.md.
   Third-party feeds are OFF unless the owner lists them under "feeds" in uaply-config.json. Jobs from a feed are never
   emailed to anyone (the recruiter address is dropped); swiping right only opens the employer's own page.
 
@@ -53,13 +55,16 @@ DEFAULT_TTL = 30 * 60
 TTL = {"remotive": 6 * 3600,          # Remotive allows roughly 4 requests a day
        "jobicy": 3600,                # Jobicy asks for at most one sync pass an hour
        "usajobs": 3 * 3600,           # federal postings change slowly; two searches every three hours
-       "smartrecruiters": 3600}       # the City's list once an hour (each posting's description is read far less often, see SR_DESC_TTL)
+       "smartrecruiters": 3600,       # the City's list once an hour (each posting's description is read far less often, see SR_DESC_TTL)
+       "simplify": 6 * 3600,          # the Simplify / Pitt CSC lists change daily; each listed posting is checked on its own board at most once a day
+       "himalayas": 3 * 3600,         # no key: one public allowance shared with every caller, so a few pages every three hours
+       "remoteok": 6 * 3600}          # one request for the whole list
 PER_SOURCE = 14
 STUDENT_PER_SOURCE = 10          # internships, co-ops and part-time roles are kept first so the student tabs are not empty
 OTHER_PER_SOURCE = 6
 # A public body's own list (the City, the federal government) is local and is kept whole up to this many postings, student roles first,
 # instead of the 14 an employer board gets. SmartRecruiters is also read no further than this (so at most this many description reads).
-KEEP = {"usajobs": 120, "smartrecruiters": 120}
+KEEP = {"usajobs": 120, "smartrecruiters": 120, "simplify": 120}
 SR_DESC_TTL = 24 * 3600          # a SmartRecruiters posting's description is read once, then again only after a day or when the posting is re-released
 # UAply launches in the Philadelphia region: a board may keep this many Pennsylvania roles on top of its 14, so a national employer's
 # PA openings are not cut just because they come after its first 14 postings. Matched on the posting's own location (case matters: ", PA").
@@ -81,6 +86,7 @@ SOURCES = [
     ("smartrecruiters", "CityofPhiladelphia", "City of Philadelphia"),   # the City's own public SmartRecruiters postings (no key)
     ("usajobs", "philadelphia", "USAJOBS"),   # every federal posting within 25 miles of Philadelphia (needs a key: feed_keys.usajobs or UAPLY_USAJOBS_KEY)
     ("usajobs", "students", "USAJOBS"),       # the same area, only the Students and Recent graduates hiring paths (Pathways)
+    ("usajobs", "parttime", "USAJOBS"),       # the same area, only part-time schedules (they were cut by the 120 cap of the full search)
     ("greenhouse", "discord", "Discord"),
     ("greenhouse", "dropbox", "Dropbox"),
     ("greenhouse", "duolingo", "Duolingo"),
@@ -146,14 +152,24 @@ SOURCES = [
     ("jobicy", "data-science", "Jobicy"),
     ("muse", "Internship", "The Muse"),       # The Muse public jobs API; links go to the posting on The Muse
     ("muse", "Entry Level", "The Muse"),
+    # Internship lists kept on GitHub by Simplify and Pitt CSC (SimplifyJobs/Summer2027-Internships, formerly Summer2026). Only rows whose
+    # apply link is a Greenhouse, Lever or SmartRecruiters posting are used, and each is read from that employer's own board first: a row
+    # whose posting is gone is dropped. Credited on the card. Last: about 240 checks on a fresh start, so they never hold up the boards.
+    ("simplify", "README.md", "Simplify and Pitt CSC"),             # summer internships
+    ("simplify", "README-Off-Season.md", "Simplify and Pitt CSC"),  # fall, winter and spring internships and co-ops
+    # Remote-job boards whose free APIs allow display with a link back (terms read October 21, 2026; see docs/job-sources.md)
+    ("himalayas", "US", "Himalayas"),         # link to the job on Himalayas, apply link unchanged, never passed on to other boards
+    ("remoteok", "all", "Remote OK"),         # link back to the job on Remote OK and name Remote OK as the source
 ]
 VIA = {"greenhouse": "%s on Greenhouse", "lever": "%s on Lever", "ashby": "%s on Ashby", "smartrecruiters": "%s on SmartRecruiters", "workable": "%s on Workable",
-       "jobicy": "Jobicy", "muse": "The Muse", "usajobs": "USAJOBS", "remotive": "Remotive"}       # the short credit line each source's jobs carry
-MULTI = ("jobicy", "muse", "usajobs")         # several feeds share one display name
+       "jobicy": "Jobicy", "muse": "The Muse", "usajobs": "USAJOBS", "remotive": "Remotive",
+       "himalayas": "Himalayas", "remoteok": "Remote OK"}       # the short credit line each source's jobs carry (Simplify rows: see _normalize)
+MULTI = ("jobicy", "muse", "usajobs", "simplify")         # several feeds share one display name
 # The two USAJOBS searches (documented at developer.usajobs.gov/api-reference/get-api-search; several values are joined with ';')
 USAJOBS_QUERIES = {
     "philadelphia": {"LocationName": "Philadelphia, Pennsylvania", "Radius": "25", "ResultsPerPage": "500", "Fields": "Full"},
     "students": {"LocationName": "Philadelphia, Pennsylvania", "Radius": "25", "ResultsPerPage": "500", "Fields": "Full", "HiringPath": "student;graduates"},
+    "parttime": {"LocationName": "Philadelphia, Pennsylvania", "Radius": "25", "ResultsPerPage": "500", "Fields": "Full", "PositionScheduleTypeCode": "2"},
 }
 USAJOBS_EMAIL = "uaplytechnologies@gmail.com"   # USAJOBS wants the email the key was requested with as the User-Agent (feed_keys.usajobs_email, else owner_copy, else this)
 
@@ -214,7 +230,7 @@ _disk = {"loaded": False, "dirty": False, "filled": False}   # filled: a saved l
 _load_lock = threading.Lock()
 hide_errors = False                # serve.py sets this on a hosted server: the public job list then says "unavailable right now" instead of a raw network error
 DISK_MAX_AGE = 24 * 3600          # never trust a saved copy older than a day
-CACHE_VERSION = 9               # raise this whenever the rules for keeping or classifying postings change: older saved copies are then ignored
+CACHE_VERSION = 10              # raise this whenever the rules for keeping or classifying postings change: older saved copies are then ignored
 
 
 def _cache_file():
@@ -281,15 +297,16 @@ FEED_PARALLEL = 3                    # boards read and parsed at the same time. 
 _feed_slots = threading.BoundedSemaphore(FEED_PARALLEL)
 
 
-def _get(url, headers=None):
-    req = urllib.request.Request(url, headers=dict({"User-Agent": UA, "Accept": "application/json"}, **(headers or {})))
+def _get(url, headers=None, as_text=False):
+    """One feed answer, parsed as JSON (or the plain text with as_text=True), refused past MAX_FEED_BYTES."""
+    req = urllib.request.Request(url, headers=dict({"User-Agent": UA, "Accept": "text/plain" if as_text else "application/json"}, **(headers or {})))
     with urllib.request.urlopen(req, timeout=20) as r:
         body = r.read(MAX_FEED_BYTES + 1)
     if len(body) > MAX_FEED_BYTES:
         raise ValueError("the answer is larger than %d MB" % (MAX_FEED_BYTES // 1000000))
     text = body.decode("utf-8", "replace")
     del body                              # the bytes go before the parse starts: one copy fewer of a board held at the peak
-    return json.loads(text)
+    return text if as_text else json.loads(text)
 
 
 KEY_RE = re.compile(r"^[A-Za-z0-9+/=_.-]{16,200}$")      # what a feed's API key looks like (USAJOBS: about 44 letters, digits, + / =)
@@ -414,14 +431,14 @@ def _iter_raw(kind, token, name):
             yield dict(id=j["id"], title=j["title"], company=j.get("company_name") or name,
                        loc=(j.get("location") or {}).get("name", ""), remote=None,
                        text=_text(j.get("content")), url=j["absolute_url"], salary_text="",
-                       posted=_ts(j.get("first_published") or j.get("updated_at")), updated=_ts(j.get("updated_at")))
+                       posted=_ts(j.get("first_published") or j.get("updated_at")), updated=_ts(j.get("updated_at")), emp=_gh_emp(j))
     elif kind == "lever":
         for j in _get("https://api.lever.co/v0/postings/%s?mode=json" % token):
             cat = j.get("categories") or {}
             yield dict(id=j["id"], title=j["text"], company=name, loc=cat.get("location", "") or "",
                        remote=(j.get("workplaceType") == "remote") or None,
                        text=_text((j.get("descriptionPlain") or "") + " " + (j.get("additionalPlain") or "")),
-                       url=j["hostedUrl"], salary_text="", posted=_ts(j.get("createdAt")))
+                       url=j["hostedUrl"], salary_text="", posted=_ts(j.get("createdAt")), emp=cat.get("commitment"))
     elif kind == "ashby":
         for j in _get("https://api.ashbyhq.com/posting-api/job-board/%s" % token).get("jobs", []):
             if j.get("isListed") is False:
@@ -429,7 +446,7 @@ def _iter_raw(kind, token, name):
             yield dict(id=j["id"], title=j["title"], company=name, loc=j.get("location", "") or "",
                        remote=bool(j.get("isRemote")) or j.get("workplaceType") == "Remote" or None,
                        text=_text(j.get("descriptionPlain") or j.get("descriptionHtml")),
-                       url=j["jobUrl"], salary_text="", posted=_ts(j.get("publishedAt")))
+                       url=j["jobUrl"], salary_text="", posted=_ts(j.get("publishedAt")), emp=j.get("employmentType"))
     elif kind == "workable":
         # Workable's public jobs feed (no key): https://www.workable.com/api/accounts/{subdomain}?details=true lists the account's published jobs
         # with their descriptions (help.workable.com/hc/en-us/articles/115012771647, "Build a custom careers page using Workable's API"). It may
@@ -442,7 +459,7 @@ def _iter_raw(kind, token, name):
             loc = loc or ", ".join(x for x in (j.get("city"), j.get("state"), j.get("country")) if x)      # one place per posting in older replies
             yield dict(id=j["shortcode"], title=j["title"], company=name, loc=loc, remote=True if j.get("telecommuting") is True else None,
                        text=_text(j.get("description") or "") + " " + _text(j.get("requirements") or ""), url=j.get("url") or j.get("shortlink") or "",
-                       salary_text="", posted=_ts(j.get("published_on") or j.get("created_at")),
+                       salary_text="", posted=_ts(j.get("published_on") or j.get("created_at")), emp=j.get("employment_type"),
                        force_type="parttime" if re.search(r"part", j.get("employment_type") or "", re.I) else
                                   ("internship" if re.search(r"intern", j.get("employment_type") or "", re.I) else None))
     elif kind == "remotive":
@@ -452,7 +469,7 @@ def _iter_raw(kind, token, name):
                 continue
             yield dict(id=j["id"], title=j["title"], company=j["company_name"], loc="Remote (%s)" % loc, remote=True,
                        text=_text(j.get("description")) + " " + " ".join(j.get("tags") or []),
-                       url=j["url"], salary_text=j.get("salary") or "", posted=_ts(j.get("publication_date")))
+                       url=j["url"], salary_text=j.get("salary") or "", posted=_ts(j.get("publication_date")), emp=j.get("job_type"))
     elif kind == "jobicy":
         data = _get("https://jobicy.com/api/v2/remote-jobs?count=30&geo=usa&industry=%s" % token)
         for j in data.get("jobs", []):
@@ -464,7 +481,7 @@ def _iter_raw(kind, token, name):
             yield dict(id=j["id"], title=j["jobTitle"], company=j["companyName"],
                        loc="Remote (%s)" % re.sub(r"\s+", " ", j.get("jobGeo") or "USA").strip(), remote=True,
                        text=_text(j.get("jobDescription")), url=j["url"], salary_text="", sal=sal,
-                       posted=_ts(j.get("pubDate")),
+                       posted=_ts(j.get("pubDate")), emp=j.get("jobType"),
                        fallback=(j.get("jobIndustry") or [None])[0])
     elif kind == "muse":
         key = feed_keys().get("muse")         # registered key (The Muse: required beyond testing; 3,600 requests an hour instead of 500)
@@ -478,8 +495,47 @@ def _iter_raw(kind, token, name):
                 yield dict(id=j["id"], title=j["name"], company=j["company"]["name"], loc=loc or "Not listed",
                            remote=any(re.search("remote|flexible", l, re.I) for l in locs) or None,
                            text=_text(j.get("contents")), url=j["refs"]["landing_page"], salary_text="",
-                           fallback=cats[0] if cats else None, posted=_ts(j.get("publication_date")),
+                           fallback=cats[0] if cats else None, posted=_ts(j.get("publication_date")), emp=j.get("levels"),
                            force_type="internship" if token == "Internship" else None)
+    elif kind == "himalayas":
+        # https://himalayas.app/api : link to the job on Himalayas, use applicationLink unchanged, show only on our own app, remove expired jobs
+        now = time.time()
+        for page in (1, 2, 3):
+            data = _get("https://himalayas.app/jobs/api/search?country=%s&page=%d" % (urllib.parse.quote(token, safe=""), page))
+            for j in data.get("jobs") or []:
+                if not isinstance(j, dict) or not j.get("title") or not str(j.get("guid") or "").startswith("https://himalayas.app/"):
+                    continue
+                if isinstance(j.get("expiryDate"), (int, float)) and j["expiryDate"] < now:
+                    continue
+                where = [c for c in (j.get("locationRestrictions") or []) if isinstance(c, str)]
+                if where and not any(re.search(r"United States|\bUSA?\b", c) for c in where):
+                    continue
+                sal = None
+                lo, hi = j.get("minSalary"), j.get("maxSalary")
+                if j.get("currency") == "USD" and j.get("salaryPeriod") in ("annual", "yearly") and isinstance(lo, (int, float)) \
+                        and isinstance(hi, (int, float)) and 20000 <= lo < hi <= 600000:
+                    sal = [int(lo), int(hi)]
+                link = j.get("applicationLink") if str(j.get("applicationLink") or "").startswith("https://") else j["guid"]
+                yield dict(id=j["guid"], title=j["title"], company=j.get("companyName") or "Himalayas", loc="Remote (%s)" % (", ".join(where[:3]) or "Worldwide"),
+                           remote=True, text=_text(j.get("description") or j.get("excerpt")), url=link, salary_text="", sal=sal,
+                           posted=_ts(j.get("pubDate")), emp=j.get("employmentType"),
+                           fallback=next((c.replace("-", " ") for c in (j.get("categories") or []) if isinstance(c, str)), None))
+    elif kind == "remoteok":
+        # https://remoteok.com/api : the first entry is the legal notice (link back to the job on Remote OK, name Remote OK as the source)
+        for j in _get("https://remoteok.com/api")[1:]:
+            if not isinstance(j, dict) or not j.get("position") or not str(j.get("url") or "").lower().startswith("https://remoteok.com/"):
+                continue
+            sal = None
+            lo, hi = j.get("salary_min"), j.get("salary_max")
+            if isinstance(lo, (int, float)) and isinstance(hi, (int, float)) and 20000 <= lo < hi <= 600000:
+                sal = [int(lo), int(hi)]
+            yield dict(id=j.get("id") or j["url"], title=j["position"], company=j.get("company") or "Remote OK",
+                       loc="Remote" + (" (%s)" % j["location"] if j.get("location") else ""), remote=True,
+                       text=_text(j.get("description")) + " " + " ".join(t for t in (j.get("tags") or []) if isinstance(t, str)),
+                       url="https://remoteok.com/" + str(j["url"]).split("/", 3)[3], salary_text="", sal=sal,
+                       posted=_ts(j.get("date")), fallback=next((t for t in (j.get("tags") or []) if isinstance(t, str)), None))
+    elif kind == "simplify":
+        yield from _simplify(token, name)
     elif kind == "usajobs":
         yield from _usajobs(token)
     elif kind == "smartrecruiters":
@@ -555,7 +611,7 @@ def _smartrecruiters(token, name):
         out.append(dict(id=p["id"], title=(p.get("name") or "").strip(), company=(p.get("company") or {}).get("name") or name,
                         loc=loc or "Not listed", remote=True if L.get("remote") else None,
                         text=_text(text) or (p.get("name") or ""), url="https://jobs.smartrecruiters.com/%s/%s" % (token, p["id"]),
-                        salary_text="", sal=sal, posted=_ts(p.get("releasedDate")), fallback=fallback, force_type=force,
+                        salary_text="", sal=sal, posted=_ts(p.get("releasedDate")), fallback=fallback, force_type=force, emp=kind_label,
                         ats_id=str(p.get("uuid") or "")))     # the Application API addresses a posting by its uuid, not by its number
     return [r for r in out if r["title"]]
 
@@ -607,7 +663,8 @@ def _usajobs(token):
                         text=_text(" ".join(x for x in (det.get("JobSummary"), duties, d.get("QualificationSummary")) if isinstance(x, str))),
                         url=(apply_uri[0] if apply_uri else d.get("PositionURI") or ""), announcement=d.get("PositionURI") or "",
                         salary_text=sal_text, sal=sal, posted=_ts(re.sub(r"\.\d+$", "", str(d.get("PublicationStartDate") or ""))), fallback=cats[0] if cats else None,
-                        force_type="internship" if intern else ("parttime" if re.search(r"part[- ]time", sched, re.I) else None)))
+                        force_type="internship" if intern else None,
+                        emp=(sched + " " + " ".join(s.get("Name", "") for s in d.get("PositionOfferingType") or [] if isinstance(s, dict) and s.get("Name") == "Temporary")).strip()))
     return out
 
 
@@ -650,14 +707,72 @@ def _same_job_key(j):
     return (_norm(_CO_SUFFIX.sub(" ", (j.get("co") or "").lower())), _norm(j.get("role")), _norm(j.get("loc")))
 
 
+# Job type (jobType on every job): one of these six. The feed's own field is read first; the title (and, for part-time, the start of
+# the text) is the fallback. "Full-time" is what most hiring systems fill in by default, interns included, so a title that says
+# intern, co-op, part-time, contract, seasonal or temporary wins over a plain "Full-time" field.
+JOB_TYPES = ("full-time", "part-time", "internship", "co-op", "contract", "temporary")
+LEGACY_TYPE = {"internship": "internship", "co-op": "coop", "part-time": "parttime"}     # the older `type` field (the service tabs); anything else is "job"
+FORCE_TO_JOBTYPE = {"internship": "internship", "coop": "co-op", "parttime": "part-time"}
+TITLE_TYPES = [("co-op", re.compile(r"\bco-?op\b", re.I)),
+               ("internship", re.compile(r"\binterns?\b|\binternships?\b", re.I)),
+               ("part-time", re.compile(r"\bpart[- ]time\b", re.I)),
+               ("temporary", re.compile(r"\bseasonal\b|\btemporary\b|\(temp\)|\btemp\s*[-–—:]", re.I)),
+               # "Contract Manager" is a full-time job about contracts: only a bracketed or trailing "Contract", 1099 or contract-to-hire counts
+               ("contract", re.compile(r"\((?:[^)]*[\s,/])?contract(?:or)?(?:[\s,/][^)]*)?\)|[-–—:,|]\s*contract(?:or)?\s*$|\b1099\b|\bcontract[- ]to[- ]hire\b", re.I))]
+
+
+def _gh_emp(j):
+    """Greenhouse has no standard employment-type field; many employers add one as a custom field ("Employment Type", "Time Type")."""
+    for m in j.get("metadata") or []:
+        if isinstance(m, dict) and re.search(r"employ|job type|time type|worker type|schedule|commitment", str(m.get("name") or ""), re.I):
+            return m.get("value") if isinstance(m.get("value"), (str, list)) else ""
+    return ""
+
+
+def _emp_type(v):
+    """A feed's own employment-type value (Lever "Intern", Ashby "PartTime", SmartRecruiters "Full-time", USAJOBS "Part-time Temporary",
+    Himalayas "Contractor" ...) as one of JOB_TYPES, or "" when it says nothing usable."""
+    if isinstance(v, (list, tuple)):
+        v = " ".join(str(x.get("name") or x.get("label") or "") if isinstance(x, dict) else str(x) for x in v)
+    s = re.sub(r"[_\s]+", " ", re.sub(r"([a-z])([A-Z])", r"\1 \2", str(v or ""))).lower()
+    for t, rx in (("co-op", r"\bco ?-?op\b"), ("internship", r"\bintern"), ("part-time", r"\bpart\b|\bpart-time\b|\bparttime\b"),
+                  ("contract", r"\bcontract|\bfreelance"), ("temporary", r"\btemp|\bseasonal|\bintermittent"), ("full-time", r"\bfull|\bpermanent|\bregular")):
+        if re.search(rx, s):
+            return t
+    return ""
+
+
+def _job_type(raw):
+    """One of JOB_TYPES for a raw posting: a type the feed forced (USAJOBS Pathways, The Muse's Internship level), then the feed's own
+    field, then the title, then "part-time" near the start of the text, then the list's own kind (an internship list), else full-time."""
+    forced = FORCE_TO_JOBTYPE.get(raw.get("force_type") or "")
+    if forced:
+        return forced
+    feed = _emp_type(raw.get("emp"))
+    title = raw.get("title") or ""
+    by_title = next((t for t, rx in TITLE_TYPES if rx.search(title)), "")
+    if by_title in ("internship", "co-op"):              # interns are often entered as temporary or contract workers: the title says what it is
+        return "co-op" if feed == "co-op" else by_title
+    if feed and feed != "full-time":
+        return feed
+    if by_title:
+        return by_title
+    if feed == "full-time":
+        return "full-time"
+    if re.search(r"part[- ]time", (raw.get("text") or "")[:400], re.I):
+        return "part-time"
+    return raw.get("default_type") or "full-time"
+
+
 def _type(raw):
-    """internship, coop, parttime or job, from the title (and the start of the text for part-time). Cheap, so it is known before the costly part."""
-    t = raw["title"].lower()
-    return raw.get("force_type") or ("internship" if re.search(r"\bintern(ship)?\b", t) else ("coop" if re.search(r"co-?op\b", t) else
-                                     ("parttime" if re.search(r"part[- ]time", t + " " + raw["text"][:400], re.I) else "job")))
+    """The older type field (internship, coop, parttime or job) the service tabs use, from _job_type. Cheap, so it is known before the costly part."""
+    return LEGACY_TYPE.get(_job_type(raw), "job")
 
 
 def _normalize(raw, kind, name, board=None):
+    list_credit = raw.get("list_credit")
+    if list_credit:                                     # a Simplify / Pitt CSC row: it is the employer's own posting, read from its own board
+        kind, board, name = raw["ats_kind"], raw["board"], raw["company"]
     title, loc, text = raw["title"], raw["loc"], raw["text"]
     remote = raw["remote"] if raw["remote"] is not None else bool(re.search(r"\bremote\b", loc, re.I))
     if not _us_ok(loc, remote):
@@ -683,14 +798,15 @@ def _normalize(raw, kind, name, board=None):
     else:
         return None
     mode = "remote" if remote else ("hybrid" if re.search(r"hybrid", loc + " " + text[:600], re.I) else "onsite")
-    typ = _type(raw)
+    jtype = _job_type(raw)
+    typ = LEGACY_TYPE.get(jtype, "job")
     m = YRS_RE.search(text)
     yrs = min(int(m.group(1)), 15) if m else 0
     edu = "Bachelor" if re.search(r"bachelor|\bB\.?S\.? degree", text, re.I) else "High school"
     blurb = text[:170].rsplit(" ", 1)[0] + "…" if len(text) > 170 else text
     desc = _role_summary(text)                                                    # what the emails show about the job
     jid = 100000 + int(hashlib.sha1(("%s:%s" % (kind, raw["id"])).encode()).hexdigest()[:6], 16)
-    src = name if kind in ("remotive", "jobicy", "muse", "usajobs") else "%s's careers page" % raw["company"]
+    src = name if kind in ("remotive", "jobicy", "muse", "usajobs", "himalayas", "remoteok") else "%s's careers page" % raw["company"]
     # Where this posting lives in the employer's own hiring system. It is only an address (not a credential): it is used when, and only when, the
     # employer has connected with their own key (see ats_connections); otherwise it is never used and apply stays "link".
     # Ashby: the job board's own posting id is the jobPostingId its API takes. SmartRecruiters: the posting's uuid (see _smartrecruiters).
@@ -699,12 +815,12 @@ def _normalize(raw, kind, name, board=None):
     # contact is deliberately empty and apply is "link": a third-party feed never gets an application emailed to anyone
     out = dict(id=jid, co=raw["company"], role=title, loc=_place(loc, mode), mode=mode,
                sal=raw.get("sal") or _salary(raw["salary_text"], text), yrs=yrs, edu=edu, skills=skills, blurb=blurb, desc=desc,
-               type=typ, url=raw["url"], source=src, contact="", apply="link", live=True, ats=ats,
+               type=typ, jobType=jtype, url=raw["url"], source=src, contact="", apply="link", live=True, ats=ats,
                posted=raw.get("posted", 0), perks=_perks(text), comm=bool(COMM_RE.search(text)))
     if (raw.get("updated") or 0) > (raw.get("posted") or 0):
         out["updated"] = raw["updated"]                           # Greenhouse: the employer touched the posting after first publishing it
     # Credit every feed, on the card ("via ...") and in the application record ("credit"): each free feed asks for it, and an employer board is the employer's own
-    out["via"] = VIA.get(kind, "%s").replace("%s", name)
+    out["via"] = VIA.get(kind, "%s").replace("%s", name) + (", listed by " + list_credit if list_credit else "")
     out["credit"] = "via USAJOBS; apply on the official announcement" if kind == "usajobs" else "via " + out["via"]
     if (raw.get("announcement") or "").startswith("https://"):
         out["announcement"] = raw["announcement"]                 # USAJOBS: the official announcement, kept next to the apply link
@@ -808,6 +924,113 @@ def _load_source(src):
         c = _cache.get(src)
         f = _failed.get(src)
     return (c["jobs"], c["status"]) if c else ([], f[1] if f else "loading")
+
+
+# ---------- the Simplify / Pitt CSC internship lists (GitHub) ----------
+SIMPLIFY_REPO = "https://raw.githubusercontent.com/SimplifyJobs/Summer2027-Internships/dev/"
+SIMPLIFY_CHECK_TTL = 24 * 3600         # each listed posting is read from its own board at most once a day
+# The apply links UAply can check on the employer's own public board, and the board API address each one is read from. The pieces are
+# matched strictly (letters, digits, - _ . and numeric or uuid ids) and only ever put into these fixed API hosts: a list row can never
+# make the server fetch an address of its choosing.
+SIMPLIFY_ATS = [
+    ("greenhouse", re.compile(r"^https://(?:job-)?boards\.greenhouse\.io/([A-Za-z0-9_-]{1,80})/jobs/(\d{1,20})(?:[/?#]|$)"),
+     "https://boards-api.greenhouse.io/v1/boards/%s/jobs/%s"),
+    ("lever", re.compile(r"^https://jobs\.lever\.co/([A-Za-z0-9_.-]{1,80})/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:[/?#]|$)"),
+     "https://api.lever.co/v0/postings/%s/%s?mode=json"),
+    ("smartrecruiters", re.compile(r"^https://jobs\.smartrecruiters\.com/([A-Za-z0-9_-]{1,80})/(\d{6,20})(?:[-/?#]|$)"),
+     "https://api.smartrecruiters.com/v1/companies/%s/postings/%s"),
+]
+_simplify_checked = {}                 # (kind, board, posting id) -> {"at", "raw"}: raw is None when the posting is gone from its board
+
+
+def _simplify_rows(text):
+    """The open rows of one README table: (company, title, location, apply link, age in days). A row marked closed (a lock) or with no
+    apply link is left out; a company cell of "↳" repeats the company above."""
+    rows, company = [], ""
+    for tr in re.findall(r"<tr>(.*?)</tr>", text, re.S):
+        cells = re.findall(r"<td>(.*?)</td>", tr, re.S)
+        if len(cells) < 5:
+            continue
+        name = _text(cells[0]).replace("\U0001f525", "").strip()
+        company = company if name in ("↳", "") else name
+        if "\U0001f512" in tr:
+            continue
+        # the summer list has 5 columns, the off-season one 6 (a Terms column): the apply cell is the one with the Apply button, the age is last
+        apply_cell = next((c for c in cells if 'alt="Apply"' in c), "")
+        link = re.search(r'<a href="(https://[^"]+)"', apply_cell)
+        age = re.match(r"\s*(\d+)\s*(d|mo)\b", _text(cells[-1]))
+        if not link or not age or not company:
+            continue
+        days = int(age.group(1)) * (30 if age.group(2) == "mo" else 1)
+        place = "; ".join(p for p in (_text(x).strip() for x in re.split(r"<br\s*/?>|</br>", re.sub(r"<summary>.*?</summary>", "", cells[2], flags=re.S))) if p)
+        rows.append((company, _text(cells[1]).strip(), place, html.unescape(link.group(1)).split("?", 1)[0], days))
+    return rows
+
+
+def _simplify_check(kind, board, pid, api):
+    """The posting as its own board shows it (a raw posting), or None when the board no longer has it. Cached for SIMPLIFY_CHECK_TTL."""
+    key = (kind, board, pid)
+    with _lock:
+        c = _simplify_checked.get(key)
+    if c and time.time() - c["at"] < SIMPLIFY_CHECK_TTL:
+        return c["raw"]
+    raw = None
+    try:
+        j = _get(api % (urllib.parse.quote(board, safe=""), urllib.parse.quote(pid, safe="")))
+        if kind == "greenhouse" and isinstance(j, dict) and j.get("id"):
+            raw = dict(id=j["id"], title=j.get("title") or "", company=j.get("company_name") or "", loc=(j.get("location") or {}).get("name", ""),
+                       remote=None, text=_text(j.get("content")), url=j.get("absolute_url") or "", salary_text="",
+                       posted=_ts(j.get("first_published") or j.get("updated_at")), updated=_ts(j.get("updated_at")), emp=_gh_emp(j))
+        elif kind == "lever" and isinstance(j, dict) and j.get("id"):
+            cat = j.get("categories") or {}
+            raw = dict(id=j["id"], title=j.get("text") or "", company="", loc=cat.get("location", "") or "", remote=(j.get("workplaceType") == "remote") or None,
+                       text=_text((j.get("descriptionPlain") or "") + " " + (j.get("additionalPlain") or "")), url=j.get("hostedUrl") or "",
+                       salary_text="", posted=_ts(j.get("createdAt")), emp=cat.get("commitment"))
+        elif kind == "smartrecruiters" and isinstance(j, dict) and j.get("id") and j.get("active") is not False:
+            L = j.get("location") or {}
+            secs = ((j.get("jobAd") or {}).get("sections")) or {}
+            raw = dict(id=j["id"], title=j.get("name") or "", company=(j.get("company") or {}).get("name") or "",
+                       loc=", ".join(x for x in (L.get("city"), L.get("region"), (L.get("country") or "").upper()) if x), remote=True if L.get("remote") else None,
+                       text=_text(" ".join((secs.get(k) or {}).get("text") or "" for k in ("jobDescription", "qualifications", "additionalInformation"))),
+                       url="https://jobs.smartrecruiters.com/%s/%s" % (board, j["id"]), salary_text="", posted=_ts(j.get("releasedDate")),
+                       emp=((j.get("typeOfEmployment") or {}).get("label") or ""), ats_id=str(j.get("uuid") or ""))
+        ok = True
+    except urllib.error.HTTPError as e:
+        ok = e.code in (404, 410)              # gone from the board: remembered as gone; any other error is tried again next time
+    except Exception:
+        ok = False
+    if ok:
+        with _lock:
+            _simplify_checked[key] = {"at": time.time(), "raw": raw}
+    return raw
+
+
+def _simplify(token, name):
+    """Open, recent (60 days at most), US rows of one Simplify / Pitt CSC README whose apply link is a Greenhouse, Lever or SmartRecruiters
+    posting, each read from that board (newest rows first, at most KEEP["simplify"] checks). Rows on other systems cannot be checked and
+    are left out. The README is plain text (about 1-2 MB): parsed and dropped before any check starts."""
+    text = _get(SIMPLIFY_REPO + token, as_text=True)
+    rows = _simplify_rows(text)
+    del text
+    todo, seen = [], set()
+    for company, title, place, link, days in sorted(rows, key=lambda r: r[4]):
+        if days > MAX_AGE_DAYS or not _us_ok(place, bool(re.search(r"\bremote\b", place, re.I))):
+            continue
+        for kind, rx, api in SIMPLIFY_ATS:
+            m = rx.match(link)
+            if m and (kind, m.group(1), m.group(2)) not in seen:
+                seen.add((kind, m.group(1), m.group(2)))
+                todo.append((company, kind, m.group(1), m.group(2), api))
+                break
+        if len(todo) >= KEEP["simplify"]:
+            break
+    with ThreadPoolExecutor(max_workers=4) as ex:                # four at a time, as for SmartRecruiters
+        found = list(ex.map(lambda t: _simplify_check(t[1], t[2], t[3], t[4]), todo))
+    default = "internship" if token == "README.md" else None     # the summer list is internships only; the off-season one mixes co-ops in
+    for (company, kind, board, pid, _), raw in zip(todo, found):
+        if raw and raw["title"] and raw["url"].startswith("https://"):
+            yield dict(raw, company=raw["company"] or company, ats_kind=kind, board=board, list_credit=name,
+                       default_type=default or ("co-op" if re.search(r"\bco-?op\b", raw["title"], re.I) else "internship"))
 
 
 def _fetch_source(src):

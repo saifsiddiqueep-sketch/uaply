@@ -33,6 +33,10 @@ simulated payments (paid plans appear only once live Stripe keys are set, sectio
    not shown (`jobs_api.MAX_AGE_DAYS`); every job carries `postedDays` (and `updatedDays` when the board gives an update date). The same
    job reached through two different feeds (same company, title and place, ignoring case, punctuation and Inc/LLC/Corp) is shown once, the
    employer's own board winning. Each employer board keeps up to 14 roles plus up to 10 more in Pennsylvania (`LOCAL_PER_SOURCE`).
+   **Job types and more sources:** every job carries `jobType` (full-time, part-time, internship, co-op, contract, temporary; the
+   Filters screen has a Job type row). More kinds, each off until named in `UAPLY_FEEDS`: `simplify` (the Simplify / Pitt CSC
+   internship and co-op lists, each row checked on the employer's own board), `himalayas` and `remoteok` (remote jobs, credited and
+   linked back). The full list of sources, their terms, and the free keys to request: `docs/job-sources.md`.
 6. **Legal pages:** fill every yellow blank in `legal/` (company legal name, street address, contact and privacy email, launch date,
    DMCA agent, liability amount, governing state and county, how long records are kept, host, response time) and have a lawyer
    review them. They say "draft, not reviewed by a lawyer" until you do.

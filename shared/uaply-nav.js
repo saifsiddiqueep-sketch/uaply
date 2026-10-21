@@ -43,7 +43,7 @@ function patch(s){
   s=once(s,'salary:num($("pSalary").value,0,10000000),loc:$("pLoc").value.trim(),','salary:num($("pSalary").value,0,10000000),loc:$("pLoc").value.trim(),email:($("pEmail")?$("pEmail").value.trim():""),');
   s=once(s,'$("pSalary").value=p.salary;$("pLoc").value=p.loc;','$("pSalary").value=p.salary;$("pLoc").value=p.loc;if($("pEmail"))$("pEmail").value=X?"":(p.email||"");if(X){$("pSkills").value="";$("pSalary").value="";$("pLoc").value=""}');
   s=once(s,'title:S.profile.title||""};','title:S.profile.title||"",st:"applied"};');
-  s=once(s,"<span>'+cap(j.mode)+'</span>","<span>'+cap(j.mode)+'</span>'+(j.type&&j.type!==\"job\"?'<span>'+({internship:\"Internship\",coop:\"Co-op\",parttime:\"Part-time\"}[j.type]||\"Job\")+'</span>':'')+(j.live?(j.instant?'<span class=\"inst\">Apply instantly</span>':'<span class=\"ext\">Opens employer site</span>'):'')+(j.live&&j.via?'<span class=\"via\">via '+esc(j.via)+'</span>':'')+'");
+  s=once(s,"<span>'+cap(j.mode)+'</span>","<span>'+cap(j.mode)+'</span>'+(j.jobType?'<span>'+({\"full-time\":\"Full-time\",\"part-time\":\"Part-time\",internship:\"Internship\",\"co-op\":\"Co-op\",contract:\"Contract\",temporary:\"Temporary\"}[j.jobType]||\"\")+'</span>':(j.type&&j.type!==\"job\"?'<span>'+({internship:\"Internship\",coop:\"Co-op\",parttime:\"Part-time\"}[j.type]||\"Job\")+'</span>':''))+(j.live?(j.instant?'<span class=\"inst\">Apply instantly</span>':'<span class=\"ext\">Opens employer site</span>'):'')+(j.live&&j.via?'<span class=\"via\">via '+esc(j.via)+'</span>':'')+'");
   /* target titles count toward the match score: Title 15 points, Skills 30, Experience 15 (the total stays 100) */
   s=once(s,'{k:"Skills",w:40,','{k:"Skills",w:30,');
   s=once(s,'{k:"Experience",w:20,','{k:"Experience",w:15,');
@@ -611,10 +611,17 @@ function apply(w,host){
     gender:["","Male","Female","Non-binary","Prefer not to say"]
   };
   var MILES=["any","10","20","50","100"],POSTED=["any","24h","7d","30d"];
+  /* Job type filter (Filters screen): the six types the server gives each job as jobType; a job without one (an employer's own posting,
+     an example) counts by its older type. Picking a type also opens the service tab it lives in. */
+  var JT=[["all","All"],["full-time","Full-time"],["part-time","Part-time"],["internship","Internship"],["co-op","Co-op"],["contract","Contract"]],
+      JT_KEYS=JT.map(function(x){return x[0]}),JT_TAB={"full-time":"job",contract:"job","part-time":"parttime",internship:"internship","co-op":"coop"};
+  function jobTypeOf(j){return j.jobType||({internship:"internship",coop:"co-op",parttime:"part-time"}[j.type])||"full-time"}
+  w.__uaplyJobTypeOf=jobTypeOf;
   function cleanF(a){
     a.fPerks=Array.isArray(a.fPerks)?a.fPerks.filter(function(k){return PERK_KEYS.indexOf(k)>-1}).slice(0,PERKS.length):[];
     if(!(MILES.indexOf(String(a.fMiles))>-1||(NEAR&&/^(0|[1-9]\d?|100)$/.test(String(a.fMiles))&&+a.fMiles%5===0)))a.fMiles="any";a.fMiles=String(a.fMiles);
     if(POSTED.indexOf(a.fPosted)<0)a.fPosted="any";
+    if(JT_KEYS.indexOf(a.fJt)<0)a.fJt="all";
     a.fApp=!!a.fApp;a.fInstant=!!a.fInstant;a.fStrict=!!a.fStrict;a.fAuto=!!a.fAuto;a.fTitleOnly=!!a.fTitleOnly;a.fNoComm=!!a.fNoComm;a.fEdu=!!a.fEdu;a.fWs=a.fWs!==false;
     var seen={};
     a.titles=(Array.isArray(a.titles)?a.titles:[]).filter(function(t){return typeof t==="string"}).map(function(t){return t.trim().replace(/\s+/g," ").slice(0,60)}).filter(function(t){var k=t.toLowerCase();if(!t||seen[k])return false;seen[k]=1;return true}).slice(0,4);
@@ -628,7 +635,7 @@ function apply(w,host){
     return a;
   }
   var DAY=864e5,DATA_URL=/^data:[\w\/+.\-]+;base64,[A-Za-z0-9+\/=]+$/,URL_OK=/^https?:\/\//i;
-  function defAcct(){return {phone:"",linkedin:"",portfolio:"",summary:"",auth:"",notice:"",cover:"",resumeName:"",resumeSize:0,resumeData:"",plan:"trial",since:Date.now(),renews:0,canceled:false,enforce:false,pay:[],apps:{},fSal:false,fYrs:"any",fCo:"",fKw:"",fPosted:"any",fApp:false,fPerks:[],fMiles:"any",fStrict:false,fAuto:false,titles:[],fTitleOnly:true,fNoComm:false,fLevels:[],fEdu:false,fWs:true,eeo:{auth:"",sponsor:"",veteran:"",hisp:"",race:[],disability:"",gender:""},addr:{street:"",unit:"",state:"",zip:""},resumeUrl:""}}
+  function defAcct(){return {phone:"",linkedin:"",portfolio:"",summary:"",auth:"",notice:"",cover:"",resumeName:"",resumeSize:0,resumeData:"",plan:"trial",since:Date.now(),renews:0,canceled:false,enforce:false,pay:[],apps:{},fSal:false,fYrs:"any",fCo:"",fKw:"",fPosted:"any",fApp:false,fPerks:[],fMiles:"any",fStrict:false,fAuto:false,titles:[],fTitleOnly:true,fNoComm:false,fLevels:[],fEdu:false,fWs:true,fJt:"all",eeo:{auth:"",sponsor:"",veteran:"",hisp:"",race:[],disability:"",gender:""},addr:{street:"",unit:"",state:"",zip:""},resumeUrl:""}}
   function loadA(){
     var a=defAcct();
     try{var r=JSON.parse(w.localStorage.getItem(AK));if(r&&typeof r==="object"){Object.keys(a).forEach(function(k){if(r[k]!==undefined&&typeof r[k]===typeof a[k])a[k]=r[k]})}}catch(e){}
@@ -853,6 +860,7 @@ function apply(w,host){
       var lim={"24h":DAY,"7d":7*DAY,"30d":30*DAY}[acct.fPosted];
       if(!j.posted){if(strict)return true}else if(now-j.posted>lim)return true;
     }
+    if(acct.fJt&&acct.fJt!=="all"&&jobTypeOf(j)!==acct.fJt)return true;
     if(acct.fInstant&&!j.instant)return true;           /* only jobs where swipe right really sends the application */
     if(acct.fApp){
       if(j.applicants==null){if(strict)return true}else if(j.applicants>=10)return true;
@@ -1109,7 +1117,9 @@ function apply(w,host){
   /* filters: posted date, applicants, distance, benefits */
   (function(){
     var f=d.createElement("div");f.className="field";f.id="fMeta";
-    f.innerHTML='<label for="fPosted">Posted</label><select id="fPosted"><option value="any">Any time</option><option value="24h">Past 24 hours</option><option value="7d">Past week</option><option value="30d">Past month</option></select>'+
+    f.innerHTML='<span class="l" id="fJtL">Job type</span><div class="filters" id="fJt" role="group" aria-labelledby="fJtL" style="flex-wrap:wrap">'+
+      JT.map(function(x){return '<button type="button" data-jt="'+x[0]+'" style="flex:1 1 30%">'+x[1]+'</button>'}).join("")+'</div><small>Picking a type opens the tab it belongs to.</small>'+
+      '<label for="fPosted" style="margin-top:8px;display:block">Posted</label><select id="fPosted"><option value="any">Any time</option><option value="24h">Past 24 hours</option><option value="7d">Past week</option><option value="30d">Past month</option></select>'+
       '<div class="checks" style="margin-top:8px"><label><input type="checkbox" id="fApp"> Under 10 applicants</label><label><input type="checkbox" id="fInstant"> Only jobs I can apply to instantly</label></div><small id="fAppNote">Applicant counts come from UAply. Listings from outside feeds do not have one yet.</small>'+
       (NEAR?'<div id="fMilesWrap" class="nearbox"><label for="fMiles">Commute distance</label><input type="range" id="fMiles" min="0" max="105" step="5" value="105" aria-describedby="fMilesV"><div class="rngrow"><b id="fMilesV" aria-live="polite"></b><span class="m">Left end: remote only. Right end: any distance.</span></div><small id="fMilesNote"></small><div id="fLoc"><small id="fLocState"></small><button type="button" class="btn ghost" id="fLocBtn">Use my location</button></div></div>'
         :'<div id="fMilesWrap"><label for="fMiles">Distance from your city</label><select id="fMiles"><option value="any">Any distance</option><option value="10">Within 10 miles</option><option value="20">Within 20 miles</option><option value="50">Within 50 miles</option><option value="100">Within 100 miles</option></select><small id="fMilesNote"></small></div>')+
@@ -1130,6 +1140,7 @@ function apply(w,host){
     function sync(){
       d.getElementById("fPosted").value=acct.fPosted;d.getElementById("fApp").checked=acct.fApp;d.getElementById("fInstant").checked=acct.fInstant;d.getElementById("fMiles").value=NEAR?(acct.fMiles==="any"?105:+acct.fMiles):acct.fMiles;d.getElementById("fStrict").checked=acct.fStrict;d.getElementById("fTitleOnly").checked=acct.fTitleOnly;d.getElementById("fWsPick").checked=acct.fWs;d.getElementById("fNoComm").checked=acct.fNoComm;
       d.getElementById("fCommWrap").hidden=!isSales();
+      f.querySelectorAll("[data-jt]").forEach(function(b){b.setAttribute("aria-pressed",b.getAttribute("data-jt")===(acct.fJt||"all")?"true":"false")});
       f.querySelectorAll("[data-lvl]").forEach(function(c){c.checked=acct.fLevels.indexOf(c.getAttribute("data-lvl"))>-1});
       f.querySelectorAll("[data-perk]").forEach(function(c){c.checked=acct.fPerks.indexOf(c.getAttribute("data-perk"))>-1});
       d.getElementById("fPerksSum").textContent="Benefits"+(acct.fPerks.length?" ("+acct.fPerks.length+" selected)":"");
@@ -1164,8 +1175,13 @@ function apply(w,host){
       });
     }
     f.addEventListener("change",changed);
+    f.querySelectorAll("[data-jt]").forEach(function(b){b.addEventListener("click",function(){
+      acct.fJt=b.getAttribute("data-jt");cleanF(acct);saveA();
+      var tab=JT_TAB[acct.fJt];if(tab&&label("svc",tab)&&tab!==sub.svc){sub.svc=tab;A.setType(tab);savePrefs()}
+      A.renderAll();sync();
+    })});
     d.getElementById("fClear").onclick=function(){
-      acct.fPosted="any";acct.fApp=false;acct.fInstant=false;acct.fPerks=[];acct.fMiles="any";acct.fStrict=false;acct.fTitleOnly=false;acct.fWs=false;acct.fNoComm=false;acct.fLevels=[];acct.fEdu=false;acct.fSal=false;acct.fYrs="any";acct.fCo="";acct.fKw="";
+      acct.fPosted="any";acct.fJt="all";acct.fApp=false;acct.fInstant=false;acct.fPerks=[];acct.fMiles="any";acct.fStrict=false;acct.fTitleOnly=false;acct.fWs=false;acct.fNoComm=false;acct.fLevels=[];acct.fEdu=false;acct.fSal=false;acct.fYrs="any";acct.fCo="";acct.fKw="";
       saveA();A.setMin(0);A.setFilter("all");A.renderAll();sync();if(w.__uaplySyncPrefsBase)w.__uaplySyncPrefsBase();savePrefs();syncFilters();
     };
     var base=w.__uaplySyncPrefs;w.__uaplySyncPrefsBase=base;
