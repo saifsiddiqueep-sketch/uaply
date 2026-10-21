@@ -35,7 +35,7 @@ function patch(s){
   /* every real listing names its source and links to the original; example listings say they are examples */
   s=once(s,"<p class=\"blurb\">'+esc(j.blurb)+'</p>","<p class=\"blurb\">'+esc(j.blurb)+'</p>'+(j.url?'<button type=\"button\" class=\"linkbtn\" data-open=\"'+esc(j.url)+'\">View original posting ↗</button>':'')+(j.live?'<small class=\"note\">Source: '+esc(j.source||'the employer')+'</small>':'<small class=\"note\">Example listing, not a real opening.</small>')+'");
   s=once(s,'toast(dir==="applied"?"Applied to "+job.co+" · "+m.pct+"% match":"Passed on "+job.co,"Undo",undo);',
-    'if(dir==="applied"&&(job.live||window.__uaplyMode==="test")&&window.__uaplyQuiet&&window.__uaplySubmitOn){}else if(dir==="applied"&&job.url&&!window.__uaplyOnApplied){toast("Saved "+job.co+" · "+m.pct+"% match. Finish on their site.","Open",function(){window.__uaplyOpen(job.url)})}else{toast(dir==="applied"?"Saved "+job.co+" to Applied · "+m.pct+"% match"+(window.__uaplyPreview&&window.__uaplyPreview()?". "+window.__uaplyPreviewText:""):"Passed on "+job.co,"Undo",undo)}');
+    'if(dir==="applied"&&(job.live||window.__uaplyMode==="test")&&window.__uaplyQuiet&&window.__uaplySubmitOn){}else{toast(dir==="applied"?"Saved "+job.co+" to Applied · "+m.pct+"% match"+(window.__uaplyPreview&&window.__uaplyPreview()?". "+window.__uaplyPreviewText:""):"Passed on "+job.co,"Undo",undo)}');
   return s;
 }
 
@@ -265,6 +265,7 @@ function kitApply(w,host){
     if(ms!==0)w.__kitToastT=w.setTimeout(function(){t.remove()},ms||6000);
     return {el:t,set:function(x){s.textContent=x}};
   }
+  w.__uaplyKitToast=toast;
   /* first application only: say plainly what a swipe right does with the person's details, and get agreement */
   var CONSENT_V=2;   /* 2: also explains the optional hiring-manager message and that voluntary answers are never sent */
   function legalBase(){var p=(host&&host.defaultView&&host.defaultView.location.pathname)||"/";return /\/(sandbox|dev)\/(index\.html)?$/.test(p)?"../legal/":"legal/"}   /* the hosted copies live at /dev/ and /sandbox/, with legal/ beside them */
@@ -291,7 +292,7 @@ function kitApply(w,host){
     o.style.cssText="position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.45);overflow:auto";
     o.innerHTML='<div role="dialog" aria-modal="true" aria-labelledby="kcH" style="background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:20px;max-width:460px;width:100%;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:10px;font-size:14px">'+
       '<h2 id="kcH" style="margin:0;font:800 20px var(--display)">'+(consentFirst?"Before you start swiping":"Before your first application")+'</h2>'+
-      '<p style="margin:0">When you swipe right, UAply applies for you. It sends the details in your profile (your name, email, and anything else you filled in, such as phone, resume file or link, education or work authorization) to the employer, plus a short message if you turned on "Message the hiring manager", but only if that employer has agreed to receive applications through UAply. Otherwise it sends you to the employer\'s own application page. UAply never emails a company that has not agreed.</p>'+
+      '<p style="margin:0">When you swipe right, UAply applies for you at connected employers: employers that have agreed to receive applications through UAply get the details in your profile (your name, email, and anything else you filled in, such as phone, resume file or link, education or work authorization), plus a short message if you turned on "Message the hiring manager". Everywhere else, UAply sends nothing: it saves the job in Applied and takes you to the employer\'s own application page to finish there. UAply never emails a company that has not agreed.</p>'+
       '<p style="margin:0">Your voluntary answers (such as race, gender, veteran or disability status) are never sent. They stay on your device unless you copy them yourself.</p>'+
       '<p style="margin:0">The match percentage is worked out automatically from your profile to help order jobs. It never rejects you, and employers make every hiring decision. <a href="'+b+'ai-and-employment.html" target="_blank" rel="noopener noreferrer">How matching works</a></p>'+
       '<p style="margin:0">By continuing you confirm you are 18 or older and agree to the <a href="'+b+'terms.html" target="_blank" rel="noopener noreferrer">Terms of Service</a> and <a href="'+b+'privacy.html" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.</p>'+
@@ -578,6 +579,9 @@ function kitApply(w,host){
       delete S.decisions[job.id];var i=S.history?S.history.lastIndexOf(job.id):-1;if(i>-1)S.history.splice(i,1);
       if(save)save();try{w.__uaply.renderAll()}catch(e){}
     }
+    /* Undo on the saved message takes back this job only (the person may have swiped on since); nothing was sent for a hand-off */
+    function undoThis(){revert()}
+    function savedToast(){toast("Saved "+job.co+" to Applied · "+m.pct+"% match","Undo",undoThis,9000)}
     function mark(status,to){var dec=S&&S.decisions&&S.decisions[job.id];if(dec){dec.sent={at:Date.now(),to:to||"",status:status};if(save)save();if(w.__uaplyTrack)w.__uaplyTrack()}}   /* the Applied list, if it is open, shows the new state at once */
     if(!(p.name&&EMAIL.test(p.email||"")&&(!live||p.custom))){
       revert();toast("Add your name and email in Profile setup, under About you, so employers can reply. "+job.co+" is back in your deck.","Open Profile",function(){openProfile("about")},9000);return;
@@ -618,7 +622,7 @@ function kitApply(w,host){
         }
         if(j.status==="duplicate"){             /* sent before (then undone, or from another device): show what happened that time */
           if(j.was)mark(j.was,j.to);
-          if(j.was==="handoff"){toast("Already in Applied, not sent yet: "+job.co+" takes applications on its own site.",job.url?"Finish now":"",function(){if(w.__uaplyOpen)w.__uaplyOpen(job.url)},12000);return}
+          if(j.was==="handoff"){if(!retry)savedToast();return}      /* a hand-off swiped again: quiet, the Applied row has the links */
         }
         else mark(j.status,j.to);
         var cp=receiptNote(j),pl=j.plan;
@@ -626,7 +630,7 @@ function kitApply(w,host){
         if(j.status==="delivered_test")toast("Applied to "+job.co+" (test)."+auto+cp,"","",9000);
         else if(j.status==="sent")toast("Applied to "+job.co+"."+auto+cp,"","",9000);
         else if(j.status==="duplicate")toast("Already applied to "+job.co+".");
-        else if(j.status==="handoff")toast("Not sent yet: "+job.co+" takes applications on its own site. It is in Applied, ready to finish."+cp,job.url?"Finish now":"",function(){if(w.__uaplyOpen)w.__uaplyOpen(job.url)},12000);
+        else if(j.status==="handoff"){if(!retry&&!deliver.waiting)savedToast()}        /* quiet: no "finish on their site" interruption; Applied shows the links */
         else if(j.status==="failed")toast(j.error||"The application could not be sent.","Try again",deliver,9000);
         else toast("Done.");
       }).catch(function(){

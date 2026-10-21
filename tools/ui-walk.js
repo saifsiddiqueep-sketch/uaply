@@ -11,6 +11,8 @@
 //    password change that reaches a restarting server (502) says so, and a failed sign-out never claims "Signed out."
 // 7. help: an answer that did not help offers "Talk to a person" at once
 // 8. the one-tap rating question goes away when the person taps anything else (a tap meant for a menu landed on its "3")
+// 9. a right swipe on a hand-off job is quiet ("Saved X to Applied · N% match" with Undo, never "Finish on their site"); Applied shows the
+//    status chip, See the job posting and Finish applying on their site, which copies only name, email, phone and links and tags Greenhouse/Lever links
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -37,6 +39,16 @@ module.exports = async ({ ev, sleep, nav, send, logs, on }) => {
     await send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] }); await sleep(900); return true;
   };
 
+  // a right swipe that must land: if the card did not go (a card still settling, a message over it), say what was under the finger and try once more
+  const swipeRight = async (id) => {
+    for (let i = 0; i < 2; i++) {
+      await sleep(700);
+      await swipe(240);
+      if (await waitFor("return !!w.__uaply.S.decisions[" + id + "]", 3000) === true) return true;
+      console.log("     swipe " + (i + 1) + " did not take; under the finger: " + await q("const c=d.querySelector('.card.top');if(!c)return 'no card';const r=c.getBoundingClientRect();const e=d.elementFromPoint(r.left+r.width/2,r.top+r.height/2-60);return e?(e.id||e.className||e.tagName):'nothing'"));
+    }
+    return false;
+  };
   await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
   await send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
   await send("Network.enable");
@@ -174,6 +186,65 @@ module.exports = async ({ ev, sleep, nav, send, logs, on }) => {
   check("8. a tap on the Dashboard tab closes the rating question", (await q("return d.getElementById('uaNudge').hidden")) === true);
   const menuOpen = await q("return [...d.querySelectorAll('.nitem')].some(b=>b.offsetParent&&b.getAttribute('data-v')==='applied')");
   check("8. ...and the Dashboard menu opens for the next tap", menuOpen === true, menuOpen);
+
+  // 9. quiet swipe (Oct 20): a right swipe on a job that takes applications on its own site never interrupts with "Finish on their
+  //    site"; the message is the short "Saved X to Applied · N% match" with Undo, and the Applied row carries the status and both links
+  //    (the walk above restored a backup with no email, so the applicant's details are set again first)
+  await q("const p=w.__uaply.S.profile;p.name='Walk Tester';p.email='walk.tester@example.com';p.custom=true;w.__uaply.save();return 1");
+  await tap("d.getElementById('nb-svc')"); await sleep(300);
+  await tap("[...d.querySelectorAll('.nitem')].find(b=>b.offsetParent&&b.getAttribute('data-v')==='job')");
+  await waitFor("return d.querySelector('.card.top h2')&&!d.getElementById('main').hidden", 8000);
+  const job9 = await q("const c=d.querySelector('.card.top');return c?JSON.stringify({id:+c.getAttribute('data-id'),co:c.querySelector('.chead p').textContent.trim()}):''");
+  const j9 = job9 ? JSON.parse(job9) : {};
+  await q("w.__walkToasts=[];new w.MutationObserver(()=>{const t=d.getElementById('kitToast')||d.querySelector('.toast');if(t&&t.innerText)w.__walkToasts.push(t.innerText.replace(/\\s+/g,' '))}).observe(d.body,{childList:true,subtree:true,characterData:true});return 1");
+  await swipeRight(j9.id);
+  const st9 = await waitFor("const x=w.__uaply.S.decisions[" + j9.id + "];return x&&x.sent&&x.sent.status?x.sent.status:''", 8000);
+  await sleep(600);
+  const toasts9 = JSON.parse(await q("return JSON.stringify(w.__walkToasts)") || "[]");
+  check("9. the swiped job is a hand-off (the server says it takes applications on its own site)", st9 === "handoff", st9 + " " + JSON.stringify(j9));
+  check("9. no message after the swipe says 'Finish on their site' or 'Not sent yet'", toasts9.length > 0 && !toasts9.some((t) => /finish on their site|not sent yet|finish now/i.test(t)), JSON.stringify(toasts9));
+  check("9. the message is the short 'Saved <company> to Applied · N% match' with Undo", toasts9.some((t) => /^Saved .+ to Applied · \d+% match ?Undo$/.test(t)), JSON.stringify(toasts9));
+  await menu("nb-dash", "applied"); await sleep(500);
+  const row9 = await q("const b=d.querySelector('#track [data-finish=\"" + j9.id + "\"]')||d.querySelector('[data-finish=\"" + j9.id + "\"]');const r=b&&b.closest('.row');if(!r)return '';return JSON.stringify({txt:r.innerText.replace(/\\s+/g,' '),chip:(r.querySelector('.stchip')||{}).textContent||'',links:[...r.querySelectorAll('.joblinks .linkbtn')].map(x=>x.innerText.trim()),open:(r.querySelector('[data-open]')||{getAttribute:()=>''}).getAttribute('data-open'),url:(w.__uaply.JOBS.find(j=>j.id===" + j9.id + ")||{}).url})");
+  const r9 = row9 ? JSON.parse(row9) : {};
+  check("9. Applied shows the row with both links: See the job posting, Finish applying on their site", JSON.stringify(r9.links) === JSON.stringify(["See the job posting ↗", "Finish applying on their site ↗"]), row9);
+  check("9. ...the status chip says Finish on their site", r9.chip === "Finish on their site", row9);
+  check("9. ...See the job posting opens the job's own address", !!r9.url && r9.open === r9.url, row9);
+  // Finish applying: copies only name, email, phone and links (never voluntary answers or the resume) and opens a tagged link
+  // the profile has a phone, a LinkedIn link and a resume link; only the first two may be copied. The clipboard is allowed here, so the
+  // real copy is read back (a browser that blocks it gets no message and no error: that path is the try/catch in finishOnSite)
+  await q("const p=w.__uaply.S.profile;p.ext=Object.assign({},p.ext,{phone:'(215) 555-0100',linkedin:'https://www.linkedin.com/in/walk',resume:'https://drive.example.com/cv.pdf'});w.__uaply.save();return 1");
+  await send("Browser.grantPermissions", { origin: BASE, permissions: ["clipboardReadWrite", "clipboardSanitizedWrite"] });
+  await send("Emulation.setFocusEmulationEnabled", { enabled: true });
+  await q("w.__walkOpened=[];const o=w.__uaplyOpen;w.__uaplyOpen=function(u){w.__walkOpened.push(u)};w.__walkOpen0=o;return 1");
+  await tap("d.querySelector('[data-finish=\"" + j9.id + "\"]')");
+  const copied9 = await waitFor("const t=d.getElementById('kitToast');return t&&/Profile copied, paste it into their form/.test(t.innerText)?t.innerText:''", 4000);
+  check("9. Finish applying shows 'Profile copied, paste it into their form'", /Profile copied, paste it into their form/.test(copied9 || ""), copied9);
+  const clip9 = await ev("document.querySelector('iframe').contentWindow.navigator.clipboard.readText().catch(e=>'READ FAILED '+e.message)");
+  check("9. ...and the clipboard holds Name, Email, Phone and LinkedIn", /^Name: Walk Tester\r?\nEmail: walk\.tester@example\.com\r?\nPhone: \(215\) 555-0100\r?\nLinkedIn: https:\/\/www\.linkedin\.com\/in\/walk$/.test(clip9), JSON.stringify(clip9));
+  check("9. ...never the resume link, voluntary answers, race, gender, veteran or disability", !/resume|cv\.pdf|race|gender|veteran|disab|ethnic|hispanic/i.test(clip9), JSON.stringify(clip9));
+  const opened = JSON.parse(await q("return JSON.stringify(w.__walkOpened)") || "[]");
+  const want9 = (r9.url || "").replace(/^(https:\/\/[^/]*greenhouse\.io\/[^#]*)$/, (m) => m + (m.includes("?") ? "&" : "?") + "gh_src=uaply").replace(/^(https:\/\/[^/]*lever\.co\/[^#]*)$/, (m) => m + (m.includes("?") ? "&" : "?") + "lever-source=uaply");
+  check("9. Finish applying on their site opens the employer's page (tagged only on Greenhouse and Lever)", opened.length === 1 && opened[0] === want9, JSON.stringify(opened) + " wanted " + want9);
+  const tag9 = JSON.parse(await q("return JSON.stringify([w.__uaplyHandoffURL('https://job-boards.greenhouse.io/acme/jobs/1'),w.__uaplyHandoffURL('https://jobs.lever.co/acme/abc?x=1'),w.__uaplyHandoffURL('https://jobs.ashbyhq.com/acme/1'),w.__uaplyHandoffURL('https://evilgreenhouse.io.example.com/j')])"));
+  check("9. source tags: ?gh_src=uaply on Greenhouse, lever-source=uaply on Lever, nothing on any other site", tag9[0].endsWith("?gh_src=uaply") && tag9[1].endsWith("?x=1&lever-source=uaply") && tag9[2] === "https://jobs.ashbyhq.com/acme/1" && !/uaply/.test(tag9[3]), JSON.stringify(tag9));
+  const pre9 = await q("return w.__uaplyPrefillText()");
+  check("9. the copied profile block has name, email and phone", /^Name: Walk Tester\nEmail: walk\.tester@example\.com\nPhone: /.test(pre9), JSON.stringify(pre9));
+  check("9. ...and never the resume, voluntary answers, race, gender, veteran or disability", !/resume|cv\.pdf|race|gender|veteran|disab|ethnic|hispanic/i.test(pre9), JSON.stringify(pre9));
+  // Undo stays: a second right swipe, then Undo on its message, puts that job back in the deck and out of Applied
+  await q("w.__uaplyOpen=w.__walkOpen0;return 1");
+  await tap("d.getElementById('nb-svc')"); await sleep(300);
+  await tap("[...d.querySelectorAll('.nitem')].find(b=>b.offsetParent&&b.getAttribute('data-v')==='job')");
+  await waitFor("return d.querySelector('.card.top h2')", 8000);
+  const id10 = await q("const c=d.querySelector('.card.top');return c?+c.getAttribute('data-id'):0");
+  await swipeRight(id10);
+  await waitFor("const x=w.__uaply.S.decisions[" + id10 + "];return x&&x.sent&&x.sent.status", 8000);
+  const undo = await waitFor("const t=d.getElementById('kitToast');const b=t&&[...t.querySelectorAll('button')].find(x=>x.textContent==='Undo');return b?'yes':''", 4000);
+  if (undo) await tap("[...d.getElementById('kitToast').querySelectorAll('button')].find(x=>x.textContent==='Undo')");
+  if (undo && await q("return !!w.__uaply.S.decisions[" + id10 + "]") === true) console.log("     WARN Undo tap did not take, pressing it with a click instead; under the finger: " + await q("const b=[...(d.getElementById('kitToast')||d).querySelectorAll('button')].find(x=>x.textContent==='Undo');if(b)setTimeout(()=>b.click(),0);return 'see next'") + ";");
+  await sleep(600);
+  check("9. Undo on the saved message takes that job back (no longer in Applied, back among the jobs to swipe, as Undo always did)", undo === "yes" && (await q("return !w.__uaply.S.decisions[" + id10 + "]&&w.__uaply.S.history.indexOf(" + id10 + ")<0")) === true, "undo button " + undo + ", decision " + (await q("return JSON.stringify(w.__uaply.S.decisions[" + id10 + "]||null)")) + ", top " + (await q("return (d.querySelector('.card.top')||{getAttribute:()=>0}).getAttribute('data-id')")) + " want " + id10);
+
 
   const errs = logs.filter((l) => l.startsWith("EXC"));
   check("no script errors", errs.length === 0, errs.slice(0, 3).join(" | "));

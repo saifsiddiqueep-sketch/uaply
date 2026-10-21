@@ -55,10 +55,10 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
     await walk("signed out, email employer", ID["Mail Co|Marketing Intern"], 2500, /Applied to Mail Co \(test\)\. Sign in to get a confirmation email/, /Sent to hr@mailco\.example \(test, nothing reached Mail Co\)/);
     await boot(true);
     await walk("Greenhouse partner", ID["GH Partner|Robotics Intern"], 3000, /Applied to GH Partner \(test\)\. UAply filled in \d+ of \d+ answers\. Confirmation is in the test inbox/, /Sent to GH Partner hiring system \(test, nothing reached GH Partner\)/);
-    await walk("public Greenhouse posting in dev (hand-off)", ID["Discord|Data Intern"], 3000, /Not sent yet: Discord takes applications on its own site/, /Not sent yet: Discord takes applications on its own site\. Finish on their site/);
+    await walk("public Greenhouse posting in dev (hand-off)", ID["Discord|Data Intern"], 3000, /^Saved Discord to Applied · \d+% match ?Undo$/, /Finish on their site Not sent yet: Discord takes applications on its own site\. See the job posting ↗ Finish applying on their site ↗/);   // quiet swipe (Oct 20): no "finish on their site" message
     // a job saved on this device that the server no longer lists
     await ev(FW + ".__uaplyJobs.add([{id:4242425,live:true,co:'Vanished Co',role:'Gone Intern',loc:'Philadelphia, PA',mode:'onsite',type:'internship',sal:[0,0],yrs:0,edu:'High school',skills:['Python'],blurb:'Gone.',url:'https://boards.greenhouse.io/vanished/jobs/9',source:\"Vanished Co's careers page\"}])");
-    await walk("a job no longer in the feed", 4242425, 2500, /Not sent yet: Vanished Co takes applications on its own site/, /Not sent yet/);
+    await walk("a job no longer in the feed", 4242425, 2500, /^Saved Vanished Co to Applied · \d+% match ?Undo$/, /Finish on their site Not sent yet: Vanished Co takes applications on its own site\. See the job posting ↗ Finish applying on their site ↗/);
     // a question only the person can answer is asked once, then it goes
     await swipe(ID["GH Partner|Odd Question Role"]); await sleep(2500);
     const ask = await ev("(()=>{const o=" + F + ".getElementById('kitAsk');return o?o.innerText.replace(/\\s+/g,' ').slice(0,200):''})()");
@@ -85,7 +85,7 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
     await sleep(31000);
     const t3 = await toast(), r3 = await row(ID["Link Co|Barista"]);
     say("server back | toast", t3); say("server back | row", r3);
-    check("when the server answers again it is sent by itself, without a reload", /Not sent yet: Link Co takes applications/.test(t3) && /Not sent yet: Link Co takes applications/.test(r3), t3 + " / " + r3);
+    check("when the server answers again it is sent by itself, without a reload (quietly: the row changes, no new message)", !/Link Co/.test(t3) && /Finish on their site Not sent yet: Link Co takes applications/.test(r3), t3 + " / " + r3);
     // the device goes offline, then online
     await send("Network.enable");
     await send("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
@@ -125,7 +125,7 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
     await sleep(8000);
     check("...and when it fails again, the row still says not sent", /Not sent: UAply could not deliver it to Dropbox/.test(await row(broken)));
     await walk("live, Greenhouse partner", ID["GH Partner|Robotics Intern"], 9000, /Applied to GH Partner\. UAply filled in/, /Application sent to GH Partner/);
-    await walk("live, public Greenhouse posting (hand-off)", ID["Discord|Data Intern"], 4000, /Not sent yet: Discord takes applications on its own site/, /Not sent yet/);
+    await walk("live, public Greenhouse posting (hand-off)", ID["Discord|Data Intern"], 4000, /^Saved Discord to Applied · \d+% match ?Undo$/, /Finish on their site Not sent yet: Discord takes applications on its own site\. See the job posting ↗ Finish applying on their site ↗/);
   }
   if (SRV === "sbtest") {
     await boot(true);
