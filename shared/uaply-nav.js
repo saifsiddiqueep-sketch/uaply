@@ -134,6 +134,11 @@ body{padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
 .mchip.m-remote{background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);border-color:transparent}
 .mchip.m-hybrid{background:color-mix(in srgb,var(--accent2) 18%,transparent);color:var(--ink);border-color:transparent}
 .mchip.m-onsite{background:var(--bg);color:var(--muted)}
+.stchip{display:inline-block;margin:4px 0 0;padding:2px 9px;border-radius:999px;font:600 11px var(--mono,inherit);white-space:nowrap;border:1px solid var(--line);background:var(--bg);color:var(--muted);width:max-content}
+.stchip.st-sent,.stchip.st-accepted{background:color-mix(in srgb,#1f9d55 16%,transparent);color:#1b7a44;border-color:transparent}
+.stchip.st-finish{background:color-mix(in srgb,var(--accent2) 18%,transparent);color:var(--ink);border-color:transparent}
+.stchip.st-interview{background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);border-color:transparent}
+.joblinks{display:flex;flex-wrap:wrap;gap:0 14px;margin-top:2px}.joblinks .linkbtn{font-size:13.5px;text-align:left}
 #aEeo{display:block;border-top:1px solid var(--line);padding-top:6px}
 #aElig{display:flex;flex-direction:column;gap:10px}
 #tBox{display:flex;flex-direction:column;gap:8px}
@@ -419,7 +424,7 @@ function apply(w,host){
     interview:[["accepted","Accepted"],["rejected","Rejected"],["applied","Back to applied"],["withdraw","Withdraw"]]
   };
   var EMPTY={
-    applied:"No applications waiting. Swipe right on a job, internship or co-op to apply.",
+    applied:"No applications yet. Swipe right on a job, internship or co-op: UAply applies for you at connected employers and takes you to the employer\'s page everywhere else.",
     accepted:"Nothing here yet. Tap Accepted on an application when you get an offer.",
     rejected:"Nothing here. Tap Rejected on an application when you hear back.",
     interview:"Nothing here yet. Tap Interview on an application when a company invites you."
@@ -436,7 +441,7 @@ function apply(w,host){
       var x=o.x.sent,e=A.esc;if(!x)return "";
       if(x.status==="sent")return '<small class="sent ok">Application sent to '+e(x.to||o.j.co)+'</small>';
       if(x.status==="delivered_test")return '<small class="sent ok">Sent to '+e((x.to||"the test inbox").replace(/ \(simulated\)$/,""))+' (test, nothing reached '+e(o.j.co)+')</small>';
-      if(x.status==="handoff")return '<small class="sent todo">Not sent yet: '+e(o.j.co)+' takes applications on its own site. '+(o.j.url?'<button type="button" class="linkbtn" data-open="'+e(o.j.url)+'">Finish on their site ↗</button>':'')+'</small>';
+      if(x.status==="handoff")return '<small class="sent todo">Not sent yet: '+e(o.j.co)+' takes applications on its own site.</small>';
       if(x.status==="pending")return '<small class="sent todo">Waiting to send: UAply sends it as soon as the connection is back.</small>';
       /* nothing reached the employer: say so, with a way to try again (the same as swiping right on it again) */
       var again='<button type="button" class="linkbtn" data-act="resend" data-id="'+o.j.id+'">';
@@ -444,12 +449,28 @@ function apply(w,host){
       if(x.status==="needs_answers")return '<small class="sent todo">Not sent yet: '+e(o.j.co)+'\'s form asks something only you can answer. '+again+'Answer now</button></small>';
       return "";
     }
+    /* what the row is at a glance: the tracking stage once the person set one, otherwise what happened to the application */
+    function isHandoff(o){var x=o.x.sent;return !x||x.status==="handoff"}     /* nothing was sent (no server said so): finish on their site */
+    function stChip(o){
+      var st=o.x.st,x=o.x.sent,k,t;
+      if(st==="interview"){k="interview";t="Interview"}else if(st==="accepted"){k="accepted";t="Accepted"}else if(st==="rejected"){k="rejected";t="Rejected"}
+      else if(x&&x.status==="sent"){k="sent";t="Sent"}else if(x&&x.status==="delivered_test"){k="sent";t="Sent (test)"}
+      else if(x&&x.status==="pending"){k="wait";t="Waiting to send"}else if(x&&x.status==="failed"){k="wait";t="Not sent"}
+      else if(x&&x.status==="needs_answers"){k="wait";t="Needs an answer"}else{k="finish";t="Finish on their site"}
+      return '<span class="stchip st-'+k+'">'+t+'</span>';
+    }
+    /* two separate actions on a hand-off (a later version can make "Finish applying" a prefilled link); a sent application only links the posting */
+    function jobLinks(o){
+      var e=A.esc,u=o.j.url;if(!u||!/^https:\/\//.test(u))return "";
+      return '<span class="joblinks"><button type="button" class="linkbtn" data-open="'+e(u)+'">See the job posting ↗</button>'+
+        (isHandoff(o)?'<button type="button" class="linkbtn" data-finish="'+o.j.id+'">Finish applying on their site ↗</button>':'')+'</span>';
+    }
     w.__uaplyTrack=function(){if(!tp.hidden)renderTrack()};   /* called when an application's state changes while the list is open */
     function row(o,acts,view){
       var t=A.tone(o.x.pct),e=A.esc;
       return '<div class="row"><div class="logo" aria-hidden="true" style="background:hsl('+A.hue(o.j.id)+' 60% 46%)">'+e(o.j.co.charAt(0))+'</div><div class="info"><b>'+e(o.j.role)+'</b>'+modeChip(o.j)+'<small>'+e(o.j.co)+' · '+e(o.j.loc)+' · '+TYPE_LABEL[o.j.type||"job"]+'</small>'+
         (view!=="passed"?'<small>Applied '+new Date(o.x.at).toLocaleDateString(undefined,{month:"short",day:"numeric"})+'</small>':'')+
-        detLine(o,view)+sentLine(o)+'</div><span class="pill tone-'+t+'">'+o.x.pct+'%</span>'+
+        detLine(o,view)+(view!=="passed"?stChip(o):'')+sentLine(o)+(view!=="passed"?jobLinks(o):'')+'</div><span class="pill tone-'+t+'">'+o.x.pct+'%</span>'+
         '<div class="acts">'+extraActs(o,acts,view).map(function(a,i){return '<button type="button" class="btn'+(i?' ghost':'')+'" data-act="'+a[0]+'" data-id="'+o.j.id+'" aria-label="'+a[1]+': '+e(o.j.role)+' at '+e(o.j.co)+'">'+a[1]+'</button>'}).join("")+'</div>'+(OPEN[o.j.id]&&view!=="passed"?detForm(o,view):"")+'</div>';
     }
     var v=sub.dash;
@@ -465,7 +486,33 @@ function apply(w,host){
     }
     tp.innerHTML=h;
   }
+  /* a source tag on Greenhouse and Lever links only, added as text so the rest of the address stays exactly as the employer wrote it */
+  function handoffURL(u){
+    try{
+      var h=new w.URL(u).hostname.toLowerCase(),k=/(^|\.)greenhouse\.io$/.test(h)?"gh_src":/(^|\.)lever\.co$/.test(h)?"lever-source":"";
+      if(!k||new RegExp("[?&]"+k+"=").test(u.split("#")[0]))return u;
+      var i=u.indexOf("#"),base=i<0?u:u.slice(0,i),hash=i<0?"":u.slice(i);
+      return base+(base.indexOf("?")<0?"?":(/[?&]$/.test(base)?"":"&"))+k+"=uaply"+hash;
+    }catch(e){return u}
+  }
+  function prefillText(){
+    var p=A.S.profile||{},x={};
+    try{x=(w.__uaplyApplyExt?w.__uaplyApplyExt():(p.ext||{}))||{}}catch(e){x={}}
+    var rows=[["Name",p.name],["Email",p.email],["Phone",x.phone],["LinkedIn",x.linkedin],["Portfolio",x.portfolio]];   /* only these five */
+    if(!p.custom)return "";                                            /* the example profile is never copied */
+    return rows.filter(function(r){return typeof r[1]==="string"&&r[1].trim()}).map(function(r){return r[0]+": "+r[1].trim()}).join("\n");
+  }
+  w.__uaplyPrefillText=prefillText;   /* for the browser test */
+  function finishOnSite(id){
+    var j=A.JOBS.filter(function(x){return x.id===id})[0];if(!j||!j.url||!/^https:\/\//.test(j.url))return;
+    var t=prefillText();
+    if(t){try{var c=w.navigator.clipboard;if(c&&c.writeText)c.writeText(t).then(function(){if(w.__uaplyKitToast)w.__uaplyKitToast("Profile copied, paste it into their form","","",5000)},function(){})}catch(e){}}   /* blocked: say nothing */
+    if(w.__uaplyOpen)w.__uaplyOpen(handoffURL(j.url));
+  }
+  w.__uaplyHandoffURL=handoffURL;
   tp.addEventListener("click",function(e){
+    var fb=e.target.closest("[data-finish]");
+    if(fb){finishOnSite(+fb.getAttribute("data-finish"));return}
     var b=e.target.closest("[data-act]");if(!b)return;
     var id=+b.getAttribute("data-id"),act=b.getAttribute("data-act"),x=A.S.decisions[id];if(!x)return;
     if(act==="open"){
@@ -921,7 +968,7 @@ function apply(w,host){
     var r=acts.slice(),id=o.j.id;
     if(v!=="passed")r.push(["details",OPEN[id]?"Hide details":"Details"]);
     if(v==="interview"&&ap(id).when)r.push(["ics","Add to calendar"]);
-    if(o.j.url)r.push(["open","Open posting"]);
+    if(o.j.url&&v==="passed")r.push(["open","Open posting"]);   /* the other lists have See the job posting on the row itself */
     r.push(["share","Share"]);
     return r;
   }
