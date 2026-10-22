@@ -593,10 +593,26 @@ function apply(w,host){
   w.__uaplyAssistMode=assistMode;w.__uaplyAtsOf=atsOf;   /* for the browser test */
   var assistBusy=false;
   function assistedApply(j,AP){
-    var prof=w.__uaplyAssistProfile&&w.__uaplyAssistProfile();if(!prof||assistBusy)return false;
+    var prof=w.__uaplyAssistProfile&&w.__uaplyAssistProfile(j);if(!prof||assistBusy)return false;
     assistBusy=true;var sys=atsOf(j.url);
     Promise.all([w.fetch("/uaply-assist.js").then(function(r){if(!r.ok)throw 0;return r.text()}),w.fetch("/assist-systems.json").then(function(r){return r.ok?r.json():{}}).catch(function(){return {}})]).then(function(r){
-      return AP.open({url:handoffURL(j.url),engine:r[0],profile:prof,job:{co:j.co,role:j.role},system:sys,mode:assistMode(r[1],sys)});
+      var base={url:handoffURL(j.url),engine:r[0],profile:prof,job:{co:j.co,role:j.role},system:sys,mode:assistMode(r[1],sys)};
+      /* the bridge: the app reads the form first (scan, nothing changed) and returns what the profile cannot answer; UAply asks those in
+         its own question box (required first, then the optional ones, which may be left blank), keeps the answers like every question-box
+         answer, and only then opens the form, filled with them. No questions, or a scan that failed: the form opens as it is. */
+      return AP.open(Object.assign({},base,{scan:true})).catch(function(){return null}).then(function(sc){
+        if(sc&&sc.questions===undefined)return {confirmed:false,cancelled:true};   /* the person closed it while the form was being read */
+        var qs=(sc&&sc.questions||[]).filter(function(q){return q&&q.q&&q.kind!=="file"}).slice(0,25);
+        if(!qs.length||!w.__uaplyAskSheet)return AP.open(base);
+        qs.sort(function(a,b){return (b.required?1:0)-(a.required?1:0)});
+        qs=qs.map(function(q){return {q:String(q.q),key:String(q.key||q.q),kind:q.kind||"text",opts:q.opts,optional:!q.required}});
+        var nReq=qs.filter(function(q){return !q.optional}).length;
+        return new Promise(function(done){
+          w.__uaplyAskSheet(j,qs,sc.filled||0,sc.seen||0,function(){done(AP.open(Object.assign({},base,{profile:w.__uaplyAssistProfile(j)||prof})))},function(){done({confirmed:false,cancelled:true})},
+            {lead:j.co+"'s form asks "+(nReq?nReq+" thing"+(nReq===1?"":"s")+" your profile does not have":"a few optional things your profile does not have")+". Answer "+(nReq?"them":"any you like")+" here and UAply puts them in the form, with everything else from your profile; you still review it and tap Submit there. Your answers are saved for the next employer that asks the same thing.",
+             yes:"Continue to "+j.co+"'s form"});
+        });
+      });
     }).then(function(res){
       assistBusy=false;var x=A.S.decisions[j.id];
       if(res&&res.confirmed===true&&x){x.sent={at:Date.now(),to:j.co,status:"sent",via:"assist",page:String(res.url||"").slice(0,300)};A.save();A.renderAll();renderTrack();
@@ -1748,13 +1764,19 @@ function apply(w,host){
   w.__uaplyResume=function(){return acct.resumeData&&DATA_URL.test(acct.resumeData)?{name:acct.resumeName,size:acct.resumeSize,data:acct.resumeData}:null};   /* the file uploaded in Profile setup, Background and links */
   /* assisted apply (phone app, docs/assisted-apply.md): the profile shared/uaply-assist.js fills an employer's form with. Only what the
      person saved in UAply; never the voluntary self-identification answers (acct.eeo holds them next to work authorization, and only
-     authorization and sponsorship are read from it), never pronouns. The example profile is never used. */
-  w.__uaplyAssistProfile=function(){
+     authorization and sponsorship are read from it), never pronouns. The example profile is never used. adult is "yes": the person
+     confirmed they are 18 or older in the first-swipe agreement, which every application goes through. heard is "UAply". */
+  w.__uaplyAssistProfile=function(job){
     var p=A.S.profile||{},x=XV(),ad=acct.addr||{};if(!p.custom)return null;
     var nm=String(p.name||"").trim().split(/\s+/),loc=String(p.loc||"").split(",").map(function(s){return s.trim()});
     var au=x.auth||"",sp=x.sponsor||"",ea=String(authOf()),es=String(sponsorOf());
     var res=w.__uaplyResume(),m=res&&/^data:([^;]+);base64,(.*)$/.exec(res.data);
     var ans={};try{ans=JSON.parse(w.localStorage.getItem((w.__uaplyKey||"uaply")+".answers"))||{}}catch(e){ans={}}
+    /* an answer written for one employer (a cover letter, "why us", anything naming that company) is not put into another one's form:
+       the bridge asks it again there */
+    var asked={};try{asked=JSON.parse(w.localStorage.getItem((w.__uaplyKey||"uaply")+".answersAsked"))||{}}catch(e){asked={}}
+    if(job&&job.co&&ans&&typeof ans==="object")Object.keys(ans).forEach(function(k){var m=asked[k]||{},co=String(m.co||"");if(!co||co===job.co)return;
+      if(/cover letter|^why\b|why (do|would) you (want|like)|interested in (working|joining)|what (makes|draws|attracts) you/i.test(k)||String(ans[k]).toLowerCase().indexOf(co.toLowerCase())>-1)delete ans[k]});
     return {first:nm[0]||"",last:nm.slice(1).join(" "),name:p.name||"",email:p.email||"",phone:phoneOf(),linkedin:linkOf("linkedin"),website:linkOf("portfolio"),
       city:loc[0]||"",state:ad.state||loc[1]||"",zip:ad.zip||"",street:ad.street?ad.street+(ad.unit?" "+ad.unit:""):"",country:x.country||"US",
       company:x.job_end?"":(x.employer||""),title:x.job_end?"":(x.job_title||""),jobStart:x.job_start||"",jobEnd:x.job_end||"",
@@ -1762,7 +1784,7 @@ function apply(w,host){
       auth:au==="citizen"||au==="authorized"||/citizen|authorized to work/i.test(ea)&&!/not/i.test(ea)?"yes":au==="none"||/not currently/i.test(ea)?"no":"",
       sponsor:sp==="yes"||/^yes/i.test(es)?"yes":sp==="no"||/^no/i.test(es)?"no":"",
       start:x.start||acct.notice||"",relocate:x.relocate||"",office:x.office||"",former:x.former||"",govt:x.govt||"",phd:x.phd||"",salary:x.salary||"",
-      summary:summaryOf(),headline:x.headline||"",why:x.why||"",heard:"Job board",answers:ans&&typeof ans==="object"?ans:{},
+      summary:summaryOf(),headline:x.headline||"",why:x.why||"",heard:"UAply",adult:"yes",answers:ans&&typeof ans==="object"?ans:{},
       resume:m?{name:res.name||"resume.pdf",type:m[1],b64:m[2]}:null};
   };
   w.__uaplyMessage=function(job,m,p){

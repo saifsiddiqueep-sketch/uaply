@@ -14,7 +14,7 @@ const PERSON = {
   first: "Sam", last: "Rivera", name: "Sam Rivera", email: "sam.rivera.test@example.com", phone: "215-555-0142",
   linkedin: "https://www.linkedin.com/in/samrivera-test", website: "https://samrivera.example.com", city: "Philadelphia", state: "PA", zip: "19122", country: "US",
   company: "Philly Coffee Co", title: "Shift lead", school: "Temple University", degree: "Bachelor", major: "Communications", grad: "2026-05",
-  auth: "yes", sponsor: "no", start: "now", former: "no", heard: "Job board", why: "I want to bring my customer and writing experience to {company}.",
+  auth: "yes", sponsor: "no", adult: "yes", jobStart: "2023-06", start: "now", former: "no", heard: "UAply", why: "I want to bring my customer and writing experience to {company}.",
   answers: {}, resume: { name: "Sam Rivera resume.pdf", type: "application/pdf", b64: RESUME }
 };
 const DIR = "file:///" + path.join(__dirname, "fixtures", "assist").replace(/\\/g, "/") + "/";
@@ -23,32 +23,38 @@ const CASES = [
   ["greenhouse", "reCAPTCHA",
     [["#first_name", /^Sam$/], ["#last_name", /^Rivera$/], ["#email", /sam\.rivera/], ["#phone", /215-555-0142/], ["input[name=country]", /^United States$/],
      ["input[name=candidate-location]", /^Philadelphia, Pennsylvania/], ["#question_1", /linkedin\.com/], ["#question_2", /samrivera\.example/],
-     ["input[name=question_4]", /^Yes$/], ["input[name=question_5]", /^No$/], ["#question_6", /Example Co|your company/], ["#question_7", /^$/]],
+     ["input[name=question_4]", /^Yes$/], ["input[name=question_5]", /^No$/], ["#question_6", /Example Co|your company/], ["#question_7", /^$/],
+     ["#preferred_name", /^Sam$/], ["#phone_cc", /^1$/], ["#question_3", /^UAply$/], ["#question_9", /^$/], ["#question_10", /^$/],
+     ["#company-name-0", /^Philly Coffee Co$/], ["#title-0", /^Shift lead$/], ["#start-month-0", /^June$/], ["#start-year-0", /^2023$/], ["#current-role-0:checked", /^on$/], ["#end-month-0", /^$/], ["#question_11", /^$/]],
     ["input[name=gender]", "input[name=hispanic_ethnicity]", "input[name=veteran_status]", "input[name=disability_status]"], ["#gdpr"]],
   ["lever", "hCaptcha",
     [["[name=name]", /^Sam Rivera$/], ["[name=email]", /sam\.rivera/], ["[name=phone]", /215/], ["[name=location]", /^Philadelphia, Pennsylvania/],
      ["#selected-location", /Philadelphia/], ["[name=org]", /Philly Coffee/], ["[name='urls[LinkedIn]']", /linkedin/], ["[name='urls[GitHub]']", /^$/],
      ["[name='urls[Portfolio]']", /samrivera\.example/], ["[name='cards[1][field0]']:checked", /^Yes$/], ["[name='cards[1][field1]']:checked", /^No$/],
-     ["[name='cards[1][field3]']", /^$/]],
+     ["[name='cards[1][field3]']", /^$/], ["[name='cards[1][field4]']:checked", /^b$/], ["[name='cards[1][field5]']", /^Other$/], ["[name='cards[1][field6]']", /^UAply$/],
+     ["[name=pronouns]:checked", null], ["[name=useCustomPronoun]:checked", null], ["[name=customPronoun]", /^$/], ["[name='cards[1][field7]']:checked", null]],
     ["[name='eeo[gender]']", "[name='eeo[race]']", "[name='eeo[veteran]']"], ["[name='consent[marketing]']"]],
   ["ashby", "",
     [["#_systemfield_name", /^Sam Rivera$/], ["#_systemfield_email", /sam\.rivera/], ["#_systemfield_phone", /215/], ["#loc", /^Philadelphia, PA/], ["#li", /linkedin/],
-     ["._fieldEntry:nth-of-type(7) [aria-pressed=true]", /^Yes$/], ["._fieldEntry:nth-of-type(8) [aria-pressed=true]", /^No$/], ["#why", /Example Co|your company/], ["#tell", /^$/]],
+     ["._fieldEntry:nth-of-type(7) [aria-pressed=true]", /^Yes$/], ["._fieldEntry:nth-of-type(8) [aria-pressed=true]", /^No$/], ["#why", /Example Co|your company/], ["#tell", /^$/], ["#gradDate", /^2026-05-01$/]],
     [], ["[name=gender_m]", "[name=gender_f]", "[name=gender_d]", "[name=ack]"]],
   ["workable", "Turnstile",
     [["#firstname", /^Sam$/], ["#lastname", /^Rivera$/], ["#email", /sam\.rivera/], ["#phone", /215/], ["#address", /^New Castle/], ["#postcode", /^$/],
-     ["[name=CA_1]:checked", /^true$/], ["[name=CA_2]:checked", /^false$/], ["[name=CA_3]:checked", null], ["[name=CA_4]:checked", /^true$/]],
+     ["[name=CA_1]:checked", /^true$/], ["[name=CA_2]:checked", /^false$/], ["[name=CA_3]:checked", null], ["[name=CA_4]:checked", /^true$/], ["[name=CA_5]:checked", /^true$/], ["#QA_1", /^05\/2026$/]],
     [], ["[name=gdpr]"]],
   ["smartrecruiters", "",
     [["#firstName", /^Sam$/], ["#lastName", /^Rivera$/], ["#email", /sam\.rivera/], ["#confirmEmail", /sam\.rivera/], ["#phoneNumber", /215/], ["#city", /^Philadelphia$/],
-     ["#linkedin", /linkedin/], ["[name=q-auth]:checked", /^v-yes$/], ["#q-spon", /^s-no$/], ["#msg", /^$/]],
+     ["#linkedin", /linkedin/], ["[name=q-auth]:checked", /^v-yes$/], ["#q-spon", /^s-no$/], ["#msg", /^$/],
+     ["#mobile", /^2155550142$/], ["#state", /^Pennsylvania$/], ["#country", /^United States$/], ["#degree", /^Bachelor's Degree$/], ["#gradm", /^May$/], ["#grady", /^2026$/], ["#shift", /^$/]],
     ["#eeo-gender"], ["[name=consent]"]]
 ];
 module.exports = async ({ ev, sleep, send }) => {
   let bad = 0, n = 0;
   const check = (name, ok, extra) => { n++; if (!ok) bad++; console.log((ok ? "PASS " : "FAIL ") + name + (extra ? "  | " + extra : "")); };
   const open = async (sys) => { await send("Page.navigate", { url: DIR + sys + ".html" }); for (let i = 0; i < 20; i++) { await sleep(150); if (await ev("!!window.__mock")) break; } };
-  const fill = async (opts) => JSON.parse(await ev("UAplyAssist.fill(" + JSON.stringify(PERSON) + "," + JSON.stringify(Object.assign({ job: { co: "Example Co", role: "Analyst" } }, opts || {})) + ").then(r=>JSON.stringify(r))"));
+  const fill = async (opts) => { opts = opts || {}; const who = opts.personAnswers ? Object.assign({}, PERSON, { answers: opts.personAnswers }) : PERSON; delete opts.personAnswers;
+    return JSON.parse(await ev("UAplyAssist.fill(" + JSON.stringify(who) + "," + JSON.stringify(Object.assign({ job: { co: "Example Co", role: "Analyst" } }, opts)) + ").then(r=>JSON.stringify(r))")); };
+  const EEOQ = /gender|race|ethnic|hispanic|veteran|disab|pronoun|age range/i;
   const val = (sel) => ev("(()=>{const e=document.querySelector(" + JSON.stringify(sel) + ");if(!e)return null;return e.type==='file'?String(e.files.length):e.tagName==='BUTTON'?e.innerText.trim():(e.value!=null?e.value:e.innerText.trim())})()");
   const mock = async () => JSON.parse(await ev("JSON.stringify(window.__mock)"));
   const table = [];
@@ -90,13 +96,43 @@ module.exports = async ({ ev, sleep, send }) => {
       check(sys + ": after the person's Submit, the thank-you page counts as confirmed", (await ev("typeof UAplyAssist!=='undefined'&&UAplyAssist.confirmed()")) === true);
     }
   }
+  // the "required left" bridge: scan reads the form and changes nothing; it asks the required questions the profile cannot answer (never a
+  // voluntary or consent question); the person's answers, given in UAply's question box, then land in their fields, and nothing required is
+  // left at the form but the consent boxes the person ticks there
+  const BRIDGE = {
+    greenhouse: [["Describe a project you led", "A help center I rebuilt", "#question_8", /^A help center I rebuilt$/]],
+    lever: [["Do you have any relatives employed by Example Co?", "No", "[name='cards[1][field2]']:checked", /^No$/], ["Do you have a current Example Co membership?", "No", "[name='cards[1][field7]']:checked", /^No$/]],
+    ashby: [["Tell us about a project you are proud of", "A help center I rebuilt", "#tell", /^A help center I rebuilt$/]],
+    workable: [["Do you currently have any relatives or friends employed by Example Co?", "NO", "[name=CA_3]:checked", /^false$/]],
+    smartrecruiters: [["Which shift do you prefer?", "Day", "#shift", /^Day$/]]
+  };
+  for (const [sys, items] of Object.entries(BRIDGE)) {
+    await open(sys);
+    await ev(ENGINE);
+    const sc = JSON.parse(await ev("UAplyAssist.scan(" + JSON.stringify(PERSON) + ",{job:{co:'Example Co',role:'Analyst'}}).then(r=>JSON.stringify(r))"));
+    const req = (sc.questions || []).filter((q) => q.required).map((q) => q.q);
+    check(sys + " bridge: the scan asks the required questions the profile cannot answer", items.length === req.length && items.every((it) => req.includes(it[0])), JSON.stringify(req));
+    check(sys + " bridge: no voluntary or consent question is asked", !(sc.questions || []).some((q) => EEOQ.test(q.q) || /consent|acknowledg|privacy notice|i have read/i.test(q.q)), JSON.stringify((sc.questions || []).map((q) => q.q)));
+    check(sys + " bridge: each question comes with its kind (and its choices)", (sc.questions || []).every((q) => q.kind && (q.kind !== "select" || (q.opts && q.opts.length))));
+    const m0 = await mock();
+    const changed = await ev("[...document.querySelectorAll('input:not([type=hidden]):not([type=file]),textarea,select')].filter(e=>e.type==='radio'||e.type==='checkbox'?e.checked:(e.value&&e.defaultValue!==e.value&&!(e.tagName==='SELECT'&&e.selectedIndex===0))).length");
+    check(sys + " bridge: the scan changed nothing on the page", changed === 0 && m0.submits === 0 && m0.submitClicks === 0 && m0.checkTouched === 0 && !(await ev("!!document.getElementById('uaplyAssistBar')")), "changed " + changed + " " + JSON.stringify(m0));
+    const answers = {}; items.forEach((it) => { answers[it[0]] = it[1]; });
+    const r = await fill({ banner: false, personAnswers: answers });
+    for (const it of items) check(sys + " bridge: the person's answer lands: " + it[0], it[3].test(String(await val(it[2]))), "got " + (await val(it[2])));
+    check(sys + " bridge: nothing required left at the form but the consent the person ticks there", r.leftReq - r.consentReq === 0, "leftReq " + r.leftReq + ", required consent " + r.consentReq + ": " + r.left.join(" / "));
+    check(sys + " bridge: answers counted as the person's", r.fromAnswers === items.length, "fromAnswers " + r.fromAnswers);
+  }
+  check("yes/no read from words: 'I will not require sponsorship' is a no", (await ev("UAplyAssist.ynOf('I will not require sponsorship')")) === "no");
+  check("yes/no read from words: 'Yes, I am' is a yes; 'Decline to answer' is neither", (await ev("UAplyAssist.ynOf('Yes, I am')")) === "yes" && (await ev("UAplyAssist.ynOf('Decline to answer')")) === "");
   // labels that share a word with a profile answer but ask something else (all seen on real forms, October 21, 2026)
   const KEYS = [["Why do you want to work at Discord?", "why"], ["Name Pronunciation", null], ["What draws you to mobile design work?", null],
     ["Do you currently hold a right to work status with a limited duration?", null], ["Are you able to work in the United States now and in the future without sponsorship?", "nosponsor"],
     ["If yes, what is the email associated with your membership?", null], ["Do you currently have any relatives or friends employed by Thorlabs?", null],
     ["When did you graduate from High School?", null], ["Portfolio Password or Access Code(s)", null], ["Is there any other context you'd like to share about your U.S. work authorization?", null],
     ["Have you ever been previously employed by Spotify?", "former"], ["Which location are you applying for?", null], ["What is your current City, State, and Zip Code", "csz"],
-    ["Will you now or in the future require visa sponsorship?", "sponsor"], ["Are you legally authorized to work in the United States?", "auth"], ["Current Street Address", "street"]];
+    ["Will you now or in the future require visa sponsorship?", "sponsor"], ["Are you legally authorized to work in the United States?", "auth"], ["Current Street Address", "street"], ["Are you at least 18 years of age?", "adult"], ["Are you over the age of 21?", null],
+    ["Phone country code", "phonecc"], ["Graduation month", "gradmonth"], ["Graduation year", "gradyear"], ["Preferred Name", "first"], ["Can you work without sponsorship?", "nosponsor"]];
   await ev(ENGINE);
   for (const [q, k] of KEYS) { const got = await ev("UAplyAssist.keyOf(" + JSON.stringify(q) + ")"); check("label read as " + (k || "nothing to fill") + ": " + q, got === k, "got " + got); }
   // a page that is not a form and says nothing about an application is not a confirmation
