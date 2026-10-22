@@ -380,6 +380,10 @@ try:
     call("/api/auth/logout", {})
     s, j = call("/api/apply/mark", {"job": JOBS["handoff"]})
     t("limit", "...and signed out it asks to sign in first", s == 401, (s, j))
+    s, j = call("/api/auth/signup", {"email": "not.verified.e2e@example.com", "password": "not verified 99", "agree": True})
+    s2, j2 = call("/api/apply/mark", {"job": JOBS["handoff"], "marked": True})
+    t("limit", "...and an account whose email is not verified yet is asked to verify it first (reminders go only to verified addresses)",
+      (s, s2, j2.get("code")) == (200, 403, "verify"), (s, s2, j2))
 finally:
     for p in procs:
         try:

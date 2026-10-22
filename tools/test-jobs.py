@@ -237,5 +237,87 @@ try:
 finally:
     j.urllib.request.urlopen, j.STREAM_CHUNK = real_open, real_chunk
 
+# ---- the dead-link check opens only public pages and follows redirects only to public ones (October 22 review) ----
+# A stand-in employer site on this computer, reached as if it were the public jobs.acme.example (93.184.216.34): the names are looked up
+# and checked for real; only the final connection to that public address is sent here.
+import http.server  # noqa: E402
+import socket  # noqa: E402
+import threading  # noqa: E402
+
+
+class Site(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        p = self.path
+        if p.startswith("/hop/"):
+            n = int(p.rsplit("/", 1)[1])
+            return self.go("http://jobs.acme.example/hop/%d" % (n + 1))
+        go = {"/moved": "http://jobs.acme.example/open", "/meta": "http://169.254.169.254/latest/meta-data/",
+              "/inside": "https://inside.acme.example/admin", "/ip": "http://10.0.0.5/admin", "/gh": "http://jobs.acme.example/board?error=true",
+              "/port": "http://jobs.acme.example:8080/open"}.get(p)
+        if go:
+            return self.go(go)
+        code, body = {"/open": (200, "Apply now"), "/gone": (404, "Not found"), "/closed": (200, "This job is no longer available"),
+                      "/board?error=true": (200, "Our open roles")}.get(p, (500, "oops"))
+        self.send_response(code)
+        self.send_header("Content-Type", "text/html")
+        self.end_headers()
+        self.wfile.write(body.encode())
+
+    def go(self, where):
+        self.send_response(302)
+        self.send_header("Location", where)
+        self.end_headers()
+
+
+srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Site)
+threading.Thread(target=srv.serve_forever, daemon=True).start()
+PUBLIC = {"jobs.acme.example": "93.184.216.34", "down.acme.example": "93.184.216.35", "inside.acme.example": "10.1.2.3"}
+real_gai, real_cc, dialled = socket.getaddrinfo, socket.create_connection, []
+
+
+def fake_gai(host, port, *a, **k):
+    if host in PUBLIC:
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (PUBLIC[host], port))]
+    if host == "nowhere.acme.example":
+        raise socket.gaierror("no such name")
+    return real_gai(host, port, *a, **k)
+
+
+def fake_cc(addr, *a, **k):
+    dialled.append(addr[0])
+    if addr[0] == "93.184.216.34":
+        return real_cc(("127.0.0.1", srv.server_address[1]), *a, **k)
+    raise ConnectionRefusedError("nothing here")
+
+
+socket.getaddrinfo, socket.create_connection = fake_gai, fake_cc
+try:
+    base = "http://jobs.acme.example"
+    for path, want, why in (("/open", True, "a page that answers is alive"), ("/gone", False, "a 404 is dead"),
+                            ("/closed", False, "the board's own 'no longer available' page is dead"),
+                            ("/moved", True, "a redirect to another public page is followed"),
+                            ("/gh", False, "Greenhouse's closed posting (sent to its board with ?error=true) is dead"),
+                            ("/meta", False, "a redirect to the cloud metadata address 169.254.169.254 is dead, never followed"),
+                            ("/inside", False, "a redirect to a name that resolves to a private address is dead, never connected to"),
+                            ("/ip", False, "a redirect to a private IP address is dead"),
+                            ("/port", False, "a redirect to another port is not followed"),
+                            ("/hop/0", None, "a redirect chain longer than urllib's cap of 10 cannot tell (not dead)")):
+        dialled.clear()
+        got = j._link_alive(base + path)
+        t("dead-link check: %s" % why, (got, [d for d in dialled if d != "93.184.216.34"]), (want, []))
+    t("dead-link check: an internal start address is dead without a request",
+      [j._link_alive(u) for u in ("http://10.0.0.5/job", "https://localhost/job", "http://169.254.169.254/latest/", "https://intranet.local/job")],
+      [False, False, False, False])
+    t("dead-link check: the default ports are fine, another is not", (j._link_alive("http://jobs.acme.example:80/open"), j._link_alive("https://jobs.acme.example:8443/open")),
+      (True, False))
+    t("dead-link check: a site that does not answer, or a name that does not resolve, cannot tell (never counted as dead)",
+      (j._link_alive("http://down.acme.example/job"), j._link_alive("http://nowhere.acme.example/job")), (None, None))
+finally:
+    socket.getaddrinfo, socket.create_connection = real_gai, real_cc
+    srv.shutdown()
+
 print(sum(R), "/", len(R))
 sys.exit(0 if all(R) else 1)

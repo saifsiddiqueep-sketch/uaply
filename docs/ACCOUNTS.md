@@ -95,13 +95,13 @@ person's subscription to another. Older objects that carry only the number still
    account, 80 per address, 5 per address and email. The visitor address is the last hop the host's proxy added to X-Forwarded-For (an
    internal 10.x/172.16-31.x/192.168.x/100.64.x hop after it is skipped), or CF-Connecting-IP when that hop is one of Cloudflare's published
    ranges (read at start and every 24 hours; a built-in copy otherwise). Entries the sender wrote are never used (`serve.client_ip`).
-   An IPv6 visitor counts by its /64 network (`serve.limit_key`): one home or server is given a whole /64, so counting each address
-   apart let one visitor past every per-address limit.
+   Each address counts on its own for these limits, IPv6 ones too (only the site's share in item 6 groups an IPv6 /64).
 6. **At most 500 code emails an hour for the whole site** (`UAPLY_CODE_SENDS_PER_HOUR`), every route and visitor together: past it, a
    code request gets "UAply is sending a lot of sign-in codes right now. Try again in a few minutes, or use Continue with Google."
-   **One address may use at most 5% of that hour** (25 of 500; `SITE_SHARE_PERCENT`), so a few addresses cannot use it all up and
-   keep everyone else out for an hour; past its share it gets the plain code limit answer. At the default 500 this is below the 80
-   codes per address in item 5 (a campus behind one address gets 25 an hour); `UAPLY_CODE_SENDS_PER_HOUR=1600` keeps 80. **The owner
+   **One visitor may use at most its share of that hour**: 5% of it (`SITE_SHARE_PERCENT`), but never less than the 80 one connection
+   may send anyway (item 5), so a campus behind one address keeps its 80; at the default 500 the share is 80. For the share an IPv6
+   visitor counts by its /64 (`auth_api.share_key`: one home, carrier or server is given a whole /64), so fresh addresses of one /64
+   cannot use the hour up; past its share it gets the plain code limit answer. The site-wide cap stays the backstop. **The owner
    of an account is never held back by the site's hour or the share**: a device with the known-device cookie for that address, or one
    signed in to that address's verified account, still gets its code. A session of an account nobody proved yet is no pass (anyone
    can open one). The password sign-up's first code counts toward the hour but is never refused by it, as before.

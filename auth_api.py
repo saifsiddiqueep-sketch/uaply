@@ -41,6 +41,7 @@ A hosted database (instead of this file) is a later step: this module is the sta
 """
 import hashlib
 import hmac
+import ipaddress
 import json
 import os
 import re
@@ -491,6 +492,17 @@ def login(email, password, ip):
     return 200, {"user": public_user(row)}, token
 
 
+def user_by_id(user_id):
+    """The account with this id ({id, email, emailVerified, ...}), or None when there is none (deleted, or not a number)."""
+    try:
+        uid = int(user_id)
+    except (TypeError, ValueError):
+        return None
+    with _lock, _db() as c:
+        row = c.execute("SELECT id, email, has_password, email_verified, plan FROM users WHERE id=?", (uid,)).fetchone()
+    return public_user(row) if row else None
+
+
 def user_for(token):
     if not isinstance(token, str) or not (20 <= len(token) <= 100):
         return None
@@ -829,16 +841,30 @@ try:
 except ValueError:
     CODE_SENDS_SITE_PER_HOUR = 500
 CODE_BUSY_MSG = "UAply is sending a lot of sign-in codes right now. Try again in a few minutes, or use Continue with Google."
-# No one visitor address may use more than SITE_SHARE_PERCENT of that hour (25 of the default 500), so a handful of addresses cannot use
-# it all up and keep everyone else from signing in for an hour (serve.client_ip counts an IPv6 visitor by its /64). A device that signed
-# in to the address with a code before (the known-device cookie), or that is signed in to that address's verified account right now, is
-# never held back by the site's hour or by this share: the owner of an account can always get a code.
+# No one visitor may use more than its share of that hour: SITE_SHARE_PERCENT of it, but never less than the CODES_PER_IP_PER_HOUR one
+# connection may send anyway (so a campus behind one address keeps its 80; at the default 500 the share is 80). For the share an IPv6
+# visitor counts by its /64 (share_key): one home or server is given a whole /64 and could otherwise use the hour up from fresh addresses.
+# The per-connection limits count each address on its own. A device that signed in to the address with a code before (the known-device
+# cookie), or that is signed in to that address's verified account right now, is never held back by the site's hour or by this share:
+# the owner of an account can always get a code. The site-wide cap stays the backstop against abuse.
 SITE_SHARE_PERCENT = 5
 
 
 def site_share():
-    """How many of the site's hourly code emails one visitor address may use (at least 1)."""
-    return max(1, CODE_SENDS_SITE_PER_HOUR * SITE_SHARE_PERCENT // 100)
+    """How many of the site's hourly code emails one visitor (an IPv4 address, or an IPv6 /64) may use."""
+    return max(CODES_PER_IP_PER_HOUR, CODE_SENDS_SITE_PER_HOUR * SITE_SHARE_PERCENT // 100)
+
+
+def share_key(ip):
+    """The visitor as the site's share counts it: an IPv4 address as it is, an IPv6 address by its /64 ("2001:db8:1:2::/64"), an IPv4
+    address written as IPv6 (::ffff:198.51.100.7) as the IPv4 address."""
+    try:
+        a = ipaddress.ip_address(str(ip))
+    except ValueError:
+        return ip
+    if a.version == 6:
+        return str(a.ipv4_mapped) if a.ipv4_mapped else str(ipaddress.ip_network("%s/64" % a, strict=False))
+    return str(a)
 
 
 def _site_code_refusal(ip=None):
@@ -846,7 +872,7 @@ def _site_code_refusal(ip=None):
     _lock held."""
     if len(_recent(_code_sends, ("site",), 3600)) >= CODE_SENDS_SITE_PER_HOUR:
         return {"error": CODE_BUSY_MSG, "code": "code_busy"}
-    if ip is not None and len(_recent(_code_sends, ("site-ip", ip), 3600)) >= site_share():
+    if ip is not None and len(_recent(_code_sends, ("site-ip", share_key(ip)), 3600)) >= site_share():
         return {"error": CODE_LIMIT_MSG, "code": "code_limit"}
     return None
 
@@ -857,7 +883,7 @@ def _count_site_code(ip=None):
     now = time.time()
     _code_sends.setdefault(("site",), []).append(now)
     if ip is not None:
-        _code_sends.setdefault(("site-ip", ip), []).append(now)
+        _code_sends.setdefault(("site-ip", share_key(ip)), []).append(now)
 
 
 def _signed_in_as(row, token):

@@ -439,27 +439,12 @@ def is_cloudflare(addr):
     return any(a in n for n in _cf_nets if n.version == a.version)
 
 
-def limit_key(addr):
-    """The visitor as the limits count them: an IPv4 address as it is; an IPv6 address by its /64 network ("2001:db8:1:2::/64"). One home or
-    one server is given a whole /64 and can pick any of its 18 quintillion addresses for every request, so counting each address apart let
-    one visitor past every per-address limit (and use up the site's hour of code emails alone). An IPv4 address written as IPv6
-    (::ffff:198.51.100.7) counts as the IPv4 address."""
-    try:
-        a = ipaddress.ip_address(addr)
-    except ValueError:
-        return addr
-    if a.version == 6:
-        if a.ipv4_mapped:
-            return str(a.ipv4_mapped)
-        return str(ipaddress.ip_network("%s/64" % a, strict=False))
-    return str(a)
-
-
 def client_ip(peer, headers, public=None):
     """The address limits are counted against. This computer: the connection's own address. A public server: the last public address in
     X-Forwarded-For, read from the right (the hop the host's proxy added; a proxy's own internal 10.x / 172.16-31.x / 192.168.x / 100.64.x
     entry after it is skipped, so the visitors are never all counted as one), or Cloudflare's CF-Connecting-IP when that hop is a Cloudflare
-    server. Entries to the left of it were written by the sender and are never used. An IPv6 visitor is counted by its /64 (limit_key)."""
+    server. Entries to the left of it were written by the sender and are never used. Each address counts on its own here; only the site's
+    hour of code emails groups an IPv6 visitor by its /64 (auth_api.share_key)."""
     if not (PUBLIC if public is None else public):
         return peer
     hops = [_ip_or_none(h) for h in (headers.get("X-Forwarded-For") or "").split(",") if h.strip()]
@@ -473,8 +458,8 @@ def client_ip(peer, headers, public=None):
             last = h
             break
     if is_cloudflare(last):
-        return limit_key(_ip_or_none(headers.get("CF-Connecting-IP")) or last)
-    return limit_key(last)
+        return _ip_or_none(headers.get("CF-Connecting-IP")) or last
+    return last
 
 
 def too_fast(path, ip):
@@ -1263,8 +1248,13 @@ class H(http.server.SimpleHTTPRequestHandler):
             elif p == "/api/apply/mark":
                 # Job Tracker's "Mark as applied" (and its Undo): the day's reminder stops listing that job (uaply_api.mark_applied)
                 u = auth_api.user_for(self._token())
-                left = uaply_api.mark_applied(u["id"], payload.get("job"), payload.get("marked") is not False) if u else None
-                code, out = (401, {"error": "Sign in first."}) if not u else (400, {"error": "Invalid job."}) if left is None else (200, {"ok": True, "waiting": left})
+                if not u:
+                    code, out = 401, {"error": "Sign in first."}
+                elif not u.get("emailVerified"):           # reminders go only to a verified address, so only such an account has marks to keep
+                    code, out = 403, {"error": "Verify your email first (Profile, Account).", "code": "verify"}
+                else:
+                    left = uaply_api.mark_applied(u["id"], payload.get("job"), payload.get("marked") is not False)
+                    code, out = (400, {"error": "Invalid job."}) if left is None else (200, {"ok": True, "waiting": left})
             elif p == "/api/apply":
                 u = auth_api.user_for(self._token())
                 over = billing_api.limit_reached(u)

@@ -249,6 +249,32 @@ try:
     t("...and the job swiped meanwhile waits for the next one: not lost, not counted as sent", waiting_ids(user), [424270])
     t("two senders at once: the second one sends nothing (one at a time)",
       uaply_api._digest_send_lock.acquire(blocking=False) and (uaply_api.send_finish_digests(day + 20 * uaply_api.DIGEST_EVERY), uaply_api._digest_send_lock.release())[0] == 0, True)
+
+    # ---- marks are kept only for jobs in the person's reminder, capped; a deleted account gets no reminder (October 22 review) ----
+    before = open(uaply_api._digest_path(), encoding="utf-8").read()
+    t("a mark of a job that is not in the reminder changes nothing and writes nothing", (uaply_api.mark_applied(user["id"], 515151), open(uaply_api._digest_path(), encoding="utf-8").read() == before),
+      (len(waiting_ids(user)), True))
+    t("...an Undo of a job never marked writes nothing either", (uaply_api.mark_applied(user["id"], 515152, False), open(uaply_api._digest_path(), encoding="utf-8").read() == before),
+      (len(waiting_ids(user)), True))
+    t("...and an account with no reminder at all gets no entry", (uaply_api.mark_applied(987654, 424260), "987654" in uaply_api._digest_load()), (0, False))
+    for n in range(uaply_api.MARKED_MAX + 15):
+        uaply_api._queue_finish(user, {"job": job(600000 + n), "mode": "test"})
+        uaply_api.mark_applied(user["id"], 600000 + n)
+    kept = uaply_api._digest_load()[str(user["id"])]["marked"]
+    t("at most %d marks are kept per account, the newest" % uaply_api.MARKED_MAX, (len(kept), kept[-1]), (uaply_api.MARKED_MAX, 600000 + uaply_api.MARKED_MAX + 14))
+    s3, out3, tok3 = auth_api.signup("gone@example.com", "correct horse 99", "127.0.0.3", True)
+    uid3, addr3, digits3 = auth_api.issue_code_for_token(tok3)
+    auth_api.verify_code(tok3, digits3, "127.0.0.3")
+    user3 = auth_api.user_for(tok3)
+    t("(an account to delete, verified)", bool(user3 and user3["emailVerified"]), True)
+    st, _x, _y = auth_api.delete_account(tok3, "correct horse 99", "127.0.0.3", before_delete=lambda _uid: None)
+    uaply_api.forget_user(user3["id"])                                       # what deleting an account does
+    uaply_api._queue_finish(user3, {"job": job(424299), "mode": "test"})     # a swipe that was in flight puts the entry back afterwards
+    t("(the deleted account's entry came back from the swipe in flight)", (st, str(user3["id"]) in uaply_api._digest_load()), (200, True))
+    gone_before = len([m for m in mails() if "gone@example.com" in json.dumps(m["to"])])
+    uaply_api.send_finish_digests(day + 40 * uaply_api.DIGEST_EVERY)
+    t("the reminder looks at the account again right before sending: a deleted one gets nothing, and its entry goes",
+      (len([m for m in mails() if "gone@example.com" in json.dumps(m["to"])]) - gone_before, str(user3["id"]) in uaply_api._digest_load()), (0, False))
 finally:
     proc.terminate()
 

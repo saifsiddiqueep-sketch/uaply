@@ -6,6 +6,21 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 
+### Release candidate review, surgical fixes (Reviewer 2, October 22)
+- **Careers sites:** every request (robots.txt, the sitemap, each page) goes through a public-only opener (`jobs_api._cp_open`): a
+  redirect is followed only to a public https address, and the name is looked up once and refused unless every address is public (not
+  private, loopback, link-local such as 169.254.169.254, shared or reserved); the connection goes to that checked address.
+- **Mark as applied** needs a verified email (403 `verify` otherwise), keeps a mark only for a job in that person's reminder (any other
+  mark writes nothing) and at most 200 per account. **Reminders** look at the account again right before sending: a deleted one gets
+  nothing and its entry goes.
+- **Help chat:** with AI answers on, the server sends a message to the AI only with `aiOk: true` (the page's Continue); otherwise the help
+  articles answer (`aiConsent: true`).
+- **Feed text:** tags are taken out after the last unescape (`jobs_api._text`).
+- **The site's share of code emails** is never below one connection's own 80 (80 at the default 500, so a campus keeps its 80), and only
+  the share groups an IPv6 /64 (`auth_api.share_key`); the per-connection limits count each address on its own again.
+- Assisted apply's field map knows `twitter`.
+- Tests: test-career-pages 45 (15 new), test-emails 78 (7 new), test-chat 6 (new), test-public-auth 109, test-swipe-e2e 328 (+1).
+
 ### Launch day: the runbook, the owner's self-check, and the hosting docs as they are today (October 22)
 - **The owner's self-check** in `/api/status` (owner only: this computer, or the owner password): when a job board was last read
   successfully, when an email last went out (kept on the disk in `mail-count.json`), the data disk's free and total room, and plain

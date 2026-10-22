@@ -318,6 +318,10 @@ def chat(p, ip):
         return 400, {"error": "Type a question first."}
     q = history[-1]["content"]
     s = _ai_settings()
+    # the message goes to the AI provider only when the person said Continue to the page's notice (aiOk: true), checked here too (October
+    # 22 review): an old cached page or a script that skips the notice gets the help articles' answer, and nothing leaves UAply
+    if s["enabled"] and s["key"] and p.get("aiOk") is not True:
+        return 200, dict(_from_articles(q), aiConsent=True)
     if s["enabled"] and s["key"] and _sdk() and _ai_budget_ok(s["limit"]):
         try:
             data = _ask_ai(history, s)

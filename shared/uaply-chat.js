@@ -178,7 +178,7 @@ function apply(w,host){
     busy=true;clearChips();
     hist.push({role:"user",content:q});hist=hist.slice(-10);
     typing(true);
-    post("/api/chat",{messages:hist}).then(function(r){
+    post("/api/chat",{messages:hist,aiOk:!!load().aiOk}).then(function(r){   /* aiOk: the person said Continue to the AI notice; the server checks it too */
       typing(false);busy=false;
       if(!r.ok){botSay((r.j&&r.j.error)||"Something went wrong on my side.");chips([{label:"Try again",run:function(){hist.pop();meSay(q);ask(q)}},{label:"Talk to a person",run:function(){meSay("Talk to a person");startHuman()}}]);return}
       var j=r.j||{};
