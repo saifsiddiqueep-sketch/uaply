@@ -21,6 +21,10 @@
 //                     and every request checked against the ad-block filter lists in --lists DIR (EasyList, EasyPrivacy, uBlock filters,
 //                     brave/adblock-lists: plain .txt files you download), first-party requests too (Brave's "aggressive" setting). A blocked
 //                     UAply request, an app frame that is not same-origin, or storage that throws fails the run. Run it with and without.
+// --read-only        never changes anything on the site (tools/launch-smoke.sh uses it on the live site): every request the app would
+//                     send to it that is not a GET is answered here in the browser and never leaves it (the Pass swipe's record, the
+//                     read-ahead of an employer's form, feedback), except the help assistant's question, which the site answers from its
+//                     articles and does not store (chat_api.py). The run lists what it held back. Not with --email or --stripe-test.
 // --out DIR           also saves a screenshot of each step there.   --google-host HOST   where Google's page must be (default accounts.google.com).
 const fs = require("fs");
 const path = require("path");
@@ -35,6 +39,7 @@ const STRIPE = flag("stripe-test");
 const OUT = arg("out", "");
 const GHOST = arg("google-host", "accounts.google.com");
 const SHIELDS = flag("shields"), LISTS = arg("lists", "");
+const READONLY = flag("read-only");
 function secondAddress(a) {                         // you+tag@gmail.com -> you+tag2@gmail.com; you@gmail.com -> you+uaply2@gmail.com
   const [user, dom] = a.split("@");
   return (user.includes("+") ? user + "2" : user + "+uaply2") + "@" + dom;
@@ -88,13 +93,32 @@ async function main(api) {
     await click("#tipsClose"); await sleep(300);
   };
 
-  const blocked = [];
+  const blocked = [], held = [];
+  if (READONLY && (EMAIL || STRIPE)) { console.log("TEST SCRIPT FAILED: --read-only cannot sign up or buy: leave out --email and --stripe-test"); return; }
+  // --read-only: a request to the site that could change something is answered here and never sent (see the top of this file)
+  const hold = (p) => {
+    if (!READONLY || /^(GET|HEAD|OPTIONS)$/.test(p.request.method)) return false;
+    let u; try { u = new URL(p.request.url); } catch (e) { return false; }
+    if (u.origin !== new URL(BASE).origin || u.pathname === "/api/chat") return false;
+    held.push(p.request.method + " " + u.pathname);
+    const ok = u.pathname === "/api/decision" || u.pathname === "/api/feedback";
+    const body = ok ? '{"ok":true}' : '{"error":"Held back by ui-live --read-only: nothing was sent to the site.","code":"read_only"}';
+    send("Fetch.fulfillRequest", { requestId: p.requestId, responseCode: ok ? 200 : 503, responseHeaders: [{ name: "Content-Type", value: "application/json" }],
+      body: Buffer.from(body).toString("base64") });
+    return true;
+  };
+  let eng = null, sh = null;
   if (SHIELDS) {
     if (!LISTS || !fs.existsSync(LISTS)) { console.log("TEST SCRIPT FAILED: --shields needs --lists DIR with the filter lists (.txt)"); return; }
-    const sh = require("./shields.js"), eng = sh.create(LISTS);
+    sh = require("./shields.js"); eng = sh.create(LISTS);
     info("shields mode: third-party cookies blocked, " + eng.size + " filter rules from " + LISTS + ", applied to first-party requests too");
+  }
+  if (READONLY) info("read-only: requests that could change the site are answered in the browser and never sent (the help question is sent: it is not stored)");
+  if (SHIELDS || READONLY) {
     await send("Fetch.enable", { patterns: [{ urlPattern: "*", requestStage: "Request" }] });
     on("Fetch.requestPaused", (p) => {
+      if (hold(p)) return;
+      if (!SHIELDS) { send("Fetch.continueRequest", { requestId: p.requestId }); return; }
       let rule = null;
       try { if (/^https?:/.test(p.request.url)) rule = eng.match(p.request.url, sh.CDP_TYPES[p.resourceType] || "other", BASE + "/", true); } catch (e) {}
       if (rule) { blocked.push(p.request.url + "  by " + rule); send("Fetch.failRequest", { requestId: p.requestId, errorReason: "BlockedByClient" }); }
@@ -353,6 +377,7 @@ async function main(api) {
     check("shields: no UAply request was blocked by the filter lists", !own.length, own.slice(0, 5).join(" | "));
     info("shields: requests blocked in all: " + blocked.length + (blocked.length ? " (" + blocked.slice(0, 6).join(" | ") + ")" : ""));
   }
+  if (READONLY) info("read-only: held back " + held.length + " request(s) that could have changed the site" + (held.length ? ": " + [...new Set(held)].join(", ") : ""));
   console.log("\n" + count.PASS + " passed, " + count.FAIL + " failed, " + count.SKIP + " skipped");
   console.log(count.PASS + " / " + (count.PASS + count.FAIL));
 }
