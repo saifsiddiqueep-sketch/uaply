@@ -88,6 +88,8 @@ var CSS=`
 .sg-gnote{margin:0;font-size:13px;background:var(--sg-yes-bg);color:var(--ink);border-radius:12px;padding:9px 12px;display:flex;gap:8px;align-items:flex-start}
 .sg-gnote .sg-i{color:var(--sg-yes);margin-top:2px}
 .sg-gis{min-height:44px;display:flex;justify-content:center}
+.sg-have{margin:0;font-size:14px;text-align:center;background:color-mix(in srgb,var(--accent) 9%,var(--surface));border:1px solid color-mix(in srgb,var(--accent) 30%,var(--line));border-radius:12px;padding:6px 12px;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;column-gap:6px}
+.sg-have b{word-break:break-all}
 .sg-wait{min-height:min(560px,70vh)}
 .sg-fixes{display:flex;flex-wrap:wrap;gap:8px}
 .sg-okc{width:58px;height:58px;border-radius:50%;display:grid;place-items:center;background:var(--sg-yes-bg);color:var(--sg-yes);font-size:28px;margin:0 auto}
@@ -187,6 +189,8 @@ function patch(s){
 var WORK=["Barista","Retail","Warehouse","Front desk","Cook","Delivery","Office","Healthcare"];
 var GSTART="uaply.gstart";            /* the same top-page key shared/uaply-nav.js reads when a tab comes back from Google */
 var PENDING="uaply.signup.pending";   /* top-page sessionStorage: what the card held when this tab left for Google */
+var CODEK="uaply.signup.code";        /* top-page sessionStorage: the code step (which address, which step, when the code was sent) */
+var CODE_MS=10*60e3;                  /* a code works for 10 minutes (auth_api.CODE_SECONDS) */
 
 function apply(w,host){
   var d=w.document,A=w.__uaply,B=w.__uaplyAuthApi;
@@ -209,6 +213,11 @@ function apply(w,host){
   function topStore(){try{return w.top.sessionStorage}catch(e){return null}}
   function getPending(){try{var s=topStore(),p=s&&JSON.parse(s.getItem(PENDING));return p&&typeof p==="object"&&Date.now()-(+p.at||0)<15*60e3?p:null}catch(e){return null}}
   function setPending(p){try{var s=topStore();if(!s)return;if(p)s.setItem(PENDING,JSON.stringify(p));else s.removeItem(PENDING)}catch(e){}}
+  /* the code step outlives a reload (a refresh, Back then Forward, a phone that dropped the tab while the person read their email): this
+     tab remembers which address the code went to, for which step, and when; never the code. The card then offers "Type the code" for
+     10 minutes instead of a new code (each new code cancels the last and counts toward the limit of 3 an hour) */
+  function getCodeStep(){try{var s=topStore(),c=s&&JSON.parse(s.getItem(CODEK));return c&&typeof c==="object"&&typeof c.email==="string"&&(c.kind==="up"||c.kind==="in")&&Date.now()-(+c.at||0)<CODE_MS?c:null}catch(e){return null}}
+  function setCodeStep(c){try{var s=topStore();if(!s)return;if(c)s.setItem(CODEK,JSON.stringify(c));else s.removeItem(CODEK)}catch(e){}}
   function ownGet(){try{var o=JSON.parse(w.localStorage.getItem(OWN));return o&&typeof o==="object"?o:{}}catch(e){return {}}}
   function ownSet(o){try{w.localStorage.setItem(OWN,JSON.stringify(o))}catch(e){}}
 
@@ -286,7 +295,7 @@ function apply(w,host){
      their own), no saved Google trip, nothing left from the questions */
   function forget(){
     resetV();V.view="up";V.email=V.first=V.last="";V.agreed=false;V.gWait=false;V.err="";V.errTop=false;V.user=null;V.kind="";V.delivery="";V.cd=null;V.pvOpen=false;
-    gGone="";lastF=null;wasIn=false;setPending(null);
+    gGone="";lastF=null;wasIn=false;setPending(null);setCodeStep(null);V.sentAt=0;V.noSend=false;
   }
   /* the card field that had focus (data-f), so a redraw from the app (a late start-up answer on a slow connection replaces the Account
      screen) puts the person back in the same box with the same caret, instead of dropping focus and closing a phone's keyboard */
@@ -342,7 +351,10 @@ function apply(w,host){
     if(er){
       setPending(null);
       if(pend){V.first=pend.first||V.first;V.last=pend.last||V.last;V.email=pend.email||V.email;V.agreed=!!pend.agreed}
-      if(er==="agree"){
+      if(er==="agree_owner"){
+        /* Google proved this person owns the address, which has an account someone opened and never finished: their own tick, then Google */
+        V.view="up";V.gWait=true;V.err="This email has a UAply account that was never finished. Tick the box to confirm you’re 18 or older and agree, then Continue with Google.";
+      }else if(er==="agree"){
         /* a new person pressed Google on "Welcome back": the server needs the one tick first, so they land on Create your account */
         V.view="up";V.gWait=true;V.err=pend&&pend.mode==="in"?"This Google account has no UAply account yet. Tick the box, then Continue with Google.":"Tick the box first, then Continue with Google.";
       }else{
@@ -415,12 +427,27 @@ function apply(w,host){
     setTimeout(function(){try{B.mountGoogle()}catch(e){}},0);
   }
 
+  /* "A code went to sam@example.com 2 min ago. Type the code": shown on both cards while this tab's last code still works */
+  function haveHTML(){
+    var cs=getCodeStep();if(!cs)return "";
+    var m=Math.floor((Date.now()-(+cs.at||0))/60e3);
+    return '<div class="sg-have" role="status"><span>A code went to <b>'+esc(cs.email)+'</b> '+(m<1?"just now":m===1?"1 min ago":m+" min ago")+'.</span><button type="button" class="sg-lnk sg-havec">Type the code</button></div>';
+  }
+  function wireHave(c,seen){var b=c.querySelector(".sg-havec");if(b)b.onclick=function(){seen();resume(getCodeStep())}}
+  /* back to the code step this tab was on, without sending anything */
+  function resume(cs){
+    if(!cs){render(true);return}
+    V.email=cs.email;V.kind=cs.kind;V.sentAt=+cs.at||0;V.noSend=false;
+    if(cs.kind==="up"){V.first=cs.first||V.first;V.last=cs.last||V.last;V.agreed=true}   /* the names and the tick from Create my account */
+    V.view="code";render(true);
+  }
+
   /* ---------- sign up ---------- */
   function signup(focus){
     back=null;V.view="up";
     var hid=uid("h"),aid=uid("am"),gh=googleHTML();
     var c=shell('<div class="sg-chead"><h1 id="'+hid+'" tabindex="-1">Create your UAply account</h1><p class="sg-sub">Takes a minute. No password to remember.</p></div>'+
-      (V.errTop?'<p class="sg-fmsg err" role="alert" style="text-align:center">'+esc(V.err)+'</p>':'')+
+      (V.errTop?'<p class="sg-fmsg err" role="alert" style="text-align:center">'+esc(V.err)+'</p>':'')+haveHTML()+
       /* Mohammed's order: Google, "or", Email, First name, Last name, the 18+ tick, Create my account. The server needs the tick before
          Google opens; that is the tick's state, not its place, so an unticked Google tap stays here, shakes the box and says why */
       (gh?gh+'<div class="sg-or">or</div>':'')+
@@ -438,6 +465,7 @@ function apply(w,host){
     /* a message from the trip to Google stays until the person acts on the card (the screen may be redrawn meanwhile) */
     if(V.err&&!V.errTop){agl.classList.add("bad");agMsg("err",V.err)}
     function seen(){V.err="";V.errTop=false}
+    wireHave(c,seen);
     var em=wireEmail(c.querySelector("[data-email]"),function(v){V.email=v;keepGis()});
     var fn=wireReq(c.querySelector(".sg-fn"),"Add your first name."),ln=wireReq(c.querySelector(".sg-ln"),"Add your last name.");
     fn.input.addEventListener("input",function(){V.first=fn.value();keepGis()});ln.input.addEventListener("input",function(){V.last=ln.value();keepGis()});
@@ -467,7 +495,9 @@ function apply(w,host){
         if(!sb.isConnected)return;
         sb.disabled=false;sb.removeAttribute("aria-busy");sb.textContent="Create my account";
         if(!r.ok){var t=(r.j&&r.j.error)||"Could not create the account. Try again.";if(r.j&&r.j.code==="mailbox"){em.error(t);fxs(em.input)}else{agMsg("err",t);fxs(sb)}return}
-        V.email=(r.j&&r.j.email)||V.email;V.delivery=(r.j&&r.j.delivery)||"";V.kind="up";V.view="code";render(true);
+        V.email=(r.j&&r.j.email)||V.email;V.delivery=(r.j&&r.j.delivery)||"";V.kind="up";V.view="code";V.sentAt=Date.now();V.noSend=false;
+        setCodeStep({kind:"up",email:V.email,first:V.first,last:V.last,at:V.sentAt});
+        render(true);
       });
     };
     c.querySelector(".sg-to-in").onclick=function(){seen();V.view="in";render(true)};
@@ -480,13 +510,15 @@ function apply(w,host){
     back=function(){V.err="";V.errTop=false;V.view="up";render(true)};V.view="in";
     var hid=uid("h"),gh=googleHTML();
     var c=shell('<div class="sg-chead"><h1 id="'+hid+'" tabindex="-1">Welcome back</h1><p class="sg-sub">We’ll email you a code. No password needed.</p></div>'+
-      (V.err?'<p class="sg-fmsg err" role="alert" style="text-align:center">'+esc(V.err)+'</p>':'')+
+      (V.err?'<p class="sg-fmsg err" role="alert" style="text-align:center">'+esc(V.err)+'</p>':'')+haveHTML()+
       (gh?gh+'<div class="sg-or">or</div>':'')+
       '<form class="sg-stack sg-si" novalidate>'+emailFieldHTML(V.email)+
       '<button type="submit" class="sg-btn pri wide">Email me a code</button></form>'+
+      '<p class="sg-swap">Already have a code? <button type="button" class="sg-lnk sg-typec">Type it</button></p>'+
       '<p class="sg-swap">New here? <button type="button" class="sg-lnk sg-to-up">Create an account</button></p>');
     c.setAttribute("aria-labelledby",hid);
     function seen(){V.err="";V.errTop=false}
+    wireHave(c,seen);
     var em=wireEmail(c.querySelector("[data-email]"),function(v){V.email=v});
     var gb=c.querySelector('[data-sg="google"]');
     if(gb)gb.onclick=function(){seen();V.email=em.value();goGoogle(gb,"in")};
@@ -501,8 +533,17 @@ function apply(w,host){
         if(!sb.isConnected)return;
         sb.disabled=false;sb.removeAttribute("aria-busy");sb.textContent="Email me a code";
         if(!r.ok){em.error((r.j&&r.j.error)||"Could not send a code. Try again.");fxs(em.input);return}
-        V.kind="in";V.delivery="";V.view="code";render(true);
+        V.kind="in";V.delivery="";V.view="code";V.sentAt=Date.now();V.noSend=false;
+        setCodeStep({kind:"in",email:V.email,at:V.sentAt});
+        render(true);
       });
+    };
+    /* a code from an earlier email (another tab, or before a reload): the six boxes, and nothing is sent */
+    c.querySelector(".sg-typec").onclick=function(){
+      seen();if(!em.validate()){fxs(em.input);return}
+      V.email=em.value();var cs=getCodeStep();
+      if(cs&&cs.email.toLowerCase()===V.email.toLowerCase()){resume(cs);return}
+      V.kind="in";V.delivery="";V.sentAt=0;V.noSend=true;V.view="code";render(true);
     };
     c.querySelector(".sg-to-up").onclick=function(){seen();V.view="up";render(true)};
     if(focus)fx(c.querySelector("h1"));
@@ -520,8 +561,9 @@ function apply(w,host){
   }
   function code(focus){
     var kind=V.kind;
-    back=function(){V.view=kind==="in"?"in":"up";if(kind==="g"){V.view="q";startQuestions();return}render(true)};
-    var sub=kind==="up"?'We sent a 6-digit code to <b>'+esc(V.email)+'</b>. It works for 10 minutes.':
+    back=function(){V.view=kind==="in"?"in":"up";if(kind==="g"){V.view="q";startQuestions();return}V.noSend=false;render(true)};   /* the card still offers "Type the code" while it works */
+    var sub=V.noSend&&kind==="in"?'Type the 6-digit code from the newest UAply email to <b>'+esc(V.email)+'</b>. A code works for 10 minutes after it is sent.':
+      kind==="up"?'We sent a 6-digit code to <b>'+esc(V.email)+'</b>. It works for 10 minutes.':
       kind==="g"?'Google signed you in, but it vouches only for Gmail and Google-run addresses. We sent a 6-digit code to <b>'+esc(V.email)+'</b>. It works for 10 minutes.':
       'If <b>'+esc(V.email)+'</b> has a UAply account, we sent it a 6-digit code. It works for 10 minutes.';
     var note=deliveryNote();
@@ -561,8 +603,8 @@ function apply(w,host){
         setTimeout(function(){if(!c.isConnected)return;
           if(kind==="g"){var u=Object.assign({},V.user||srv().user||{},{emailVerified:true});V.user=u;B.signedIn(u);V.view="q";startQuestions();return}
           var user=r.j&&r.j.user;if(!user){cm.textContent="Signed in, but the answer was incomplete. Reload the page.";return}
-          setPending(null);V.user=user;V.viaG=false;V.cd=null;if(user.googleRemoved)gGone=String(user.email||"").toLowerCase();
-          if(user["new"]){V.isNew=true;saveName(V.first,V.last,user.email);V.view="q";B.signedIn(user);startQuestions()}
+          setPending(null);setCodeStep(null);V.noSend=false;V.user=user;V.viaG=false;V.cd=null;if(user.googleRemoved)gGone=String(user.email||"").toLowerCase();
+          if(user["new"]){V.isNew=true;claimDevice(user.email);saveName(V.first,V.last,user.email);V.view="q";B.signedIn(user);startQuestions()}
           else{if(kind==="up")saveName(V.first,V.last,user.email,true);V.view="signedin";B.signedIn(user);render(true)}
         },RM()?50:350);
       });
@@ -577,9 +619,11 @@ function apply(w,host){
       inp.addEventListener("focus",function(){inp.select()});
     });
     c.querySelector(".sg-chg").onclick=back;
-    var rs=c.querySelector(".sg-resend"),n=30,iv=null;
+    /* Resend opens 30 seconds after the code was really sent (a reload does not restart the wait; a typed earlier code: at once) */
+    var rs=c.querySelector(".sg-resend"),n=Math.max(0,30-Math.floor((Date.now()-(V.sentAt||0))/1000)),iv=null;
     function unlock(){clearInterval(iv);rs.disabled=false;rs.textContent="Resend code"}
-    iv=setInterval(function(){if(!c.isConnected){clearInterval(iv);return}n--;if(n<=0)unlock();else rs.querySelector("span").textContent=n},1000);
+    if(n<=0)unlock();
+    else{rs.querySelector("span").textContent=n;iv=setInterval(function(){if(!c.isConnected){clearInterval(iv);return}n--;if(n<=0)unlock();else rs.querySelector("span").textContent=n},1000)}
     rs.onclick=function(){
       rs.disabled=true;rs.textContent="Sending…";
       var p=kind==="g"?B.post("/api/auth/resend",{}):B.post("/api/auth/code/send",{email:V.email});
@@ -587,6 +631,8 @@ function apply(w,host){
         if(!c.isConnected)return;
         if(!r.ok){cm.className="sg-fmsg sg-cmsg err";cm.textContent=(r.j&&r.j.error)||"Could not send a new code.";rs.textContent="Resend code";rs.disabled=false;return}
         if(r.j&&r.j.delivery)V.delivery=r.j.delivery;
+        V.sentAt=Date.now();V.noSend=false;
+        if(kind!=="g"){var cs=getCodeStep()||{kind:kind,email:V.email,first:V.first,last:V.last};cs.at=V.sentAt;setCodeStep(cs)}
         cm.className="sg-fmsg sg-cmsg";cm.textContent="A new code is on its way. The old one no longer works.";rs.textContent="Sent";clear();
         n=30;setTimeout(function(){if(c.isConnected){rs.innerHTML="New code in&nbsp;<span>30</span>s";iv=setInterval(function(){if(!c.isConnected){clearInterval(iv);return}n--;if(n<=0)unlock();else rs.querySelector("span").textContent=n},1000)}},1500);
       });
@@ -607,6 +653,7 @@ function apply(w,host){
       V.view="signedin";render(true);return;
     }
     V.typedName=!!(pend.first&&pend.last);
+    claimDevice(user.email);
     if(V.typedName)saveName(V.first,V.last,user.email);
     if(user.emailVerified===false){
       /* Google vouches only for Gmail and Google-run addresses: any other address gets the code before anything is sent for it */
@@ -624,6 +671,22 @@ function apply(w,host){
     /* the example profile (Jordan Lee) is never copied into a real one: start from empty, like Profile setup does */
     A.S.profile={name:"",title:"",years:0,edu:p.edu,skills:[],salary:0,loc:"",modes:{remote:false,hybrid:false,onsite:false},reloc:false,email:"",custom:true};
     return A.S.profile;
+  }
+  /* a NEW account on a device whose profile belongs to another account (a shared phone or computer, or a second person after Sign out):
+     before, only the name changed, so this account's applications would have gone out with the other person's email, phone, resume and
+     answers while the screens said otherwise. Now it starts from a clean profile with its own email; the other person's phone, links,
+     resume, work authorization and other answers, saved form answers and agreement to apply are cleared from this device (they were kept
+     on this device only), and the first question says so. The same person (same email, or a profile with no email yet) keeps everything. */
+  function claimDevice(email){
+    email=String(email||"").toLowerCase();if(!email)return false;
+    var p=A.S.profile||{},pe=p.custom?String(p.email||"").toLowerCase():"",oe=String(ownGet().email||"").toLowerCase();
+    if(!(pe&&pe!==email)&&!(!pe&&oe&&oe!==email)){if(p.custom&&!p.email){p.email=email.slice(0,200);commit()}return false}
+    A.S.profile={name:"",title:"",years:0,edu:"",skills:[],salary:0,loc:"",modes:{remote:false,hybrid:false,onsite:false},reloc:false,email:email.slice(0,200),custom:true};
+    B.acct(function(a){a.phone=a.linkedin=a.portfolio=a.summary=a.auth=a.notice=a.cover=a.resumeName=a.resumeData=a.resumeUrl="";a.resumeSize=0;a.titles=[];
+      a.eeo={auth:"",sponsor:"",veteran:"",hisp:"",race:[],disability:"",gender:""};a.addr={street:"",unit:"",state:"",zip:""}});
+    var k=w.__uaplyKey||"uaply";[".answers",".answersAsked",".consent"].forEach(function(x){try{w.localStorage.removeItem(k+x)}catch(e){}});
+    ownSet({first:"",last:"",email:email});commit();V.cleared=true;
+    return true;
   }
   function commit(){try{A.save()}catch(e){}try{A.renderAll()}catch(e){}try{if(w.__uaplySyncPrefs)w.__uaplySyncPrefs()}catch(e){}}
   function saveName(first,last,email,onlyIfEmpty){
@@ -674,14 +737,16 @@ function apply(w,host){
     [].forEach.call(root.querySelectorAll(".sg-prog i"),function(x,i){x.classList.toggle("on",i<k);x.classList.toggle("cur",i===k)});
     function paintPV(flashKey){
       /* the meter counts the app's minimum to apply (READY_MIN in shared/uaply-nav.js): a name, an email, and a phone number or a resume */
-      var name=(V.first+" "+V.last).trim(),title=V.work[0]||V.other||"",pr=hasPR(),filled=[name,email,pr].filter(Boolean).length,pct=Math.round(filled/3*100);
+      var p=A.S.profile||{},own=!!p.custom,name=(V.first+" "+V.last).trim()||(own?String(p.name||"").trim():""),title=V.work[0]||V.other||(own?p.title||"":""),
+        where=V.where||(own?p.loc||"":""),em=(own&&p.email)||email,pr=hasPR(),
+        filled=[name,/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em),pr].filter(Boolean).length,pct=Math.round(filled/3*100);
       /* confirmed only from the server's emailVerified; it is not sent to employers, so it sits under their view, not on it */
       var vfd=(V.user||srv().user||{}).emailVerified===true;
       pv.innerHTML='<button type="button" class="sg-pvmini" aria-expanded="'+pv.classList.contains("open")+'">What employers see · '+filled+' of 3 needed<span class="sg-meter"><i style="width:'+pct+'%"></i></span>'+I.chev+'</button>'+
         '<p class="sg-pvh">What an employer sees when you apply through UAply</p><div class="sg-pvcard"><div class="sg-pvn" data-k="name">'+(name?esc(name):'<span class="sg-pvph">Your name</span>')+'</div>'+
         '<div class="sg-pvr" data-k="work"><span>Target title</span><b>'+(title?esc(title):"—")+'</b></div>'+
-        '<div class="sg-pvr" data-k="where"><span>Where</span><b>'+esc(V.where||"—")+'</b></div>'+
-        '<div class="sg-pvr" data-k="email"><span>Email</span><b>'+esc(email)+'</b></div>'+
+        '<div class="sg-pvr" data-k="where"><span>Where</span><b>'+esc(where||"—")+'</b></div>'+
+        '<div class="sg-pvr" data-k="email"><span>Email</span><b>'+esc(em)+'</b></div>'+
         '<div class="sg-pvr'+(pr?'':' later')+'" data-k="pr"><span>Phone or resume</span><b>'+(pr?"Added":"Needed before UAply can apply")+'</b></div>'+
         '<div class="sg-meter"><i style="width:'+pct+'%"></i></div><p class="sg-fine">'+filled+' of 3 needed to apply: your name, your email, and a phone number or a resume. Your other work picks stay on this device and only sort jobs.</p></div>'+
         (vfd?'<p class="sg-vfl">'+I.check+'Your email is confirmed.</p>':'');
@@ -694,6 +759,7 @@ function apply(w,host){
       '<p class="sg-made">'+I.check+' Account created'+(V.first?', '+esc(V.first):'')+'.</p>';
     if(k===0&&V.pwGone)made+='<p class="sg-fine">'+PWGONE()+'</p>';
     if(k===0&&gOff(email))made+='<p class="sg-fine">'+GGONE+'</p>';
+    if(k===0&&V.cleared)made+='<p class="sg-fine">This device had another account’s details (phone, resume, saved answers). They were cleared here, so your applications carry only your own.</p>';
     if(step==="name")html=made+eyebrow+'<h2 tabindex="-1">What should employers call you?</h2><div class="sg-two">'+textFieldHTML("First name","given-name","",V.first,"sg-fn","next")+textFieldHTML("Last name","family-name","",V.last,"sg-ln","next")+'</div><p class="sg-fine">Employers need a name on every application. Kept on this device. Use the name on your resume.</p>';
     if(step==="work")html=made+eyebrow+'<h2 tabindex="-1">What kind of work are you after?</h2><p class="sg-sub">We’ll show these first. You can change this later.</p><div class="sg-chips" role="group" aria-label="Kinds of work">'+WORK.map(function(x){return '<button type="button" class="sg-chip" aria-pressed="'+(V.work.indexOf(x)>-1)+'">'+x+'</button>'}).join("")+'</div>'+textFieldHTML("Something else","off","e.g. dental assistant",V.other,"","next");
     if(step==="where")html=eyebrow+'<h2 tabindex="-1">Where do you want to work?</h2>'+textFieldHTML("City or ZIP code","address-level2","Austin, TX",V.where,"","done")+'<div class="sg-chips"><button type="button" class="sg-chip sg-rem" aria-pressed="'+V.remote+'">Remote is fine</button>'+(s.near?'<button type="button" class="sg-chip sg-loc" aria-pressed="'+V.near+'">'+I.pin+' Use my location</button>':'')+'</div><p class="sg-fine sg-locmsg" aria-live="polite">'+(s.near?(V.near?"Using your device location, rounded to about a mile. It stays on this device and is never sent to our server.":"Your browser asks before it shares your location. It stays on this device and is never sent to our server."):"Kept on this device. Used to sort jobs by distance.")+'</p>';
@@ -752,7 +818,7 @@ function apply(w,host){
     paintPV();
     if(focus)fx(q.querySelector("h2"));
   }
-  function resetV(){V.view="";V.steps=[];V.k=0;V.work=[];V.other="";V.where="";V.remote=false;V.near=false;V.isNew=false;V.viaG=false;V.typedName=false;V.pwGone=false;back=null;wide(false)}
+  function resetV(){V.view="";V.steps=[];V.k=0;V.work=[];V.other="";V.where="";V.remote=false;V.near=false;V.isNew=false;V.viaG=false;V.typedName=false;V.pwGone=false;V.cleared=false;back=null;wide(false)}
   function finish(){
     resetV();
     try{B.cards()}catch(e){}

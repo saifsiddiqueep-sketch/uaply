@@ -787,17 +787,22 @@ def verify_code(token, code, ip):
 # address and stay signed in to it. Here the session only starts when the code from that inbox is typed in (login_with_code).
 CODE_SENDS_PER_EMAIL = 3         # code emails per address and hour, whether or not the address has an account (so a 429 reveals nothing)
 CODE_SENDS_PER_IP = 12           # code emails per visitor address and hour (the same numbers as resend_code)
-CODE_LOGIN_FAILS = 20            # wrong codes per visitor address, and per account from all addresses together, in FAIL_WINDOW
+CODE_LOGIN_FAILS = 20            # codes that did not sign in, from one visitor address in FAIL_WINDOW (that connection only, never the account)
 CODE_LIMIT_MSG = "Too many codes requested. Check your inbox and spam folder, or try again in an hour."
-# A day's limits on top of the hourly ones. Hourly limits alone let one connection try 15 codes an hour against someone's address, every
-# hour, every day (360 a day), and send that inbox 72 code emails a day. With these: at most 6 code emails a day to one address, and after
-# 15 wrong codes for one address in a day, code sign-in for that address stops until the day is over (from every connection; Google and a
-# proven password still work). Unknown addresses are counted the same way, so the answers never say which addresses have an account.
+# One answer for every code that does not sign in: wrong digits, a code that ran out of time or tries, an address with no code or no account.
+# How many tries are left stays on the server, so a wrong code never tells a stranger whether the address has an account.
+WRONG_CODE_MSG = "That code is not right, or it has expired. Check the newest email from UAply, or send a new code."
+# How many codes can be guessed at: each code takes at most MAX_CODE_TRIES (5) wrong tries, and at most CODE_SENDS_PER_EMAIL_DAY (6) codes
+# go to one address a day (every route that emails a code counts), so at most 30 guesses a day (about 1 in 33,000), plus 10 at the
+# owner's 2 spare codes. That bound comes from the codes themselves, so nothing here refuses a code that was just emailed and still has
+# tries left, and a guess at an address with no live code is not counted against the address at all (only against the guesser's own
+# connection). The owner's own device (one that signed in to this address with a code before: serve.py's known-device cookie) keeps
+# CODE_SENDS_KNOWN_DAY spare codes a day, so a stranger who uses up an address's codes for the day cannot keep its owner out.
 DAY = 86400
 CODE_SENDS_PER_EMAIL_DAY = 6
-CODE_FAILS_PER_EMAIL_DAY = 15
-CODE_DAY_MSG = "Too many wrong codes for this email today. Try again tomorrow."
-_code_day = {}       # ("send", email) or ("fail", email) -> timestamps in the last day (its own bucket: _prune forgets keys after an hour)
+CODE_SENDS_KNOWN_DAY = 2
+KNOWN_SECONDS = 90 * DAY         # how long a device stays "known" for its address (the cookie's Max-Age)
+_code_day = {}       # ("send", email) or ("known", email) -> timestamps in the last day (its own bucket: _prune forgets keys after an hour)
 _code_day_pruned = [0.0]
 
 
@@ -811,40 +816,90 @@ def _code_day_recent(key):
     return _recent(_code_day, key, DAY)
 
 
-def _code_fail(key, every, email):
-    """Count one wrong, unknown or expired code: per connection and per account in FAIL_WINDOW, and per address for the day."""
+def _day_msg(wait):
+    """The daily cap, said honestly: how long until this address can be sent a code again."""
+    hours = max(1, int(-(-max(0, wait) // 3600)))
+    return ("Too many codes were sent to this email today, so a new one can be sent in about %s. The newest code still works for 10 minutes "
+            "after it was sent." % ("an hour" if hours == 1 else "%d hours" % hours))
+
+
+def _known_value(row):
+    """The known-device cookie value for this account: its id and an HMAC keyed by the account's own random salt (never sent anywhere,
+    and replaced whenever the password changes or is removed), so it needs no new table and survives a restart."""
+    return "%d.%s" % (row["id"], hmac.new(bytes(row["salt"]), b"uaply-known-device", hashlib.sha256).hexdigest()[:32])
+
+
+def known_device(user_id):
+    """The value serve.py puts in the known-device cookie after a code sign-in, or ''."""
+    with _db() as c:
+        row = c.execute("SELECT id, salt FROM users WHERE id=?", (user_id,)).fetchone()
+    return _known_value(row) if row else ""
+
+
+def _is_known(row, device):
+    return bool(row) and isinstance(device, str) and 0 < len(device) < 100 and hmac.compare_digest(device, _known_value(row))
+
+
+def _code_send_refusal(email, ip, user_id=None, known=False):
+    """None (and the email counted) when one more code email may go to `email` from `ip`, else the 429 body. Call with _lock held.
+
+    Every check is the same for an address with or without an account, so the answer never says which it is. user_id: the account at
+    that address, when there is one; its code emails are also counted under ("u", user_id), the key resend_code reads, so Create my account,
+    Email me a code and Resend share one limit of 3 an hour for that account. known: the request comes from a device that signed in to this
+    address with a code before; when the address's hourly or daily allowance is used up it may still send CODE_SENDS_KNOWN_DAY a day."""
     now = time.time()
-    _fails.setdefault(key, []).append(now)
-    _fails.setdefault(every, []).append(now)
-    _code_day_recent(("fail", email)).append(now)
-
-
-def _code_send_allowed(email, ip, user_id=None):
-    """True (and counted) when one more code email may go to `email` from `ip`. Call with _lock held.
-
-    user_id: the account at that address, when there is one. Its code emails are also counted under ("u", user_id), the key resend_code
-    reads, so Create my account, Email me a code and Resend on a signed-in card share one limit of 3 an hour for that account."""
-    if len(_recent(_code_sends, ("ip", ip), 3600)) >= CODE_SENDS_PER_IP or len(_recent(_code_sends, ("e", email), 3600)) >= CODE_SENDS_PER_EMAIL:
-        return False
-    if user_id is not None and len(_recent(_code_sends, ("u", user_id), 3600)) >= CODE_SENDS_PER_EMAIL:
-        return False
-    if len(_code_day_recent(("send", email))) >= CODE_SENDS_PER_EMAIL_DAY:
-        return False
-    now = time.time()
-    _code_sends[("ip", ip)].append(now)
-    _code_sends[("e", email)].append(now)
+    if len(_recent(_code_sends, ("ip", ip), 3600)) >= CODE_SENDS_PER_IP:
+        return {"error": CODE_LIMIT_MSG, "code": "code_limit"}
+    day = _code_day_recent(("send", email))
+    hour_full = len(_recent(_code_sends, ("e", email), 3600)) >= CODE_SENDS_PER_EMAIL or \
+        (user_id is not None and len(_recent(_code_sends, ("u", user_id), 3600)) >= CODE_SENDS_PER_EMAIL)
+    day_full = len(day) >= CODE_SENDS_PER_EMAIL_DAY
+    if hour_full or day_full:
+        spare = _code_day_recent(("known", email)) if known else None
+        if spare is None or len(spare) >= CODE_SENDS_KNOWN_DAY:
+            if day_full:
+                return {"error": _day_msg(day[-CODE_SENDS_PER_EMAIL_DAY] + DAY - now), "code": "code_day"}
+            return {"error": CODE_LIMIT_MSG, "code": "code_limit"}
+        spare.append(now)                            # the owner's own device: one of today's spare codes
+    else:
+        day.append(now)
+    _code_sends.setdefault(("ip", ip), []).append(now)
+    _code_sends.setdefault(("e", email), []).append(now)
     if user_id is not None:
-        _code_sends[("u", user_id)].append(now)
-    _code_day[("send", email)].append(now)
-    return True
+        _code_sends.setdefault(("u", user_id), []).append(now)
+    return None
 
 
-def signup_passwordless(email, ip, agree=False, check_dns=False, per_hour=None):
+def note_code_sent(email):
+    """A code went to `email` by another route on the sandbox (today's password sign-up): it counts toward the day's cap too."""
+    with _lock:
+        _code_day_recent(("send", _clean_email(email) or str(email))).append(time.time())
+
+
+def resend_code_daily(token, ip):
+    """resend_code (Resend on a signed-in, unconfirmed card) with the day's cap of codes per address on top (serve.py, sandbox only), so
+    every route that emails a code shares the bound on guesses. resend_code itself is unchanged."""
+    user = user_for(token)
+    if not user or user["emailVerified"]:
+        return resend_code(token, ip)
+    with _lock:                                      # an RLock: resend_code takes it again
+        day = _code_day_recent(("send", user["email"]))
+        if len(day) >= CODE_SENDS_PER_EMAIL_DAY:
+            return 429, {"error": _day_msg(day[-CODE_SENDS_PER_EMAIL_DAY] + DAY - time.time()), "code": "code_day"}, None
+        status, body, mail = resend_code(token, ip)
+        if mail:
+            day.append(time.time())
+    return status, body, mail
+
+
+def signup_passwordless(email, ip, agree=False, check_dns=False, per_hour=None, device=""):
     """Create my account with no password. Returns (status, body, mail) where mail is (user_id, email, digits) to send, or None.
 
     A new address gets an account with no usable password (has_password=0, the same kind "Continue with Google" makes), terms_at set to
     now (the 18+ / Terms box was ticked) and email_verified=0; no session yet. An address that already has an account gets a sign-in
-    code instead, and the answer is the same either way, so this cannot be used to find out who has an account."""
+    code instead, and the answer is the same either way, so this cannot be used to find out who has an account: every request counts
+    toward the connection's sign-up limit, the checks run in the same order for both, and the connection's sign-up limit and code limit
+    give one and the same 429 answer. device: the known-device cookie (see _code_send_refusal)."""
     email = _clean_email(email)
     if not email:
         return 400, {"error": "Enter a valid email address."}, None
@@ -856,18 +911,19 @@ def signup_passwordless(email, ip, agree=False, check_dns=False, per_hour=None):
     with _lock:
         _prune()
         with _db() as c:
-            row = c.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
-        if not row and len(_recent(_signups, ip, 3600)) >= (per_hour or SIGNUPS_PER_HOUR_LOCAL):
-            return 429, {"error": SIGNUP_LIMIT_MSG, "code": "signup_limit"}, None
-        if not _code_send_allowed(email, ip, row["id"] if row else None):
+            row = c.execute("SELECT id, salt FROM users WHERE email=?", (email,)).fetchone()
+        if len(_recent(_signups, ip, 3600)) >= (per_hour or SIGNUPS_PER_HOUR_LOCAL):
             return 429, {"error": CODE_LIMIT_MSG, "code": "code_limit"}, None
+        refusal = _code_send_refusal(email, ip, row["id"] if row else None, _is_known(row, device))
+        if refusal:
+            return 429, refusal, None
+        _signups.setdefault(ip, []).append(time.time())
         now = int(time.time())
         try:
             with _db() as c:
                 if row:
                     uid = row["id"]
                 else:
-                    _signups[ip].append(time.time())
                     cur = c.execute("INSERT INTO users(email, salt, hash, created_at, last_login, terms_at, has_password, email_verified) "
                                     "VALUES(?,?,?,?,?,?,0,0)", (email, secrets.token_bytes(16), secrets.token_bytes(32), now, now, now))
                     uid = cur.lastrowid
@@ -879,23 +935,38 @@ def signup_passwordless(email, ip, agree=False, check_dns=False, per_hour=None):
     return 200, {"ok": True, "email": email}, (uid, email, digits)
 
 
-def send_login_code(email, ip):
+def send_login_code(email, ip, device="", defer=False):
     """Email me a code, on the sign-in card. Always answers the same way (like request_reset), so nobody can use it to find out who has
-    an account. Returns (status, body, mail) where mail is (user_id, email, digits) only when the address has an account."""
+    an account. Returns (status, body, mail) where mail is (user_id, email, digits) only when the address has an account. device: the
+    known-device cookie (see _code_send_refusal).
+
+    defer (serve.py): the code is not made here; mail is (user_id, email, None) and issue_login_code makes it on the background thread
+    that emails it, so an address with an account does no more work before the answer than one without (no database write, no email)."""
     email = _clean_email(email)
     if not email:
         return 400, {"error": "Enter a valid email address."}, None
     with _lock:
         _prune()
         with _db() as c:
-            row = c.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
-        if not _code_send_allowed(email, ip, row["id"] if row else None):
-            return 429, {"error": CODE_LIMIT_MSG, "code": "code_limit"}, None
+            row = c.execute("SELECT id, salt FROM users WHERE email=?", (email,)).fetchone()
+        refusal = _code_send_refusal(email, ip, row["id"] if row else None, _is_known(row, device))
+        if refusal:
+            return 429, refusal, None
         if not row:
             return 200, {"ok": True}, None
+        if defer:
+            return 200, {"ok": True}, (row["id"], email, None)
         with _db() as c:
             digits = _new_code(c, row["id"])
     return 200, {"ok": True}, (row["id"], email, digits)
+
+
+def issue_login_code(user_id):
+    """The code for a send_login_code(..., defer=True) answer, made just before it is emailed: (user_id, email, digits), or None when the
+    account is gone by then."""
+    with _lock, _db() as c:
+        row = c.execute("SELECT email FROM users WHERE id=?", (user_id,)).fetchone()
+        return (user_id, row["email"], _new_code(c, user_id)) if row else None
 
 
 def login_with_code(email, code, ip, agree=False):
@@ -903,9 +974,11 @@ def login_with_code(email, code, ip, agree=False):
 
     The code proves the person owns the inbox (the same power as a Forgot password link), so it also works for password and Google
     accounts. body["user"]["new"] is True for an account that has never been signed in to (made by signup_passwordless and confirmed
-    just now), so the page says "Account created" only then. Five wrong tries end a code; 20 wrong codes per connection, and per
-    account from all connections together, in 15 minutes; 15 wrong codes for one address in a day stop code sign-in for it until the
-    day is over (CODE_FAILS_PER_EMAIL_DAY).
+    just now), so the page says "Account created" only then.
+
+    Every code that does not sign in gets the one answer WRONG_CODE_MSG (400), whether the digits are wrong, the code ran out of time or
+    tries, or the address has no code or no account. Five wrong tries end a code. Only the guesser's own connection is ever locked (20 in
+    15 minutes): nothing a stranger sends can stop the owner's freshly emailed code from working (the bound is CODE_SENDS_PER_EMAIL_DAY).
 
     As in oauth_login and reset_password: a password nobody had proven belonged to this address's owner is removed (whoever chose it
     may have signed up first with this person's address), every other session ends, and a Google sign-in Google was not the authority
@@ -922,31 +995,27 @@ def login_with_code(email, code, ip, agree=False):
         return 400, {"error": "Enter a valid email address."}, None
     if len(digits) != 6:
         return 400, {"error": "Enter the 6-digit code from your email."}, None
-    gone = {"error": "That code is not right, or it has expired. Send a new code.", "expired": True}
-    key, every = (ip, "codelogin"), ("*codelogin", email)
+    wrong = {"error": WRONG_CODE_MSG, "code": "wrong_code"}
+    key = (ip, "codelogin")
     with _lock:
         _prune()
-        if len(_recent(_fails, key, FAIL_WINDOW)) >= CODE_LOGIN_FAILS or len(_recent(_fails, every, FAIL_WINDOW)) >= CODE_LOGIN_FAILS:
+        if len(_recent(_fails, key, FAIL_WINDOW)) >= CODE_LOGIN_FAILS:
             return 429, {"error": "Too many tries. Wait a few minutes and try again."}, None
-        if len(_code_day_recent(("fail", email))) >= CODE_FAILS_PER_EMAIL_DAY:
-            return 429, {"error": CODE_DAY_MSG, "code": "code_day"}, None
         with _db() as c:
             row = c.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
             rec = c.execute("SELECT * FROM email_codes WHERE user_id=?", (row["id"],)).fetchone() if row else None
-            if not rec or rec["expires_at"] < int(time.time()):
-                _code_fail(key, every, email)
-                return 400, gone, None
-            if rec["attempts"] >= MAX_CODE_TRIES:
-                c.execute("DELETE FROM email_codes WHERE user_id=?", (row["id"],))
-                return 429, {"error": "Too many wrong tries. Send a new code.", "expired": True}, None
-            if not hmac.compare_digest(hashlib.sha256((rec["salt"] + digits).encode()).hexdigest(), rec["code_hash"]):
-                left = MAX_CODE_TRIES - rec["attempts"] - 1
-                _code_fail(key, every, email)
-                if left <= 0:
+            if not rec or rec["expires_at"] < int(time.time()) or rec["attempts"] >= MAX_CODE_TRIES:
+                if rec:
                     c.execute("DELETE FROM email_codes WHERE user_id=?", (row["id"],))
-                    return 400, {"error": "That code is not right, and there are no tries left. Send a new code.", "expired": True}, None
-                c.execute("UPDATE email_codes SET attempts=attempts+1 WHERE user_id=?", (row["id"],))
-                return 400, {"error": "That code is not right. %d %s left." % (left, "try" if left == 1 else "tries"), "triesLeft": left}, None
+                _fails.setdefault(key, []).append(time.time())      # no live code: not a guess at anyone's code, so only this connection counts it
+                return 400, wrong, None
+            if not hmac.compare_digest(hashlib.sha256((rec["salt"] + digits).encode()).hexdigest(), rec["code_hash"]):
+                _fails.setdefault(key, []).append(time.time())
+                if rec["attempts"] + 1 >= MAX_CODE_TRIES:
+                    c.execute("DELETE FROM email_codes WHERE user_id=?", (row["id"],))
+                else:
+                    c.execute("UPDATE email_codes SET attempts=attempts+1 WHERE user_id=?", (row["id"],))
+                return 400, wrong, None
             uid = row["id"]
             linked = c.execute("SELECT 1 FROM identities WHERE user_id=?", (uid,)).fetchone() is not None
             new = not row["email_verified"] and not row["has_password"] and not linked
@@ -979,6 +1048,31 @@ def login_with_code(email, code, ip, agree=False):
     if g_removed:
         user["googleRemoved"] = True                 # the card stops offering Google to this person (it would answer email_in_use)
     return 200, {"user": user}, token
+
+
+def oauth_login_ticked(provider, subject, email, agree=False, trusted=True):
+    """oauth_login as the sandbox calls it (serve.py, CODE_SIGNIN): a Google login Google vouches for that would join an account whose address
+    was never proven (someone else may have opened it, ticking 18+ / Terms for themselves) needs the person's own tick ("agree_owner" otherwise:
+    Google has just shown this person owns the address, so the page may say the address has an account that was never finished),
+    and terms_at then becomes that tick, the same rule login_with_code follows. oauth_login itself is unchanged (dev and the live site).
+    user["finished"] is True when that account had never been signed in to (no password, no other sign-in: what login_with_code calls
+    new), so the page says "Account created" for it, as the code would."""
+    clean = _clean_email(email)
+    with _lock:                                      # one lock for the check and the sign-in (an RLock: oauth_login takes it again)
+        with _db() as c:
+            known = c.execute("SELECT 1 FROM identities WHERE provider=? AND subject=?", (provider, subject)).fetchone() is not None
+            row = c.execute("SELECT id, email_verified, has_password FROM users WHERE email=?", (clean,)).fetchone() if clean else None
+            linked = bool(row) and c.execute("SELECT 1 FROM identities WHERE user_id=?", (row["id"],)).fetchone() is not None
+        joins_unproven = bool(trusted and not known and row and not row["email_verified"])
+        if joins_unproven and agree is not True:
+            return "agree_owner", None, None
+        err, user, token = oauth_login(provider, subject, email, agree, trusted)
+        if not err and joins_unproven:
+            with _db() as c:
+                c.execute("UPDATE users SET terms_at=? WHERE id=?", (int(time.time()), user["id"]))
+            if not row["has_password"] and not linked:
+                user["finished"] = True
+    return err, user, token
 
 
 # After a "Continue with Google" round trip the page needs one fact the redirect cannot carry: whether the account was made just now
