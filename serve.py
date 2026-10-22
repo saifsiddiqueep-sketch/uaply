@@ -363,6 +363,25 @@ def code_signin_live():
 CODE_OFF_MSG = "Signing in with an emailed code is not available right now. Use Continue with Google, or try again later."
 
 
+def _mail_later(send, *args):
+    """sign-up v2: hand an email to a background thread and answer at once. "Email me a code" (and Forgot password on the sandbox) only
+    email an address that has an account, so sending before answering made those answers slower exactly when the address has one: a
+    careful outsider could time them. The code or link is already saved, so nothing waits on the mail service."""
+    def run():
+        try:
+            send(*args)
+        except Exception as e:                                   # the send functions log their own problems; this is a last guard
+            sys.stderr.write("[uaply] a background email was not sent: %s: %s\n" % (type(e).__name__, str(e)[:200]))
+    threading.Thread(target=run, daemon=True).start()
+
+
+def _login_code_mail(user_id):
+    """sign-up v2, on the background thread: make the "Email me a code" code (auth_api.issue_login_code) and email it."""
+    mail = auth_api.issue_login_code(user_id)
+    if mail:
+        uaply_api.send_verification_mail(*mail)
+
+
 def record_request(method, path, code, ms, stat=None):
     """Count one answered request (called by the handler) and log its line when it is an API call, an error or slow.
     stat: what the handler says this request was ("signups", "logins"), or "skip" to count neither (sign-up v2)."""
@@ -554,6 +573,15 @@ class H(http.server.SimpleHTTPRequestHandler):
         age = auth_api.SESSION_SECONDS if token else 0
         return [("Set-Cookie", "%s=%s; HttpOnly; SameSite=Lax; Path=/; Max-Age=%d%s" % (auth_api.cookie_name(), token, age, secure))]
 
+    def _known(self):
+        """sign-up v2: the known-device cookie ('' if absent): set after a code sign-in on this device (auth_api._code_send_refusal)."""
+        return self._cookie_value(auth_api.cookie_name() + "_known")[:100]
+
+    def _known_cookie(self, value):
+        secure = "; Secure" if (self.headers.get("X-Forwarded-Proto") == "https") else ""
+        return [("Set-Cookie", "%s_known=%s; HttpOnly; SameSite=Strict; Path=/api/auth; Max-Age=%d%s" % (
+            auth_api.cookie_name(), value, auth_api.KNOWN_SECONDS if value else 0, secure))] if value else []
+
     def _origin_parts(self):
         host = self.headers.get("Host") or "localhost"
         return host, ("https" if self.headers.get("X-Forwarded-Proto") == "https" else "http")
@@ -657,12 +685,13 @@ class H(http.server.SimpleHTTPRequestHandler):
         err, ident, agreed = google_auth.finish(q, self._cookie_value(auth_api.cookie_name() + "_oauth"), host, proto)
         if err:
             return self._redirect("/?auth_error=" + err, [self._oauth_cookie("")])
-        err, user, token = auth_api.oauth_login(ident["provider"], ident["subject"], ident["email"], agreed, ident.get("trusted", True))
+        login = auth_api.oauth_login_ticked if CODE_SIGNIN else auth_api.oauth_login      # /* sign-up v2 */ the owner's own tick (sandbox)
+        err, user, token = login(ident["provider"], ident["subject"], ident["email"], agreed, ident.get("trusted", True))
         if err:
             return self._redirect("/?auth_error=" + err, [self._oauth_cookie("")])
         if CODE_SIGNIN:                                  # /* sign-up v2 */ new account or not, for the page (memory only, 10 minutes)
             # an account that had a password removed was made before, by a password sign-up: never "Account created"
-            auth_api.remember_google(user["id"], auth_api.created_within(user["id"], 60) and not user.get("passwordRemoved"))
+            auth_api.remember_google(user["id"], (user.pop("finished", False) or auth_api.created_within(user["id"], 60)) and not user.get("passwordRemoved"))
         return self._redirect("/?signed_in=google" + ("&password_removed=1" if user.get("passwordRemoved") else ""), self._cookie(token) + [self._oauth_cookie("")])
 
     def _owner_ok(self):
@@ -852,20 +881,23 @@ class H(http.server.SimpleHTTPRequestHandler):
             if CODE_SIGNIN and p == "/api/auth/signup" and payload.get("passwordless") is True:
                 self._stat = "skip"                              # counted as a sign-up once its code is typed (/api/auth/code/verify)
                 code, out, mail = auth_api.signup_passwordless(payload.get("email"), ip, payload.get("agree"), dns_check(),
-                                                               auth_api.SIGNUPS_PER_HOUR if PUBLIC else None)
-                if mail:
+                                                               auth_api.SIGNUPS_PER_HOUR if PUBLIC else None, self._known())
+                if mail:                                         # new address or not, a code goes out, so the wait is the same
                     out = dict(out, delivery=uaply_api.send_verification_mail(*mail))
                 return self._send(code, out)
             if CODE_SIGNIN and p == "/api/auth/code/send":
-                code, out, mail = auth_api.send_login_code(payload.get("email"), ip)
-                if mail:                                         # the answer is the same whether or not the address has an account
-                    uaply_api.send_verification_mail(*mail)
-                return self._send(code, out)
+                code, out, mail = auth_api.send_login_code(payload.get("email"), ip, self._known(), defer=True)
+                self._send(code, out)                            # the same answer whether or not the address has an account, and as fast:
+                if mail:                                         # the code is made and emailed only once the answer has gone out
+                    _mail_later(_login_code_mail, mail[0])
+                return None
             if CODE_SIGNIN and p == "/api/auth/code/verify":
                 code, out, token = auth_api.login_with_code(payload.get("email"), payload.get("code"), ip, payload.get("agree") is True)
                 if token:
                     self._stat = "signups" if out["user"].get("new") else "logins"
-                return self._send(code, out, headers=self._cookie(token) if token else ())
+                    # this device proved the inbox: it keeps 2 spare codes a day for this address (auth_api._code_send_refusal)
+                    return self._send(code, out, headers=self._cookie(token) + self._known_cookie(auth_api.known_device(out["user"]["id"])))
+                return self._send(code, out)
             # /* end sign-up v2 */
             if p == "/api/auth/signup":
                 # the account and its first code are made in one locked step (auth_api.signup_with_code), so a Google sign-in for the same
@@ -874,6 +906,8 @@ class H(http.server.SimpleHTTPRequestHandler):
                                                                    dns_check(), auth_api.SIGNUPS_PER_HOUR if PUBLIC else None)
                 if mail:                                         # a new password account must prove it owns the email: send the first code
                     uid, addr, digits = mail
+                    if CODE_SIGNIN:                              # /* sign-up v2 */ every code to an address counts toward the day's cap
+                        auth_api.note_code_sent(addr)
                     out = dict(out, delivery=uaply_api.send_verification_mail(uid, addr, digits))
                 return self._send(code, out, headers=self._cookie(token) if token else ())
             if p == "/api/auth/login":
@@ -924,14 +958,16 @@ class H(http.server.SimpleHTTPRequestHandler):
                        "failed": "Google sign-in could not be checked. Try again.", "unverified": "Google says that email address is not verified, so UAply cannot use it.",
                        "off": "Google sign-in is not switched on.", "limited": "Too many tries. Wait a minute and try again.",
                        "email_in_use": "That email already has a UAply account. Sign in with your email and password instead.",
-                       "disposable": auth_api.KEEP_MSG}
+                       "disposable": auth_api.KEEP_MSG,
+                       "agree_owner": "This email has a UAply account that was never finished. Tick the box to confirm you are 18 or older and agree, then choose Google again."}   # sign-up v2 (sandbox)
                 err, ident = google_auth.verify_credential(payload.get("credential"), ip)
                 if not err:
-                    err, user, token = auth_api.oauth_login(ident["provider"], ident["subject"], ident["email"], payload.get("agree") is True, ident.get("trusted", True))
+                    login = auth_api.oauth_login_ticked if CODE_SIGNIN else auth_api.oauth_login      # /* sign-up v2 */ the owner's own tick (sandbox)
+                    err, user, token = login(ident["provider"], ident["subject"], ident["email"], payload.get("agree") is True, ident.get("trusted", True))
                 if err:
                     return self._send(429 if err == "limited" else 400, {"error": msg.get(err, msg["failed"]), "code": err})
                 if CODE_SIGNIN:                                  # /* sign-up v2 */ new account or not, for the page (memory only)
-                    auth_api.remember_google(user["id"], auth_api.created_within(user["id"], 60) and not user.get("passwordRemoved"))
+                    auth_api.remember_google(user["id"], (user.pop("finished", False) or auth_api.created_within(user["id"], 60)) and not user.get("passwordRemoved"))
                     user = dict(user, google=auth_api.google_hint(user["id"]))
                 out = {"user": user}
                 if user.pop("passwordRemoved", False):           # a password nobody had proven was the owner's was removed (auth_api.oauth_login)
@@ -941,7 +977,7 @@ class H(http.server.SimpleHTTPRequestHandler):
                 code, out = auth_api.verify_code(self._token(), payload.get("code"), ip)
                 return self._send(code, out)
             if p == "/api/auth/resend":
-                code, out, mail = auth_api.resend_code(self._token(), ip)
+                code, out, mail = (auth_api.resend_code_daily if CODE_SIGNIN else auth_api.resend_code)(self._token(), ip)   # /* sign-up v2 */ the day's cap
                 if mail:
                     uid, addr, digits = mail
                     mail_status = uaply_api.send_verification_mail(uid, addr, digits)
@@ -957,8 +993,13 @@ class H(http.server.SimpleHTTPRequestHandler):
                     link = self._site_base() + "/?reset=" + tok
                     body = ("Hi,\n\nSomeone asked to reset the password for this UAply account. Use this link within one hour:\n\n%s\n\n"
                             "If you did not ask for this, ignore this email; your password has not changed.\n\n--\nUAply") % link
-                    status = uaply_api.send_system_mail(uid, addr, "Reset your UAply password", body, secret=True, kind="reset")
-                    out = dict(out, delivery=status)
+                    if CODE_SIGNIN:                              # /* sign-up v2 */ (sandbox) answer first, as /api/auth/code/send does
+                        self._send(code, dict(out, delivery=("sent" if uaply_api.mail_ready() else "delivered_test")))
+                        _mail_later(lambda: uaply_api.send_system_mail(uid, addr, "Reset your UAply password", body, secret=True, kind="reset"))
+                        return None
+                    else:
+                        status = uaply_api.send_system_mail(uid, addr, "Reset your UAply password", body, secret=True, kind="reset")
+                        out = dict(out, delivery=status)
                 else:
                     out = dict(out, delivery=("sent" if uaply_api.mail_ready() else "delivered_test"))
                 return self._send(code, out)

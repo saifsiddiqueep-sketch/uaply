@@ -10,8 +10,14 @@ Checks, first on auth_api directly and then over HTTP:
     Google sign-in Google did not vouch for, with every session it had
   * any account whose address was never proven (no password, an unproven password, an unvouched Google login) is finished only with the
     code typer's own 18+ / Terms tick (needsAgree otherwise), and terms_at becomes that tick
-  * a day's limits: 6 code emails per address, 15 wrong codes per address (then code sign-in stops for that address until the day is
-    over); every code email to one account shares one hourly limit with Resend; an expired code is refused
+  * a day's limits: 6 code emails per address (every route, Resend included), said with how long to wait; the owner's own device keeps
+    2 spare codes a day; every code email to one account shares one hourly limit with Resend; an expired code is refused
+  * nothing a stranger sends can lock the owner out: guesses at an address with no live code count only against the guesser's
+    connection, and a freshly emailed code always works (hardening round 3, finding 1)
+  * nothing tells a stranger who has an account: one answer for every code that does not sign in; Create my account counts every
+    request against the connection's limit, with one answer for both limits; "Email me a code" answers as fast either way, with a
+    mail server that takes 300 ms per message (and Forgot password on the sandbox too)
+  * Google (sandbox) joining an account whose address was never proven needs the owner's own tick, and records it
   * Google: asked for "openid email" only, everywhere (the "profile" scope is a question for Saif); the sandbox keeps "new or not" 10
     minutes in memory; a Google sign-in on a pending no-password account links it without "password removed"
   * dev: POST /api/auth/signup without a password is still refused, the code routes are 404, /api/auth/providers is unchanged
@@ -94,7 +100,7 @@ t("the older code no longer works once a new one was sent", (s, tok), (400, None
 wrong = "%06d" % ((int(code2) + 1) % 1000000)
 for i in range(3):
     s, out, tok = auth_api.login_with_code("sam@example.com", wrong, IP)
-t("a wrong code says how many tries are left", (s, out.get("triesLeft"), tok), (400, 1, None))
+t("a wrong code: the one plain answer, no tries count (it stays on the server)", (s, out, tok), (400, {"error": auth_api.WRONG_CODE_MSG, "code": "wrong_code"}, None))
 s, out, tok = auth_api.login_with_code("sam@example.com", "12", IP)
 t("a short code is refused before it counts", s, 400)
 s, out, tok = auth_api.login_with_code("sam@example.com", code2, IP)
@@ -118,7 +124,7 @@ s, out, mail = auth_api.signup_passwordless("five@example.com", "10.1.0.3", agre
 bad = "%06d" % ((int(mail[2]) + 7) % 1000000)
 for i in range(5):
     s, out, tok = auth_api.login_with_code("five@example.com", bad, "10.1.0.3")
-t("the fifth wrong try ends the code", out.get("expired"), True)
+t("the fifth wrong try ends the code (the same plain answer)", (s, out.get("code"), out.get("triesLeft"), out.get("expired")), (400, "wrong_code", None, None))
 s, out, tok = auth_api.login_with_code("five@example.com", mail[2], "10.1.0.3", True)
 t("...and then even the right digits do not work", (s, tok), (400, None))
 
@@ -147,7 +153,7 @@ t("20 wrong codes from one connection: locked for a while", s, 429)
 for i in range(auth_api.SIGNUPS_PER_HOUR_LOCAL):
     auth_api.signup_passwordless("many%d@example.com" % i, "10.5.0.1", agree=True)
 s, out, mail = auth_api.signup_passwordless("many-more@example.com", "10.5.0.1", agree=True)
-t("the existing new-accounts-per-hour cap applies too", (s, out.get("code")), (429, "signup_limit"))
+t("the new-accounts-per-hour cap applies too (with the same answer as the code limit)", (s, out), (429, {"error": auth_api.CODE_LIMIT_MSG, "code": "code_limit"}))
 
 # an unproven password on the address is removed when the code proves the inbox
 s, out, ptok = auth_api.signup("pw@example.com", "correct horse 99", "10.6.0.1", True)
@@ -185,7 +191,7 @@ s, out, mail = auth_api.signup_passwordless("late@example.com", "10.6.2.1", agre
 with auth_api._db() as c:
     c.execute("UPDATE email_codes SET expires_at=? WHERE user_id=?", (int(time.time()) - 1, mail[0]))
 s, out, tok = auth_api.login_with_code("late@example.com", mail[2], "10.6.2.1", True)
-t("an expired code, right digits: refused as expired, no session", (s, out.get("expired"), tok), (400, True, None))
+t("an expired code, right digits: refused with the same plain answer, no session", (s, out.get("code"), tok), (400, "wrong_code", None))
 s, out, mail = auth_api.send_login_code("late@example.com", "10.6.2.1")
 s, out, tok = auth_api.login_with_code("late@example.com", mail[2], "10.6.2.1", True)
 t("...and a fresh code then signs in", (s, bool(tok)), (200, True))
@@ -225,31 +231,117 @@ try:
     clock.add += 86400
     t("...the next day the address gets codes again", auth_api.send_login_code("daily@example.com", "10.9.9.1")[0], 200)
 
-    # 15 wrong codes for one address in a day: code sign-in stops for it, even with the right digits, until the day is over
-    s, out, mail = auth_api.signup_passwordless("guess@example.com", "10.9.10.1", agree=True)
-    wrong_answers = []
-    for hour in range(3):
-        if hour:
-            mail = auth_api.send_login_code("guess@example.com", "10.9.10.%d" % (hour + 1))[2]
-        bad = "%06d" % ((int(mail[2]) + 1) % 1000000)
-        for i in range(5):                                 # five wrong tries end each code; spread over hours so the 15-minute limits never trip
-            wrong_answers.append(auth_api.login_with_code("guess@example.com", bad, "10.9.11.%d" % hour)[0])
-        clock.add += 3601
-    t("15 wrong codes over three hours are each refused", all(a == 400 for a in wrong_answers) and len(wrong_answers) == 15, True)
-    mail = auth_api.send_login_code("guess@example.com", "10.9.10.9")[2]
-    s, out, tok = auth_api.login_with_code("guess@example.com", mail[2], "10.9.12.1", True)
-    t("...then even the right code is refused for the rest of the day (no session)", (s, out.get("code"), tok), (429, "code_day", None))
-    s, out, tok = auth_api.login_with_code("nobody-guess@example.com", "123456", "10.9.12.1", True)
-    t("...an address with no account answers as before (400), so the limit says nothing about who has an account", s, 400)
+    # hardening round 3, finding 1 (blocker): guesses at an address with no live code used to count toward a day's lock of 15, so 15
+    # requests a day (no email, no code needed) kept the owner out for good. Now they count only against the guesser's own connection.
+    s, out, mail = auth_api.signup_passwordless("victim@example.com", "10.9.10.1", agree=True)
+    s, out, tok = auth_api.login_with_code("victim@example.com", mail[2], "10.9.10.1", True)
+    t("finding 1: the owner's account exists and works", (s, bool(tok)), (200, True))
+    for day_ in range(3):
+        guesses = [auth_api.login_with_code("victim@example.com", "%06d" % i, "10.9.20.%d" % (i % 15))[0] for i in range(30)]
+        clock.add += 60
+        mail = auth_api.send_login_code("victim@example.com", "10.9.21.%d" % day_)[2]
+        s, out, tok = auth_api.login_with_code("victim@example.com", mail[2], "10.9.22.%d" % day_, True)
+        t("finding 1, day %d: 30 guesses from 15 connections with no code out, then the owner's fresh code signs in" % (day_ + 1),
+          (all(g == 400 for g in guesses), s, bool(tok)), (True, 200, True))
+        clock.add += 86400
+    # with a live code: wrong guesses count against that code's 5 tries only; a new code then works at once (nothing locks the address)
+    mail = auth_api.send_login_code("victim@example.com", "10.9.23.1")[2]
+    burned = [auth_api.login_with_code("victim@example.com", "%06d" % ((int(mail[2]) + 1 + i) % 1000000), "10.9.24.%d" % i)[0] for i in range(5)]
+    mail = auth_api.send_login_code("victim@example.com", "10.9.23.2")[2]
+    s, out, tok = auth_api.login_with_code("victim@example.com", mail[2], "10.9.25.1", True)
+    t("finding 1: 5 wrong tries end that one code; the owner's next code signs in at once", (burned, s, bool(tok)), ([400] * 5, 200, True))
+    s, out, tok = auth_api.login_with_code("victim@example.com", "123456", "10.9.25.1", True)
+    t("finding 1: a guess with no code out is the same plain answer", (s, out.get("code")), (400, "wrong_code"))
     clock.add += 86400
-    mail = auth_api.send_login_code("guess@example.com", "10.9.13.1")[2]
-    s, out, tok = auth_api.login_with_code("guess@example.com", mail[2], "10.9.13.1", True)
-    t("...the next day the right code signs in", (s, bool(tok)), (200, True))
+
+    # finding 5: the day's cap says how long, and the owner's own device keeps 2 spare codes a day
+    s, out, mail = auth_api.signup_passwordless("capped@example.com", "10.9.30.1", agree=True)
+    s, out, tok = auth_api.login_with_code("capped@example.com", mail[2], "10.9.30.1", True)
+    device = auth_api.known_device(out["user"]["id"])
+    t("finding 5: a code sign-in gives this device its known-device value", bool(re.fullmatch(r"[0-9]+\.[0-9a-f]{32}", device)), True)
+    clock.add += 86400                                     # a new day: the sign-up's own code no longer counts
+    sends = []
+    for i in range(6):                                     # a stranger: 6 codes over 2 hours (3, then 3)
+        sends.append(auth_api.send_login_code("capped@example.com", "10.9.31.%d" % i)[0])
+        if i == 2:
+            clock.add += 3601
+    clock.add += 1800
+    s, out, mail = auth_api.send_login_code("capped@example.com", "10.9.32.1")
+    t("finding 5: after a stranger's 6 codes, another device is refused with its own code word and how long (not 'an hour')",
+      (sends, s, out.get("code"), "about 23 hours" in out.get("error", ""), "an hour" in out.get("error", "")), ([200] * 6, 429, "code_day", True, False))
+    s2, out2, mail2 = auth_api.send_login_code("nobody-capped@example.com", "10.9.32.2")
+    t("finding 5: the cap is the same for an address with no account (the first code goes out the same)", s2, 200)
+    s, out, mail = auth_api.send_login_code("capped@example.com", "10.9.33.1", device)
+    t("finding 5: the owner's own device still gets a code", (s, bool(mail)), (200, True))
+    s, out, tok = auth_api.login_with_code("capped@example.com", mail[2], "10.9.33.1", True)
+    t("finding 5: ...and it signs in", (s, bool(tok)), (200, True))
+    forged = device.split(".")[0] + "." + "0" * 32
+    s, out, mail = auth_api.send_login_code("capped@example.com", "10.9.33.2", forged)
+    t("finding 5: a made-up device value gets no spare code", (s, out.get("code")), (429, "code_day"))
+    s, out, mail = auth_api.send_login_code("capped@example.com", "10.9.33.3", device)
+    s3, out3, mail3 = auth_api.send_login_code("capped@example.com", "10.9.33.4", device)
+    t("finding 5: 2 spare codes a day for the owner's device, then the day's answer", (s, s3, out3.get("code")), (200, 429, "code_day"))
+    s, out, mail = auth_api.signup_passwordless("capped@example.com", "10.9.33.5", agree=True)
+    t("finding 5: Create my account gets the same day's answer", (s, out.get("code")), (429, "code_day"))
+    clock.add += 86400
+
+    # every route that emails a code counts toward the day's cap: Resend on a signed-in, unconfirmed card (resend_code_daily)
+    err, user, rtok = auth_api.oauth_login("google", "g-day", "resend@example.org", True, False)
+    got = []
+    for hour in range(3):
+        got += [auth_api.resend_code_daily(rtok, "10.9.40.%d%d" % (hour, i))[0] for i in range(3)]
+        clock.add += 3601
+    s, out, mail = auth_api.send_login_code("resend@example.org", "10.9.41.1")
+    t("Resend counts toward the day's cap too (3, 3, then refused), and so does Email me a code after it", (got, s, out.get("code")), ([200] * 6 + [429] * 3, 429, "code_day"))
+    t("...Resend's own day answer says how long", "hours" in auth_api.resend_code_daily(rtok, "10.9.41.2")[1].get("error", ""), True)
+    clock.add += 86400
     with auth_api._lock:
         n_day = len(auth_api._code_day)
     t("the day's counts are kept apart from the hourly ones (memory is bounded by the day)", n_day > 0, True)
 finally:
     auth_api.time = real_time
+
+# finding 2: Create my account on a connection that used up its sign-ups: an address with an account and one without get the very same answer
+auth_api.signup_passwordless("member@example.com", "10.10.0.1", agree=True)
+for i in range(auth_api.SIGNUPS_PER_HOUR_LOCAL - 1):
+    auth_api.signup_passwordless("filler%d@example.com" % i, "10.10.0.1", agree=True)
+a1 = auth_api.signup_passwordless("member@example.com", "10.10.0.1", agree=True)[:2]
+a2 = auth_api.signup_passwordless("stranger@example.com", "10.10.0.1", agree=True)[:2]
+t("finding 2: after the connection's sign-ups, an existing address and a new one get the same answer", (a1, a1 == a2), ((429, {"error": auth_api.CODE_LIMIT_MSG, "code": "code_limit"}), True))
+for i in range(3):
+    auth_api.send_login_code("made-up%d@example.com" % i, "10.10.0.2")
+for i in range(9):
+    auth_api.send_login_code("x-up%d@example.com" % i, "10.10.0.2")
+b1 = auth_api.signup_passwordless("member@example.com", "10.10.0.2", agree=True)[:2]
+b2 = auth_api.signup_passwordless("stranger2@example.com", "10.10.0.2", agree=True)[:2]
+t("finding 2: after the connection's code emails, the same answer again for both", (b1, b1 == b2), ((429, {"error": auth_api.CODE_LIMIT_MSG, "code": "code_limit"}), True))
+
+# finding 3: "Email me a code" then one wrong code: the same answer whether or not the address has an account
+auth_api.signup_passwordless("known3@example.com", "10.10.1.1", agree=True)
+k = auth_api.send_login_code("known3@example.com", "10.10.1.2")
+u = auth_api.send_login_code("unknown3@example.com", "10.10.1.3")
+t("finding 3: Email me a code answers the same", (k[:2], u[:2]), ((200, {"ok": True}), (200, {"ok": True})))
+kw = auth_api.login_with_code("known3@example.com", "%06d" % ((int(k[2][2]) + 1) % 1000000), "10.10.1.4")
+uw = auth_api.login_with_code("unknown3@example.com", "000000", "10.10.1.5")
+t("finding 3: ...and so does a wrong code after it (no tries count, no 'expired' for one only)", (kw[:2], kw[:2] == uw[:2]), ((400, {"error": auth_api.WRONG_CODE_MSG, "code": "wrong_code"}), True))
+
+# finding 6: a Google login Google vouches for, joining an account someone else opened on that Gmail address (no code typed), needs the
+# owner's own tick on the sandbox (oauth_login_ticked), and the tick on record becomes the owner's
+auth_api.signup_passwordless("owner.g@gmail.com", "10.10.2.1", agree=True)
+with auth_api._db() as c:
+    c.execute("UPDATE users SET terms_at=1 WHERE email='owner.g@gmail.com'")      # the stranger's tick
+err, user, gt = auth_api.oauth_login_ticked("google", "g-owner", "owner.g@gmail.com", False, True)
+t("finding 6: Google on someone else's unfinished account, no tick: 'agree_owner', no session", (err, gt, row("owner.g@gmail.com")["terms_at"]), ("agree_owner", None, 1))
+err, user, gt = auth_api.oauth_login_ticked("google", "g-owner", "owner.g@gmail.com", True, True)
+t("finding 6: ...ticked: signed in, verified, and the tick on record is the owner's (terms_at now)",
+  (err, bool(gt), user and user["emailVerified"], abs(row("owner.g@gmail.com")["terms_at"] - time.time()) < 60), (None, True, True, True))
+err, user, gt = auth_api.oauth_login_ticked("google", "g-owner", "owner.g@gmail.com", False, True)
+t("finding 6: ...after that, Google signs in without the tick (the account is proven and the identity known)", (err, bool(gt)), (None, True))
+err, user, gt = auth_api.oauth_login_ticked("google", "g-new", "brand.new.g@gmail.com", False, True)
+t("finding 6: a brand-new Google account still needs the tick, as before", err, "agree")
+auth_api.signup_passwordless("devrule.g@gmail.com", "10.10.2.2", agree=True)
+err, user, gt = auth_api.oauth_login("google", "g-devrule", "devrule.g@gmail.com", False, True)
+t("finding 6: oauth_login itself (dev and the live site) is unchanged", (err, bool(gt)), (None, True))
 
 # Google on a pending no-password account (made but its code never typed)
 auth_api.signup_passwordless("gabi@gmail.com", "10.7.0.1", agree=True)
@@ -281,9 +373,9 @@ uaply_api.config = real_config
 
 
 # ---------------------------------------------------------------- over HTTP: sandbox and dev side by side
-def start(port, inst, **extra):
-    env = dict(os.environ, UAPLY_CONFIG_FILE="none", UAPLY_DATA_DIR=os.path.join(TMP, inst + str(port)),
-               UAPLY_CONFIG_JSON=json.dumps({"delivery": "test", "smtp": {}, "feeds": [], "owner_copy": ""}), **extra)
+def start(port, inst, cfg=None, **extra):
+    env = dict(os.environ, UAPLY_CONFIG_FILE="none", UAPLY_DATA_DIR=os.path.join(TMP, inst + str(port)), UAPLY_DNS_CHECK="off",
+               UAPLY_CONFIG_JSON=json.dumps(cfg or {"delivery": "test", "smtp": {}, "feeds": [], "owner_copy": ""}), **extra)
     env.pop("ANTHROPIC_API_KEY", None)
     env.pop("HOST", None)
     p = subprocess.Popen([sys.executable, os.path.join(ROOT, "serve.py"), str(port), inst, "--api"], cwd=ROOT, env=env,
@@ -318,10 +410,89 @@ def req(port, method, path, body=None, cookie="", origin=None):
     return out
 
 
-def inbox_code(port):
-    s, page, _ = req(port, "GET", "/outbox")
-    m = re.search(r"([0-9]{6}) is your UAply verification code", page if isinstance(page, str) else "")
-    return m.group(1) if m else ""
+def inbox_code(port, before=""):
+    """The newest code in the test inbox (waiting a moment for one that differs from `before`: "Email me a code" sends after it answers)."""
+    for _ in range(40):
+        s, page, _ = req(port, "GET", "/outbox")
+        m = re.search(r"([0-9]{6}) is your UAply verification code", page if isinstance(page, str) else "")
+        if m and m.group(1) != before:
+            return m.group(1)
+        time.sleep(0.1)
+    return ""
+
+
+class Sink:
+    """A local mail server that takes `delay` seconds per message, like a real mail service (nothing leaves this computer)."""
+    def __init__(self, delay):
+        import socket
+        import threading
+        self.delay, self.msgs, self.lock = delay, [], threading.Lock()
+        self.sock = socket.socket()
+        self.sock.bind(("127.0.0.1", 0))
+        self.sock.listen(50)
+        self.port = self.sock.getsockname()[1]
+        threading.Thread(target=self.loop, daemon=True).start()
+
+    def loop(self):
+        import threading
+        while True:
+            try:
+                c, _ = self.sock.accept()
+            except OSError:
+                return
+            threading.Thread(target=self.handle, args=(c,), daemon=True).start()
+
+    def handle(self, c):
+        f = c.makefile("rb")
+        say = lambda x: c.sendall((x + "\r\n").encode())
+        say("220 sink ESMTP")
+        rcpt = []
+        try:
+            while True:
+                line = f.readline()
+                if not line:
+                    break
+                u = line.decode("latin-1").strip().upper()
+                if u.startswith("EHLO"):
+                    c.sendall(b"250-sink\r\n250-8BITMIME\r\n250 SMTPUTF8\r\n")
+                elif u.startswith("RCPT TO"):
+                    rcpt.append(line.decode("latin-1").strip()[8:].strip(" <>").lower())
+                    say("250 ok")
+                elif u == "DATA":
+                    say("354 go")
+                    data = []
+                    while True:
+                        x = f.readline()
+                        if not x or x in (b".\r\n", b".\n"):
+                            break
+                        data.append(x.decode("utf-8", "replace"))
+                    time.sleep(self.delay)
+                    with self.lock:
+                        self.msgs.append((",".join(rcpt), "".join(data), time.time()))
+                    rcpt = []
+                    say("250 queued")
+                elif u.startswith("QUIT"):
+                    say("221 bye")
+                    break
+                else:
+                    say("250 ok")
+        finally:
+            c.close()
+
+    def code_for(self, addr, wait=5.0):
+        end = time.time() + wait
+        while time.time() < end:
+            with self.lock:
+                for to, data, at in reversed(self.msgs):
+                    m = re.search(r"([0-9]{6}) is your UAply verification code", data)
+                    if addr in to and m:
+                        return m.group(1)
+            time.sleep(0.05)
+        return ""
+
+    def count(self, addr):
+        with self.lock:
+            return sum(1 for to, d, a in self.msgs if addr in to)
 
 
 try:
@@ -368,6 +539,19 @@ try:
     s, j, _ = req(DEV_PORT, "GET", "/api/auth/me", cookie=ck.split(";", 1)[0])
     t("dev: /api/auth/me has no Google hint key", "google" in (j.get("user") or {}), False)
 
+    # finding 1 over HTTP (the reviewer's repro): 15 guesses with no code out, then the owner's freshly emailed code signs in
+    s, j, _ = req(PORT, "POST", "/api/auth/signup", {"email": "victim@example.com", "agree": True, "passwordless": True})
+    c0 = inbox_code(PORT)
+    s, j, ck = req(PORT, "POST", "/api/auth/code/verify", {"email": "victim@example.com", "code": c0, "agree": True})
+    t("sandbox, finding 1: the owner's account is made", s, 200)
+    t("sandbox, finding 5: a code sign-in sets the known-device cookie (HttpOnly, SameSite=Strict, /api/auth only)",
+      bool(re.search(r"uaply_sandbox_session_known=[0-9]+\.[0-9a-f]{32}; HttpOnly; SameSite=Strict; Path=/api/auth; Max-Age=7776000", ck)), True)
+    guesses = [req(PORT, "POST", "/api/auth/code/verify", {"email": "victim@example.com", "code": "%06d" % i})[0] for i in range(15)]
+    s, j, _ = req(PORT, "POST", "/api/auth/code/send", {"email": "victim@example.com"})
+    c1 = inbox_code(PORT, c0)
+    s, j, ck = req(PORT, "POST", "/api/auth/code/verify", {"email": "victim@example.com", "code": c1, "agree": True})
+    t("sandbox, finding 1: 15 guesses (all 400), then the owner's emailed code signs in (was 429 code_day)", (guesses, s, "uaply_sandbox_session=" in ck), ([400] * 15, 200, True))
+
     # a sandbox with UAPLY_CODE_SIGNIN=0 (how run-all-tests.sh checks today's password card on the sandbox): exactly like dev
     start(PORT + 2, "sandbox", UAPLY_CODE_SIGNIN="0")
     s, j, _ = req(PORT + 2, "GET", "/api/auth/providers")
@@ -376,6 +560,100 @@ try:
     t("sandbox, code sign-in off: the code routes are 404", s, 404)
     s, j, ck = req(PORT + 2, "POST", "/api/auth/signup", {"email": "off@example.com", "agree": True, "passwordless": True})
     t("sandbox, code sign-in off: sign-up without a password is refused", (s, ck), (400, ""))
+
+    # finding 4: a mail server that takes 300 ms per message. "Email me a code" answers as fast for an address with an account (it emails
+    # a code) as for one without (it emails nothing); the code still arrives. Forgot password on the sandbox too.
+    sink = Sink(0.3)
+    SP = PORT + 6
+    start(SP, "sandbox", cfg={"delivery": "test", "feeds": [], "owner_copy": "",
+                              "smtp": {"host": "127.0.0.1", "port": sink.port, "from_addr": "noreply@example.test", "starttls": False}})
+    s, j, _ = req(SP, "GET", "/api/auth/providers")
+    t("slow mail: the server can email (codeSignin on)", (j.get("canEmail"), j.get("codeSignin")), (True, True))
+    for i in range(3):
+        req(SP, "POST", "/api/auth/signup", {"email": "has%d@example.com" % i, "agree": True, "passwordless": True})
+    for i in range(3):
+        sink.code_for("has%d@example.com" % i)
+
+    def timed(path, body):
+        t0 = time.time()
+        s_, j_, _ = req(SP, "POST", path, body)
+        return s_, time.time() - t0
+
+    has = [timed("/api/auth/code/send", {"email": "has%d@example.com" % i}) for i in range(3)]
+    none = [timed("/api/auth/code/send", {"email": "none%d@example.com" % i}) for i in range(3)]
+    t("finding 4: Email me a code answers 200 for all six", [x[0] for x in has + none], [200] * 6)
+    t("finding 4: ...and as fast with an account as without (each under 0.2 s; the mail server takes 0.3 s)",
+      (max(x[1] for x in has) < 0.2, max(x[1] for x in none) < 0.2), (True, True))
+    print("     timings with an account %s, without %s" % (["%.3f" % x[1] for x in has], ["%.3f" % x[1] for x in none]))
+    time.sleep(1.5)
+    t("finding 4: ...the codes still arrive, one per address with an account, none for the others",
+      ([sink.count("has%d@example.com" % i) for i in range(3)], [sink.count("none%d@example.com" % i) for i in range(3)]), ([2, 2, 2], [0, 0, 0]))
+    code = sink.code_for("has0@example.com")
+    s, j, ck = req(SP, "POST", "/api/auth/code/verify", {"email": "has0@example.com", "code": code, "agree": True})
+    t("finding 4: ...and the code from the slow mail server signs in", s, 200)
+    f1 = timed("/api/auth/forgot", {"email": "has1@example.com"})
+    f2 = timed("/api/auth/forgot", {"email": "none1@example.com"})
+    t("finding 4: Forgot password on the sandbox answers as fast either way", (f1[0], f2[0], f1[1] < 0.2, f2[1] < 0.2), (200, 200, True, True))
+
+    # finding 6 over HTTP: the full Google trip against the stand-in (tools/mock-google.py), on a sandbox and on dev
+    MG = PORT + 7
+    mock = subprocess.Popen([sys.executable, os.path.join(ROOT, "tools", "mock-google.py"), str(MG)], cwd=ROOT,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    PROCS.append(mock)
+    G = {"client_id": "test.apps.googleusercontent.com", "client_secret": "test-secret", "auth_url": "http://127.0.0.1:%d/auth" % MG,
+         "token_url": "http://127.0.0.1:%d/token" % MG, "certs_url": "http://127.0.0.1:%d/certs" % MG}
+    GP = PORT + 8
+    start(GP, "sandbox", cfg={"delivery": "test", "smtp": {}, "feeds": [], "owner_copy": "", "google": G})
+
+    def mget(path):
+        for _ in range(40):
+            try:
+                c = http.client.HTTPConnection("127.0.0.1", MG, timeout=20)
+                c.request("GET", path)
+                r = c.getresponse()
+                r.read()
+                c.close()
+                return r.getheader("Location") or ""
+            except OSError:
+                time.sleep(0.25)
+        raise SystemExit("the stand-in for Google did not start on %d" % MG)
+
+    def google(email, sub, agree):
+        mget("/mock/next?" + urllib.parse.urlencode({"email": email, "sub": sub, "verified": "1"}))
+        c_ = http.client.HTTPConnection("127.0.0.1", GP, timeout=20)
+        c_.request("GET", "/api/auth/google/start" + ("?agree=1" if agree else ""), headers={"Host": "127.0.0.1:%d" % GP})
+        r_ = c_.getresponse()
+        r_.read()
+        loc, oc = r_.getheader("Location"), (r_.getheader("Set-Cookie") or "").split(";")[0]
+        c_.close()
+        back = mget(loc.replace("http://127.0.0.1:%d" % MG, ""))
+        c_ = http.client.HTTPConnection("127.0.0.1", GP, timeout=20)
+        c_.request("GET", back.split("127.0.0.1:%d" % GP, 1)[1], headers={"Host": "127.0.0.1:%d" % GP, "Cookie": oc})
+        r_ = c_.getresponse()
+        r_.read()
+        out_ = (r_.getheader("Location") or "", ", ".join(v for k, v in r_.getheaders() if k.lower() == "set-cookie"))
+        c_.close()
+        return out_
+
+    def terms(port, inst, email):
+        with sqlite3.connect(os.path.join(TMP, inst + str(port), inst, "uaply.db")) as db_:
+            r_ = db_.execute("SELECT terms_at FROM users WHERE email=?", (email,)).fetchone()
+        return r_[0] if r_ else None
+
+    req(GP, "POST", "/api/auth/signup", {"email": "owner.g@gmail.com", "agree": True, "passwordless": True})   # the stranger
+    before = terms(GP, "sandbox", "owner.g@gmail.com")
+    time.sleep(1.1)
+    loc, ck = google("owner.g@gmail.com", "7001", False)
+    t("sandbox, finding 6: the owner's Google (from Welcome back, no tick) on that unfinished account: asked to tick, no session",
+      (loc, "uaply_sandbox_session=" in ck), ("/?auth_error=agree_owner", False))
+    loc, ck = google("owner.g@gmail.com", "7001", True)
+    after = terms(GP, "sandbox", "owner.g@gmail.com")
+    t("sandbox, finding 6: ...ticked: signed in, and the tick on record is the owner's, not the stranger's",
+      (loc, "uaply_sandbox_session=" in ck, before is not None and after is not None and after > before), ("/?signed_in=google", True, True))
+    sess = re.search(r"uaply_sandbox_session=([^;,]+)", ck)
+    s, j, _ = req(GP, "GET", "/api/auth/me", cookie="uaply_sandbox_session=" + (sess.group(1) if sess else ""))
+    t("sandbox, finding 6: ...and the page is told the account was just finished (Account created), with no stray field",
+      ((j.get("user") or {}).get("google"), "finished" in (j.get("user") or {})), ({"new": True}, False))
 finally:
     for p in PROCS:
         p.terminate()
