@@ -6,6 +6,21 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 
+### Job Tracker counts: Sent and To finish, not one "Applied" (Mohammed, October 22)
+- **The honesty fix:** Overview counted a hand-off nobody sent (the employer only takes applications on its own site) as an application
+  ("Applications") and as one waiting for an answer ("Waiting"), and the Applied list's top count did the same ("Applied"). Both now show
+  two counts in the Applied list's own words: **Sent** (the rows marked Sent or Sent (by you)) and **To finish** (the rows marked Finish
+  on their site). Anything else at Applied (waiting for the connection, a question only the person can answer, a send that failed) gets
+  one line under the counts, "N not sent yet: the Applied list says why for each", instead of being counted as sent. A send that went to
+  the test inbox (Sent (test): nothing reached the employer) is not counted as Sent either; the same line says "N went to the test inbox:
+  nothing reached the employer".
+  Overview: Sent, To finish, Interviews, Offers / Rejected, Heard back, Avg match, Passed. The lists: Sent, To finish, Interviews,
+  Accepted, Rejected (`shared/uaply-nav.js`: `sentCounts`, `statsHTML`, `notSentNote`). The help article "Tracking my applications" says
+  what the two counts mean.
+- Test: `tools/ui-dashboard-split.js` (13 checks, including a failed send, a test-inbox send and a click on a row's real Mark as applied;
+  4 of 13 passed on the code before the fix, 7 of 13 with test-inbox sends counted as Sent), in `tools/run-all-tests.sh` next to the Job
+  Tracker keep test. Trello K0QEMeQm.
+
 ### Release candidate review, surgical fixes (Reviewer 2, October 22)
 - **Careers sites:** every request (robots.txt, the sitemap, each page) goes through a public-only opener (`jobs_api._cp_open`): a
   redirect is followed only to a public https address, and the name is looked up once and refused unless every address is public (not
