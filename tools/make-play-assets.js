@@ -1,7 +1,7 @@
 // Makes the Google Play listing pictures in mobile/store/play/ from the app itself (headless Chrome, no image library):
 //   icon-512.png             the app icon, 512 x 512, from mobile/assets/icon-only.png
 //   feature-graphic.png      1024 x 500, the logo and the name on the app's own colours (24-bit, no transparency, as Play asks)
-//   screenshots/phone/*.png  1080 x 1920 (a 432 x 768 phone screen at 2.5x): Jobs, Job tracker, Profile setup, Filters, Help
+//   screenshots/phone/*.png  1080 x 1920 (a 432 x 768 phone screen at 2.5x): Jobs, Job Tracker, Profile setup, Filters, Help
 //   screenshots/tablet/*.png 1080 x 1920 (a 675 x 1200 seven-inch tablet at 1.6x): the same screens
 // It starts its own sandbox server on a free port with a temporary data folder and the built-in example jobs (no network), switches
 // the sandbox to the same features as the release build (dev/index.html's PROMOTED list, so nothing sandbox-only is pictured), fills in

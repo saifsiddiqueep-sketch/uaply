@@ -114,7 +114,7 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   const ids = all.map((r) => JSON.parse(r.b).job.id);
   check("no job was sent twice", new Set(ids).size === ids.length, ids.length + " requests");
 
-  // 8. Dashboard and a reload keep everything
+  // 8. Job Tracker and a reload keep everything
   await pick("nb-dash", "Applied"); await sleep(700);
   const appliedShown = await ev("(" + F + ").querySelectorAll('#pane-track .app, #pane-track article, #pane-track li, #pane-track .row').length");
   check("the Applied list shows the jobs applied to", appliedShown >= 4, appliedShown + " rows");

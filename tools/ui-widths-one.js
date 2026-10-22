@@ -13,6 +13,6 @@ module.exports = async ({ ev, sleep, nav }) => {
   for (const [nb, s] of [["nb-dash", "Overview"], ["nb-prof", "Settings"], ["nb-prof", "Account"], ["nb-prof", "Filters"], ["nb-prof", "Data"]]) {
     for (let i = 0; i < 3; i++) { await ev(F + ".getElementById('" + nb + "').click()"); await sleep(350); if (await sub(s)) break; }
     await sleep(600);
-    await cut(nb === "nb-dash" ? "Dashboard" : "Profile > " + s);
+    await cut(nb === "nb-dash" ? "Job Tracker" : "Profile > " + s);
   }
 };

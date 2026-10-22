@@ -1,4 +1,4 @@
-// Each "Add" item in the profile checklist (Dashboard > Overview, "Profile N% complete") must open Profile setup on the step that
+// Each "Add" item in the profile checklist (Job Tracker > Overview, "Profile N% complete") must open Profile setup on the step that
 // asks for it, by a real tap on a phone and a real mouse click on a desktop.
 //   PORT=18796 W=390 H=844 node tools/cdp.js tools/ui-checklist.js
 // (It used to open Profile > Settings and Profile > Preferences, which the guided Profile setup replaced, so it found 0 items

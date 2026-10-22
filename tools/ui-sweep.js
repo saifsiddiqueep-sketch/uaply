@@ -59,11 +59,11 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
   const newest = await ev("fetch('/api/outbox').then(r=>r.json()).then(j=>(j.applications[0]||{}).status||'')");
   check(REL ? "swipe right on a real job is recorded as a hand-off to the employer's own page" : "swipe right created an application in the test inbox",
         REL ? after > before && newest === "handoff" : (after > before || needsFile), "(newest status: " + newest + (needsFile ? "; the employer needs a resume file first" : "") + ")");
-  // dashboard
+  // Job Tracker (the nb-dash menu)
   await ev(F + ".getElementById('nb-dash').click()");
   await sleep(500);
   for (const t of ["Overview", "Applied", "Accepted", "Rejected", "Interviews"]) {
-    check("Dashboard: " + t, await clickText(t));
+    check("Job Tracker: " + t, await clickText(t));
     await sleep(250);
   }
   // profile sections

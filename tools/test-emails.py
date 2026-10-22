@@ -177,7 +177,7 @@ try:
     t("owner swipes: exactly one email, the confirmation", (len(new), new[0]["to"] if new else None, res2["copied"]), (1, ["owner@example.com"], False))
     # with no public_url set (a fresh host), the receipt links to the https address the person is using; a plain http address is never linked
     uaply_api.submit(dict(payload, job=dict(payload["job"], id=424244)), user, "https://uaply-dev.onrender.com")
-    t("no public_url: the receipt links to the https site the person used", "Open UAply, then Dashboard, then Applied. https://uaply-dev.onrender.com" in auth_api.mail_list(1)[0]["body"], True)
+    t("no public_url: the receipt links to the https site the person used", "Open UAply, then Job Tracker, then Applied. https://uaply-dev.onrender.com" in auth_api.mail_list(1)[0]["body"], True)
     uaply_api.submit(dict(payload, job=dict(payload["job"], id=424245)), user, "http://127.0.0.1:8767")
     t("...and an http address (this computer) is never put in an email", "127.0.0.1" in auth_api.mail_list(1)[0]["body"], False)
 finally:

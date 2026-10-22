@@ -12,10 +12,10 @@
    "id": "swipe-right",
    "title": "How do I apply to a job? (What happens when I swipe right)",
    "tags": "how to apply apply applying application send submit employer recruiter swipe right left pass undo consent",
-   "body": "Swiping right applies for you at connected employers and takes you to the employer's page everywhere else. The first time, UAply explains what is sent and asks you to agree. If the employer has agreed to receive applications through UAply, your profile details are sent to them. Otherwise nothing is sent: the job is saved in Dashboard, Applied, where See the job posting and Finish applying on their site open the employer's own page so you can finish there. You can tap Undo right after a swipe. In this test version, applications go to a test inbox and nothing reaches a real company.",
+   "body": "Swiping right applies for you at connected employers and takes you to the employer's page everywhere else. The first time, UAply explains what is sent and asks you to agree. If the employer has agreed to receive applications through UAply, your profile details are sent to them. Otherwise nothing is sent: the job is saved in Job Tracker, Applied, where See the job posting and Finish applying on their site open the employer's own page so you can finish there. You can tap Undo right after a swipe. In this test version, applications go to a test inbox and nothing reaches a real company.",
    "go": "dash:applied",
    "release": {
-    "body": "Swiping right applies for you at connected employers and takes you to the employer's page everywhere else. The first time, UAply explains what is sent and asks you to agree. If the employer has agreed to receive applications through UAply (the card says Apply instantly), your profile details are sent to them. For every other job (the card says Opens employer site) nothing is sent: the job is kept in Dashboard, Applied with the status Finish on their site. There, See the job posting opens the listing and Finish applying on their site copies your name, email, phone and links so you can paste them into the employer's own form. You can tap Undo right after a swipe. Swiping left (Pass) only hides the job: nothing is sent, and Undo brings it back."
+    "body": "Swiping right applies for you at connected employers and takes you to the employer's page everywhere else. The first time, UAply explains what is sent and asks you to agree. If the employer has agreed to receive applications through UAply (the card says Apply instantly), your profile details are sent to them. For every other job (the card says Opens employer site) nothing is sent: the job is kept in Job Tracker, Applied with the status Finish on their site. There, See the job posting opens the listing and Finish applying on their site copies your name, email, phone and links so you can paste them into the employer's own form. You can tap Undo right after a swipe. Swiping left (Pass) only hides the job: nothing is sent, and Undo brings it back."
    }
   },
   {
@@ -92,8 +92,8 @@
   {
    "id": "dashboard",
    "title": "Tracking my applications",
-   "tags": "dashboard track tracking applied interview interviews accepted offer rejected status follow up calendar export csv",
-   "body": "Dashboard shows everything you applied to. Overview gives totals and what's coming up. Move an application to Interview, Accepted or Rejected with its buttons, and tap Details to add an interview time, an offer, a reason or notes. Interviews can be added to your calendar, and you can export everything as a spreadsheet (CSV).",
+   "tags": "job tracker dashboard track tracking applied interview interviews accepted offer rejected status follow up calendar export csv",
+   "body": "Job Tracker shows everything you applied to. Overview gives totals and what's coming up. Move an application to Interview, Accepted or Rejected with its buttons, and tap Details to add an interview time, an offer, a reason or notes. Interviews can be added to your calendar, and you can export everything as a spreadsheet (CSV).",
    "go": "dash:overview"
   },
   {
