@@ -4,7 +4,7 @@
 // after Sign out in the app the next person gets an empty card with the box unticked.
 //   W=1280 H=720 PORT=<sandbox port> MOCK_GOOGLE_PORT=8790 node tools/cdp.js tools/ui-signup.js      (W=390 H=844 for a phone)
 // The sandbox server must run with smtp {} (codes land in the test inbox) and, for the Google part, google.* pointing at tools/mock-google.py.
-// Each run emails 5 codes from 127.0.0.1 and the server allows 12 an hour per connection: at most two runs per server start.
+// Each run emails 5 codes from 127.0.0.1 (the server allows 80 an hour per connection, and 10 sign-ups an hour from this computer).
 module.exports = async ({ ev, sleep, nav, send, logs }) => {
   const PORT = process.env.PORT, MG = process.env.MOCK_GOOGLE_PORT || "";
   const W = Number(process.env.W || 1280), H = Number(process.env.H || 720), phone = W < 700;
