@@ -665,8 +665,10 @@ function apply(w,host){
     /* a hand-off finished on the employer's own site: the person marks it, so it no longer says "Finish on their site" (October 22).
        Undo puts back what it said before, once; a second mark after an undo stays */
     if(act==="markapplied"){var was=x.sent||null;x.sent={at:Date.now(),to:"",status:"self",prev:was?String(was.status||""):"",once:!!(was&&was.once)};A.save();renderTrack();
+      /* the server's daily "finish your application" reminder stops listing it (uaply_api.mark_applied); nothing to say if that fails */
+      if(SRV.user)apiPost("/api/apply/mark",{job:id,marked:true});
       var nb=tp.querySelector('[data-act="unmark"][data-id="'+id+'"]')||tp.querySelector('.row [data-id="'+id+'"]');if(nb&&nb.focus)nb.focus();return}
-    if(act==="unmark"){if(x.sent&&x.sent.status==="self"&&!x.sent.once){x.sent={at:Date.now(),to:"",status:x.sent.prev||"handoff",prev:"",once:true};A.save();renderTrack();
+    if(act==="unmark"){if(x.sent&&x.sent.status==="self"&&!x.sent.once){x.sent={at:Date.now(),to:"",status:x.sent.prev||"handoff",prev:"",once:true};A.save();renderTrack();if(SRV.user)apiPost("/api/apply/mark",{job:id,marked:false});
       var mb=tp.querySelector('[data-act="markapplied"][data-id="'+id+'"]');if(mb)mb.focus()}return}
     if(act==="withdraw"||act==="reconsider"){
       delete A.S.decisions[id];A.S.history=A.S.history.filter(function(i){return i!==id});delete acct.apps[id];saveA();

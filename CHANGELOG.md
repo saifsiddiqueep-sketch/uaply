@@ -71,6 +71,16 @@ production page and only changes when the owner decides.
   `tools/ui-tracker-keep.js` (+2: what a swipe sends), `tools/ui-assist-tracker.js` (+1), `tools/test-assist.js` (+1, the bridge keys as the server does);
   the other tests' applicants now have a phone number.
 
+### The daily reminder: Mark as applied reaches the server, and swipes never wait for the reminder's email (October 22)
+- **Mark as applied** in Job Tracker now tells the server (`POST /api/apply/mark`, signed in): the day's "finish your application"
+  reminder stops listing that job, and a later hand-off of the same job is not put back (`uaply_api.mark_applied`, up to 500 job ids kept
+  per person). A swipe record that already carries the mark (`"marked": true`) is never reminded. Undo only stops skipping it.
+- **The reminder is sent outside the lock** every swipe takes (`send_finish_digests`): what each reminder lists is copied under the lock,
+  the email goes without it, and then only those jobs leave the list, so a job swiped (or marked) while the email was on its way is
+  neither lost nor sent twice. One sender at a time.
+- Tests: `tools/test-emails.py` (+9: mark, a later hand-off, a marked record, Undo, a bad job id, a swipe during a slow send, two senders),
+  `tools/test-swipe-e2e.py` (+3: the route signed in, a bad job, signed out).
+
 ### Assisted apply: questions first, then the form (fill 95-98% on the Galaxy, nothing required left but agreements)
 - **The bridge.** Before the employer's form opens, the phone app reads it (`UAplyAssist.scan`, which changes nothing) and UAply asks
   what the profile cannot answer in its own question box ("Continue to {company}'s form"); required questions must be answered,

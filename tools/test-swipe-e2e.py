@@ -371,6 +371,15 @@ try:
     t("limit", "one more swipe right is refused with the plain sentence and the code the app turns into See plans",
       400 <= s < 500 and j.get("code") == "limit" and "used your 50 applications this week" in (j.get("error") or ""), (s, j))
     t("limit", "...and nothing reached the employer", len(get(MOCK, "/__received")) == before, "")
+    # Job Tracker's Mark as applied reaches the server (the day's reminder stops listing that job)
+    s, j = call("/api/apply/mark", {"job": JOBS["handoff"], "marked": True})
+    t("limit", "Mark as applied: POST /api/apply/mark answers ok with how many jobs still wait for the reminder",
+      s == 200 and j.get("ok") is True and isinstance(j.get("waiting"), int), (s, j))
+    s, j = call("/api/apply/mark", {"job": "not a number"})
+    t("limit", "...a job that is not a number is refused", s == 400, (s, j))
+    call("/api/auth/logout", {})
+    s, j = call("/api/apply/mark", {"job": JOBS["handoff"]})
+    t("limit", "...and signed out it asks to sign in first", s == 401, (s, j))
 finally:
     for p in procs:
         try:

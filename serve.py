@@ -358,7 +358,7 @@ MAX_APPLY_BODY = 1500000
 MAX_COMPANY_BODY = 200000
 
 # Swipes per visitor per minute. A person swipes a few times a minute; a script hammering the server would otherwise fill its disk and memory.
-SWIPE_LIMITS = {"/api/apply": 40, "/api/apply/plan": 120, "/api/decision": 150, "/api/profile/resume": 12}   # a person reads a resume once or twice
+SWIPE_LIMITS = {"/api/apply": 40, "/api/apply/plan": 120, "/api/apply/mark": 120, "/api/decision": 150, "/api/profile/resume": 12}   # a person reads a resume once or twice
 _swipes, _swipes_lock = {}, threading.Lock()
 _resume_count, _resume_count_lock = [0], threading.Lock()          # resumes read since the start: the only thing the log says about them
 
@@ -1050,7 +1050,7 @@ class H(http.server.SimpleHTTPRequestHandler):
                 log_oops(p, e)
                 code, out = 500, {"error": OOPS}
             return self._send(code, out, headers=[("WWW-Authenticate", 'Basic realm="uaply"')] if code == 401 else ())
-        if not api or p not in ("/api/apply", "/api/apply/plan", "/api/decision", "/api/auth/signup", "/api/auth/login", "/api/auth/logout",
+        if not api or p not in ("/api/apply", "/api/apply/plan", "/api/apply/mark", "/api/decision", "/api/auth/signup", "/api/auth/login", "/api/auth/logout",
                                 "/api/auth/delete", "/api/auth/forgot", "/api/auth/reset", "/api/auth/change-password",
                                 "/api/setup/test-mail", "/api/setup/save-mail", "/api/setup/save-google", "/api/setup/save-ats", "/api/setup/remove-ats", "/api/setup/test-ats", "/api/setup/save-stripe", "/api/setup/save-feed-keys", "/api/auth/google/token", "/api/auth/verify", "/api/auth/resend", "/api/chat", "/api/feedback", "/api/billing/checkout", "/api/billing/portal",
                                 "/api/employer/company", "/api/employer/job", "/api/employer/job/status", "/api/employer/applicant",
@@ -1244,6 +1244,11 @@ class H(http.server.SimpleHTTPRequestHandler):
             elif p == "/api/apply/plan":
                 # what a swipe right on this job would do now (the posting's form read and answered, nothing recorded or sent)
                 code, out = uaply_api.submit(dict(payload, plan_only=True), auth_api.user_for(self._token()), self._site_base())
+            elif p == "/api/apply/mark":
+                # Job Tracker's "Mark as applied" (and its Undo): the day's reminder stops listing that job (uaply_api.mark_applied)
+                u = auth_api.user_for(self._token())
+                left = uaply_api.mark_applied(u["id"], payload.get("job"), payload.get("marked") is not False) if u else None
+                code, out = (401, {"error": "Sign in first."}) if not u else (400, {"error": "Invalid job."}) if left is None else (200, {"ok": True, "waiting": left})
             elif p == "/api/apply":
                 u = auth_api.user_for(self._token())
                 over = billing_api.limit_reached(u)

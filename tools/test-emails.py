@@ -204,6 +204,51 @@ try:
     t("...and an http address (this computer) is never put in an email", ("127.0.0.1" in sams()[0]["body"], "Finish your application" in sams()[0]["subject"]), (False, True))
     # a receipt for an application UAply really sends is unchanged: still one per swipe, at once (the partner email employer below)
     t("the reminder is held by the daily limit like other mail that can wait", "digest" in __import__("mailer").DEFERRABLE, True)
+
+    # ---- Mark as applied reaches the server, and the reminder is sent outside the lock every swipe takes (October 22) ----
+    def waiting_ids(u):
+        return [i["id"] for i in (uaply_api._digest_load().get(str(u["id"])) or {}).get("items") or []]
+    job = lambda n: dict(payload["job"], id=n)                                                      # noqa: E731
+    uaply_api.send_finish_digests(day + 6 * uaply_api.DIGEST_EVERY)                                 # (nothing left waiting from above)
+    uaply_api.submit(dict(payload, job=job(424260)), user)
+    uaply_api.submit(dict(payload, job=job(424261)), user)
+    t("Mark as applied takes that job out of the waiting reminder", (uaply_api.mark_applied(user["id"], 424260), waiting_ids(user)), (1, [424261]))
+    uaply_api._queue_finish(user, {"job": job(424260), "mode": "test"})      # (submit itself sends one application per job and person)
+    t("...and a later hand-off of the same job does not put it back", waiting_ids(user), [424261])
+    uaply_api.submit(dict(payload, job=job(424262), marked=True), user)
+    t("a swipe whose record carries the mark (marked: true) is never put in a reminder", waiting_ids(user), [424261])
+    uaply_api.mark_applied(user["id"], 424260, False)
+    uaply_api._queue_finish(user, {"job": job(424260), "mode": "test"})
+    t("Undo: after it, a hand-off of that job is reminded again", waiting_ids(user), [424261, 424260])
+    t("a job id that is not a number is refused", uaply_api.mark_applied(user["id"], "x"), None)
+    import threading
+    gate, inside, got = threading.Event(), threading.Event(), []
+    real_send = uaply_api._send_receipt
+
+    def slow_send(*a, **k):
+        if k.get("kind") == "digest":                       # the mail service takes its time with the reminder
+            inside.set()
+            gate.wait(15)
+        return real_send(*a, **k)
+    uaply_api._send_receipt = slow_send
+    try:
+        th = threading.Thread(target=lambda: got.append(uaply_api.send_finish_digests(day + 9 * uaply_api.DIGEST_EVERY)))
+        th.start()
+        inside.wait(10)
+        t0 = time.time()
+        uaply_api.submit(dict(payload, job=job(424270)), user)                    # a swipe while the reminder is on its way
+        took = time.time() - t0
+        uaply_api.mark_applied(user["id"], 424261)                                 # and a mark of a job in that reminder
+        gate.set()
+        th.join(20)
+    finally:
+        uaply_api._send_receipt = real_send
+        gate.set()
+    t("a swipe made while a reminder is being sent does not wait for the mail service (%.2f s)" % took, took < 3, True)
+    t("...the reminder went", got, [1])
+    t("...and the job swiped meanwhile waits for the next one: not lost, not counted as sent", waiting_ids(user), [424270])
+    t("two senders at once: the second one sends nothing (one at a time)",
+      uaply_api._digest_send_lock.acquire(blocking=False) and (uaply_api.send_finish_digests(day + 20 * uaply_api.DIGEST_EVERY), uaply_api._digest_send_lock.release())[0] == 0, True)
 finally:
     proc.terminate()
 

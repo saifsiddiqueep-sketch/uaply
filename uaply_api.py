@@ -773,13 +773,20 @@ def _digest_save(d):
         sys.stderr.write("[uaply] the finish-your-application reminders could not be saved: %s\n" % type(e).__name__)
 
 
+MARKED_MAX = 500                               # job ids a person marked as applied, kept so a later swipe of the same job is not reminded
+
+
 def _queue_finish(user, rec, site=""):
-    """Keep one hand-off job for this person's next reminder (once per job)."""
+    """Keep one hand-off job for this person's next reminder (once per job). A job the person already marked as applied (Job Tracker's
+    "Mark as applied": the swipe record carries rec["marked"], or mark_applied() kept its id) is never put in a reminder."""
     j = rec.get("job") or {}
     with _digest_lock:
         d = _digest_load()
         e = d.setdefault(str(user["id"]), {"to": user["email"], "items": [], "last": 0})
         e["to"] = user["email"]
+        if rec.get("marked") or j.get("id") in (e.get("marked") or []):
+            _digest_save(d)
+            return
         if not any(i.get("id") == j.get("id") for i in e["items"]):
             e["items"].append({"id": j.get("id"), "co": _s(j.get("co"), 120), "role": _s(j.get("role"), 160), "url": _https(j.get("url")) or "",
                                "at": int(time.time()), "site": site if isinstance(site, str) and site.startswith("https://") else "",
@@ -794,40 +801,82 @@ def finish_waiting(user_id):
         return len((_digest_load().get(str(user_id)) or {}).get("items") or [])
 
 
+def mark_applied(user_id, job_id, marked=True):
+    """Job Tracker's "Mark as applied" (POST /api/apply/mark): the person finished this job on the employer's site, so the reminder no
+    longer lists it, now or after a later swipe of it. Undo (marked False) only stops skipping it; it is not put back in a waiting reminder.
+    Returns how many jobs still wait for this person's reminder."""
+    try:
+        job_id = int(job_id)
+    except (TypeError, ValueError):
+        return None
+    with _digest_lock:
+        d = _digest_load()
+        e = d.get(str(user_id))
+        if e is None:
+            if not marked:
+                return 0
+            e = d.setdefault(str(user_id), {"to": "", "items": [], "last": 0})
+        e["items"] = [i for i in e.get("items") or [] if i.get("id") != job_id] if marked else (e.get("items") or [])
+        m = [x for x in e.get("marked") or [] if x != job_id]
+        e["marked"] = (m + [job_id])[-MARKED_MAX:] if marked else m
+        _digest_save(d)
+        return len(e["items"])
+
+
+_digest_send_lock = threading.Lock()           # one sender at a time (the mail worker every 5 minutes, a test, an owner's tool)
+
+
 def send_finish_digests(now=None):
     """Send each person whose reminder is due one email listing every job waiting on an employer's site. Returns how many were sent (or
-    held by the daily limit, which sends them later). Called every few minutes by the mail worker."""
+    held by the daily limit, which sends them later). Called every few minutes by the mail worker.
+    The email is sent outside _digest_lock (October 22, 2026): every swipe's receipt takes that lock, so holding it through each mail
+    service round trip made swipes wait for the whole round of reminders. What each reminder lists is copied under the lock; afterwards only
+    those jobs leave the list, so a job swiped (or marked as applied) while the email was on its way is neither lost nor sent twice."""
     now = time.time() if now is None else now
     cfg = config()
     if not _smtp_ready(cfg):
         return 0
-    done = 0
-    with _digest_lock:
-        d = _digest_load()
-        for uid, e in list(d.items()):
-            items = e.get("items") or []
-            if not items or now - (e.get("last") or 0) < DIGEST_EVERY or now - min(i.get("at") or now for i in items) < DIGEST_HOLD:
-                continue
+    if not _digest_send_lock.acquire(blocking=False):
+        return 0
+    try:
+        with _digest_lock:
+            d = _digest_load()
+            due = []
+            for uid, e in d.items():
+                items = e.get("items") or []
+                if not items or not e.get("to") or now - (e.get("last") or 0) < DIGEST_EVERY or now - min(i.get("at") or now for i in items) < DIGEST_HOLD:
+                    continue
+                due.append((uid, e["to"], [dict(i) for i in items]))
+        done = 0
+        for uid, to, items in due:
             site = next((i.get("site") for i in reversed(items) if i.get("site")), "")
             subject, body, page = emails.finish_digest({"items": items, "test": any(i.get("test") for i in items),
-                                                        "base_url": _site_base(cfg, site), "user_email": e.get("to", ""),
+                                                        "base_url": _site_base(cfg, site), "user_email": to,
                                                         "support_email": cfg.get("support_email") or os.environ.get("SUPPORT_EMAIL", "")})
             try:
-                status = _send_receipt(cfg, e["to"], subject, body, page, kind="digest", user=int(uid))
+                status = _send_receipt(cfg, to, subject, body, page, kind="digest", user=int(uid))
             except MailNotSent as x:
                 status = "bounced" if x.status == "suppressed" else "failed"
             except Exception as x:
                 status = "failed"
                 sys.stderr.write("[uaply] a finish-your-application reminder was not sent: %s\n" % type(x).__name__)
             if status in ("sent", "held", "bounced"):     # sent, kept for later by the daily limit, or an address that bounces: not tried again
-                e["items"], e["last"] = [], now
+                sent_ids = set(i.get("id") for i in items)
+                with _digest_lock:
+                    d = _digest_load()
+                    e = d.get(uid)
+                    if e is not None:                     # (the account may have been deleted meanwhile: then nothing is kept)
+                        e["items"] = [i for i in e.get("items") or [] if i.get("id") not in sent_ids]
+                        e["last"] = now
+                        _digest_save(d)
                 done += status != "bounced"
                 try:
-                    auth_api.add_mail(int(uid), e["to"], subject, (HELD_NOTE + "\n\n" + body) if status == "held" else body, status)
+                    auth_api.add_mail(int(uid), to, subject, (HELD_NOTE + "\n\n" + body) if status == "held" else body, status)
                 except Exception:
                     pass
-        _digest_save(d)
-    return done
+        return done
+    finally:
+        _digest_send_lock.release()
 
 
 def _forget_digest(user_id):
@@ -1091,6 +1140,8 @@ def submit(p, user=None, site=""):
         rec = {"id": uuid.uuid4().hex[:12], "at": int(time.time()), "mode": mode, "job": job, "candidate": cand,
                "note": note, "match": int(p.get("match") or 0), "to": "", "simulated": False, "status": "",
                "user": user["id"] if user else None, "resume": resume_meta, "channels": []}
+        if p.get("marked") is True:              # the swipe was already marked as applied on the device (a retry): never reminded (_queue_finish)
+            rec["marked"] = True
         if summary:
             rec["autofill"] = summary
         if preview and plan:
