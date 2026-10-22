@@ -327,7 +327,7 @@ try:
                 time.sleep(0.25)
         raise SystemExit("the sandbox test server did not start")
 
-    start_sandbox(SBPORT, DATA + "-sb", {"UAPLY_CODE_SENDS_PER_HOUR": "2000"})   # room for 80 from one address (5% of 2000 is 100)
+    start_sandbox(SBPORT, DATA + "-sb")                  # the default hour of 500 code emails (one visitor's share: 80)
     t("the sandbox server signs in by emailed code (its mail server is set up)", (req("GET", "/api/auth/providers", port=SBPORT)[1] or {}).get("codeSignin"), True)
     # the code routes count the host's last hop too: a made-up first X-Forwarded-For entry on every try changes nothing
     wrong = [req("POST", "/api/auth/code/verify", {"email": "nobody.%d@example.com" % i, "code": "000000"}, xff="7.7.%d.%d, 198.51.100.230" % (i, i),
@@ -339,6 +339,13 @@ try:
     t("code emails: 80 an hour from one real address, made-up first entries or not (the limit resend_code has), then the plain limit answer",
       ([x[0] for x in sends[:80]] == [200] * 80, sends[80][0], (sends[80][1] or {}).get("code")), (True, 429, "code_limit"))
     t("...while another visitor can still ask for a code", req("POST", "/api/auth/code/send", {"email": "fresh.other@example.com"}, xff="198.51.100.234", port=SBPORT)[0], 200)
+    # IPv6: each address is its own connection; the site's share counts the /64 (a campus or a carrier hands out many addresses of one)
+    six = [req("POST", "/api/auth/code/send", {"email": "six.%d@example.com" % i}, xff="2001:db8:77:1::%x" % (i + 1), port=SBPORT)[0] for i in range(60)]
+    t("IPv6: 60 different addresses of one /64 can each get a code in one hour under the default cap", six, [200] * 60)
+    more = [req("POST", "/api/auth/code/send", {"email": "six.more.%d@example.com" % i}, xff="2001:db8:77:1:ffff::%x" % (i + 1), port=SBPORT)[0] for i in range(21)]
+    t("...the /64 shares one visitor's 80 of the site's hour: the 81st code from it is held back with the plain limit answer, not 'UAply is busy'",
+      (more[:20] == [200] * 20, more[20]), (True, 429))
+    t("...while the next /64 is another visitor", req("POST", "/api/auth/code/send", {"email": "six.next@example.com"}, xff="2001:db8:77:2::1", port=SBPORT)[0], 200)
     # Google never calls an older account new: the account was made by this sign-in or it was not (no more "made in the last 60 seconds")
     req("POST", "/api/auth/signup", {"email": "made.before@gmail.com", "password": "made before 1", "agree": True}, xff="198.51.100.232", port=SBPORT)
     s, out, _, _ = req("POST", "/api/auth/google/token", {"credential": gtoken(email="made.before@gmail.com", sub="8101"), "agree": True}, xff="198.51.100.232", port=SBPORT)
@@ -359,7 +366,11 @@ try:
                                                                xff="198.51.100.250", port=CAPPORT)[1] or {}).get("code"), "code_busy")
 
     # ---------- the site's hour cannot be used up by a few addresses, and an account's owner always gets a code (October 22 review) ----------
-    t("one address may use 5% of the site's hour of code emails: 25 of the default 500", (getattr(auth_api, "SITE_SHARE_PERCENT", None), getattr(auth_api, "site_share", lambda: None)()), (5, 25))
+    t("one visitor may use 5% of the site's hour of code emails, never less than one connection's own 80: 80 of the default 500",
+      (getattr(auth_api, "SITE_SHARE_PERCENT", None), getattr(auth_api, "site_share", lambda: None)()), (5, 80))
+    t("...the share counts an IPv6 visitor by its /64, an IPv4 one (also written as IPv6) by its address",
+      [getattr(auth_api, "share_key", lambda x: x)(x) for x in ("2001:db8:1:2:3:4:5:6", "198.51.100.7", "::ffff:198.51.100.7")],
+      ["2001:db8:1:2::/64", "198.51.100.7", "198.51.100.7"])
     start_sandbox(CAP2PORT, DATA + "-cap2", {"UAPLY_CODE_SENDS_PER_HOUR": "40"})          # 40 an hour, so 2 per address
 
     def mail_code(addr, after="", wait=6.0):
@@ -392,17 +403,10 @@ try:
     s, out, cks, _ = req("POST", "/api/auth/code/verify", {"email": "known.owner@example.com", "code": c0, "agree": True}, xff="198.51.100.10", port=CAP2PORT)
     known_ck, sess_ck = cookie_named(cks, "uaply_sandbox_session_known"), cookie_named(cks, "uaply_sandbox_session")
     t("(set-up) the owner's code sign-in gives the known-device cookie and a session", (s, bool(known_ck), bool(sess_ck)), (200, True, True))
-    share = [send2("share.%d@example.com" % i, "198.51.100.20")[0] for i in range(3)]
-    shared = send2("share.x@example.com", "198.51.100.20")[1] or {}
-    t("one address uses its share of the site's hour (2 of 40 here), then gets the plain limit answer, not 'UAply is busy'",
-      (share, shared.get("code")), ([200, 200, 429], "code_limit"))
-    v6 = [send2("six.%d@example.com" % i, x)[0] for i, x in enumerate(("2001:db8:5:6::1", "2001:db8:5:6::ffff:2", "2001:db8:5:6:abcd::3", "2001:db8:5:7::1"))]
-    t("IPv6: every address of one /64 counts as one visitor (a third address in it is held back); another /64 is another visitor",
-      v6, [200, 200, 429, 200])
-    filled = [send2("fill.%d.%d@example.com" % (n, k), "198.51.101.%d" % (n + 1))[0] for n in range(17) for k in range(2)]
+    filled = [send2("fill.%d.%d@example.com" % (n, k), "198.51.101.%d" % (n + 1))[0] for n in range(13) for k in range(3)]
     stranger = send2("someone.new@example.com", "198.51.102.1")[1] or {}
-    t("(set-up) 17 more addresses use up the rest of the hour; a newcomer is then told UAply is busy",
-      (filled == [200] * 34, stranger.get("code")), (True, "code_busy"))
+    t("(set-up) 13 more addresses use up the rest of the hour (40 here); a newcomer is then told UAply is busy",
+      (filled == [200] * 39, stranger.get("code")), (True, "code_busy"))
     t("...the owner's address from a device that never signed in is held back like anyone else", (send2("known.owner@example.com", "198.51.102.2")[1] or {}).get("code"), "code_busy")
     s, out, _, _ = send2("known.owner@example.com", "198.51.102.2", cookie=known_ck)
     c1 = mail_code("known.owner@example.com", after=c0)

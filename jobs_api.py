@@ -43,11 +43,14 @@ import collections
 import datetime
 import hashlib
 import html
+import http.client
+import ipaddress
 import json
 import os
 import queue
 import zlib
 import re
+import socket
 import sys
 import threading
 import time
@@ -247,6 +250,77 @@ def _file_boards():
 
 
 CAREER_PAGES = {}                # careerpage token -> the sitemap of the employer's careers site (from job-boards.json)
+
+
+class NotPublic(OSError):
+    """A careers site's address (or a redirect from it) that is not a public https address: refused before anything is sent."""
+
+
+def _public_ips(host, port=443):
+    """Every address `host` has, in the order to try them, when all of them are public; NotPublic otherwise (private, loopback,
+    link-local such as the cloud metadata address 169.254.169.254, shared 100.64/10, reserved, multicast, or a name that does not resolve)."""
+    try:
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except (socket.gaierror, UnicodeError) as e:
+        raise NotPublic("%s does not resolve" % host) from e
+    out = []
+    for info in infos:
+        raw = str(info[4][0]).split("%")[0]
+        a = ipaddress.ip_address(raw)
+        if a.version == 6 and a.ipv4_mapped:
+            a = a.ipv4_mapped
+        if not a.is_global or a.is_multicast:
+            raise NotPublic("%s is not a public address" % host)
+        if raw not in out:
+            out.append(raw)
+    if not out:
+        raise NotPublic("%s does not resolve" % host)
+    return out
+
+
+def _public_ip(host, port=443):
+    """The first address to try for `host` (see _public_ips)."""
+    return _public_ips(host, port)[0]
+
+
+class _PublicHTTPSConnection(http.client.HTTPSConnection):
+    """An https connection that looks the name up once, refuses it unless every address is public (_public_ip), and connects to that very
+    address (the certificate is still checked against the name), so a name that answers differently a moment later changes nothing."""
+
+    def __init__(self, *a, **k):
+        super().__init__(*a, **k)
+        self._create_connection = self._connect_public
+
+    def _connect_public(self, address, timeout=socket._GLOBAL_DEFAULT_TIMEOUT, source_address=None):
+        if self._tunnel_host:                       # through a proxy: the proxy connects, but the site's own name must still be public
+            _public_ip(self._tunnel_host, self._tunnel_port or 443)
+            return socket.create_connection(address, timeout, source_address)
+        err = None
+        for ip in _public_ips(address[0], address[1]):    # each checked address in turn, as socket.create_connection would (IPv6, then IPv4)
+            try:
+                return socket.create_connection((ip, address[1]), timeout, source_address)
+            except OSError as e:
+                err = e
+        raise err
+
+
+class _PublicHTTPSHandler(urllib.request.HTTPSHandler):
+    def https_open(self, req):
+        return self.do_open(_PublicHTTPSConnection, req, context=self._context)
+
+
+class _PublicRedirect(urllib.request.HTTPRedirectHandler):
+    """A careers site's redirect is followed only to a public https address (the same rules as its first address), every hop."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not _public_https(newurl):
+            raise urllib.error.HTTPError(req.full_url, code, "a redirect to an address that is not public https was not followed", headers, fp)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+# every request to an employer's careers site (robots.txt, the sitemap, each job page), October 22 review: urllib's own opener followed a
+# redirect anywhere (http, an internal address) and connected to whatever the name resolved to
+_cp_open = urllib.request.build_opener(_PublicHTTPSHandler(), _PublicRedirect()).open
 
 
 def _public_https(url):
@@ -701,11 +775,12 @@ class _host_slot:
         return False
 
 
-def _get(url, headers=None, as_text=False):
-    """One feed answer, parsed as JSON (or the plain text with as_text=True), refused past MAX_FEED_BYTES."""
+def _get(url, headers=None, as_text=False, opener=None):
+    """One feed answer, parsed as JSON (or the plain text with as_text=True), refused past MAX_FEED_BYTES. opener: _cp_open for a careers
+    site (every hop a public https address), else urllib's own."""
     req = urllib.request.Request(url, headers=dict({"User-Agent": UA, "Accept": "text/plain" if as_text else "application/json"}, **(headers or {})))
     started, parts, size = time.time(), [], 0
-    with _host_slot(url), urllib.request.urlopen(req, timeout=FEED_TIMEOUT) as r:
+    with _host_slot(url), (opener or urllib.request.urlopen)(req, timeout=FEED_TIMEOUT) as r:
         while True:                                     # in parts, so a feed that trickles is stopped at FEED_DEADLINE
             part = r.read(STREAM_CHUNK)
             if not part:
@@ -883,9 +958,8 @@ def _role_summary(text, limit=650):
 
 
 def _text(s):
-    s = html.unescape(s or "")
-    s = re.sub(r"<[^>]+>", " ", s)
-    s = html.unescape(s)
+    s = html.unescape(html.unescape(s or ""))      # a feed's text may be escaped twice ("&amp;lt;b&amp;gt;")
+    s = re.sub(r"<[^>]+>", " ", s)                 # tags are taken out after the last unescape, so none can come back from an entity
     return re.sub(r"\s+", " ", s).strip()[:20000]
 
 
@@ -1361,7 +1435,7 @@ def _cp_fetch(url, robots_ok=False):
     """One page of a careers site: only a public https address, only what its robots.txt allows this bot, never sooner than the site's
     crawl delay after the last request to it. Returns the text; raises on an error or a human check."""
     _cp_turn(url, robots_ok)
-    text = _get(url, {"User-Agent": CP_UA, "Accept": "text/html,application/xml;q=0.9,*/*;q=0.8"}, as_text=True)
+    text = _get(url, {"User-Agent": CP_UA, "Accept": "text/html,application/xml;q=0.9,*/*;q=0.8"}, as_text=True, opener=_cp_open)
     if HUMAN_CHECK_RE.search(text[:20000]):
         raise PermissionError("the page shows a human check")          # never answered: the site is marked as needing a person
     return text
@@ -1375,7 +1449,7 @@ def _cp_blocks(url, tag="url"):
     buf, checked = "", False
     dec = codecs.getincrementaldecoder("utf-8")("replace")
     close, rx = "</%s>" % tag, re.compile(r"<%s>(.*?)</%s>" % (tag, tag), re.S)
-    for part in _get_parts(url, {"User-Agent": CP_UA, "Accept": "application/xml,text/xml;q=0.9,*/*;q=0.8"}):
+    for part in _get_parts(url, {"User-Agent": CP_UA, "Accept": "application/xml,text/xml;q=0.9,*/*;q=0.8"}, opener=_cp_open):
         buf += dec.decode(part)
         if not checked and (len(buf) >= 20000 or close in buf):
             if HUMAN_CHECK_RE.search(buf[:20000]):
@@ -1394,11 +1468,11 @@ def _cp_blocks(url, tag="url"):
         yield b
 
 
-def _get_parts(url, headers):
+def _get_parts(url, headers, opener=None):
     """An answer's bytes as they arrive (STREAM_CHUNK at a time), refused past MAX_FEED_BYTES or FEED_DEADLINE."""
     req = urllib.request.Request(url, headers=headers)
     started, size = time.time(), 0
-    with _host_slot(url), urllib.request.urlopen(req, timeout=FEED_TIMEOUT) as r:
+    with _host_slot(url), (opener or urllib.request.urlopen)(req, timeout=FEED_TIMEOUT) as r:
         while True:
             part = r.read(STREAM_CHUNK)
             if not part:

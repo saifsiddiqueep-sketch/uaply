@@ -773,7 +773,7 @@ def _digest_save(d):
         sys.stderr.write("[uaply] the finish-your-application reminders could not be saved: %s\n" % type(e).__name__)
 
 
-MARKED_MAX = 500                               # job ids a person marked as applied, kept so a later swipe of the same job is not reminded
+MARKED_MAX = 200                               # job ids a person marked as applied, kept so a later swipe of the same job is not reminded
 
 
 def _queue_finish(user, rec, site=""):
@@ -804,7 +804,9 @@ def finish_waiting(user_id):
 def mark_applied(user_id, job_id, marked=True):
     """Job Tracker's "Mark as applied" (POST /api/apply/mark): the person finished this job on the employer's site, so the reminder no
     longer lists it, now or after a later swipe of it. Undo (marked False) only stops skipping it; it is not put back in a waiting reminder.
-    Returns how many jobs still wait for this person's reminder."""
+    Returns how many jobs still wait for this person's reminder.
+    A mark is kept only for a job that is in this person's reminder (October 22 review): any other mark changes nothing and writes nothing,
+    so marks cannot grow the reminder file, and at most MARKED_MAX are kept per account (the oldest go first)."""
     try:
         job_id = int(job_id)
     except (TypeError, ValueError):
@@ -813,11 +815,15 @@ def mark_applied(user_id, job_id, marked=True):
         d = _digest_load()
         e = d.get(str(user_id))
         if e is None:
-            if not marked:
-                return 0
-            e = d.setdefault(str(user_id), {"to": "", "items": [], "last": 0})
-        e["items"] = [i for i in e.get("items") or [] if i.get("id") != job_id] if marked else (e.get("items") or [])
-        m = [x for x in e.get("marked") or [] if x != job_id]
+            return 0
+        items = e.get("items") or []
+        was = e.get("marked") or []
+        if marked and not any(i.get("id") == job_id for i in items):
+            return len(items)                        # not in the reminder: nothing to take out, nothing kept
+        if not marked and job_id not in was:
+            return len(items)
+        e["items"] = [i for i in items if i.get("id") != job_id] if marked else items
+        m = [x for x in was if x != job_id]
         e["marked"] = (m + [job_id])[-MARKED_MAX:] if marked else m
         _digest_save(d)
         return len(e["items"])
@@ -849,6 +855,13 @@ def send_finish_digests(now=None):
                 due.append((uid, e["to"], [dict(i) for i in items]))
         done = 0
         for uid, to, items in due:
+            # the account is looked at again right before its email (October 22 review): one deleted meanwhile (a swipe in flight can put
+            # its entry back after the deletion dropped it) gets nothing, and its entry goes
+            acct = auth_api.user_by_id(uid)
+            if not acct or not acct.get("emailVerified") or acct["email"].lower() != str(to).lower():
+                if not acct:
+                    _forget_digest(uid)
+                continue
             site = next((i.get("site") for i in reversed(items) if i.get("site")), "")
             subject, body, page = emails.finish_digest({"items": items, "test": any(i.get("test") for i in items),
                                                         "base_url": _site_base(cfg, site), "user_email": to,
