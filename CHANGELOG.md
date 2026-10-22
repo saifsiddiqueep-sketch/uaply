@@ -6,6 +6,31 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 
+### Learns from your swipes: no score moves for a new person, and no reason names a pass that did not happen (Mohammed, October 22)
+- **Nothing moves until there is something to compare.** A score changes only after 8 swipes with at least one yes and one no
+  (`ready()` in `shared/uaply-learn.js`). Before, the deck order already waited, but the learner's numbers and the Filters summary did not:
+  after a new person's first 2 right swipes Filters said "You passed on 0 of 1 software engineer roles". It now says "2 swipes so far, on
+  this device only. No score changes until 8 swipes with at least one yes and one no; until then each score is how well your profile fits."
+- **A reason is always a swipe that happened.** Measuring each kind of job against the person's overall yes rate (centring) now applies
+  only once both yeses and noes exist, and it can no longer turn a kind of job that was only liked into a minus (or one only passed into
+  a plus). Measured on dev with 7 right swipes and 1 quick pass: before, the best card lost a point with "You've passed on 0 of 2 software
+  engineer roles" and remote 85% cards fell to 60%; now the best cards keep 100% with no line, and the remote cards fall to 74% with the
+  true reason "You've passed on 1 of 4 jobs asking for SQL."
+- **An Undo is never a pass.** Undo of a swipe right is kept apart from a swipe left: it is not one of the 8 swipes, it never makes the
+  learner ready, it can never pull a card down by itself, and no "passed on N" counts it. Before, 8 right swipes and one Undo moved the
+  card just undone by −10 with "You've passed on 1 of 2 product design roles." and 7 of the next 12 cards claimed a pass; Filters now says
+  "7 swipes so far, ... No score changes until 8 swipes with at least one yes and one no".
+- **An Undo is not one of the first 30 swipes either.** Before 30 swipes the learned part is limited to 25 points and a 90%+ match
+  loses at most 10. Those limits counted stored entries, Undo included, so 29 swipes plus one Undo let a 95% match fall to 55. They now
+  count real swipes: it stays at 85.
+- Tests: `tools/test-learn.py` 96 checks (21 new). The 8-swipe checks fail on the old code (a reason read "You've passed on 0 of 3 jobs
+  that ask for no experience", 95% to 90%); the 2-swipe score check does not (the old score() also left a 95% alone after 2 swipes), so
+  for 2 swipes the guard is the Filters text in ui-learn. The 10 Undo checks (8 right then Undo; 6 right, Undo, 2 right; then 1 real
+  pass) all fail on the first version of this fix, and the 4 checks for 29 swipes plus an Undo (and 25 swipes plus 5 Undos) fail on
+  the second (55 instead of 85). `tools/ui-learn.js` 31 checks (8 new: 2 real right swipes, with every card's score
+  recorded before them; the Filters text and Reset; 8 right swipes and Undo, the cards and the Filters text; no "passed on 0" after 30
+  swipes), on sandbox and dev at 390x844 and 1280x720.
+
 ### Always jobs, and an incomplete profile never blocks a swipe (Saif, October 24)
 - The deck never runs dry while there are jobs: the filters (stack, work style, minimum match, the rest) rank first; under 20 cards the
   deck goes on with the jobs outside them, nearest first, each card saying "Outside your filters: ..." on one line. Blocked companies and
