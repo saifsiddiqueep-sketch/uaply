@@ -45,6 +45,8 @@ TTL = 6 * 3600
 MAX_CACHED = 600
 
 _START = {"now": "Immediately", "2w": "Within 2 weeks", "1m": "Within a month", "grad": "After graduation", "flex": "Flexible"}
+# the "When can you start?" answer in Profile, Account (the free-choice notice): the start date used when Profile setup's coded one is empty
+_NOTICE = {"Immediately": "Immediately", "2 weeks": "Within 2 weeks", "1 month": "Within a month", "2 months or more": "In 2 months or more"}
 _MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
 _EDU = {"High school": "High School", "Associate": "Associate's Degree", "Bachelor": "Bachelor's Degree", "Master": "Master's Degree", "Doctorate": "Doctorate"}
 
@@ -290,7 +292,7 @@ def _rules(cand, ext, job):
         (r"(current|most recent) (job )?title|current role|title (at|with) (your )?(current|most recent)", lambda: ext.get("job_title") or cand.get("title") or None),
         (r"(current|most recent|previous|last) (position|job|employment)\b", lambda: _job_text(ext)),
         (r"years of (relevant |professional )?experience|how many years", lambda: str(cand["years"]) if cand.get("years") else None),
-        (r"start date|earliest start|when (can|could) you start|availability|notice period", lambda: _START.get(ext.get("start") or "") or None),
+        (r"start date|earliest start|when (can|could) you start|availability|notice period", lambda: _START.get(ext.get("start") or "") or _NOTICE.get(ext.get("notice") or "") or None),
         (r"(how|where) did you (first )?(hear|find|learn)|where have you (heard|learned)|influenced your decision", lambda: "uaply"),
         (r"why .*(work|join|interested|apply)|what (excites|interests) you|cover letter|tell us (about )?why", lambda: _fill_template(ext.get("why"), job)),
     ]

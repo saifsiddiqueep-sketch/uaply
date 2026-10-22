@@ -254,7 +254,7 @@ function apply(w){
   /* went to the employer's site after a swipe right (Finish on their site, Open, Finish now): the strongest yes */
   var open0=w.__uaplyOpen;
   if(typeof open0==="function")w.__uaplyOpen=function(u){
-    try{var hit=false,bare=String(u||"").replace(/([?&])(gh_src|lever-source)=uaply(&|$)/,function(m,p1,k,p3){return p3?p1:""});A.JOBS.forEach(function(j){if(u&&(j.url===u||j.url===bare)&&finish(st,j.id))hit=true});if(hit){A.save();summary()}}catch(e){}
+    try{var hit=false,bare=String(u||"").replace(/([?&])(gh_src|lever-source)=uaply(&|$)/,function(m,p1,k,p3){return p3?p1:""});A.JOBS.forEach(function(j){if(u&&(j.url===u||j.url===bare||(w.__uaplyHandoffURL&&j.url&&w.__uaplyHandoffURL(j.url)===u))&&finish(st,j.id))hit=true});if(hit){A.save();summary()}}catch(e){}
     return open0.apply(this,arguments);
   };
 

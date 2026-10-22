@@ -40,6 +40,37 @@ production page and only changes when the owner decides.
   hostile text in the card's boxes, Sign out, and a redraw while typing). `tools/run-all-tests.sh` runs both, and runs the sandbox's `ui-inject.js` (unchanged) against a
   second sandbox with the card off (18770).
 
+### Assisted apply in the phone app: UAply fills the employer's form, the person taps Submit
+- **Finish applying on their site**, in the UAply phone app, opens the employer's own page inside the app (`AssistPlugin`,
+  `AssistActivity` in `mobile/android`), fills it from the profile with `shared/uaply-assist.js` (served at `/uaply-assist.js`), attaches
+  the resume file, scrolls to Submit and says **Review and tap Submit**. Voluntary self-identification, consent boxes, follow-ups and
+  human checks are left to the person. The page's own resume box offers **Use my UAply resume** first. On the website nothing changes.
+- **Sent only on the employer's confirmation page:** the Job Tracker row becomes **Sent** ("Sent on {company}'s own page: their
+  confirmation page appeared") only then; closed earlier, it stays **Finish on their site**.
+- **The per-system switch** `shared/assist-systems.json` (served at `/assist-systems.json`): "assisted" for every system. "automatic"
+  takes the attorney's approval and a measured human-check share of 0, and the page is checked again before any submit.
+- **First-swipe agreement, version 3:** adds "You authorize UAply to complete and submit job applications on your behalf using the
+  information you provide." (recorded with the time); the Terms draft is in LEGAL-REVIEW.md section 11.
+- **Measured** on the owner's Galaxy, 20 real postings per system, nothing submitted: see `docs/assisted-apply.md`.
+- Tests: `tools/test-assist.js` (mock form per system in `tools/fixtures/assist/`), `tools/ui-assist-tracker.js` (Job Tracker with a
+  stand-in plugin), `tools/assist-measure.js` (real postings, every application-carrying request refused).
+
+### Apply journey fixes (50 real swipes on the Galaxy A17 and a laptop, October 22)
+- **The card tells the truth before the swipe.** Where the server previews forms in test mode (the sandbox), a swipe right on any Greenhouse
+  posting reads its form and asks its questions; the card now asks the server for that same plan (POST /api/apply/plan) and says
+  "N answers needed" instead of "Ready". `/api/apply/config` says `formPreview`; one rule (`uaply_api.form_preview`) decides both.
+- **The question box on a phone.** It opens with no field focused (the keyboard no longer covers it before it is read), and it is fitted to
+  the screen left above the keyboard (the top page's visual viewport), with Send application pinned to its bottom.
+- **Start date.** "When can you start?" from Profile, Account goes with the application when Profile setup's start date is empty, and fills
+  the employer's start-date question (`autofill._NOTICE`).
+- **Finish applying opens the form**, not the posting: Lever `/apply`, Ashby `/application`, SmartRecruiters `?oga=true` (its own API's
+  applyUrl), added as text so nothing else in the address changes. Learns from your swipes still recognises the job.
+- **Old messages go.** A "Saved ... Undo" message whose time ran out while the tab was hidden goes when the tab is shown again.
+- **Job Tracker after a reload.** A swiped job is saved with the swipe, so its row is still there after a phone reloads the tab, even when the
+  server's list no longer has the job (job 14769135 on the Galaxy).
+- Tests: `tools/ui-journey.js` (10 checks, run by `tools/ui-questions.py`), 2 more in `tools/ui-questions.js` (phone keyboard, focus), 3 in
+  `tools/test-autofill.py`. Each fails on the code before this change.
+
 ### A swipe right only sends a complete application (the front end of the readiness rule)
 - **The minimum, in one place.** `READY_MIN` in `shared/uaply-nav.js`: a name, an email employers can reply to, and a phone number or a
   resume. The deck, the cards and every checklist read it. Below it, a swipe right (finger, Apply or the arrow key) opens **Finish your

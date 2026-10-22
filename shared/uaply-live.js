@@ -283,12 +283,21 @@ function kitApply(w,host){
     var s=d.createElement("span");s.textContent=msg;t.appendChild(s);
     if(action){var b=d.createElement("button");b.type="button";b.textContent=action;b.onclick=fn;t.appendChild(b)}
     d.body.appendChild(t);
-    if(ms!==0)w.__kitToastT=w.setTimeout(function(){t.remove()},ms||6000);
+    if(ms!==0){t.setAttribute("data-until",String(Date.now()+(ms||6000)));w.__kitToastT=w.setTimeout(function(){t.remove()},ms||6000)}
     return {el:t,set:function(x){s.textContent=x}};
   }
   w.__uaplyKitToast=toast;
+  /* a hidden tab runs its timers late (Chrome may hold them for minutes), so a "Saved ... Undo" stayed on screen 10 minutes after coming
+     back to the tab (apply journey, October 22): when the page is shown again, a message whose time is up goes at once */
+  function dropExpired(){var t=d.getElementById("kitToast"),u=t&&+t.getAttribute("data-until");if(u&&Date.now()>=u)t.remove()}
+  d.addEventListener("visibilitychange",function(){if(d.visibilityState==="visible")dropExpired()});
+  w.addEventListener("pageshow",dropExpired);w.addEventListener("focus",dropExpired);
   /* first application only: say plainly what a swipe right does with the person's details, and get agreement */
-  var CONSENT_V=2;   /* 2: also explains the optional hiring-manager message and that voluntary answers are never sent */
+  var CONSENT_V=3;   /* 2: also explains the optional hiring-manager message and that voluntary answers are never sent.
+                       3 (October 21, 2026, the owner's position, drafted for the Terms in LEGAL-REVIEW.md): the person authorizes UAply to
+                       complete and submit applications on their behalf; recorded with the time ({v:3,at,agent:true}), so everyone agrees again once */
+  var AGENT_CLAUSE="You authorize UAply to complete and submit job applications on your behalf using the information you provide.";
+  w.__uaplyAgentClause=AGENT_CLAUSE;
   function legalBase(){var p=(host&&host.defaultView&&host.defaultView.location.pathname)||"/";return /\/(sandbox|dev)\/(index\.html)?$/.test(p)?"../legal/":"legal/"}   /* the hosted copies live at /dev/ and /sandbox/, with legal/ beside them */
   function consentKey(){return (w.__uaplyKey||"uaply")+".consent"}
   function hasConsent(){try{var c=JSON.parse(w.localStorage.getItem(consentKey()));return !!(c&&c.v===CONSENT_V)}catch(e){return false}}
@@ -314,6 +323,7 @@ function kitApply(w,host){
     o.innerHTML='<div role="dialog" aria-modal="true" aria-labelledby="kcH" style="background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:20px;max-width:460px;width:100%;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:10px;font-size:14px">'+
       '<h2 id="kcH" style="margin:0;font:800 20px var(--display)">'+(consentFirst?"Before you start swiping":"Before your first application")+'</h2>'+
       '<p style="margin:0">When you swipe right, UAply applies for you at connected employers: employers that have agreed to receive applications through UAply get the details in your profile (your name, email, and anything else you filled in, such as phone, resume file or link, education or work authorization), plus a short message if you turned on "Message the hiring manager". Everywhere else, UAply sends nothing: it saves the job in Applied and takes you to the employer\'s own application page to finish there. UAply never emails a company that has not agreed.</p>'+
+      '<p style="margin:0"><b>'+AGENT_CLAUSE+'</b> Today that means two things: UAply sends your application to connected employers, and in the UAply phone app it fills in other employers\' own application forms from your profile for you to review and submit yourself.</p>'+
       '<p style="margin:0">Your voluntary answers (such as race, gender, veteran or disability status) are never sent. They stay on your device unless you copy them yourself.</p>'+
       '<p style="margin:0">The match percentage is worked out automatically from your profile to help order jobs. It never rejects you, and employers make every hiring decision. <a href="'+b+'ai-and-employment.html" target="_blank" rel="noopener noreferrer">How matching works</a></p>'+
       '<p style="margin:0">By continuing you confirm you are 18 or older and agree to the <a href="'+b+'terms.html" target="_blank" rel="noopener noreferrer">Terms of Service</a> and <a href="'+b+'privacy.html" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.</p>'+
@@ -322,7 +332,7 @@ function kitApply(w,host){
     d.body.appendChild(o);
     d.getElementById("kcYes").focus();
     function answer(ok){o.remove();var waiting=consentWait.splice(0);(ok?go:cancel)();waiting.forEach(function(p){(ok?p[0]:p[1])()})}
-    d.getElementById("kcYes").onclick=function(){try{w.localStorage.setItem(consentKey(),JSON.stringify({v:CONSENT_V,at:Date.now()}))}catch(e){}answer(true)};
+    d.getElementById("kcYes").onclick=function(){try{w.localStorage.setItem(consentKey(),JSON.stringify({v:CONSENT_V,at:Date.now(),agent:true}))}catch(e){}answer(true)};
     d.getElementById("kcNo").onclick=function(){answer(false)};
     o.addEventListener("keydown",function(e){if(e.key==="Escape")answer(false)});
   }
@@ -473,6 +483,8 @@ function kitApply(w,host){
   }
   w.__uaplyAskField={html:fieldHtml,wire:wireField,value:fieldVal};
 
+  /* a phone or tablet (no mouse to hover with, a finger to point with) */
+  function touchFirst(){try{return !!(w.matchMedia&&w.matchMedia("(hover: none) and (pointer: coarse)").matches)}catch(e){return false}}
   /* the questions on an employer's form that the profile could not answer: asked once, then the application goes */
   function askSheet(job,qs,filled,total,go,cancel){
     var old=d.getElementById("kitAsk");if(old)old.remove();
@@ -480,16 +492,32 @@ function kitApply(w,host){
     var o=d.createElement("div");o.id="kitAsk";
     o.style.cssText="position:fixed;inset:0;z-index:55;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.45);overflow:auto;overscroll-behavior:contain";
     var hasFile=qs.some(function(q){return q.kind==="file"});
-    var h='<form role="dialog" aria-modal="true" aria-labelledby="kaH" novalidate style="background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:20px;max-width:520px;width:100%;box-sizing:border-box;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:14px;font-size:14px;min-width:0">'+
-      '<h2 id="kaH" style="margin:0;font:800 20px var(--display)">'+(qs.length===1?'One question':qs.length+' questions')+' from '+esc(job.co)+'</h2>'+
+    var h='<form role="dialog" aria-modal="true" aria-labelledby="kaH" novalidate style="background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:20px 20px 0;max-width:520px;width:100%;max-height:100%;overflow:auto;overscroll-behavior:contain;box-sizing:border-box;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:14px;font-size:14px;min-width:0">'+
+      '<h2 id="kaH" tabindex="-1" style="margin:0;font:800 20px var(--display);outline:none">'+(qs.length===1?'One question':qs.length+' questions')+' from '+esc(job.co)+'</h2>'+
       '<p style="margin:0;color:var(--muted)">UAply filled in '+filled+' of '+total+' answers on '+esc(job.co)+'\'s application. '+(hasFile?'It also needs a resume file. Answer what you can (it is saved), then upload your resume in Profile setup, under Background and links, and swipe right again.':'Answer '+(qs.length===1?'this':'these')+' and UAply sends it. Your answers are saved, so the next employer that asks the same thing gets them automatically. You can change them in Profile setup, under Eligibility and extras.')+'</p>';
     qs.forEach(function(q,i){h+=fieldHtml(q,"kaQ"+i,"")});
     h+='<p id="kaMsg" role="alert" style="margin:0;font-size:13px;color:var(--no);min-height:1.2em"></p>'+
-      '<div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button type="button" class="btn ghost" id="kaNo">Not now</button><button type="submit" class="btn" id="kaYes">'+(hasFile?'Open Profile':'Send application')+'</button></div></form>';
+      '<div id="kaBtns" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;position:sticky;bottom:0;margin:0 -20px;padding:12px 20px 20px;background:var(--surface);border-top:1px solid var(--line)"><button type="button" class="btn ghost" id="kaNo">Not now</button><button type="submit" class="btn" id="kaYes">'+(hasFile?'Open Profile':'Send application')+'</button></div></form>';
     o.innerHTML=h;d.body.appendChild(o);
     var boxes=[].slice.call(o.querySelectorAll(".kaF"));
     boxes.forEach(function(b,i){wireField(b,qs[i])});
-    var first=o.querySelector(".kaF input:not([disabled]),.kaF select,.kaF textarea,.kaF .kaRead")||d.getElementById("kaYes");first.focus();
+    /* a touch screen: the box opens without a field focused, so the phone's keyboard does not cover it before the person reads it (the
+       heading takes the focus, for screen readers); a keyboard and mouse: the first field, ready to type */
+    if(touchFirst())d.getElementById("kaH").focus({preventScroll:true});
+    else(o.querySelector(".kaF input:not([disabled]),.kaF select,.kaF textarea,.kaF .kaRead")||d.getElementById("kaYes")).focus();
+    /* the phone's keyboard: the box is fitted to the part of the screen still visible (the top page's visual viewport, as the app runs in
+       a frame), so Send application, pinned to the bottom of the box, stays above the keyboard (apply journey, October 22) */
+    var tw=null;try{tw=w.top&&w.top.visualViewport?w.top:null}catch(e){tw=null}
+    var vv=tw?tw.visualViewport:w.visualViewport;
+    function fit(){
+      if(!o.isConnected){if(vv){vv.removeEventListener("resize",fit);vv.removeEventListener("scroll",fit)}return}
+      if(!vv)return;
+      var fr=null;try{fr=w.frameElement}catch(e){fr=null}
+      var top0=fr&&tw?fr.getBoundingClientRect().top:0,vis=Math.max(120,Math.min(w.innerHeight,vv.height));
+      var t=Math.max(0,(vv.offsetTop||0)-top0);
+      o.style.inset="auto 0 auto 0";o.style.top=t+"px";o.style.height=vis+"px";
+    }
+    if(vv){vv.addEventListener("resize",fit);vv.addEventListener("scroll",fit);fit()}
     o.querySelector("form").onsubmit=function(e){
       e.preventDefault();
       var add={},meta={},blank=null,why="";
@@ -695,6 +723,10 @@ function kitApply(w,host){
   var RDY={},RDYQ={};
   function rdyApplies(job){return !!(job&&w.__uaplySubmitOn&&w.__uaplyMode&&!(w.__uaplyPreview&&w.__uaplyPreview())&&(job.live||w.__uaplyMode==="test"))}
   function rdyConnected(job){return !!(job.live&&job.instant&&!job.contact&&!job.webhook)}
+  /* whether a swipe right reads this posting's own form first (and may ask its questions): an employer who connected its hiring system,
+     or, where the server previews forms in test mode (the sandbox), any Greenhouse posting. The card then asks the server for the same
+     plan the swipe uses, so it never says "Ready" for a form that will ask questions (apply journey, October 22: 15 such cards) */
+  function rdyReadsForm(job){return rdyConnected(job)||!!(w.__uaplyFormPreview&&job.live&&!job.instant&&job.ats&&job.ats.kind==="greenhouse")}
   function rdyPayload(job){
     var p=(w.__uaply&&w.__uaply.S.profile)||{},res=w.__uaplyResume?w.__uaplyResume():null;
     return {plan_only:true,match:0,job:{id:job.id,co:job.co,role:job.role,url:job.url||"https://example.com/example-listing",source:job.source,loc:job.loc,contact:job.contact||"",mode:job.mode,type:job.type||"job",sal:job.sal,blurb:job.blurb},
@@ -715,7 +747,7 @@ function kitApply(w,host){
   function rdyState(job,then){
     var r=w.__uaplyReadiness?w.__uaplyReadiness():{min:true};
     if(!r.min)return {k:"need",t:"Finish your profile"};
-    if(!rdyConnected(job))return {k:"ok",t:"Ready"};
+    if(!rdyReadsForm(job))return {k:"ok",t:"Ready"};
     var pl=rdyPayload(job),sig=rdySig(pl),c=RDY[job.id];
     if(c&&c.sig===sig)return c.st;
     if(RDYQ[job.id]!==sig){
@@ -735,6 +767,7 @@ function kitApply(w,host){
       var cls="rdy "+st.k;if(el.className!==cls)el.className=cls;if(el.textContent!==st.t)el.textContent=st.t;
     });
   }
+  w.__uaplyRdyPaint=rdyPaint;
   (function(){var deck=d.getElementById("deck");if(deck&&w.MutationObserver){var busyP=false;new w.MutationObserver(function(){if(busyP)return;busyP=true;w.setTimeout(function(){busyP=false;rdyPaint()},0)}).observe(deck,{childList:true,subtree:true})}})();
   /* for the browser tests: the state a card for this job shows once its plan is in */
   w.__uaplyReadyOf=function(id){
@@ -755,6 +788,11 @@ function kitApply(w,host){
   w.__uaplyOnApplied=sheet;   /* tells the live patch the apply assistant is on */
   w.__uaplyOnDecision=function(dir,job,m,p,undo,S,save){
     if(w.__uaplyPreview&&w.__uaplyPreview())return;          /* a preview with no server: the swipe is only saved here, and the toast says so */
+    /* the job itself goes into the saved job list at once: its Job Tracker row needs it after the page is reloaded (a phone reloads a tab it
+       put to sleep), and the server's list may no longer have it, or not yet while that list is still loading. It used to be saved only
+       when the list loaded, so a job swiped after that was missing from Job Tracker after a reload (apply journey, October 22, job 14769135) */
+    if(job&&job.live&&job.id>=100000){try{var all=readCache();if(!all.some(function(c){return c.id===job.id})){var keep=JSON.parse(JSON.stringify(job));keep.seen=Date.now();all.push(keep)}
+      writeCache(all,(S&&S.decisions)||null)}catch(e){}}
     var ready=!!(w.__uaplySubmitOn&&w.__uaplyMode);
     if(ready){
       post("/api/decision",{session:session(),dir:dir==="applied"?"apply":"pass",jobId:job.id,co:job.co,role:job.role,pct:m.pct}).catch(function(){});
@@ -782,7 +820,7 @@ function kitApply(w,host){
 
 function submitApply(w){
   w.__uaplySubmitOn=true;   /* from here on a swipe right applies by itself (see quietApply) */
-  return w.fetch("/api/apply/config").then(function(r){return r.json()}).then(function(c){w.__uaplyMode=c.mode==="live"?"live":"test";w.__uaplyRedirect=c.redirect||"";w.__uaplyAuto=c.autoSend!==false;w.__uaplyTestInbox=c.testInbox||"";w.__uaplyGrace=typeof c.graceSeconds==="number"?c.graceSeconds:5}).catch(function(){});
+  return w.fetch("/api/apply/config").then(function(r){return r.json()}).then(function(c){w.__uaplyMode=c.mode==="live"?"live":"test";w.__uaplyRedirect=c.redirect||"";w.__uaplyAuto=c.autoSend!==false;w.__uaplyTestInbox=c.testInbox||"";w.__uaplyGrace=typeof c.graceSeconds==="number"?c.graceSeconds:5;w.__uaplyFormPreview=c.formPreview===true;if(w.__uaplyRdyPaint)w.__uaplyRdyPaint()}).catch(function(){});
 }
 
 window.UAplyLive={patch:patch,apply:apply,kit:{patch:kitPatch,apply:kitApply},submit:{apply:submitApply}};

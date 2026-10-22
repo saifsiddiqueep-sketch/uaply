@@ -49,14 +49,26 @@ module.exports = async ({ ev, sleep, nav, send, shot }) => {
   // ---- the person: a profile with name and email only, the first-application agreement given --------------------------------------------
   await nav(base); await sleep(3000);
   const email = "q" + W + "@example.com";
-  await ev("(()=>{const w=" + FW + ";w.localStorage.setItem((w.__uaplyKey||'uaply')+'.consent',JSON.stringify({v:2,at:Date.now()}));const A=w.__uaply;Object.assign(A.S.profile,{name:'Sam Rivera',email:'" + email + "',custom:true,title:'Data Analyst',years:1,skills:['Python','SQL']});A.save()})()");
+  await ev("(()=>{const w=" + FW + ";w.localStorage.setItem((w.__uaplyKey||'uaply')+'.consent',JSON.stringify({v:3,at:Date.now(),agent:true}));const A=w.__uaply;Object.assign(A.S.profile,{name:'Sam Rivera',email:'" + email + "',custom:true,title:'Data Analyst',years:1,skills:['Python','SQL']});A.save()})()");
   await nav(base); await sleep(4500);
   await ev("(()=>{const w=" + FW + ";w.__uaplyResume=function(){return {name:'Sam Rivera Resume.pdf',size:40,data:'data:application/pdf;base64,'+btoa('%PDF-1.4 Sam Rivera resume for tests %%EOF')}}})()");
   check("app loaded", await ev("!!(" + FW + ".__uaply&&" + FW + ".__uaplyOnDecision)"));
 
   // ---- the swipe: every kind of question, each with its own control ---------------------------------------------------------------------
+  // a phone's keyboard, as the box sees it: the visible part of the screen shrinks to 420 px (the top page's visual viewport, read when the
+  // box opens). Send application must stay inside it (apply journey, October 22: the keyboard covered Send on the Galaxy)
+  if (PHONE) await ev("(()=>{window.__realVV=window.visualViewport;window.visualViewport={width:" + W + ",height:420,offsetTop:0,offsetLeft:0,scale:1,addEventListener(){},removeEventListener(){}};return 1})()");
   check("swipe right on Every Kind Co", (await swipe(ID["Every Kind Co|Data Analyst"])) === "ok");
   await sleep(3000);
+  if (PHONE) {
+    const pin = JSON.parse(await ev("(()=>{const d=" + F + ",o=d.getElementById('kitAsk'),y=d.getElementById('kaYes');if(!o||!y)return 'null';const b=y.getBoundingClientRect(),ob=o.getBoundingClientRect();" +
+      "return JSON.stringify({box:Math.round(ob.height),yesTop:Math.round(b.top),yesBottom:Math.round(b.bottom),focus:d.activeElement&&d.activeElement.tagName,id:d.activeElement&&d.activeElement.id})})()"));
+    check("phone keyboard: the box fits the 420 px left above the keyboard, and Send application is inside it (pinned to the box's bottom)",
+      pin && pin.box === 420 && pin.yesTop >= 0 && pin.yesBottom <= 420, JSON.stringify(pin));
+    check("phone: the box opens with no field focused, so the keyboard does not cover it before it is read (the heading has the focus)",
+      pin && !/^(INPUT|SELECT|TEXTAREA)$/.test(pin.focus || "") && pin.id === "kaH", JSON.stringify(pin));
+    await ev("(()=>{window.visualViewport=window.__realVV;const o=" + F + ".getElementById('kitAsk');if(o){o.style.top='';o.style.height='';o.style.inset='0'}return 1})()");
+  }
   const head = await q("#kitAsk h2", "e.textContent");
   check("the question box opens with the employer's questions", /^8 questions from Every Kind Co$/.test(head || ""), head);
   check("while the box is open the job is marked Not sent yet (never a plain 'Applied' if the person walks away)",
@@ -74,7 +86,7 @@ module.exports = async ({ ev, sleep, nav, send, shot }) => {
   check("the number shows its unit", (await q("#kaQ5U", "e.textContent")) === "hours" && (await q("#kaQ5", "e.inputMode")) === "decimal");
   check("the notice is shown to read, with its box to tick locked until it is read to the end",
     (await q("#kaQ7R", "e.scrollHeight>e.clientHeight")) && (await q("#kaQ7", "e.disabled")) === true, await q("#kaQ7H", "e.textContent"));
-  check("the first question has the keyboard focus", (await ev(F + ".activeElement.id")) === "kaQ0");
+  if (!PHONE) check("computer: the first question has the keyboard focus", (await ev(F + ".activeElement.id")) === "kaQ0");
 
   await snap("1-box");
   // nothing answered: nothing is sent, and the box says why

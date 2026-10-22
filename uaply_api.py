@@ -97,6 +97,13 @@ def _redirect(cfg):
     return r.strip() if isinstance(r, str) and EMAIL_RE.match(r.strip()) else ""
 
 
+def form_preview(cfg=None):
+    """Whether a swipe right on any Greenhouse posting reads its form and asks its questions in test mode (the sandbox by default, or
+    "autofill_preview": true), sending the filled form to the test inbox. The card's readiness reads the same plan (POST /api/apply/plan)."""
+    cfg = cfg or config()
+    return cfg["delivery"] == "test" and (cfg.get("autofill_preview") is True or (INSTANCE == "sandbox" and cfg.get("autofill_preview") is not False))
+
+
 def public_config():
     cfg = config()
     try:
@@ -104,7 +111,7 @@ def public_config():
     except (TypeError, ValueError):
         grace = 5
     return {"mode": cfg["delivery"], "canEmail": _smtp_ready(cfg), "redirect": _redirect(cfg), "ownerCopy": bool(_owner_copy(cfg)),
-            "autoSend": cfg.get("auto_send", True) is not False, "graceSeconds": grace}
+            "autoSend": cfg.get("auto_send", True) is not False, "graceSeconds": grace, "formPreview": form_preview(cfg) and not _redirect(cfg)}
 
 
 def append_line(path, text):
@@ -242,6 +249,8 @@ def _ext(raw):
             "employer": _s(x.get("employer"), 100), "job_title": _s(x.get("job_title"), 100), "job_start": job_start, "job_end": job_end,
             "auth": _pick(x.get("auth"), _AUTH),
             "sponsor": _pick(x.get("sponsor"), ("yes", "no")), "start": _pick(x.get("start"), _START), "types": types,
+            # the notice from Profile, Account ("When can you start?"): the start date when the one in Profile setup is not chosen
+            "notice": _pick(x.get("notice"), tuple(autofill._NOTICE)),
             # the common questions employers' own forms ask (used by autofill.py to fill those forms; none of them is shown to a recruiter otherwise)
             "zip": zipc if re.match(r"^\d{5}(-\d{4})?$", zipc) else "", "state": state if re.match(r"^[A-Za-z .]{2,30}$", state) else "",
             "country": _pick(x.get("country"), _COUNTRIES), "salary": salary,     # expected yearly pay: kept only when a form asked for it (see submit)
@@ -267,7 +276,7 @@ def _detail_rows(c, note=""):
             ("LinkedIn", x.get("linkedin")), ("Portfolio", x.get("portfolio")), ("Education", edu),
             ("Most recent employer", x.get("employer")), ("Job title there", x.get("job_title")), ("Dates there", dates),
             ("Work authorization", _AUTH.get(x.get("auth"), "") + ("; needs sponsorship" if x.get("sponsor") == "yes" else "; no sponsorship needed" if x.get("sponsor") == "no" else "") if x.get("auth") else ""),
-            ("Earliest start", _START.get(x.get("start"), "")),
+            ("Earliest start", _START.get(x.get("start"), "") or autofill._NOTICE.get(x.get("notice"), "")),
             ("Willing to relocate", {"yes": "Yes", "no": "No"}.get(x.get("relocate"), "")),
             # expected pay is in the record only when the employer's own form asked for it (submit() leaves it out otherwise)
             ("Expected yearly pay", ("$%s" % format(x["salary"], ",")) if isinstance(x.get("salary"), int) and x["salary"] > 0 else ""),
@@ -425,7 +434,7 @@ def _webhook_body(rec, resume_bytes, c, j, x):
                           "years_experience": c.get("years", 0), "skills": c.get("skills", []), "headline": x.get("headline", ""), "summary": x.get("summary", ""),
                           "education": {"level": c.get("edu", ""), "school": x.get("school", ""), "major": x.get("major", ""), "graduation": x.get("grad", ""), "gpa": x.get("gpa", "")},
                           "links": {"resume": x.get("resume", ""), "linkedin": x.get("linkedin", ""), "portfolio": x.get("portfolio", "")},
-                          "work_authorization": x.get("auth", ""), "needs_sponsorship": x.get("sponsor", ""), "earliest_start": x.get("start", ""),
+                          "work_authorization": x.get("auth", ""), "needs_sponsorship": x.get("sponsor", ""), "earliest_start": x.get("start", "") or x.get("notice", ""),
                           "country": x.get("country", ""), "willing_to_relocate": x.get("relocate", ""),
                           "most_recent_employer": x.get("employer", ""),
                           "most_recent_job": {"employer": x.get("employer", ""), "title": x.get("job_title", ""), "start": x.get("job_start", ""),
@@ -910,8 +919,7 @@ def submit(p, user=None, site=""):
     #   - an employer that connected its Ashby, SmartRecruiters or Workable: the same as Greenhouse, but read with their key, and only for a live send
     ref = known.get("ats") if isinstance(known.get("ats"), dict) else None
     gh = ats if (ats and ats.get("kind") == "greenhouse") else (ref if ref and ref.get("kind") == "greenhouse" else None)
-    preview = (mode == "test" and policy == "link" and gh is not None and
-               (cfg.get("autofill_preview") is True or (INSTANCE == "sandbox" and cfg.get("autofill_preview") is not False)))
+    preview = policy == "link" and gh is not None and form_preview(cfg)
     plan = None
     if gh and (policy in ("direct", "link") or preview) and not _redirect(cfg):
         form = autofill.fetch_form(gh["board"], gh["id"])
