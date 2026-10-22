@@ -38,6 +38,7 @@ module.exports = async ({ ev, sleep, send, on, logs }) => {
 
   // 2. swipe on real postings, then reload while the job list is held back
   await ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b)b.click()})()");
+  await ev(require("./fixtures/ready-profile.js").readyProfile());   // the least a swipe right needs (name, email, phone): else the card does not move
   for (let i = 0; i < 60 && !(await ev("!!(" + FW + ".__uaply&&" + FW + ".__uaply.JOBS.filter(j=>j.live).length>5)")); i++) await sleep(500);
   for (const id of ["btnNo", "btnYes", "btnYes"]) { await ev(F + ".getElementById('" + id + "').click()"); await sleep(1500); await ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b)b.click()})()"); }
   const before = await ev("JSON.stringify(Object.keys(" + FW + ".__uaply.S.decisions).sort())");

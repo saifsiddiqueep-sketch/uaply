@@ -64,6 +64,17 @@ module.exports = async ({ ev, sleep, nav }) => {
 
   // apply for a job with that profile, then look at Applied and at the owner's test inbox
   await goto("nb-svc", "Full-time");
+  // a resume file, as Profile setup keeps it: hiring systems' forms require one, and without it the application waits ("Not sent yet")
+  await ev("(()=>{const w=" + F + ".defaultView;w.__uaplyResume=function(){return {name:'Inject Tester Resume.pdf',size:40,data:'data:application/pdf;base64,'+btoa('%PDF-1.4 resume for tests %%EOF')}}})()");
+  // a job whose application really goes somewhere: on the sandbox a hiring-system posting (its form is filled and kept in the test inbox),
+  // not a "finish on their site" one, which sends nothing. Since feeds round 2 the top card is often a careers-site posting: pass those
+  // (dev previews no forms, __uaplyFormPreview off: its top card is sent to the test inbox as it is, so nothing is passed there)
+  for (let i = 0; i < 60; i++) {
+    const sendable = await ev("(()=>{const w=" + F + ".defaultView,c=" + F + ".querySelector('.card.top');if(!c||!w.__uaplyFormPreview)return true;const j=w.__uaply.JOBS.find(x=>x.id===+c.getAttribute('data-id'));" +
+      "return !j||!j.live||j.apply==='direct'||!!(j.ats&&/^(greenhouse|lever|ashby|smartrecruiters|workable)$/.test(j.ats.kind))})()");
+    if (sendable) break;
+    await ev(F + ".getElementById('btnNo').click()"); await sleep(250);
+  }
   const appsBefore = await ev("fetch('/api/outbox').then(r=>r.json()).then(j=>j.applications.length)");
   await ev(F + ".getElementById('btnYes').click()"); await sleep(1500);
   await ev("(()=>{const m=" + F + ".getElementById('kcYes');if(m)m.click()})()"); await sleep(3500);
