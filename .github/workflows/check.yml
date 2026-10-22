@@ -55,3 +55,5 @@ jobs:
       # The server started exactly as Render starts it (Linux shell, $PORT, a disk folder, SIGTERM at each deploy), on Render's Python version
       - name: Test the Render deploy (start, restart on the same disk, stop)
         run: python tools/test-render.py
+      - name: Test the owner's self-check in /api/status
+        run: python tools/test-self-check.py

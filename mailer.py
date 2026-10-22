@@ -146,10 +146,23 @@ def today():
 def _bump(full=False):
     with _lock:
         n, was_full = today()
-        st = {"day": day(), "sent": n + (0 if full else 1), "full": was_full or full}
+        prev = _read_json(_count_path(), {}) or _count_mem
+        st = {"day": day(), "sent": n + (0 if full else 1), "full": was_full or full,
+              # when an email last went out (kept across days and restarts): the owner's self-check in /api/status
+              "last_sent": time.time() if not full else float(prev.get("last_sent") or 0)}
         _count_mem.clear()
         _count_mem.update(st)
         _write_json(_count_path(), st)
+
+
+def last_sent():
+    """When an email last went out through the mail service (Unix seconds), or 0 when none has."""
+    with _lock:
+        st = _read_json(_count_path(), {}) or _count_mem
+        try:
+            return float(st.get("last_sent") or 0)
+        except (TypeError, ValueError):
+            return 0.0
 
 
 def usage(cfg):

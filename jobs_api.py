@@ -2083,6 +2083,13 @@ OFF_FOR = 24 * 3600              # ...for this long; then it is tried again (a b
 _health = {}                     # source -> {"ok", "fail", "last_ok", "last_error", "error", "jobs", "ms", "off_until", "retry"}
 
 
+def last_feed_ok():
+    """When any job board was last read successfully (Unix seconds), or 0 when none has been since this copy started (the owner's
+    self-check in /api/status)."""
+    with _lock:
+        return max([float(h.get("last_ok") or 0) for h in _health.values()] or [0])
+
+
 def _note_health(src, ok, jobs=0, error="", ms=0):
     with _lock:
         h = _health.setdefault(src, {"ok": 0, "fail": 0, "streak": 0, "last_ok": 0, "last_error": 0, "error": "", "jobs": 0, "ms": 0, "off_until": 0})
