@@ -93,7 +93,7 @@
    "id": "dashboard",
    "title": "Tracking my applications",
    "tags": "job tracker dashboard track tracking applied interview interviews accepted offer rejected status follow up calendar export csv",
-   "body": "Job Tracker shows everything you applied to. Overview gives totals and what's coming up. Move an application to Interview, Accepted or Rejected with its buttons, and tap Details to add an interview time, an offer, a reason or notes. Interviews can be added to your calendar, and you can export everything as a spreadsheet (CSV).",
+   "body": "Job Tracker shows everything you applied to. Overview gives totals and what's coming up: Sent counts applications that went to the employer (sent by UAply, or marked as applied by you), and To finish counts the ones you still finish on the employer's own site. Move an application to Interview, Accepted or Rejected with its buttons, and tap Details to add an interview time, an offer, a reason or notes. Interviews can be added to your calendar, and you can export everything as a spreadsheet (CSV).",
    "go": "dash:overview"
   },
   {
