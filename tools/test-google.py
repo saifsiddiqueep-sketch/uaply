@@ -84,8 +84,15 @@ t("email/password signup for that email says to log in", post(client()[1], "/api
 jar2, b = client()
 post(b, "/api/auth/signup", {"email": "pw1@gmail.com", "password": "correct horse 99", "agree": True})
 post(b, "/api/auth/logout", {})
-t("Google with an existing account's Gmail address links and signs in (and the page is told the unconfirmed password went)",
-  sign_in(b, False, {"email": "pw1@gmail.com", "sub": "502", "verified": "1"}), "/?signed_in=google&password_removed=1")
+# the account's address was never proven, so joining it needs this person's own 18+ / Terms tick (auth_api.oauth_login answers "agree"):
+# without it nothing is linked and nobody is signed in
+t("Google into an unproven account WITHOUT the 18+ / Terms tick is refused with 'agree'",
+  sign_in(b, False, {"email": "pw1@gmail.com", "sub": "502", "verified": "1"}), "/?auth_error=agree")
+t("...nobody is signed in, and the Google identity was not linked (the account still has its password)",
+  (me(b), post(b, "/api/auth/login", {"email": "pw1@gmail.com", "password": "correct horse 99"})[0]), (None, 200))
+post(b, "/api/auth/logout", {})
+t("Google with an existing account's Gmail address and the tick links and signs in (and the page is told the unconfirmed password went)",
+  sign_in(b, True, {"email": "pw1@gmail.com", "sub": "502", "verified": "1"}), "/?signed_in=google&password_removed=1")
 t("...into the same account; its password, never confirmed by email, is removed (whoever set it had not proven the address)", (me(b) or {}).get("hasPassword"), False)
 post(b, "/api/auth/logout", {})
 # a "verified" address on any other domain is not trusted to take over an existing account
