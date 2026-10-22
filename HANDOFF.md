@@ -24,7 +24,7 @@ plan (https://claude.ai/artifact/WwkzTD3ZE9aYeVRRKa5iRP).
 | Instance | Branch | Where | Notes |
 |---|---|---|---|
 | Live site | `dev` | https://uaply.onrender.com (Render service `srv-db9i3i6q1p3s738b5b4g`, workspace `tea-db9duku1egvs73et93k0`, Starter plan, Virginia) | Runs release candidate 9 (commit 522f2e5, PR #34 merged 07:54 UTC Oct 17, deployed 07:57). `UAPLY_DATA_DIR` points at a temporary folder because no disk is attached yet: accounts vanish at each deploy. Email, owner pages, AI answers and payments are off (no secrets set). Job feeds on: ashby, greenhouse, jobicy, lever, muse, smartrecruiters, usajobs. |
-| Hosted previews | `dev`, `sandbox` | https://saifsiddiqueep-sketch.github.io/uaply/dev/ and /sandbox/ | GitHub Pages copies with no server; they say so (preview wording). |
+| Hosted previews | `dev`, `sandbox` | retired on October 21, 2026 | The GitHub Pages copies stopped when the repository went private; run the sandbox and dev locally (`python serve.py 8766 sandbox --api`, `python serve.py 8767 dev --api`). |
 | Owner's computer | all three | 8765 prod (`main`), 8766 sandbox, 8767 dev | `start-uaply.bat`. The full test suite (`bash tools/run-all-tests.sh`, 48+ groups) runs there; the cloud ran everything that needs no Chrome. |
 | Domain | | uaply.net (Cloudflare) | Not connected yet: Render Custom Domains + CNAME `@` and `www` to uaply.onrender.com, DNS only, SSL Full. Each DNS save only after the owner's "yes". |
 
