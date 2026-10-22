@@ -94,7 +94,9 @@ fold.onclick=function(){setMin(!topEl.classList.contains("min"))};
 setMin(window.innerHeight<800);
 /* phones get the app full screen; ?controls=1 brings the sandbox controls back, ?app=1 forces app mode anywhere */
 var qs=location.search,standalone=(window.matchMedia&&matchMedia("(display-mode: standalone)").matches)||navigator.standalone===true;
-if(standalone||/[?&]app=1/.test(qs)||(window.innerWidth<700&&!/[?&]controls=1/.test(qs)))document.body.classList.add("app");
+/* a phone opened while turned on its side is wide but short: app mode too (the controls took two thirds of a 330 px tall screen) */
+var turnedPhone=window.innerHeight<500&&window.matchMedia&&matchMedia("(pointer:coarse)").matches;
+if(standalone||/[?&]app=1/.test(qs)||((window.innerWidth<700||turnedPhone)&&!/[?&]controls=1/.test(qs)))document.body.classList.add("app");
 paint("On by default: "+E.ORDER.filter(function(k){return on[k]}).map(function(k){return E.FEATURES[k].name}).join(", ")+".");   /* read from `on` above, so the list never goes stale */
 load();
 })();

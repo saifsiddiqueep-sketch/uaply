@@ -92,7 +92,8 @@ var CSS=`
    whole screen's even where the page around the frame already keeps that space free (the sandbox's app mode), so the page around the
    frame works out what is still needed and passes it as --sab (uaply-envs.js, syncSafeArea); env() is only the fallback without it */
 :root{--safe-b:var(--sab,env(safe-area-inset-bottom,0px))}
-@media (max-width:700px){#bnav.simple~#legalbar{display:none}#bnav.simple~#toastHost{margin-top:-12px}body:has(#bnav.simple){padding-bottom:calc(var(--nav-lift,1px) + var(--safe-b))}}
+/* phones, held upright or turned (a turned phone is wide but under 500 px tall): no fine-print bar under the tabs */
+@media (max-width:700px),(max-height:500px){#bnav.simple~#legalbar{display:none}#bnav.simple~#toastHost{margin-top:-12px}body:has(#bnav.simple){padding-bottom:calc(var(--nav-lift,1px) + var(--safe-b))}}
 .nb[aria-current="true"]{background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink)}
 .nmenu{position:absolute;bottom:calc(100% + 10px);left:50%;transform:translateX(-50%);min-width:220px;max-height:calc(100vh - 96px);overflow-y:auto;overscroll-behavior:contain;background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:6px;display:flex;flex-direction:column;gap:2px;z-index:20}
 .nwrap:first-child .nmenu{left:0;transform:none}
@@ -141,7 +142,7 @@ body{padding-bottom:calc(12px + var(--safe-b))}
 #paywall{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.45)}
 #paywall>div{background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:22px;max-width:400px;width:100%;box-shadow:var(--shadow)}
 #form[hidden],#acctSec[hidden]{display:none!important}
-.hdrbtn{margin-left:auto;display:flex;align-items:center;gap:8px;min-height:40px;max-width:60vw;padding:5px 14px 5px 5px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--ink);font-weight:600;font-size:14px}
+.hdrbtn{margin-left:auto;display:flex;align-items:center;gap:8px;min-height:44px;min-width:44px;justify-content:center;max-width:60vw;padding:5px 14px 5px 5px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--ink);font-weight:600;font-size:14px}
 .hdrbtn:not(:has(.av)){padding:5px 16px}
 .hdrbtn .av{width:30px;height:30px;flex:none;border-radius:50%;display:grid;place-items:center;background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);font-weight:800}
 .hdrbtn .em{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -259,7 +260,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent);width:20px;hei
 input[type=range]{accent-color:var(--accent);min-height:44px}
 #form .checks label,#acctSec .checks label,#filtersSec .checks label{min-height:44px}
 .chip.pick{min-height:40px}
-#tChips button{min-width:36px;min-height:36px}
+#tChips button{min-width:44px;min-height:44px}
 #acctSec{padding-bottom:150px}
 #filtersSec{padding-bottom:20px}
 #aEeo>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:600;color:var(--muted)}
@@ -278,6 +279,33 @@ input[type=range]{accent-color:var(--accent);min-height:44px}
 @media (max-width:480px){.hdrbtn .em{display:none}.hdrbtn{padding:5px;max-width:none}}
 /* taps and focus: the same rule as every UAply page (shared/uaply-focus.css) */
 html{-webkit-tap-highlight-color:transparent}a,button,input,select,textarea,summary,label,[role=button],[tabindex]{-webkit-tap-highlight-color:transparent}:focus:not(:focus-visible){outline:none}:focus-visible{outline:3px solid var(--accent,#C92A55);outline-offset:2px}
+/* Phone fit (October 21 phone walk on a Galaxy A17, Chrome 138, 384x692 with the address bar):
+   - every tap target reaches 44 px. Where the short-screen layout (max-height:740px) keeps a button small on purpose (the work-style chips,
+     Enter your details, the location buttons), an invisible ::after makes the finger's target 44 px tall without moving anything; in the
+     Filters screen, where there is room, the job type buttons are simply 44 px tall
+   - the agreement's buttons stay in sight at the bottom of the box when its text is taller than the screen (Agree was 21 px below it):
+     the box scrolls inside itself with its buttons pinned to its bottom edge
+   - a message's action (Undo, OK) is a 44 px target, the account and hiring buttons in the header 44 px tall */
+@media (max-height:740px){
+ .filters button,.banner button,#locAsk .acts .btn{position:relative}
+ .filters button::after,.banner button::after,#locAsk .acts .btn::after{content:"";position:absolute;left:0;right:0;top:50%;height:46px;transform:translateY(-50%)}
+}
+#fJt button{min-height:44px}
+.toast button{position:relative}
+.toast button::after{content:"";position:absolute;left:50%;top:50%;width:max(100%,46px);height:46px;transform:translate(-50%,-50%)}
+#kitConsent [role=dialog]{max-height:calc(100dvh - 32px);overflow-y:auto;overscroll-behavior:contain}   /* the box scrolls, not the dimmed page */
+#kitConsent [role=dialog]>div:last-child{position:sticky;bottom:-20px;margin:0 -20px -20px;padding:10px 20px 20px;background:var(--surface);
+  box-shadow:0 -12px 12px -4px var(--surface)}
+/* a turned phone (under 500 px tall): the card and Pass / Undo / Apply side by side. Stacked, the 121 px left between the header and the tabs
+   held only the buttons, with the card wholly underneath them; now the buttons stay at the top of their own column while the card scrolls */
+@media (max-height:500px) and (orientation:landscape){
+ #pane-swipe .swipecol{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:16px;align-items:start;height:auto}
+ #pane-swipe .swipecol>*{grid-column:1;max-width:none}
+ #pane-swipe .actions{grid-column:2;grid-row:1 / span 20;position:sticky;top:0;bottom:auto;box-shadow:none;background:none;width:auto;gap:14px;padding-top:4px}
+ .deck{min-height:260px}
+}
+/* a touch screen wide enough for the laptop layout (a tablet): the fine-print links are 44 px tall targets */
+@media (pointer:coarse){#legalbar a{display:inline-block;padding:13px 2px}}
 `;
 
 function apply(w,host){
@@ -361,7 +389,8 @@ function apply(w,host){
      Undo link lay on the Apply button, so a tap on Apply right after a pass undid the pass). Worked out each time a message appears. */
   function toastAt(){
     var a=d.querySelector("#pane-swipe:not([hidden]) .actions"),nr=nav.getBoundingClientRect(),y=nr.height?nr.top:w.innerHeight;
-    if(a){var r=a.getBoundingClientRect();if(r.height&&r.bottom>0&&r.top<y)y=Math.min(y,r.top)}
+    /* only a row along the bottom: on a turned phone the row is a column at the top right, and the message would have jumped over the header */
+    if(a){var r=a.getBoundingClientRect();if(r.height&&r.bottom>0&&r.top<y&&r.top>w.innerHeight/2)y=Math.min(y,r.top)}
     d.documentElement.style.setProperty("--toast-at",(Math.max(0,Math.round(w.innerHeight-y))+8)+"px");
   }
   new w.MutationObserver(function(ms){for(var i=0;i<ms.length;i++)for(var j=0;j<ms[i].addedNodes.length;j++){var n=ms[i].addedNodes[j];if(n.nodeType===1&&(n.classList.contains("toast")||n.querySelector&&n.querySelector(".toast"))){toastAt();return}}}).observe(d.body,{childList:true,subtree:true});

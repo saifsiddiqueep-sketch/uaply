@@ -4,8 +4,12 @@
 //    nothing covers it (the toast after a swipe, the chat button, a menu) and a real touch on it reaches it.
 // 2. Swipes the way people really swipe: straight, a quick short flick, a curved thumb swipe that starts slightly downward,
 //    and a vertical scroll that must NOT swipe. Each must do what the person meant.
+// 3. The phone walk's fit checks (tools/phone-walk.js FIT) on every screen: no tap target under 44 px (an invisible ::after that widens
+//    the finger's target counts, as it does for a finger), nothing running off the right edge, no sideways scrolling, the Help button
+//    covering nothing, no dialog taller than the screen with its buttons out of sight.
+//    LANDSCAPE=1 W=844 H=390 (or 667x375) checks a phone turned on its side: the same screens, the same checks.
 const PORT = process.env.PORT || "8767";
-module.exports = async ({ ev, sleep, nav, send, logs, shot }) => {
+module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
   const F = "document.querySelector('iframe').contentDocument";
   const FW = "document.querySelector('iframe').contentWindow";
   let bad = 0;
@@ -38,9 +42,36 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot }) => {
     return p;
   };
 
-  await nav("http://127.0.0.1:" + PORT + "/");
-  await sleep(4500);
+  if (process.env.LANDSCAPE) {          // a phone turned on its side: wider than the laptop break (700 px), so cdp.js does not make it a phone itself
+    await send("Emulation.setDeviceMetricsOverride", { width: +process.env.W, height: +process.env.H, deviceScaleFactor: 3, mobile: true, screenOrientation: { type: "landscapePrimary", angle: 90 } });
+    await send("Emulation.setTouchEmulationEnabled", { enabled: true });
+  }
+  const FIT = require("./phone-walk.js").FIT;
+  const fit = async (label) => JSON.parse(await ev("(()=>{const fit=" + FIT + ";return JSON.stringify(fit(" + F + ",''))})()")).map((x) => x.replace(/^: /, ""));
+  const fits = [];
+  // Google Fonts held back for 8 s (a slow phone connection; 6 to 10 s were seen on October 21): the app must still come up at once, with its
+  // bottom bar and the agreement, in the system font. Before, a font stylesheet in the head stopped every script until it arrived.
+  await send("Fetch.enable", { patterns: [{ urlPattern: "*fonts.googleapis.com*" }, { urlPattern: "*fonts.gstatic.com*" }] });
+  on("Fetch.requestPaused", (p) => { setTimeout(() => send("Fetch.continueRequest", { requestId: p.requestId }), 8000); });
+  const t0 = Date.now();
+  await send("Page.navigate", { url: "http://127.0.0.1:" + PORT + "/" });
+  let upAt = 0;
+  for (let i = 0; i < 120 && !upAt; i++) { if (await ev("(()=>{const f=document.querySelector('iframe'),d=f&&f.contentDocument;return !!d&&!!d.getElementById('bnav')&&!!d.getElementById('kcYes')})()")) upAt = Date.now() - t0; else await sleep(100); }
+  check("with the fonts held back 8 s, the bottom bar and the agreement are up within 4 s (" + (upAt ? (upAt / 1000).toFixed(1) + " s" : "not at all") + ")", upAt > 0 && upAt < 4000);
+  await sleep(8500); await send("Fetch.disable");
+  // a busy computer can take longer than a few seconds to build the app: wait for its bottom bar and the agreement (at most 30 s)
+  for (let i = 0; i < 60 && !(await ev("(()=>{const d=" + F + ";return !!d&&!!d.getElementById('bnav')&&!!d.getElementById('kcYes')})()")); i++) await sleep(500);
+  // the agreement's Agree button is on screen without scrolling (on a 692 px tall Galaxy it was 21 px below the bottom edge)
+  const agree = JSON.parse(await ev("(()=>{const d=" + F + ",b=d.getElementById('kcYes');if(!b)return 'null';const r=b.getBoundingClientRect();return JSON.stringify({t:Math.round(r.top),b:Math.round(r.bottom),h:d.defaultView.innerHeight})})()"));
+  check("the agreement's Agree button is on screen at first open with room below it, nothing to scroll", !!agree && agree.t >= 0 && agree.b <= agree.h - 8, JSON.stringify(agree));
   await ev("(()=>{const m=" + F + ".getElementById('kcYes');if(m)m.click()})()");
+  await sleep(1200);
+  fits.push(["Jobs at first open, after Agree", await fit("jobs")]);
+  if (process.env.LANDSCAPE) {      // turned: the card and Pass / Undo / Apply side by side, the buttons never on top of the card
+    const L = JSON.parse(await ev("(()=>{const d=" + F + ",r=s=>{const e=d.querySelector(s);if(!e)return null;const b=e.getBoundingClientRect();return {l:b.left,r:b.right,t:b.top,b:b.bottom}};return JSON.stringify({card:r('.card.top'),acts:r('#pane-swipe .actions'),main:r('#main')})})()"));
+    const apart = L.card && L.acts && (L.acts.l >= L.card.r - 1 || L.acts.t >= L.card.b - 1);
+    check("turned phone: Pass / Undo / Apply sit beside the card, not on it, and are on screen", apart && L.acts.t >= L.main.t - 1 && L.acts.b <= L.main.b + 1, JSON.stringify(L));
+  }
 
   // ---------------------------------------------------------------- 1. every control can be tapped
   // A control "can be tapped" when the top-most element at its center is the control itself (or inside it).
@@ -91,6 +122,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot }) => {
       const want = it.toLowerCase().slice(0, 4);
       check("tapping " + nb.replace("nb-", "") + " › " + it + " on the phone opens it", opened && label.toLowerCase().includes(want), label);
       screens.push([nb.replace("nb-", "") + " › " + it, await coverage(it)]);
+      fits.push([nb.replace("nb-", "") + " › " + it, await fit(it)]);
     }
   }
   // the moment right after a swipe, with its message showing, is when taps most often land on the wrong thing
@@ -104,6 +136,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot }) => {
   check("the message after a swipe does not cover Pass, Undo or Apply", onBtns === "", onBtns);
   screens.push(["right after a swipe (message showing)", await coverage("after swipe")]);
   for (const [name, covered] of screens) check("nothing covers a button: " + name, covered.length === 0, covered.slice(0, 4).join("; "));
+  for (const [name, list] of fits) check("fits the phone: " + name + " (44 px targets, nothing off the edge, Help covers nothing)", list.length === 0, list.slice(0, 4).join("; "));
   await shot((process.env.OUT || require("os").tmpdir()) + "/phone-after-swipe.png");
   check("the screen changed when menus were tapped (sanity)", (await ev("(" + F + ").body.innerText.length")) !== before);
 

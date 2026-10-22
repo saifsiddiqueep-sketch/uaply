@@ -49,6 +49,14 @@ simulated payments (paid plans appear only once live Stripe keys are set, sectio
    (reminders, vibration, share sheet).
 8. **Name:** a pending trademark filing for APLY (recruitment app) overlaps "UAply". Get a clearance search before spending on
    branding. See `LEGAL-REVIEW.md`.
+9. **Before every release: the phone walk** on a real Android phone (USB debugging on, Chrome on it, plugged into this computer):
+   `node tools/phone-walk.js sandbox`, then `dev`, then `live` (set `ADB=` to adb's path if it is not on PATH). It opens one Chrome tab,
+   walks every screen a student uses with real touches (agreement, swipes, Undo, Filters, every Profile setup step with the keyboard
+   open, sign-up with a code from a stand-in inbox, Plan, Applied, Help, the legal pages with the address bar shown and hidden, and the
+   offline screen with the server stopped), takes a screenshot of each into `phone-walk/<target>-<time>/`, and checks each screen's fit
+   (44 px targets, nothing off the edge or under the keyboard, Help covering nothing, dialogs that fit). The live walk is read only. It
+   installs nothing and changes no phone setting; it reports which way the phone was held for each screenshot. Any FAIL line is a
+   release blocker until fixed or written down with its cause.
 
 
 ## 1. Website (Render)
