@@ -41,6 +41,10 @@ export UAPLY_CONFIG_JSON="$FEEDS"
 PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/sb" start python serve.py 18766 sandbox --api)"
 PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/dv" start python serve.py 18767 dev --api)"
 wait_port 18766 && wait_port 18767 && echo "  sandbox on 18766, dev on 18767" || { echo "  FAIL  servers did not start"; exit 1; }
+# sign-up v2: the sandbox shows the no-password card; this second sandbox has it off (UAPLY_CODE_SIGNIN=0), for the tests of today's password card
+mkdir -p "$TMP/sboff"
+PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/sboff" UAPLY_CODE_SIGNIN=0 start python serve.py 18770 sandbox --api)"
+wait_port 18770 && echo "  sandbox with today's sign-in card on 18770"
 # wait for the real-jobs feed to be ready on dev
 for _ in $(seq 1 120); do n=$(curl -s http://127.0.0.1:18767/api/jobs | python -c "import sys,json; print(len(json.load(sys.stdin)['jobs']))" 2>/dev/null); [ "${n:-0}" -gt 100 ] && break; sleep 1; done
 echo "  real postings on dev: ${n:-0}"
@@ -50,6 +54,7 @@ run "job rules and descriptions" python tools/test-jobs.py
 
 step "Email codes that prove an email is real"
 run "verification codes: expiry, tries, resends, gates" python tools/test-verify.py
+run "sign-up v2: no password, an emailed code, the 18+ tick recorded; the sandbox only, dev unchanged" python tools/test-signup-flow.py 18791
 
 step "Delivery to employers (email with resume, signed webhook, retries, opt-in only) and the Connect Gmail form"
 run "delivery channels" python tools/test-delivery.py
@@ -102,7 +107,7 @@ run "dev: skill chips, the empty Add button and the file downloads" env W=390 H=
 run "sandbox: the first-application agreement shows once, swipes throw no error" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-consent-once.js
 run "dev: the first-application agreement shows once, swipes throw no error" env W=390 H=844 PORT=18767 node tools/cdp.js tools/ui-consent-once.js
 run "sandbox: every profile checklist item lands on its field" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-checklist.js
-run "sandbox: hostile text in every form never runs, and the owner's inbox escapes it" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-inject.js
+run "sandbox: hostile text in every form never runs, and the owner's inbox escapes it" env W=390 H=844 PORT=18770 node tools/cdp.js tools/ui-inject.js
 run "dev: hostile text in every form never runs, and the owner's inbox escapes it" env W=390 H=844 PORT=18767 node tools/cdp.js tools/ui-inject.js
 run "sandbox: the setup page's script runs, and Connect email switches between Brevo and Gmail" env PORT=18766 node tools/cdp.js tools/ui-setup.js
 run "dev on a big iPhone (440x956): every menu item tapped by touch, nothing covers a button, 7 kinds of real swipes" env W=440 H=956 PORT=18767 node tools/cdp.js tools/ui-phone.js
@@ -136,6 +141,12 @@ run "Google sign-in, attacks and failures" python tools/test-google.py 18768
 run "Continue with Google button: tokens, forged tokens, linking, cookies" python tools/test-google-token.py 18768
 run "sign-up and email-code screens in a browser, Google button area" env W=390 H=844 PORT=18768 node tools/cdp.js tools/ui-verify.js
 run "Continue with Google on an iPhone (full-page sign-in), and hidden inside the phone apps" env W=390 H=844 PORT=18768 MOCK_GOOGLE_PORT=8790 node tools/cdp.js tools/ui-google-ios.js
+# sign-up v2 in a browser: a sandbox with the stand-in Google and the test inbox (each run sends a few codes, so it gets its own server)
+mkdir -p "$TMP/sg"
+PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/sg" UAPLY_CONFIG_JSON='{"delivery":"test","smtp":{},"feeds":[],"owner_copy":"","google":{"client_id":"test.apps.googleusercontent.com","client_secret":"test-secret","auth_url":"http://127.0.0.1:8790/auth","token_url":"http://127.0.0.1:8790/token","certs_url":"http://127.0.0.1:8790/certs"}}' start python serve.py 18769 sandbox --api)"
+wait_port 18769
+run "sandbox sign-up card on a laptop (1280x720): Mohammed's order, Google above the fold, code, the questions, sign-in, Google, hostile text" env W=1280 H=720 PORT=18769 MOCK_GOOGLE_PORT=8790 node tools/cdp.js tools/ui-signup.js
+run "sandbox sign-up card on a phone (390x844): 16 px gutters and the same flow" env W=390 H=844 PORT=18769 MOCK_GOOGLE_PORT=8790 node tools/cdp.js tools/ui-signup.js
 
 step "Public server behind HTTPS (how a real host runs it)"
 PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/pub" HOST=0.0.0.0 OWNER_PASSWORD=ownerpw UAPLY_CONFIG_JSON='{}' start python serve.py 18772 dev --api)"

@@ -28,6 +28,8 @@ Serves ROOT; each urlpath=file alias maps one URL to a file outside ROOT (e.g. /
   GET  /help/articles.json  the help articles the assistant answers from
   POST /api/auth/verify, /api/auth/resend   the 6-digit code that proves an email is the person's own
   POST /api/auth/google/token   "Continue with Google" through Google's own button
+  POST /api/auth/code/send, /api/auth/code/verify   sandbox only (sign-up v2): "Email me a code" and signing in with that code;
+                          POST /api/auth/signup with {"passwordless": true} makes an account with no password and emails the code
   POST /api/setup/save-google, save-stripe, save-ats, remove-ats   the other boxes on /setup (this computer only)
   GET  /api/billing/status, POST /api/billing/checkout, /api/billing/portal, /api/billing/webhook   Plus and Pro (billing_api.py)
   GET  /api/employer/me, /api/employer/logo/<id>, POST /api/employer/...   Hiring mode, sandbox only (employers_api.py)
@@ -65,6 +67,8 @@ for a in rest:
     alias[u] = os.path.abspath(f)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+CODE_SIGNIN = False      # sign-up v2: set below for the sandbox instance only
+CODE_PATHS = ("/api/auth/code/send", "/api/auth/code/verify")      # sign-up v2: POST routes that exist only while CODE_SIGNIN is on
 # browsers and crawlers ask for /favicon.ico whatever the page says: answer with the instance's own icon (a PNG; every browser takes it)
 alias.setdefault("/favicon.ico", next((f for f in (os.path.join(root, "favicon-32.png"), os.path.join(HERE, "legal", "favicon-32.png"))
                                        if os.path.isfile(f)), os.path.join(HERE, "legal", "favicon-32.png")))
@@ -103,6 +107,7 @@ if api:
                      ("/uaply-live.js", "shared/uaply-live.js"), ("/uaply-profile.js", "shared/uaply-profile.js"),
                      ("/uaply-chat.js", "shared/uaply-chat.js"), ("/uaply-employers.js", "shared/uaply-employers.js"),
                      ("/uaply-learn.js", "shared/uaply-learn.js"), ("/uaply-resume.js", "shared/uaply-resume.js"),
+                     ("/uaply-signup.js", "shared/uaply-signup.js"),      # sign-up v2 (the sandbox's "Sign-up, nothing hidden")
                      ("/help/articles.json", "help/articles.json"),
                      # assisted apply in the phone app: the autofill it puts into an employer's page, and the per-system switch
                      # (assisted or automatic) the owner's lawyer sets (docs/assisted-apply.md)
@@ -120,6 +125,11 @@ if api:
     uaply_api.init(os.path.basename(root))
     employers_api.init(os.path.basename(root))                    # Hiring mode: on for the sandbox only
     auth_api.init(os.path.basename(root))
+    # /* sign-up v2 */ sign up and sign in with an emailed code, no password: the sandbox only (the same rule as Hiring mode). dev and the
+    # live site: CODE_SIGNIN stays False and the new routes answer 404. UAPLY_CODE_SIGNIN=0 switches it off on a sandbox too (a test
+    # server that checks today's password card); nothing switches it on anywhere else.
+    CODE_SIGNIN = os.path.basename(root) == "sandbox" and os.environ.get("UAPLY_CODE_SIGNIN", "") != "0"
+    # /* end sign-up v2 */
     chat_api.init(os.path.basename(root))
     billing_api.PUBLIC = PUBLIC                                     # Plan and billing: buy buttons on a public server only when Stripe keys are set
     uaply_api.hide_errors = jobs_api.hide_errors = PUBLIC       # a hosted server never shows visitors raw error text; the owner's own computer still does
@@ -345,8 +355,17 @@ def _path_key(path):
     return "(files and pages)"
 
 
-def record_request(method, path, code, ms):
-    """Count one answered request (called by the handler) and log its line when it is an API call, an error or slow."""
+def code_signin_live():
+    """sign-up v2 is on and can deliver its codes: a public server with no email set up keeps today's password card (sandbox only)"""
+    return CODE_SIGNIN and (not PUBLIC or bool(uaply_api.mail_ready()))
+
+
+CODE_OFF_MSG = "Signing in with an emailed code is not available right now. Use Continue with Google, or try again later."
+
+
+def record_request(method, path, code, ms, stat=None):
+    """Count one answered request (called by the handler) and log its line when it is an API call, an error or slow.
+    stat: what the handler says this request was ("signups", "logins"), or "skip" to count neither (sign-up v2)."""
     if path == "/healthz":                                       # Render asks every few seconds: counted apart, never logged
         with _stats_lock:
             _stats["health"] += 1
@@ -367,7 +386,10 @@ def record_request(method, path, code, ms):
             if i < TIMES_KEPT:
                 s["ms"][i] = ms
         if method == "POST" and code == 200:
-            if path == "/api/auth/signup":
+            if stat:                                             # sign-up v2: a no-password sign-up counts when its code is typed
+                if stat != "skip":
+                    s[stat] += 1
+            elif path == "/api/auth/signup":
                 s["signups"] += 1
             elif path == "/api/auth/login":
                 s["logins"] += 1
@@ -437,6 +459,7 @@ class H(http.server.SimpleHTTPRequestHandler):
         """Count the requests being answered, so a stop (a deploy) can let them finish first. An idle kept-open connection is not counted."""
         self._counted = False
         self._code = None
+        self._stat = None
         try:
             super().handle_one_request()
         finally:
@@ -445,7 +468,7 @@ class H(http.server.SimpleHTTPRequestHandler):
                     _busy[0] -= 1
                 if self._code and getattr(self, "command", None):
                     try:
-                        record_request(self.command, self.path.split("?", 1)[0], self._code, (time.monotonic() - self._t0) * 1000)
+                        record_request(self.command, self.path.split("?", 1)[0], self._code, (time.monotonic() - self._t0) * 1000, self._stat)
                     except Exception:
                         pass
 
@@ -637,6 +660,9 @@ class H(http.server.SimpleHTTPRequestHandler):
         err, user, token = auth_api.oauth_login(ident["provider"], ident["subject"], ident["email"], agreed, ident.get("trusted", True))
         if err:
             return self._redirect("/?auth_error=" + err, [self._oauth_cookie("")])
+        if CODE_SIGNIN:                                  # /* sign-up v2 */ new account or not, for the page (memory only, 10 minutes)
+            # an account that had a password removed was made before, by a password sign-up: never "Account created"
+            auth_api.remember_google(user["id"], auth_api.created_within(user["id"], 60) and not user.get("passwordRemoved"))
         return self._redirect("/?signed_in=google" + ("&password_removed=1" if user.get("passwordRemoved") else ""), self._cookie(token) + [self._oauth_cookie("")])
 
     def _owner_ok(self):
@@ -696,8 +722,13 @@ class H(http.server.SimpleHTTPRequestHandler):
                         facts = dict(facts, questions=uaply_api.question_stats())
                     return self._send(200, facts)
                 if p == "/api/auth/me":
-                    return self._send(200, {"user": auth_api.user_for(self._token())})
+                    me = auth_api.user_for(self._token())
+                    if CODE_SIGNIN and me and auth_api.google_hint(me["id"]):      # /* sign-up v2 */ what the Google sign-in a moment ago said
+                        me = dict(me, google=auth_api.google_hint(me["id"]))
+                    return self._send(200, {"user": me})
                 if p == "/api/auth/providers":
+                    if code_signin_live():                                          # /* sign-up v2 */ the page shows the no-password card
+                        return self._send(200, dict(google_auth.public_config(*self._origin_parts()), codeSignin=True))
                     return self._send(200, google_auth.public_config(*self._origin_parts()))
                 if p in ("/api/auth/google/start", "/api/auth/google/callback"):
                     return self._google(p)
@@ -784,7 +815,7 @@ class H(http.server.SimpleHTTPRequestHandler):
                                 "/api/auth/delete", "/api/auth/forgot", "/api/auth/reset", "/api/auth/change-password",
                                 "/api/setup/test-mail", "/api/setup/save-mail", "/api/setup/save-google", "/api/setup/save-ats", "/api/setup/remove-ats", "/api/setup/save-stripe", "/api/setup/save-feed-keys", "/api/auth/google/token", "/api/auth/verify", "/api/auth/resend", "/api/chat", "/api/feedback", "/api/billing/checkout", "/api/billing/portal",
                                 "/api/employer/company", "/api/employer/job", "/api/employer/job/status", "/api/employer/applicant",
-                                "/api/employer/import", "/api/profile/resume"):
+                                "/api/employer/import", "/api/profile/resume") + (CODE_PATHS if CODE_SIGNIN else ()):
             return self._refuse(404, {"error": "not found"})
         # Only accept requests made by this site's own pages (blocks cross-site forms and scripts).
         origin = self.headers.get("Origin")
@@ -814,6 +845,28 @@ class H(http.server.SimpleHTTPRequestHandler):
         if too_fast(p, ip):
             return self._send(429, {"error": "You're swiping faster than UAply can keep up. Wait a moment and try again.", "code": "slow_down"})
         try:
+            # /* sign-up v2 */ (sandbox only) no password: the account is made, a code is emailed, and nobody is signed in until it is typed
+            if CODE_SIGNIN and (p == "/api/auth/code/send" or (p == "/api/auth/signup" and payload.get("passwordless") is True)) \
+                    and not code_signin_live():                  # a public server that cannot send email must not pretend to (as /api/auth/forgot)
+                return self._send(503, {"error": CODE_OFF_MSG, "code": "mail_off"})
+            if CODE_SIGNIN and p == "/api/auth/signup" and payload.get("passwordless") is True:
+                self._stat = "skip"                              # counted as a sign-up once its code is typed (/api/auth/code/verify)
+                code, out, mail = auth_api.signup_passwordless(payload.get("email"), ip, payload.get("agree"), dns_check(),
+                                                               auth_api.SIGNUPS_PER_HOUR if PUBLIC else None)
+                if mail:
+                    out = dict(out, delivery=uaply_api.send_verification_mail(*mail))
+                return self._send(code, out)
+            if CODE_SIGNIN and p == "/api/auth/code/send":
+                code, out, mail = auth_api.send_login_code(payload.get("email"), ip)
+                if mail:                                         # the answer is the same whether or not the address has an account
+                    uaply_api.send_verification_mail(*mail)
+                return self._send(code, out)
+            if CODE_SIGNIN and p == "/api/auth/code/verify":
+                code, out, token = auth_api.login_with_code(payload.get("email"), payload.get("code"), ip, payload.get("agree") is True)
+                if token:
+                    self._stat = "signups" if out["user"].get("new") else "logins"
+                return self._send(code, out, headers=self._cookie(token) if token else ())
+            # /* end sign-up v2 */
             if p == "/api/auth/signup":
                 # the account and its first code are made in one locked step (auth_api.signup_with_code), so a Google sign-in for the same
                 # address racing this sign-up can never leave it half made
@@ -877,6 +930,9 @@ class H(http.server.SimpleHTTPRequestHandler):
                     err, user, token = auth_api.oauth_login(ident["provider"], ident["subject"], ident["email"], payload.get("agree") is True, ident.get("trusted", True))
                 if err:
                     return self._send(429 if err == "limited" else 400, {"error": msg.get(err, msg["failed"]), "code": err})
+                if CODE_SIGNIN:                                  # /* sign-up v2 */ new account or not, for the page (memory only)
+                    auth_api.remember_google(user["id"], auth_api.created_within(user["id"], 60) and not user.get("passwordRemoved"))
+                    user = dict(user, google=auth_api.google_hint(user["id"]))
                 out = {"user": user}
                 if user.pop("passwordRemoved", False):           # a password nobody had proven was the owner's was removed (auth_api.oauth_login)
                     out["passwordRemoved"] = True
