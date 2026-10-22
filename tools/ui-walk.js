@@ -115,8 +115,8 @@ module.exports = async ({ ev, sleep, nav, send, logs, on }) => {
   check("4. ...with the one-line note 'Showing all roles: none matched your target titles' and a way to Filters",
     /^Showing all roles: none matched your target titles\. Filters$/.test(note) && !!(await q("return !!d.getElementById('titleFilters')")), note);
   const empty = await q("const A=w.__uaply;return w.__uaplyEmpty(A.JOBS,{decisions:{}},'job').join(' ')");
-  check("4. an empty deck that other filters hide still says so, not 'You have seen every one of these'",
-    /No jobs here match your profile and filters/.test(empty) && /\d+ listings? (is|are) hidden by your filters or target titles/.test(empty), empty);
+  check("4. an empty deck that other filters hide still says so (no number), not 'You have seen every one of these'",
+    /No full-time jobs match your filters yet/.test(empty) && /Filters/.test(empty) && !/\d/.test(empty.replace(/<[^>]+>/g, "")) && !/You have seen every one/.test(empty), empty);
 
   // 5. Data & privacy: restore, then Show it again
   await menu("nb-prof", "data");

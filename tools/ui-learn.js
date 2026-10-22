@@ -19,7 +19,11 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot }) => {
     "return {id:id,mode:j&&j.mode,ring:c.querySelector('.ring b').textContent,line:l?l.textContent:'',explore:!!(l&&l.getAttribute('data-explore'))}})()");
   // a finger drag across the top card (the same as tools/ui-swipes.js)
   const drag = async (dx) => {
-    const r = await J("(()=>{const c=" + F + ".querySelector('.card.top');const f=document.querySelector('iframe').getBoundingClientRect();const b=c.getBoundingClientRect();return {x:f.left+b.left+b.width/2,y:f.top+b.top+b.height/3}})()");
+    // where a finger would touch: the middle of the part of the card that is in sight, above Pass / Undo / Apply (notices above the deck,
+    // such as the location box, can push most of the card below that row; the deck scrolls, the buttons stay)
+    const r = await J("(()=>{const d=" + F + ",c=d.querySelector('.card.top');const f=document.querySelector('iframe').getBoundingClientRect();const b=c.getBoundingClientRect();" +
+      "const bar=d.getElementById('btnNo'),lim=bar?bar.getBoundingClientRect().top-8:b.bottom,top=Math.max(b.top,0),bot=Math.min(b.bottom,lim);" +
+      "return {x:f.left+b.left+b.width/2,y:f.top+(bot>top+40?Math.min(b.top+b.height/3,(top+bot)/2):b.top+b.height/3)}})()");
     const pt = (x) => [{ x: Math.round(x), y: Math.round(r.y), id: 1 }];
     await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: pt(r.x) });
     for (let i = 1; i <= 8; i++) { await send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: pt(r.x + (dx * i) / 8) }); await sleep(30); }

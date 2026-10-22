@@ -3,6 +3,8 @@
 //   W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-title-filter.js       (a server with the job feeds on; also W=1280 H=800)
 // Checks: Internships and Co-op are never filtered by title; a section where no listing matches the titles shows its roles anyway, with
 // "Showing all roles: none matched your target titles" and a way to Filters; a section where some listings match is still filtered.
+// And the owner's rule: no count anywhere a person sees (no number on any Jobs menu item, no "N jobs left", an empty section says so in
+// words: "No internships match your filters yet" with a Filters link).
 const PORT = process.env.PORT || "8766";
 const TAG = "[" + (process.env.W || 1100) + "x" + (process.env.H || 900) + "] ";
 module.exports = async ({ ev, sleep, nav, logs }) => {
@@ -39,8 +41,14 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
   check("Internships: target titles hide none of them (the same listings show with any titles)", ci.all > 0 && ci.shown > 0 && ci.shown === ci2.shown, JSON.stringify({ marketing: ci, other: ci2 }));
   check("Internships: the deck has cards on first open (it was empty)", (await cards()) > 0, String(await cards()));
   check("Internships: no 'Showing all roles' note (nothing was set aside)", (await note()) === "", await note());
-  const menuInt = await ev("(()=>{const e=[..." + F + ".querySelectorAll('.nitem')].find(b=>b.getAttribute('data-v')==='internship');return e?e.innerText.replace(/\\s+/g,' ').trim():''})()");
-  check("the Jobs menu no longer reads 'Internships 0'", !/Internships\s*0\b/.test(menuInt), menuInt);
+  // the owner's rule: the app never says how many jobs a section holds. The Jobs menu, opened, has no number on any item
+  await ev("(()=>{const d=" + F + ";d.getElementById('nb-svc').click()})()"); await sleep(400);
+  const menu = await J("const d=" + F + ";return [...d.querySelectorAll('.nwrap[data-k=svc] .nitem, .nitem[data-v=job], .nitem[data-v=parttime], .nitem[data-v=internship], .nitem[data-v=coop]')].filter((e,i,a)=>a.indexOf(e)===i).map(e=>({t:e.innerText.replace(/\\s+/g,' ').trim(),shown:!!e.offsetParent}))");
+  check("the Jobs menu is open with its four sections", menu.filter((m) => m.shown).length === 4, JSON.stringify(menu));
+  check("no count on any Jobs menu item (no 'Internships 99', no digit-only badge)", menu.every((m) => !/\d/.test(m.t)), JSON.stringify(menu.map((m) => m.t)));
+  await ev("(()=>{const d=" + F + ";d.getElementById('nb-svc').click()})()"); await sleep(300);
+  const head = await ev("(()=>{const p=" + F + ".getElementById('progress');return p?p.innerText.replace(/\\s+/g,' ').trim():''})()");
+  check("the line above the deck never says how many jobs are left", !/jobs? left/i.test(head), head);
   await pick("coop");
   const cc = await counts("coop");
   await setTitles(["Zookeeper of rare lemurs"]); await sleep(300);
@@ -65,6 +73,14 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
   const cm = await counts("job");
   check("Full-time with a title that matches some: the others are still hidden", cm.shown > 0 && cm.shown < cj.shown, JSON.stringify({ title: role, shown: cm.shown, before: cj.shown }));
   check("...and there is no 'Showing all roles' note", (await note()) === "", await note());
+  // an empty section says so without a number, and links to Filters
+  const em = await J("const w=" + W + ";return w.__uaplyEmpty(w.__uaply.JOBS,{decisions:{}},'internship')");
+  check("an empty Internships section: 'No internships match your filters yet', no number, a Filters link",
+    em[0] === "No internships match your filters yet" && !/\d/.test(em.join(" ").replace(/<[^>]+>/g, "")) && /data-open-filters/.test(em[1]), JSON.stringify(em));
+  await ev("(()=>{const w=" + W + ",d=w.document,x=d.createElement('div');x.id='emTest';x.innerHTML=" + JSON.stringify("<p>") + "+w.__uaplyEmpty(w.__uaply.JOBS,{decisions:{}},'internship')[1];d.getElementById('pane-swipe').appendChild(x);x.querySelector('[data-open-filters]').click()})()");
+  await sleep(700);
+  check("...and the Filters link opens Filters", (await ev("(()=>{const f=" + F + ".getElementById('fTitleOnly');return !!(f&&f.offsetParent)})()")) === true);
+  await ev("(()=>{const x=" + F + ".getElementById('emTest');if(x)x.remove()})()");
   const wide = await J("const d=" + F + ";return d.documentElement.scrollWidth<=d.documentElement.clientWidth+1");
   check("nothing is wider than the screen", wide === true);
   check("no script errors", logs.length === 0, logs.join(" / ").slice(0, 300));

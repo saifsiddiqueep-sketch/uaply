@@ -32,6 +32,9 @@ function patch(s){
            'var X=!p.custom;$("pName").value=X?"":p.name;$("pTitle").value=X?"":p.title;$("pYears").value=X?"":p.years;$("pEdu").value=p.edu;');
   s=once(s,'regional cookbooks."}','regional cookbooks."}'+EXTRA);
   s=once(s,'var busy=false,F="all";','var busy=false,F="all",TYPE="job",MINPCT=0;');
+  /* the app never says how many jobs a section holds (the owner's rule; counts stay on the owner's pages and /api/status): the line
+     above the deck keeps only the person's own "N applied" */
+  s=once(s,`innerHTML='<span>'+q.length+' job'+(q.length===1?'':'s')+' left</span>`,`innerHTML='<span></span>`);
   s=once(s,'.sort(function(a,b){return b.m.pct-a.m.pct});','.sort(window.__uaplyDeckSort?window.__uaplyDeckSort(TYPE):function(a,b){return b.m.pct-a.m.pct});');   /* the Internship and Co-op stacks: see __uaplyDeckSort */
   s=once(s,'&&(F==="all"||j.mode===F)}).map(function(j){return {j:j,m:evaluate(j,S.profile)}}).sort(',
            '&&(j.type||"job")===TYPE&&!(window.__uaplyHide&&window.__uaplyHide(j))&&(F==="all"||j.mode===F)}).map(function(j){return {j:j,m:evaluate(j,S.profile)}}).filter(function(x){return x.m.pct>=MINPCT}).sort(');
@@ -385,7 +388,7 @@ function apply(w,host){
 
   function count(k,v){
     var n=0;
-    if(k==="prof"||v==="overview"||(k==="svc"&&OPTS.hideServiceCounts))return "";
+    if(k==="prof"||v==="overview"||k==="svc")return "";   /* never how many jobs a section holds (Jobs menu); Dashboard keeps the person's own counts */
     A.JOBS.forEach(function(j){
       if(w.__uaplyHideSamples&&!j.live)return;
       if(w.__uaplyHide&&w.__uaplyHide(j))return;
@@ -865,12 +868,14 @@ function apply(w,host){
   /* what an empty deck says (heading, line). "You have seen every one of these" only when the person really has: when every listing of
      this kind is hidden by their filters or target titles (a new profile whose titles the feed does not have yet), it says so and where to
      widen them, instead of telling someone who has seen nothing that they have seen everything. */
+  d.addEventListener("click",function(e){var b=e.target.closest&&e.target.closest("[data-open-filters]");if(b)w.__uaplyOpenProf("filters")});   /* the empty deck's Filters link */
   w.__uaplyEmpty=function(jobs,S,type){
+    /* no numbers: the app never says how many jobs a section holds (the owner's rule), only what to do next */
     var all=jobs.filter(function(j){return (j.type||"job")===type&&(j.live||!w.__uaplyHideSamples)}),
         seen=all.filter(function(j){return S&&S.decisions&&S.decisions[j.id]}).length,hid=all.length-seen,
-        n=function(k){return k+" listing"+(k===1?" is":"s are")};
+        what={job:"full-time jobs",parttime:"part-time jobs",internship:"internships",coop:"co-ops"}[type]||"jobs";
     if(!all.length)return ["Nothing listed here right now","New postings appear as employers publish them. Try another section or check back soon."];
-    if(hid)return [(seen?"No more jobs here match":"No jobs here match")+" your profile and filters",n(hid)+" hidden by your filters or target titles. Open Profile, then Filters to see more, or pick another kind of job in the Jobs menu."+(seen?" Jobs you passed on can come back.":"")];
+    if(hid)return [(seen?"No more ":"No ")+what+" match your filters yet",'Widen them in <button type="button" class="linkbtn" data-open-filters="1">Filters</button>, or pick another kind of job in the Jobs menu.'+(seen?" Jobs you passed on can come back.":"")];
     return ["You have seen every one of these","Jobs you passed on can come back, and your applications are in the Dashboard."];
   };
   /* a short note when you are looking at an opportunity type you did not pick in your profile */
