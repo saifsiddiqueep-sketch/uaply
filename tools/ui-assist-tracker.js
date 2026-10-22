@@ -101,6 +101,15 @@ module.exports = async ({ ev, sleep, nav }) => {
   const other = JSON.parse(await ev("JSON.stringify(" + FW + ".__uaplyAssistProfile({co:'Other Co'}).answers)"));
   check("a cover letter written for one employer is not put into another's form", own["Cover letter"] && !other["Cover letter"], JSON.stringify(Object.keys(other)));
   check("a plain answer is used for every employer", own["Describe a project you led"] === "A help center I rebuilt" && other["Describe a project you led"] === "A help center I rebuilt");
+  // an answer kept for one employer ("{at <employer>}", as the server and the bridge key it) and an older "{co}" one (October 22)
+  await ev("(()=>{const w=" + FW + ",k=(w.__uaplyKey||'uaply');const a=JSON.parse(w.localStorage.getItem(k+'.answers')||'{}');" +
+    "a['{at example co} why do you want to work at {co}']='EXAMPLE-ONLY';a['why do you want to work at {co}']='OLD-CO';" +
+    "w.localStorage.setItem(k+'.answers',JSON.stringify(a))})()");
+  const own2 = JSON.parse(await ev("JSON.stringify(" + FW + ".__uaplyAssistProfile({co:'Example Co'}).answers)"));
+  const other2 = JSON.parse(await ev("JSON.stringify(" + FW + ".__uaplyAssistProfile({co:'Other Co'}).answers)"));
+  check("an answer kept for Example Co reaches only Example Co's page; an older {co} answer reaches none",
+    own2["{at example co} why do you want to work at {co}"] === "EXAMPLE-ONLY" && !other2["{at example co} why do you want to work at {co}"] &&
+    !own2["why do you want to work at {co}"] && !other2["why do you want to work at {co}"], JSON.stringify([Object.keys(own2), Object.keys(other2)]));
 
   // 4. on the website (no app), the button still opens the employer's page as before
   await ev("(()=>{delete window.Capacitor;const w=" + FW + ",A=w.__uaply;A.S.decisions[" + ID + "].sent={at:Date.now(),to:'',status:'handoff'};A.save();A.renderAll();w.__opened=[];w.__uaplyOpen=function(u){w.__opened.push(u)}})()");

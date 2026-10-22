@@ -313,7 +313,7 @@ J._sr_desc.clear()
 city_jobs, _ = J._fetch_source(CITY)
 J._cache[CITY] = {"at": time.time(), "jobs": city_jobs, "status": "67 jobs"}
 job = city_jobs[0]
-code, out = uaply_api.submit({"consent": True, "profile": {"name": "Feed Tester", "email": "feed.tester@example.com"},
+code, out = uaply_api.submit({"consent": True, "profile": {"ext": {"phone": "215-555-0100"}, "name": "Feed Tester", "email": "feed.tester@example.com"},
                               "job": dict({k: job[k] for k in ("id", "co", "role", "url", "loc")}, via="via a site the browser made up", credit="made up")})
 rec = uaply_api.APPS[-1]
 t("a swipe right on a City job is a hand-off (finish on the City's site)", (code, out.get("status")), (200, "handoff"))
@@ -321,7 +321,7 @@ t("the record keeps the server's own credit, not what the browser sent", rec["jo
 subject, text, page = emails.applicant_receipt(uaply_api._mail_ctx(uaply_api.config(), rec, "", "feed.tester@example.com"))
 t("the applicant's receipt names the source", ("Source: via City of Philadelphia on SmartRecruiters" in text, "via City of Philadelphia on SmartRecruiters" in page), (True, True))
 J._cache[USA_PHL] = {"at": time.time(), "jobs": [it], "status": "1 jobs"}
-code, out = uaply_api.submit({"consent": True, "profile": {"name": "Feed Tester", "email": "feed.tester@example.com"}, "job": {k: it[k] for k in ("id", "co", "role", "url", "loc")}})
+code, out = uaply_api.submit({"consent": True, "profile": {"ext": {"phone": "215-555-0100"}, "name": "Feed Tester", "email": "feed.tester@example.com"}, "job": {k: it[k] for k in ("id", "co", "role", "url", "loc")}})
 rec = uaply_api.APPS[-1]
 subject, text, page = emails.applicant_receipt(uaply_api._mail_ctx(uaply_api.config(), rec, "", "feed.tester@example.com"))
 t("a federal job's receipt says 'via USAJOBS; apply on the official announcement' and links the announcement",

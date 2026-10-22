@@ -117,7 +117,10 @@ module.exports = async ({ ev, sleep, send }) => {
     const m0 = await mock();
     const changed = await ev("[...document.querySelectorAll('input:not([type=hidden]):not([type=file]),textarea,select')].filter(e=>e.type==='radio'||e.type==='checkbox'?e.checked:(e.value&&e.defaultValue!==e.value&&!(e.tagName==='SELECT'&&e.selectedIndex===0))).length");
     check(sys + " bridge: the scan changed nothing on the page", changed === 0 && m0.submits === 0 && m0.submitClicks === 0 && m0.checkTouched === 0 && !(await ev("!!document.getElementById('uaplyAssistBar')")), "changed " + changed + " " + JSON.stringify(m0));
-    const answers = {}; items.forEach((it) => { answers[it[0]] = it[1]; });
+    // kept as the app keeps them: under the key the scan gave (the server's autofill.norm; a question naming the employer is that employer's)
+    const answers = {}; items.forEach((it) => { const q = (sc.questions || []).find((x) => x.q === it[0]); answers[q ? q.key : it[0]] = it[1]; });
+    if (sys === "lever") check("lever bridge: a question naming the employer is keyed to that employer, as the server keys it",
+      ((sc.questions || []).find((x) => /relatives employed/.test(x.q)) || {}).key === "{at example co} do you have any relatives employed by {co}", JSON.stringify((sc.questions || []).map((x) => x.key)));
     const r = await fill({ banner: false, personAnswers: answers });
     for (const it of items) check(sys + " bridge: the person's answer lands: " + it[0], it[3].test(String(await val(it[2]))), "got " + (await val(it[2])));
     check(sys + " bridge: nothing required left at the form but the consent the person ticks there", r.leftReq - r.consentReq === 0, "leftReq " + r.leftReq + ", required consent " + r.consentReq + ": " + r.left.join(" / "));

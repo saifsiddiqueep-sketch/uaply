@@ -245,7 +245,7 @@ try:
     t("/setup cannot write settings on the host (they live in Render's dashboard)",
       req("POST", "/api/setup/save-mail", {"email": "a@gmail.com", "password": "abcdefghijklmnop"}, headers=owner())[0], 403)
     job = {"id": 900001, "co": "Example Co", "role": "Intern", "url": "https://example.com/job/1", "source": "test", "loc": "Philadelphia, PA"}
-    s, h, body = req("POST", "/api/apply", {"consent": True, "job": job, "profile": {"name": "Render Test", "email": "render@example.com"}},
+    s, h, body = req("POST", "/api/apply", {"consent": True, "job": job, "profile": {"ext": {"phone": "215-555-0100"}, "name": "Render Test", "email": "render@example.com"}},
                      headers={"Cookie": session})
     t("swipe right is recorded", s, 200)
     t("swipe left is recorded", req("POST", "/api/decision", {"dir": "pass", "jobId": 900002, "session": "s1", "co": "X", "role": "Y", "pct": 40})[0], 200)
@@ -353,7 +353,7 @@ try:
     t("redeploy: the health check stays quick while the boards are read", (req("GET", "/healthz")[0], time.time() - t0 < 1), (200, True))
     t("redeploy: feedback is still on the owner's Feedback page", "render feedback one" in req("GET", "/feedback", headers=owner())[2].decode(), True)
     s, h, body = req("POST", "/api/apply", {"consent": True, "job": dict(job, id=900004, role="Second intern"),
-                                            "profile": {"name": "Render Test", "email": "render@example.com"}}, headers={"Cookie": session})
+                                            "profile": {"ext": {"phone": "215-555-0100"}, "name": "Render Test", "email": "render@example.com"}}, headers={"Cookie": session})
     t("redeploy: a new swipe right after the cut-short line", s, 200)
     stop(p)
 

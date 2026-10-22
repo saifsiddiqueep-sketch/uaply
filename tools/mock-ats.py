@@ -353,6 +353,8 @@ def questions_for(job_id):
               {"required": False, "label": "Personal website", "fields": [{"name": "question_104", "type": "input_text", "values": []}]}]
     if job_id == "1003":
         q += [{"required": True, "label": "What is your favorite color and why?", "fields": [{"name": "question_200", "type": "textarea", "values": []}]}]
+    if job_id == "1011":                       # a question about this employer (autofill.norm keeps its answer for Plaid only)
+        q += [{"required": True, "label": "Why do you want to work at Plaid?", "fields": [{"name": "question_500", "type": "textarea", "values": []}]}]
     if job_id == "1006":
         q += [{"required": True, "label": "Are you willing to relocate?",
                "fields": [{"name": "question_300", "type": "multi_value_single_select", "values": [{"label": "Yes", "value": 1}, {"label": "No", "value": 0}]}]},

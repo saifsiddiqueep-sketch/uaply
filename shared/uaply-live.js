@@ -8,21 +8,46 @@
 (function(){
 function once(src,a,b){if(src.indexOf(a)<0)throw new Error("patch target not found: "+a.slice(0,40));return src.replace(a,function(){return b})}
 var MAX_CACHE=400,MAX_AGE=30*24*3600*1000;
+/* Job Tracker keeps (October 22, 2026): every application up to MAX_APPLIED and the newest MAX_PASSED passes (the oldest passes go first:
+   such a job may come back to the deck, nothing else is lost). Each swipe carries a short copy of its row ("row": title, company, place,
+   link, kind), so the row stays in Job Tracker after the job leaves the feed or the saved copy below; a swiped job's saved copy never
+   ages out. Before, a saved copy older than MAX_AGE, or past the 400 newest swiped ones (passes counted), took its row with it. */
+var MAX_APPLIED=2000,MAX_PASSED=1000;
+function rowOf(j){return {t:String(j.role||"").slice(0,160),c:String(j.co||"").slice(0,120),l:String(j.loc||"").slice(0,120),u:/^https:\/\//.test(j.url||"")?String(j.url).slice(0,600):"",ty:String(j.type||"job").slice(0,12),m:String(j.mode||"").slice(0,10)}}
+/* the oldest passes beyond MAX_PASSED, and the oldest applications beyond MAX_APPLIED, are let go; true when something was */
+function trimDecisions(S){
+  if(!S||!S.decisions)return false;
+  var ks=Object.keys(S.decisions),gone={},n=0;
+  ["passed","applied"].forEach(function(st){
+    var cap=st==="passed"?MAX_PASSED:MAX_APPLIED,mine=ks.filter(function(k){var x=S.decisions[k];return x&&(st==="passed"?x.s==="passed":x.s!=="passed")});
+    if(mine.length<=cap)return;
+    mine.sort(function(a,b){return (+S.decisions[a].at||0)-(+S.decisions[b].at||0)}).slice(0,mine.length-cap).forEach(function(k){delete S.decisions[k];gone[k]=1;n++});
+  });
+  if(n&&Array.isArray(S.history))S.history=S.history.filter(function(id){return !gone[id]});
+  return n>0;
+}
 
 function cacheKey(){return (window.__uaplyBuildKey||"hireswipe")+".live"}
 function readCache(){
   try{
     var c=JSON.parse(localStorage.getItem(cacheKey()));
     if(!c||!Array.isArray(c.jobs))return [];
-    return c.jobs.filter(function(j){return j&&j.id>=100000&&Date.now()-(j.seen||0)<MAX_AGE});
+    /* a swiped job never ages out: marked kept when saved, or (a copy saved before October 22) found among the saved swipes */
+    var dec={};try{dec=(JSON.parse(localStorage.getItem(window.__uaplyBuildKey||"hireswipe"))||{}).decisions||{}}catch(e){}
+    return c.jobs.filter(function(j){return j&&j.id>=100000&&(j.kept||dec[j.id]||Date.now()-(j.seen||0)<MAX_AGE)});
   }catch(e){return []}
 }
 /* the saved copy of the job list: every job the person swiped on first (their Applied and Passed rows need the job itself, even after it
    leaves the feed), then the newest of the rest, MAX_CACHE in all. Keeping only the last MAX_CACHE of the list lost the swiped ones as
    soon as the feed passed 400 postings (it is over 1,000 now). */
 function writeCache(jobs,decided){
+  jobs=jobs.filter(function(j){return j&&!j.stub});
   var keep=decided?jobs.filter(function(j){return decided[j.id]}):[],rest=decided?jobs.filter(function(j){return !decided[j.id]}):jobs;
-  try{localStorage.setItem(cacheKey(),JSON.stringify({jobs:keep.slice(-MAX_CACHE).concat(rest.slice(-Math.max(0,MAX_CACHE-keep.length)))}))}catch(e){}
+  /* applications before passes, newest last; a full copy dropped here still has its row in the swipe itself (rowOf) */
+  var rank=function(j){var x=decided[j.id];return (x.s==="passed"?0:1e15)+(+x.at||0)};
+  keep.sort(function(a,b){return rank(a)-rank(b)});
+  keep=keep.slice(-MAX_CACHE);keep.forEach(function(j){j.kept=1});rest.forEach(function(j){if(j.kept)delete j.kept});
+  try{localStorage.setItem(cacheKey(),JSON.stringify({jobs:keep.concat(rest.slice(-Math.max(0,MAX_CACHE-keep.length)))}))}catch(e){}
 }
 
 /* ---------------- live ---------------- */
@@ -31,13 +56,22 @@ function patch(s){
   var extra=cached.length?","+JSON.stringify(cached).slice(1,-1).replace(/<\//g,"<\\/"):"";
   s=once(s,'regional cookbooks."}','regional cookbooks."}'+extra);
   s=once(s,"var JOB_BY_ID={};JOBS.forEach(function(j){JOB_BY_ID[j.id]=j});",
-    "var JOB_BY_ID={};JOBS.forEach(function(j){JOB_BY_ID[j.id]=j});\nwindow.__uaplyJobs={add:function(list){var n=0;list.forEach(function(j){if(!JOB_BY_ID[j.id]){JOBS.push(j);JOB_BY_ID[j.id]=j;n++}else{var o=JOB_BY_ID[j.id];if(j.posted)o.posted=j.posted;if(j.perks)o.perks=j.perks;if(j.type)o.type=j.type;if(j.jobType)o.jobType=j.jobType;o.comm=!!j.comm}});renderAll();return n}};\n"+
+    "var JOB_BY_ID={};JOBS.forEach(function(j){JOB_BY_ID[j.id]=j});\nwindow.__uaplyJobs={add:function(list){var n=0;list.forEach(function(j){if(!JOB_BY_ID[j.id]){JOBS.push(j);JOB_BY_ID[j.id]=j;n++}else{var o=JOB_BY_ID[j.id];if(o.stub){for(var f in j)o[f]=j[f];delete o.stub;return}if(j.posted)o.posted=j.posted;if(j.perks)o.perks=j.perks;if(j.type)o.type=j.type;if(j.jobType)o.jobType=j.jobType;o.comm=!!j.comm}});renderAll();return n}};\n"+
     /* Links open as real anchor clicks (a user gesture), which popup blockers accept; window.open can be refused silently. */
     "window.__uaplyOpen=function(u){if(!/^https:\\/\\//.test(u||\"\"))return;var a=document.createElement(\"a\");a.href=u;a.target=\"_blank\";a.rel=\"noopener noreferrer\";document.body.appendChild(a);a.click();a.remove()};");
   /* a swipe on a real posting is kept when the page starts, even before the job list arrives (or after the job left the feed): the start-up
      read used to drop every decision whose job was not in the list yet, and the next save made that loss permanent */
   s=once(s,'if(JOB_BY_ID[k]&&x&&(x.s==="applied"||x.s==="passed"))','if((JOB_BY_ID[k]||+k>=100000)&&x&&(x.s==="applied"||x.s==="passed"))');
-  s=once(s,"return !S.decisions[j.id]&&","return !S.decisions[j.id]&&(j.live||!window.__uaplyHideSamples)&&");
+  s=once(s,"return !S.decisions[j.id]&&","return !S.decisions[j.id]&&!j.stub&&(j.live||!window.__uaplyHideSamples)&&");
+  /* a swipe's own copy of its row (rowOf) is kept at start-up, and a swiped job that is in neither the list nor the saved copy comes back
+     from it as a stand-in ("stub": its row in Job Tracker, never a card on the deck; the real posting replaces it when the list has it) */
+  s=once(s,"S.history=(Array.isArray(d.history)?d.history:[])",
+    'Object.keys(S.decisions).forEach(function(k){var r=d.decisions[k]&&d.decisions[k].row;if(!r||typeof r!=="object")return;'+
+    'var u=String(r.u||"");var row={t:String(r.t||"").slice(0,160),c:String(r.c||"").slice(0,120),l:String(r.l||"").slice(0,120),u:u.indexOf("https://")===0?u.slice(0,600):"",ty:String(r.ty||"job").slice(0,12),m:String(r.m||"").slice(0,10)};'+
+    'S.decisions[k].row=row;if(!JOB_BY_ID[k]&&+k>=100000&&row.t&&row.c){var sj={id:+k,co:row.c,role:row.t,loc:row.l||"Not listed",url:row.u,'+
+    'type:["job","parttime","internship","coop"].indexOf(row.ty)>-1?row.ty:"job",mode:["remote","hybrid","onsite"].indexOf(row.m)>-1?row.m:"onsite",'+
+    'sal:[0,0],yrs:0,edu:"High school",skills:[],blurb:"",live:true,stub:true,source:""};JOBS.push(sj);JOB_BY_ID[k]=sj}});\n    '+
+    "S.history=(Array.isArray(d.history)?d.history:[])");
   s=once(s,"'+money(j.sal[0])+'–'+money(j.sal[1])+'<small>per year</small>","'+(j.sal[1]>0?money(j.sal[0])+'–'+money(j.sal[1])+'<small>per year</small>':'Pay not listed')+'");
   s=once(s,"var salOk=job.sal[1]>=p.salary;","var unk=job.sal[1]<=0;var salOk=unk||job.sal[1]>=p.salary;");
   s=once(s,'s:salOk?1:(sa>=0.9?0.5:0),ask:money(job.sal[0])+" to "+money(job.sal[1])','s:unk?0.5:salOk?1:(sa>=0.9?0.5:0),ask:unk?"Not listed":money(job.sal[0])+" to "+money(job.sal[1])');
@@ -94,6 +128,8 @@ function apply(w,host){
     var all=readCache(),ids={};all.forEach(function(j){ids[j.id]=1});
     var byId={};fresh.forEach(function(j){byId[j.id]=j;if(!ids[j.id])all.push(j)});
     all.forEach(function(c){var f=byId[c.id];if(f){c.posted=f.posted;c.perks=f.perks;c.type=f.type;c.jobType=f.jobType;c.comm=!!f.comm;c.via=f.via}});   /* keep saved copies current */
+    /* swipes made before rows were copied (October 22): each gets its row as soon as its job is in the list or the saved copy */
+    try{var U=w.__uaply,fill=0;if(U&&U.S&&U.S.decisions){all.forEach(function(j){var x=U.S.decisions[j.id];if(x&&!x.row&&!j.stub){x.row=rowOf(j);fill++}});if(fill&&U.save)U.save()}}catch(e){}
     writeCache(all,(w.__uaply&&w.__uaply.S&&w.__uaply.S.decisions)||null);
     var src=Object.keys(data.sources||{}).map(function(k){return k+": "+data.sources[k]}).join(" · ");
     say("Real postings: "+fresh.length+" loaded ("+added+" new). "+src);
@@ -347,6 +383,21 @@ function kitApply(w,host){
   function askedKey(){return (w.__uaplyKey||"uaply")+".answersAsked"}
   function readObj(k){try{var a=JSON.parse(w.localStorage.getItem(k));return a&&typeof a==="object"&&!Array.isArray(a)?a:{}}catch(e){return {}}}
   function savedAnswers(){return readObj(answersKey())}
+  /* the saved answers that may go with an application to employer `co` (October 22, 2026): an answer kept for one employer ("{at
+     <employer>}", autofill.norm) goes only to that employer; an older answer about an employer ("{co}" in its key, a "why us" question,
+     or one asked by another employer whose answer names that employer) goes to none. The server drops the same ones (clean_answers). */
+  var EMP_Q=/\bwhy\b.*\b(work|join|joining|interested|apply|applying|us|here|company|role|position|team|this)\b|\bwhat (excites|interests|draws|attracts|motivates) you\b|\bcover letter\b|\btell us (about )?why\b|\binterest(ed)? in (this|our|the) (company|role|position|team|job|opportunity)\b|\babout (this|our) (company|role|position|team|mission)\b/i;
+  function answersFor(co){
+    var a=savedAnswers(),m=savedAsked(),out={},mine="{at "+String(co||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim().slice(0,60)+"}";
+    Object.keys(a).forEach(function(k){
+      if(k.indexOf("{at ")===0){if(co&&k.indexOf(mine+" ")===0)out[k]=a[k];return}
+      if(k.indexOf("{co}")>-1||EMP_Q.test(k))return;
+      var by=String((m[k]&&m[k].co)||"");
+      if(by&&co&&by!==co&&String(a[k]).toLowerCase().indexOf(by.toLowerCase())>-1)return;
+      out[k]=a[k];
+    });
+    return out;
+  }
   function savedAsked(){return readObj(askedKey())}
   function keepAnswers(add,meta){
     var a=savedAnswers(),m=savedAsked();
@@ -614,6 +665,7 @@ function kitApply(w,host){
     });
   }
   w.__uaplyRetryPending=retryPending;
+  w.__uaplyAnswersFor=answersFor;   /* what a swipe to that employer would send (tools/ui-tracker-keep.js checks it) */
   /* "Try again" / "Answer now" in the Applied list: the same as swiping right on that job again */
   w.__uaplyResend=function(id){
     var A=w.__uaply;if(!A||!A.S||!A.S.decisions[id])return;
@@ -656,7 +708,7 @@ function kitApply(w,host){
         job:{id:job.id,co:job.co,role:job.role,url:job.url||"https://example.com/example-listing",source:job.source,loc:job.loc,contact:job.contact||"",mode:job.mode,type:job.type||"job",sal:job.sal,blurb:job.blurb},
         profile:{name:p.name,email:p.email,title:p.title,years:p.years,skills:p.skills,loc:p.loc,edu:p.edu,ext:(w.__uaplyApplyExt?w.__uaplyApplyExt():(p.ext||{}))},
         resume:(w.__uaplyResume?w.__uaplyResume():null),
-        answers:savedAnswers()
+        answers:answersFor(job.co)
       }).then(function(r){
         var j=r.j||{};
         if(!r.ok){
@@ -734,7 +786,7 @@ function kitApply(w,host){
     var p=(w.__uaply&&w.__uaply.S.profile)||{},res=w.__uaplyResume?w.__uaplyResume():null;
     return {plan_only:true,match:0,job:{id:job.id,co:job.co,role:job.role,url:job.url||"https://example.com/example-listing",source:job.source,loc:job.loc,contact:job.contact||"",mode:job.mode,type:job.type||"job",sal:job.sal,blurb:job.blurb},
       profile:{name:p.name,email:p.email,title:p.title,years:p.years,skills:p.skills,loc:p.loc,edu:p.edu,ext:(w.__uaplyApplyExt?w.__uaplyApplyExt():(p.ext||{}))},
-      resume:res&&res.name?{name:res.name,present:true}:null,answers:savedAnswers()};
+      resume:res&&res.name?{name:res.name,present:true}:null,answers:answersFor(job.co)};
   }
   function rdySig(pl){var s=JSON.stringify([pl.profile,pl.resume,pl.answers,(w.__uaplyAuth&&w.__uaplyAuth()||{}).user||null]),h=0;for(var i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return String(h)}
   function rdyFromPlan(r){
@@ -790,6 +842,8 @@ function kitApply(w,host){
 
   w.__uaplyOnApplied=sheet;   /* tells the live patch the apply assistant is on */
   w.__uaplyOnDecision=function(dir,job,m,p,undo,S,save){
+    /* the swipe keeps a short copy of its row (Job Tracker shows it after the job leaves the feed); then the oldest passes beyond the cap go */
+    try{if(job&&S&&S.decisions[job.id]){S.decisions[job.id].row=rowOf(job);trimDecisions(S);if(save)save()}}catch(e){}
     if(w.__uaplyPreview&&w.__uaplyPreview())return;          /* a preview with no server: the swipe is only saved here, and the toast says so */
     /* the job itself goes into the saved job list at once: its Job Tracker row needs it after the page is reloaded (a phone reloads a tab it
        put to sleep), and the server's list may no longer have it, or not yet while that list is still loading. It used to be saved only

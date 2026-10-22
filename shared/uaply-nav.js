@@ -1779,6 +1779,10 @@ function apply(w,host){
     /* an answer written for one employer (a cover letter, "why us", anything naming that company) is not put into another one's form:
        the bridge asks it again there */
     var asked={};try{asked=JSON.parse(w.localStorage.getItem((w.__uaplyKey||"uaply")+".answersAsked"))||{}}catch(e){asked={}}
+    /* an answer kept for one employer ("{at <employer>}", autofill.norm) goes only into that employer's page, and an older one about an
+       employer ("{co}" in its key) into none: the profile handed to an employer's page never carries another employer's answer */
+    if(job&&ans&&typeof ans==="object"){var mine="{at "+String(job.co||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim().slice(0,60)+"} ";
+      Object.keys(ans).forEach(function(k){if((k.indexOf("{at ")===0&&!(job.co&&k.indexOf(mine)===0))||(k.indexOf("{at ")!==0&&k.indexOf("{co}")>-1))delete ans[k]})}
     if(job&&job.co&&ans&&typeof ans==="object")Object.keys(ans).forEach(function(k){var m=asked[k]||{},co=String(m.co||"");if(!co||co===job.co)return;
       if(/cover letter|^why\b|why (do|would) you (want|like)|interested in (working|joining)|what (makes|draws|attracts) you/i.test(k)||String(ans[k]).toLowerCase().indexOf(co.toLowerCase())>-1)delete ans[k]});
     return {first:nm[0]||"",last:nm.slice(1).join(" "),name:p.name||"",email:p.email||"",phone:phoneOf(),linkedin:linkOf("linkedin"),website:linkOf("portfolio"),

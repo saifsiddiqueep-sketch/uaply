@@ -51,6 +51,7 @@ echo "  real postings on dev: ${n:-0}"
 
 step "Job feed rules (US-only, no foreign roles, classification)"
 run "job rules and descriptions" python tools/test-jobs.py
+run "job ids never collide: 20,000 postings with forced pairs, none lost, the same ids after a restart" python tools/test-job-ids.py
 
 step "Email codes that prove an email is real"
 run "verification codes: expiry, tries, resends, gates" python tools/test-verify.py
@@ -90,6 +91,10 @@ run "backups: pack the data folder, restore it, refuse damaged ones, encrypt, up
 run "every path from swipe right to inbox, replayed in a browser" python tools/ui-apply-paths.py
 run "the swipe guarantee: resume to profile, then swipe right into Greenhouse, Lever, Ashby, SmartRecruiters, Workable, an email employer and a hand-off; a question box, a file it cannot ask, the weekly limit" python tools/test-swipe-e2e.py 18830
 run "the one-time question box: every kind of question, phone and computer" python tools/ui-questions.py
+mkdir -p "$TMP/tk"
+PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/tk" UAPLY_CONFIG_JSON='{"feeds":[],"smtp":{},"owner_copy":""}' start python serve.py 18846 sandbox --api)"
+wait_port 18846
+run "Job Tracker keeps every row: a reload 31 days later, 500 swipes, 1,000 passes and one more" env W=390 H=844 PORT=18846 node tools/cdp.js tools/ui-tracker-keep.js
 
 step "Accounts, applying, reset and setup (back end)"
 run "sandbox reset/setup/accounts" python tools/test-reset.py 18766

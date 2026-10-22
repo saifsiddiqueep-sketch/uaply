@@ -81,14 +81,30 @@ def fetch_form(board, job_id):
 
 
 def norm(label, company=""):
-    """The key a saved answer is stored under: lower case, the company's name replaced, punctuation and extra spaces removed."""
+    """The key a saved answer is stored under: lower case, the company's name replaced, punctuation and extra spaces removed.
+    A question about this employer (it names the employer, or asks why this company or role: EMPLOYER_Q) is kept for this employer only:
+    its key starts with "{at <employer>}", so "Why do you want to work at Stripe?" answered for Stripe is never sent to Plaid. Before
+    October 22, 2026 the name became "{co}" and the answer went to every employer that asked the same words. shared/uaply-assist.js
+    (akey) makes the same key in the phone app, so a question answered in either place is asked once."""
     s = (label or "").lower()
     if company:
         s = re.sub(re.escape(company.lower()), " {co} ", s)
     s = re.sub(r"[^a-z0-9{} ]+", " ", s)
     # cut to 160 first, then trim: a long question cut right after a word used to end in a space, the browser saved the answer
     # under that key, clean_answers() trimmed it, the two never matched, and the person was asked the same question forever
-    return re.sub(r"\s+", " ", s).strip()[:160].strip()
+    s = re.sub(r"\s+", " ", s).strip()[:160].strip()
+    if company and s and not s.startswith("{at ") and ("{co}" in s or EMPLOYER_Q.search(s)):
+        slug = re.sub(r"[^a-z0-9]+", " ", company.lower()).strip()[:60]
+        if slug:
+            s = ("{at %s} %s" % (slug, s))[:160].strip()
+    return s
+
+
+# a question about this employer even when its name is not in it (matched on the key's words): kept per employer by norm()
+EMPLOYER_Q = re.compile(r"\bwhy\b.*\b(work|join|joining|interested|apply|applying|us|here|company|role|position|team|this)\b|"
+                        r"\bwhat (excites|interests|draws|attracts|motivates) you\b|\bcover letter\b|\btell us (about )?why\b|"
+                        r"\binterest(ed)? in (this|our|the) (company|role|position|team|job|opportunity)\b|"
+                        r"\babout (this|our) (company|role|position|team|mission)\b")
 
 
 # ------------------------------------------------------------------------------------------------------------------------------- rules
@@ -677,11 +693,22 @@ def public_plan(plan):
             "missing": [{k: i[k] for k in ("q", "key", "req", "kind", "opts", "unit", "consent", "agree", "link") if k in i} for i in plan["missing"]]}
 
 
-def clean_answers(raw):
-    """Saved answers sent by the browser: at most 80, short keys and values, plain text only."""
+def clean_answers(raw, company=None):
+    """Saved answers sent by the browser: at most 80, short keys and values, plain text only.
+    company (the employer this application goes to): an answer kept for another employer ("{at <employer>}", see norm) is dropped, and
+    so is an older answer about an employer ("{co}" in its key, or a "why us" question: EMPLOYER_Q), so what a person wrote for one
+    employer never reaches another's form, whatever the browser sends (October 22, 2026). The app filters the same way before sending."""
     out = {}
+    mine = ("{at %s} " % re.sub(r"[^a-z0-9]+", " ", company.lower()).strip()[:60]) if company else None
     if isinstance(raw, dict):
         for k, v in list(raw.items())[:80]:
             if isinstance(k, str) and isinstance(v, str) and k.strip() and v.strip():
-                out[norm(k)] = re.sub(r"[\r\t]+", " ", v).strip()[:2000]
+                key = norm(k)
+                if company is not None:
+                    if key.startswith("{at "):
+                        if not (mine and key.startswith(mine)):
+                            continue
+                    elif "{co}" in key or EMPLOYER_Q.search(key):
+                        continue
+                out[key] = re.sub(r"[\r\t]+", " ", v).strip()[:2000]
     return out

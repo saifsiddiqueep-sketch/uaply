@@ -238,7 +238,7 @@ again = plan("coinbase", answers=asked)
 t("after the person answers the missing questions once, the same form is complete", again["missing"], [])
 k_dbx = autofill.norm("Have you previously worked for Dropbox?", "Dropbox")
 k_other = autofill.norm("Have you previously worked for Discord?", "Discord")
-t("saved answers ignore the company's name, so they carry over to other employers", k_dbx == k_other and "{co}" in k_dbx, True)
+t("an answer about one employer (\"worked for Dropbox?\") is kept for that employer, not carried to another (October 22)", (k_dbx != k_other, k_dbx), (True, "{at dropbox} have you previously worked for {co}"))
 # a long question whose 160-character cut lands right after a word (Block's "I certify ..." does): the key the browser saves the
 # answer under must be the key the server looks it up by, or the same question comes back after every answer
 long_q = "I certify that all of the information I have provided is correct and complete and realize that falsification or misrepresentation, including omission, on this or any other personnel record"
@@ -388,11 +388,80 @@ try:
     rec = uaply_api.APPS[-1]
     t("sandbox: a form that requires expected pay gets it from the profile, and the record and receipt list it",
       (out.get("status"), rec["candidate"]["ext"]["salary"], dict(uaply_api._detail_rows(rec["candidate"])).get("Expected yearly pay")), ("delivered_test", 85000, "$85,000"))
+    # the server path: an answer written for one employer never reaches another employer's form, whatever the browser sends
+    with jobs_api._lock:
+        jobs_api._cache["autofill-test"]["jobs"].append(dict(jobs_api._cache["autofill-test"]["jobs"][0], id=jid + 2, co="Plaid", url="https://plaid.example/j/1011",
+                                                             ats={"kind": "greenhouse", "board": "openboard", "id": "1011"}))
+    body11 = dict(body, job=dict(body["job"], id=jid + 2, co="Plaid", url="https://plaid.example/j/1011"),      # (no "why" text in the profile: only an answer can fill it)
+                  profile=dict(body["profile"], ext={k: v for k, v in body["profile"]["ext"].items() if k != "why"}))
+    other = {"{at stripe} why do you want to work at {co}": "STRIPE-ONLY: I love Stripe's payments API.",
+             "why do you want to work at {co}": "OLD-CO: kept the old way for whichever employer asked.",
+             "why do you want to work here": "OLD-WHY: kept the old way too."}
+    t("the server drops answers kept for another employer, and older answers about an employer (clean_answers)",
+      autofill.clean_answers(dict(other, **{"are you legally authorized to work in the us": "Yes"}), "Plaid"), {"are you legally authorized to work in the us": "Yes"})
+    code, out = uaply_api.submit(dict(body11, answers=other))
+    t("sandbox: Plaid's 'why us' sent with only Stripe's and older answers is asked, nothing sent", (code, out.get("status"), [q["q"] for q in out.get("questions", [])]),
+      (200, "needs_answers", ["Why do you want to work at Plaid?"]))
+    n_apps = len(uaply_api.APPS)
+    code, out = uaply_api.submit(dict(body11, answers=dict(other, **{"{at plaid} why do you want to work at {co}": "PLAID: its own answer."})))
+    rec = uaply_api.APPS[-1] if len(uaply_api.APPS) > n_apps else {}
+    sent_text = json.dumps(rec, ensure_ascii=False)
+    t("...with Plaid's own answer it is applied, and Stripe's and the older answers are nowhere in what was kept or filled",
+      (out.get("status"), "PLAID: its own answer." in sent_text, "STRIPE-ONLY" in sent_text, "OLD-CO" in sent_text, "OLD-WHY" in sent_text),
+      ("delivered_test", True, False, False, False))
     uaply_api.init("dev")
     code, out = uaply_api.submit(dict(body))
     t("dev (no preview): the same posting is a hand-off, with the filled answers ready for the employer's page", (out.get("status"), bool(out.get("plan"))), ("handoff", True))
 finally:
     proc.terminate()
+
+# ---- answers about one employer stay with that employer (October 22, 2026), and the phone app keys a question as the server does ----
+print("\nAnswers per employer")
+t("a question naming the employer is kept for that employer", autofill.norm("Why do you want to work at Stripe?", "Stripe"),
+  "{at stripe} why do you want to work at {co}")
+t("...and so is 'why here' without the name", autofill.norm("Why do you want to work here?", "Plaid Inc.").startswith("{at plaid inc} "), True)
+t("a question about the person is kept for every employer", autofill.norm("Are you legally authorized to work in the US?", "Stripe"),
+  "are you legally authorized to work in the us")
+t("a kept answer's key survives the browser's round trip (clean_answers)",
+  list(autofill.clean_answers({"{at stripe} why do you want to work at {co}": "x"}).keys()), ["{at stripe} why do you want to work at {co}"])
+QS = [{"id": "q1", "label": "Why do you want to work at Plaid?", "req": True, "kind": "textarea"},
+      {"id": "q2", "label": "Are you legally authorized to work in the US?", "req": True, "kind": "text"}]
+CAND = {"name": "Sam Rivera", "email": "sam@example.com", "ext": {}}
+JOB = {"co": "Plaid", "role": "Analyst", "url": "https://example.com/1"}
+saved = {"{at stripe} why do you want to work at {co}": "Stripe's payments API is why.",
+         "why do you want to work at {co}": "An answer kept the old way, for whichever employer asked.",
+         "are you legally authorized to work in the us": "Yes"}
+plan = autofill.plan_questions(QS, CAND, JOB, answers=saved, company="Plaid")
+vals = dict(plan["values"])
+t("Plaid's 'why us' is never filled with Stripe's answer, nor with an answer kept the old way ({co})",
+  vals.get("q1") not in ("Stripe's payments API is why.", "An answer kept the old way, for whichever employer asked."), True)
+t("...it is asked instead", [m.get("key") for m in plan["missing"]], ["{at plaid} why do you want to work at {co}"])
+t("the work authorization answer is used at Plaid too", vals.get("q2"), "Yes")
+saved["{at plaid} why do you want to work at {co}"] = "Plaid's own answer."
+t("Plaid's own answer fills Plaid's question", dict(autofill.plan_questions(QS, CAND, JOB, answers=saved, company="Plaid")["values"]).get("q1"),
+  "Plaid's own answer.")
+LABELS = ["Why do you want to work at Stripe?", "Why Stripe?", "Have you worked at Stripe before?", "What excites you about this role?",
+          "Are you 18 years of age or older?", "First-name", "LinkedIn Profile URL*", "Do you now, or will you in the future, require sponsorship?",
+          "Cover letter", "How did you hear about Stripe, Inc.?", "Current company", "  Résumé / CV  ", "Why are you leaving your current job?",
+          "What is your expected start date (MM/DD/YYYY)?", "Tell us why you'd be a great fit"]
+js = subprocess.run(["node", "-e", "global.window={};global.document={addEventListener(){}};global.location={href:''};"
+                     "eval(require('fs').readFileSync(process.argv[1],'utf8'));const L=JSON.parse(process.argv[2]);"
+                     "console.log(JSON.stringify(L.map(x=>[window.UAplyAssist.answerKey(x,'Stripe'),window.UAplyAssist.answerKey(x,'')])))",
+                     os.path.join(ROOT, "shared", "uaply-assist.js"), json.dumps(LABELS)], capture_output=True, text=True, encoding="utf-8")
+try:
+    jsk = json.loads(js.stdout)
+except ValueError:
+    jsk = js.stderr[:300]
+py = [[autofill.norm(x, "Stripe"), autofill.norm(x, "")] for x in LABELS]
+t("the phone app's key for %d questions is the server's, letter for letter (with and without the employer)" % len(LABELS), jsk, py)
+js2 = subprocess.run(["node", "-e", "global.window={};global.document={addEventListener(){}};global.location={href:''};"
+                      "eval(require('fs').readFileSync(process.argv[1],'utf8'));const A=window.UAplyAssist;"
+                      "const p={answers:{'{at stripe} why do you want to work at {co}':'S','why do you want to work at {co}':'old','Are you 18 years of age or older?':'Yes'}};"
+                      "console.log(JSON.stringify([A.savedAnswer('Why do you want to work at Plaid?',p,'Plaid'),A.savedAnswer('Why do you want to work at Stripe?',p,'Stripe'),"
+                      "A.savedAnswer('Are you 18 years of age or older?',p,'Plaid'),A.savedAnswer('Are you 18 years of age or older',p,'Plaid')]))",
+                      os.path.join(ROOT, "shared", "uaply-assist.js")], capture_output=True, text=True, encoding="utf-8")
+t("the phone app: Plaid's 'why us' is not Stripe's or an old {co} answer; Stripe's is; a question about the person is answered everywhere (also kept the old way, by its words)",
+  js2.stdout.strip(), json.dumps(["", "S", "Yes", "Yes"], separators=(",", ":")))
 
 print("\n%d / %d" % (ok, ok + bad))
 sys.exit(1 if bad else 0)

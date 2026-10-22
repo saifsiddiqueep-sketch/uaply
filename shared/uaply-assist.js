@@ -48,6 +48,21 @@
   var MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
   function norm(s) { return String(s || "").toLowerCase().replace(/\s+/g, " ").replace(/[^a-z0-9 ?]/g, "").trim(); }
+  /* the key a saved answer is kept under: the server's autofill.norm, letter for letter, so a question answered in UAply's question box
+     or in the bridge before this form is the same question here (asked once). A question about this employer (it names the employer, or
+     asks why this company or role) starts with "{at <employer>}": only this employer's answer fills it, never another's. */
+  var EMP_Q = /\bwhy\b.*\b(work|join|joining|interested|apply|applying|us|here|company|role|position|team|this)\b|\bwhat (excites|interests|draws|attracts|motivates) you\b|\bcover letter\b|\btell us (about )?why\b|\binterest(ed)? in (this|our|the) (company|role|position|team|job|opportunity)\b|\babout (this|our) (company|role|position|team|mission)\b/;
+  function akey(label, co) {
+    var s = String(label || "").toLowerCase();
+    co = String(co || "");
+    if (co) s = s.split(co.toLowerCase()).join(" {co} ");
+    s = s.replace(/[^a-z0-9{} ]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 160).trim();
+    if (co && s && s.indexOf("{at ") !== 0 && (s.indexOf("{co}") > -1 || EMP_Q.test(s))) {
+      var slug = co.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().slice(0, 60);
+      if (slug) s = ("{at " + slug + "} " + s).slice(0, 160).trim();
+    }
+    return s;
+  }
   function clean(s) { return String(s || "").replace(/\s+/g, " ").replace(/[*✱]/g, "").trim(); }
   function esc(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
   function visible(el) {
@@ -350,11 +365,14 @@
     return "";
   }
   /* a question the person already answered (UAply's question box, or the bridge before this form), matched by its words */
-  function savedAnswer(label, p) {
-    var a = p.answers || {}, n = norm(label);
+  function savedAnswer(label, p, co) {
+    var a = p.answers || {}, n = akey(label, co);
     if (!n) return "";
-    if (a[n]) return a[n];
-    for (var k in a) if (Object.prototype.hasOwnProperty.call(a, k) && norm(k) === n) return a[k];
+    if (Object.prototype.hasOwnProperty.call(a, n) && a[n]) return a[n];
+    if (n.indexOf("{at ") === 0) return "";      /* this employer's own question: only its own answer, never one given to another employer */
+    /* an answer kept before October 22 under the question's own words (the bridge kept those): the same question when its key matches,
+       unless that old key was about an employer ("{co}", or another employer's name in it) */
+    for (var k in a) if (Object.prototype.hasOwnProperty.call(a, k) && a[k] && k.indexOf("{") < 0 && akey(k, "") === n && !EMP_Q.test(n)) return a[k];
     return "";
   }
 
@@ -502,7 +520,7 @@
     function leave(label, key, req, why, ask) {
       rep.left.push((req ? "(required) " : "") + String(label).slice(0, 70)); if (req) rep.leftReq++;
       note(label, key, why || "left", req);
-      if (dry && ask && label) rep.questions.push({ q: String(label).slice(0, 600), key: String(label).slice(0, 600), kind: ask.kind, opts: ask.opts && ask.opts.length ? ask.opts.slice(0, 300) : undefined, required: !!req });
+      if (dry && ask && label) rep.questions.push({ q: String(label).slice(0, 600), key: akey(label, job.co) || String(label).slice(0, 160), kind: ask.kind, opts: ask.opts && ask.opts.length ? ask.opts.slice(0, 300) : undefined, required: !!req });
     }
     function consentLeft(label, req, why) { rep.consentLeft++; if (req) rep.consentReq++; rep.left.push((req ? "(required) " : "") + String(label).slice(0, 70)); if (req) rep.leftReq++; note(label, "", why, req); }
     var typed = [];
@@ -536,7 +554,7 @@
         rep.seen++;
         if (el.type === "checkbox" && CONSENT.test(label + " " + otexts.join(" "))) { consentLeft(label + " (the person ticks it)", req, "the person ticks it"); continue; }
         if (el.type === "radio" && CONSENT_Q.test(label + " " + otexts.join(" "))) { consentLeft(label + " (the person answers it)", req, "the person answers it"); continue; }   /* an agreement drawn as radios */
-        var key = keyOf(label), ans = savedAnswer(label, p), hits = [];
+        var key = keyOf(label), ans = savedAnswer(label, p, job.co), hits = [];
         if (el.type === "checkbox" && !single && ans) {   /* tick every one that applies: the person's answer, one choice per line */
           var want = String(ans).split("\n").map(norm).filter(Boolean);
           hits = group.filter(function (g, j) { return want.indexOf(norm(otexts[j])) >= 0; });
@@ -564,7 +582,7 @@
       if ((CONSENT_Q.test(label2) || PRIVACY_Q.test(label2) || (el.tagName === "SELECT" && [].slice.call(el.options).some(function (o) { return CONSENT_OPT.test(o.text); }))) && el.tagName !== "TEXTAREA" && (el.type !== "text" || el.getAttribute("role") === "combobox")) { consentLeft(label2 + " (the person answers it)", req2, "the person answers it"); continue; }
       var k = keyOf(label2);
       if ((k === "endmonth" || k === "endyear") && p.company && !p.jobEnd && currentBox()) { rep.seen--; note(label2, k, "current job: no end date", req2); continue; }
-      var saved = savedAnswer(label2, p), val = saved || (k ? textFor(k, p, el, job, req2, label2) : "");
+      var saved = savedAnswer(label2, p, job.co), val = saved || (k ? textFor(k, p, el, job, req2, label2) : "");
       if (!k && !saved && heardOther && prevKey === "heard" && /\bother\b|specify/i.test(label2) && el.tagName !== "SELECT") val = "UAply";   /* "If other, please specify" after How did you hear: Other */
       if (saved && el.tagName !== "SELECT" && (el.type === "date" || el.type === "month" || /^\d{4}-\d{2}(-\d{2})?$/.test(saved))) val = dateFor(el, saved);
       prevKey = k || "";
@@ -626,7 +644,7 @@
       if (CONSENT_Q.test(q)) { rep.seen++; consentLeft(q + " (the person answers it)", false, "the person answers it"); return; }
       rep.seen++;
       var req = /[*✱]/.test(q) || bs.some(function (b) { return b.closest("[aria-required=true],[required]"); });
-      var key = keyOf(q), ans = savedAnswer(q, p), at = chooseOpt(bt, key, p, ans);
+      var key = keyOf(q), ans = savedAnswer(q, p, job.co), at = chooseOpt(bt, key, p, ans);
       if (at >= 0) { if (!dry) bs[at].click(); got(q, key, req, "button", null, !!ans); } else leave(q, key, req, "", { kind: "select", opts: ["Yes", "No"] });
     });
     if (!dry) {
@@ -678,5 +696,5 @@
       /\/(confirmation|thank[-_]?you|thanks|submitted|success)\b/i.test(location.pathname);
   }
 
-  window.UAplyAssist = { fill: fill, scan: scan, confirmed: confirmed, submitIfAllowed: submitIfAllowed, humanCheck: humanCheck, keyOf: keyOf, ynOf: ynOf, eeo: EEO, eeoOption: EEO_OPT, labelOf: labelOf };
+  window.UAplyAssist = { fill: fill, scan: scan, confirmed: confirmed, submitIfAllowed: submitIfAllowed, humanCheck: humanCheck, keyOf: keyOf, answerKey: akey, savedAnswer: savedAnswer, ynOf: ynOf, eeo: EEO, eeoOption: EEO_OPT, labelOf: labelOf };
 })();

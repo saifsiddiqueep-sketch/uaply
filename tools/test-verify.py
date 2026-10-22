@@ -141,14 +141,14 @@ try:
     job = {"id": 500001, "co": "Acme", "role": "Intern", "url": "https://acme.example/j", "loc": "Remote", "type": "internship"}
     s, out, tok5 = auth_api.signup("unverified@example.com", "correct horse 99", "10.0.0.6", True)
     u5 = auth_api.user_for(tok5)
-    code_, res = uaply_api.submit({"consent": True, "job": job, "profile": {"name": "Una Verified", "email": "unverified@example.com"}}, u5)
+    code_, res = uaply_api.submit({"consent": True, "job": job, "profile": {"ext": {"phone": "215-555-0100"}, "name": "Una Verified", "email": "unverified@example.com"}}, u5)
     t("an unverified account can still swipe, but gets no confirmation email", (code_, res["receipt"]["status"]), (200, "unverified"))
     time.sleep(0.5)
     t("no email was sent to the unverified address", last_mail("unverified@example.com"), None)
     # with no real email connected nothing leaves the server: the confirmation is only saved in the test inbox, so an unverified account gets it too
     saved_smtp_u = cfg["smtp"]
     cfg["smtp"] = {}
-    code_n, res_n = uaply_api.submit({"consent": True, "job": dict(job, id=500009), "profile": {"name": "Una Verified", "email": "unverified@example.com"}}, u5)
+    code_n, res_n = uaply_api.submit({"consent": True, "job": dict(job, id=500009), "profile": {"ext": {"phone": "215-555-0100"}, "name": "Una Verified", "email": "unverified@example.com"}}, u5)
     cfg["smtp"] = saved_smtp_u
     t("with no real email connected, an unverified account's swipe is saved in the test inbox", (code_n, res_n["receipt"]["status"]), (200, "delivered_test"))
     t("and that saved copy is labelled as a test", "[TEST]" in stored_mail(u5["id"]), True)
@@ -157,7 +157,7 @@ try:
     uid, addr, dg = auth_api.issue_code_for_token(tok5)
     auth_api.verify_code(tok5, dg, "10.0.0.6")
     u5 = auth_api.user_for(tok5)
-    code_, res = uaply_api.submit({"consent": True, "job": dict(job, id=500002), "profile": {"name": "Una Verified", "email": "unverified@example.com"}}, u5)
+    code_, res = uaply_api.submit({"consent": True, "job": dict(job, id=500002), "profile": {"ext": {"phone": "215-555-0100"}, "name": "Una Verified", "email": "unverified@example.com"}}, u5)
     t("once verified, a swipe sends the confirmation email", (res["receipt"]["status"], bool(last_mail("unverified@example.com"))), ("sent", True))
 
     # a reset link also proves the email

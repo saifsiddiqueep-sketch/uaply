@@ -296,6 +296,10 @@ def _application_text(c, job, note=""):
     return body + _detail_text(c, note)
 
 
+NEEDS_PHONE_OR_RESUME = ("Add a phone number or a resume in Profile setup first. Employers need one of them to reach you, so UAply does not send "
+                         "an application without it.")
+
+
 def _validate(p, plan_only=False):
     if p.get("consent") is not True and not plan_only:
         return "Consent is required to send an application."
@@ -314,6 +318,15 @@ def _validate(p, plan_only=False):
         return "Add your name in Profile setup, under About you, first."
     if not EMAIL_RE.match(_s(prof.get("email"), 200)):
         return "Add a valid email in Profile setup, under About you, so the recruiter can reply."
+    # the app's minimum to apply (READY_MIN in shared/uaply-nav.js): a name, an email, and a phone number or a resume. The app checks it
+    # before a swipe sends anything; the server checks it too (October 22, 2026), so an older page or a direct call cannot send less.
+    # A plan (plan_only) only reads the form, so it may be asked without them.
+    if not plan_only:
+        ext = _ext(prof.get("ext"))
+        rz = p.get("resume")
+        has_resume = bool(ext.get("resume")) or (isinstance(rz, dict) and isinstance(rz.get("data"), str) and rz["data"].startswith("data:"))
+        if not ext.get("phone") and not has_resume:
+            return NEEDS_PHONE_OR_RESUME
     note = p.get("note", "")                       # optional: the application is the profile, not a message
     if note is not None and (not isinstance(note, str) or len(note) > 4000):
         return "The note must be at most 4000 characters."
@@ -888,7 +901,7 @@ def submit(p, user=None, site=""):
         policy = "link"
     hook = jobs_api.known_webhook(job["id"]) if policy == "direct" else None      # the HTTPS address the employer registered, if any
     ats = jobs_api.known_ats(job["id"]) if policy == "direct" else None           # the employer's own hiring system and key, if they connected
-    answers = autofill.clean_answers(p.get("answers"))      # the person's own answers to questions employers' forms asked before
+    answers = autofill.clean_answers(p.get("answers"), job.get("co") or "")      # the person's own answers to questions employers' forms asked before
 
     def dup():
         for a in APPS:

@@ -100,7 +100,7 @@ try:
     def swipe(profile=None, job=None, who=None):
         n_job[0] += 1
         j = dict(JOB, id=n_job[0], **(job or {}))
-        p = {"consent": True, "job": j, "profile": profile or {"name": "Sam Rivera", "email": "sam@example.com", "skills": ["Python"]}, "match": 80}
+        p = {"consent": True, "job": j, "profile": profile or {"name": "Sam Rivera", "email": "sam@example.com", "skills": ["Python"], "ext": {"phone": "215-555-0100"}}, "match": 80}
         return uaply_api.submit(p, who or user, "https://uaply.onrender.com")
 
     # ---------- 1. what every message carries ----------
@@ -131,7 +131,7 @@ try:
     # a name, a job title or a company with line breaks or other control characters can never add a header, and never loses the email
     before = len(mails())
     nasty = "Sam Bcc: evil@attacker.example\x0b\x00 Rivera"
-    code, out = swipe(profile={"name": nasty, "email": "sam@example.com", "skills": ["Python"]},
+    code, out = swipe(profile={"ext": {"phone": "215-555-0100"}, "name": nasty, "email": "sam@example.com", "skills": ["Python"]},
                       job={"role": "Intern\x85Bcc: evil@attacker.example", "co": "Acme\x0cBcc: x@attacker.example"})
     time.sleep(0.5)
     new = [parse(m) for m in mails()[before:]]

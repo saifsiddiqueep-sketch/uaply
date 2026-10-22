@@ -637,6 +637,9 @@ _save_lock = threading.Lock()      # one save at a time: background refreshes fi
 
 
 def _save_disk():
+    if _idreg["dirty"]:                 # the job ids handed out (see _claim_id), saved with the list
+        with _save_lock:
+            _save_ids()
     if not _disk["dirty"]:
         return
     with _save_lock:
@@ -1783,7 +1786,84 @@ def _gh_fill(raws, prev, listed_n=0):
 
 def _jid(kind, raw_id):
     """A job's id in the app: the same number for the same posting every time (also when a list such as Simplify's points to it)."""
-    return 100000 + int(hashlib.sha1(("%s:%s" % (kind, raw_id)).encode()).hexdigest()[:6], 16)
+    return _claim_id("%s:%s" % (kind, raw_id), 100000)
+
+
+# ---- job ids that never collide (October 22, 2026) ----
+# An id is 100000 plus the first 6 hex digits of a hash of the posting's key: about 16.7 million values, so 20,000 postings share an id
+# about 12 times. The list kept only the first posting with an id (the second was never shown), and a swipe saved under that id
+# could later point at a different job. Now every id handed out is kept with a fingerprint of its posting (ID_FILE, beside the saved job
+# list), and a second posting whose 6 digits are taken gets 7, then 8 ... up to 13 digits, the first free one. An id once given to a
+# posting stays its own, also after a restart, so every id that never collided is exactly what it was before (saved swipes still match).
+ID_FILE = "job-ids.json"
+ID_KEEP_DAYS = 180                   # an id no posting has used for this long is forgotten (jobs leave the list after 60 days)
+ID_HEX, ID_HEX_MAX = 6, 13           # 13 hex digits stay below 2**53, so the browser reads every id exactly
+_idreg = {"loaded": False, "dirty": False, "ids": {}}     # ids: id -> one int, the posting's fingerprint << 16 | the day it was last handed out
+#                                                            (one int, not a pair: tens of thousands of postings are read, kept or not)
+_id_lock = threading.Lock()
+
+
+def _ids_file():
+    return os.path.join(os.path.dirname(_cache_file()), ID_FILE)
+
+
+def _ids_load():
+    """(called with _id_lock held) the ids handed out before this start, once"""
+    if _idreg["loaded"]:
+        return
+    _idreg["loaded"] = True
+    try:
+        with open(_ids_file(), encoding="utf-8") as f:
+            saved = json.load(f)
+        got = saved.get("ids") if isinstance(saved, dict) else None
+        if isinstance(got, dict):
+            for k, v in got.items():
+                if isinstance(v, int):
+                    _idreg["ids"].setdefault(int(k), v)
+    except (OSError, ValueError, TypeError):
+        pass
+
+
+def _claim_id(key, base):
+    """The id of the posting `key` ("greenhouse:4012345", "partner:Acme:Barista"): base + the first 6 hex digits of its hash, unless
+    another posting has those, then the first free longer prefix. The same key always gets the same id."""
+    h = hashlib.sha1(key.encode("utf-8")).hexdigest()
+    fp, day = int(h[:ID_HEX_MAX], 16), int(time.time() // 86400) & 0xFFFF
+    with _id_lock:
+        _ids_load()
+        ids = _idreg["ids"]
+        for n in range(ID_HEX, ID_HEX_MAX + 1):
+            jid = base + int(h[:n], 16)
+            got = ids.get(jid)
+            if got is None or got >> 16 == fp:
+                if got is None or got & 0xFFFF != day:
+                    ids[jid] = fp << 16 | day
+                    _idreg["dirty"] = True
+                return jid
+    return base + int(h[:ID_HEX_MAX], 16)       # (13 digits taken by another posting: never seen, and 2**52 makes it so)
+
+
+def _save_ids():
+    """Write the ids handed out (beside the saved job list), dropping ones unused for ID_KEEP_DAYS. Called with every save of the list."""
+    with _id_lock:
+        if not _idreg["dirty"]:
+            return
+        today = int(time.time() // 86400) & 0xFFFF
+        for k in [k for k, v in _idreg["ids"].items() if (today - (v & 0xFFFF)) % 0x10000 > ID_KEEP_DAYS]:
+            del _idreg["ids"][k]
+        snap = {str(k): v for k, v in _idreg["ids"].items()}
+        _idreg["dirty"] = False
+    path = _ids_file()
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"v": 1, "ids": snap}, f, separators=(",", ":"))
+        os.replace(tmp, path)
+    except OSError as e:
+        with _id_lock:
+            _idreg["dirty"] = True
+        sys.stderr.write("[uaply] could not save the job ids: %s\n" % type(e).__name__)
 
 
 def _dept(departments):
@@ -2682,7 +2762,7 @@ def _file_partner_jobs():
                 sal = [max(0, int(sal[0])), max(0, int(sal[1]))]
             except (TypeError, ValueError):
                 sal = [0, 0]
-            jid = 200000 + int(hashlib.sha1(("partner:%s:%s" % (name, role)).encode()).hexdigest()[:6], 16)
+            jid = _claim_id("partner:%s:%s" % (name, role), 200000)      # the same id as before unless another posting has it (_claim_id)
             if hook:
                 new_hooks[jid] = hook
             ats_id = _clean(j.get("ats_job_id"), 80)

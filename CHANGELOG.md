@@ -35,6 +35,33 @@ production page and only changes when the owner decides.
   cap, Google's tick and the created flag; 17 of them fail on 6552edf), test-accounts 144 (4 fail on 6552edf), test-signup-flow 123.
   docs/reviews/pr49-ui-fixes.md proposes the card's two remaining fixes for Mohammed.
 
+### Data fixes from the release review (October 22): job ids, Job Tracker rows, answers per employer, the minimum to apply
+- **Job ids never collide** (`jobs_api._claim_id`). An id was 100000 plus 6 hex digits of a hash, so 20,000 postings shared an id about
+  12 times: the second posting was never shown, and a swipe saved under that id could later point at another job. Every id handed out is
+  now kept with a fingerprint of its posting (`job-ids.json` beside `jobs-cache.json` in the data folder, forgotten after 180 days
+  unused); a second posting whose 6 digits are taken gets 7, then 8 ... up to 13 digits. An id that never collided is exactly what it
+  was, so saved swipes still match. Partner employers' ids use the same rule.
+  **One-time note:** on the first start with this file, a pair of postings that already shared an id is settled by which is read first,
+  which may be the one that was hidden before. Live (uaply.net) lists 428 jobs today: about 0.005 shared ids expected, so no live swipe
+  is affected; on the sandbox (20,000) about a dozen swipes may now show the other posting of their pair.
+- **Job Tracker keeps every row** (`shared/uaply-live.js`). Each swipe carries a short copy of its row (title, company, place, link, kind);
+  a swiped job's saved copy never ages out (it used to go after 30 days); applications are kept up to 2,000, passes up to the newest 1,000
+  (the oldest pass goes first). A job in neither the list nor the saved copy comes back from its row copy as a stand-in that is never a
+  card. Older swipes get their row copy the next time their job is in the list or the saved copy.
+- **Answers about one employer stay with that employer** (`autofill.norm`, `uaply-assist.js` `akey`). A question that names the employer
+  or asks why this company or role is kept under "{at employer}": Stripe's "Why us?" is never sent to Plaid (it used to be, as
+  "why ... {co}"). Questions about the person (work authorization, start date, 18 or older) are still asked once for every employer.
+  The phone app now keys a question exactly as the server does, so one answered in either place is not asked again.
+  The filter runs on every path: the app sends a swipe or a plan only this employer's and the general answers (`answersFor`), the
+  phone app hands an employer's page only those, and the server drops any other (`autofill.clean_answers(raw, company)`), so an answer
+  written for employer A never reaches employer B's form whatever a browser sends.
+- **The server checks the minimum to apply** (`uaply_api._validate`): no phone number and no resume (file or link) is refused with a
+  plain sentence, as the app already did (READY_MIN). Reading a form (`/api/apply/plan`) is unchanged.
+- Tests: `tools/test-job-ids.py` (15: 20,000 postings with 60 forced pairs, none lost; restart in the opposite order), `tools/ui-tracker-keep.js`
+  (13: reload 31 days later and after 500 swipes; 1,000 passes and one more), `tools/test-autofill.py` (+12, one through the server's sandbox form to Plaid), `tools/test-delivery.py` (+5),
+  `tools/ui-tracker-keep.js` (+2: what a swipe sends), `tools/ui-assist-tracker.js` (+1), `tools/test-assist.js` (+1, the bridge keys as the server does);
+  the other tests' applicants now have a phone number.
+
 ### Assisted apply: questions first, then the form (fill 95-98% on the Galaxy, nothing required left but agreements)
 - **The bridge.** Before the employer's form opens, the phone app reads it (`UAplyAssist.scan`, which changes nothing) and UAply asks
   what the profile cannot answer in its own question box ("Continue to {company}'s form"); required questions must be answered,

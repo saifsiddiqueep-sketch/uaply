@@ -148,7 +148,7 @@ try:
     payload = {"consent": True, "job": {"id": 424242, "co": "Acme Robotics", "role": "Software Engineering Intern", "url": "https://acme.example/jobs/42",
                                          "source": "Acme careers", "loc": "Philadelphia, PA", "type": "internship", "mode": "hybrid", "sal": [30000, 38000],
                                          "blurb": "Build and test the software that drives our warehouse robots."},
-               "profile": {"name": "Sam Rivera", "email": "sam@example.com", "skills": ["Python", "SQL"]}, "match": 87}
+               "profile": {"ext": {"phone": "215-555-0100"}, "name": "Sam Rivera", "email": "sam@example.com", "skills": ["Python", "SQL"]}, "match": 87}
     code, res = uaply_api.submit(payload, user)
     time.sleep(1)
     sent = [json.loads(x) for x in open(mail_file, encoding="utf-8")] if os.path.exists(mail_file) else []
@@ -170,7 +170,7 @@ try:
     uid2, addr2, digits2 = auth_api.issue_code_for_token(tok2)
     auth_api.verify_code(tok2, digits2, "127.0.0.2")
     user2 = auth_api.user_for(tok2)
-    payload2 = dict(payload, job=dict(payload["job"], id=424243), profile={"name": "Owner Person", "email": "owner@example.com"})
+    payload2 = dict(payload, job=dict(payload["job"], id=424243), profile={"ext": {"phone": "215-555-0100"}, "name": "Owner Person", "email": "owner@example.com"})
     code2, res2 = uaply_api.submit(payload2, user2)
     time.sleep(1)
     new = [json.loads(x) for x in open(mail_file, encoding="utf-8") if x.strip()][n_before:]
