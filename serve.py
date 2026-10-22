@@ -68,6 +68,12 @@ for a in rest:
     alias[u] = os.path.abspath(f)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+SHARED = os.path.join(HERE, "shared")
+# the shared files the pages ask for by their own names (/uaply-signup.js, /uaply.webmanifest) or as /shared/<file>: a file added to
+# shared/ after this server started is found on disk when it is asked for (the alias table below is made once, at the start, so until
+# October 23 every file added since answered 404 until a restart). Only a plain file name directly inside shared/: no folder, no "..".
+SHARED_ALIAS_RE = re.compile(r"^/(uaply(?:-[A-Za-z0-9_-]+)?\.(?:js|css|webmanifest|json|html|png))$")
+SHARED_NAME_RE = re.compile(r"^[A-Za-z0-9_-][A-Za-z0-9_.-]*\.(?:js|css|webmanifest|json|html|png|svg|txt)$")
 CODE_SIGNIN = False      # sign-up v2: set below for the sandbox instance only
 CODE_PATHS = ("/api/auth/code/send", "/api/auth/code/verify")      # sign-up v2: POST routes that exist only while CODE_SIGNIN is on
 # browsers and crawlers ask for /favicon.ico whatever the page says: answer with the instance's own icon (a PNG; every browser takes it)
@@ -275,6 +281,29 @@ VERSIONED = {}                                   # plain address ("/uaply-nav.js
 VERSION_RE = re.compile(r"^(/(?:legal/)?[A-Za-z0-9_-]+)\.([0-9a-f]{10})\.(js|css)$")
 _hashes = {}                                     # file -> ((mtime, size), hash)
 LONG_CACHE = "public, max-age=31536000, immutable"
+NOT_VERSIONED = ("/uaply-sw.js", "/uaply-assist.js")    # asked for by their plain names by other programs (the service worker's scope, the app)
+
+
+def shared_file(p):
+    """The file in shared/ an address names when no alias does (see SHARED_ALIAS_RE), or None. Never outside shared/."""
+    if not api:
+        return None
+    m = SHARED_ALIAS_RE.match(p)
+    name = m.group(1) if m else (p[len("/shared/"):] if p.startswith("/shared/") else "")
+    if not name or "/" in name or "\\" in name or ".." in name or not SHARED_NAME_RE.match(name):
+        return None
+    f = os.path.join(SHARED, name)
+    if os.path.dirname(os.path.abspath(f)) != os.path.abspath(SHARED) or not os.path.isfile(f):
+        return None
+    return f
+
+
+def versioned_file(plain):
+    """The file behind a versioned address: one of VERSIONED, or a script or style sheet added to shared/ since the start."""
+    f = VERSIONED.get(plain)
+    if f or plain in NOT_VERSIONED or not plain.endswith((".js", ".css")):
+        return f
+    return shared_file(plain) if SHARED_ALIAS_RE.match(plain) else None
 if api:          # the shared scripts the pages load, and the legal pages' style sheet (never the service worker or the assist script,
                  # which other programs ask for by their plain names)
     for url in ("/uaply-envs.js", "/uaply-nav.js", "/uaply-live.js", "/uaply-profile.js", "/uaply-chat.js", "/uaply-employers.js",
@@ -302,7 +331,7 @@ def content_hash(f):
 
 def versioned_url(plain):
     """/uaply-nav.js -> /uaply-nav.<hash>.js (the plain address when it is not a versioned file)."""
-    f = VERSIONED.get(plain)
+    f = versioned_file(plain)
     h = content_hash(f) if f else ""
     if not h:
         return plain
@@ -318,7 +347,7 @@ def version_assets(body, page_dir="/"):
     def fix(m):
         ref = m.group(2).decode("ascii")
         plain = ref if ref.startswith("/") else page_dir + ref
-        if plain not in VERSIONED:
+        if not versioned_file(plain):
             return m.group(0)
         new = versioned_url(plain)
         out = new if ref.startswith("/") else new[len(page_dir):]
@@ -678,7 +707,7 @@ class H(http.server.SimpleHTTPRequestHandler):
             # /legal/C:/...) read ANY file on the server, because joining onto an absolute path throws the folder away.
             name = p[len("/legal/"):] or "index.html"
             return os.path.join(HERE, "legal", name if LEGAL_NAME.match(name) else "not-a-legal-page")
-        return alias.get(p) or super().translate_path(path)
+        return alias.get(p) or shared_file(p) or super().translate_path(path)
 
     def send_error(self, code, message=None, explain=None):
         """A page that does not exist gets the app's own "Page not found" page with a way back, not Python's bare error page.
@@ -802,7 +831,7 @@ class H(http.server.SimpleHTTPRequestHandler):
         if not m:
             return False
         plain = "%s.%s" % (m.group(1), m.group(3))
-        f = VERSIONED.get(plain)
+        f = versioned_file(plain)
         if not f:
             return False
         try:
@@ -1307,6 +1336,8 @@ class H(http.server.SimpleHTTPRequestHandler):
         self._send(code, out)
 
     def end_headers(self):
+        if not PUBLIC and code_changed():
+            self.send_header("X-UAply-Stale", "restart")                 # this computer's server runs older code than the files on disk
         self.send_header("Cache-Control", getattr(self, "_cache", None) or "no-store")   # a versioned file: a year (see VERSIONED); the rest never
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
@@ -1429,6 +1460,62 @@ _busy, _busy_lock = [0], threading.Lock()
 srv = Server((BIND, port), H)
 
 
+# ---- a local server started before its code changed on disk (never on Render: PUBLIC) ----
+STARTED_AT = time.time()
+_stale = {"checked": 0.0, "changed": False, "logged": 0.0}
+
+
+def _watched():
+    """serve.py and every *_api.py next to it (and UAPLY_STALE_WATCH, a file a test touches)."""
+    out = [os.path.join(HERE, "serve.py")] + [os.path.join(HERE, n) for n in os.listdir(HERE) if n.endswith("_api.py")]
+    extra = os.environ.get("UAPLY_STALE_WATCH")
+    return out + ([extra] if extra else [])
+
+
+def code_changed():
+    """True once serve.py or an *_api.py on disk is newer than this process (looked at every 5 seconds at most); logs
+    "code changed on disk, restart me" at most once a minute. The server never restarts itself."""
+    now = time.time()
+    if now - _stale["checked"] >= 5:
+        _stale["checked"] = now
+        try:
+            _stale["changed"] = _stale["changed"] or any(os.path.getmtime(f) > STARTED_AT + 1 for f in _watched() if os.path.exists(f))
+        except OSError:
+            pass
+    if _stale["changed"] and now - _stale["logged"] >= 60:
+        _stale["logged"] = now
+        sys.stderr.write("[uaply] code changed on disk, restart me (serve.py or an *_api.py is newer than this server)\n")
+        sys.stderr.flush()
+    return _stale["changed"]
+
+
+def git_head():
+    """The commit the code was started from, read from .git (a worktree's .git file too), or "unknown"."""
+    try:
+        g = os.path.join(HERE, ".git")
+        if os.path.isfile(g):
+            with open(g, encoding="utf-8") as f:
+                g = os.path.normpath(os.path.join(HERE, f.read().split("gitdir:", 1)[1].strip()))
+        with open(os.path.join(g, "HEAD"), encoding="utf-8") as f:
+            head = f.read().strip()
+        if not head.startswith("ref:"):
+            return head[:12]
+        ref = head[4:].strip()
+        for base in (g, os.path.normpath(os.path.join(g, "..", ".."))):    # a worktree keeps its refs in the main .git
+            rf = os.path.join(base, ref)
+            if os.path.isfile(rf):
+                with open(rf, encoding="utf-8") as f:
+                    return "%s (%s)" % (f.read().strip()[:12], ref.rsplit("/", 1)[-1])
+        packed = os.path.join(os.path.normpath(os.path.join(g, "..", "..")) if "worktrees" in g else g, "packed-refs")
+        with open(packed, encoding="utf-8") as f:
+            for line in f:
+                if line.strip().endswith(" " + ref):
+                    return "%s (%s)" % (line.split()[0][:12], ref.rsplit("/", 1)[-1])
+    except (OSError, IndexError):
+        pass
+    return "unknown"
+
+
 def _stop(signum, frame):
     """A host stops the server with SIGTERM at every deploy (Render then waits 30 seconds before forcing it). Stop taking new requests, let the
     ones in progress finish (a swipe that is sending an email, a sign-up), then exit normally."""
@@ -1443,6 +1530,8 @@ for _sig in ("SIGTERM", "SIGBREAK"):          # SIGBREAK: Ctrl+Break on Windows,
         signal.signal(getattr(signal, _sig), _stop)
 
 sys.stderr.write(startup_summary() + "\n")
+if not PUBLIC:
+    sys.stderr.write("[uaply] started from git %s; a request after serve.py or an *_api.py changes on disk gets X-UAply-Stale: restart\n" % git_head())
 if PUBLIC and api and PERSISTENT is False:
     sys.stderr.write("[uaply] WARNING: %s is not on a persistent disk. Accounts, applications and feedback will disappear at the next deploy. "
                      "In Render: the service, Disks, add a disk with mount path %s.\n" % (DATA_DIR, DATA_DIR))
