@@ -30,7 +30,14 @@
    opts: {banner:true|false, job:{co,role}, debug:true (rep.fields: what each field was read as)}. */
 (function () {
   "use strict";
-  if (window.UAplyAssist) return;
+  /* The phone app puts this file into the employer's page as (function(__uaplyAssistKey){ <this file> })('<32 random hex digits, new
+     every time the form opens>'), and then lives under a name made from that key, which the page cannot guess, set so the page cannot
+     replace it. It never looks at window.UAplyAssist there: any page can define that first, and a page that did used to be handed the
+     profile ("if (window.UAplyAssist) return" kept the page's own copy). Loaded plainly (the mock-form tests, the measurement tool) it is
+     window.UAplyAssist, as before. */
+  var KEY = typeof __uaplyAssistKey === "string" && __uaplyAssistKey.length >= 32 ? __uaplyAssistKey : "";
+  var NAME = KEY ? "__uaplyAssist_" + KEY : "UAplyAssist";
+  if (KEY ? Object.prototype.hasOwnProperty.call(window, NAME) : window.UAplyAssist) return;
 
   /* voluntary self-identification: by the question, or by its answers */
   var EEO = /\b(gender|sex\b|race\b|racial|ethnic|hispanic|latin[oax]|veteran|disabilit|sexual orientation|transgender|lgbt|pronoun|self[- ]identif|voluntary)/i;
@@ -365,14 +372,14 @@
     return "";
   }
   /* a question the person already answered (UAply's question box, or the bridge before this form), matched by its words */
-  function savedAnswer(label, p, co) {
+  function savedAnswer(label, p, co, rep) {
     var a = p.answers || {}, n = akey(label, co);
     if (!n) return "";
-    if (Object.prototype.hasOwnProperty.call(a, n) && a[n]) return a[n];
+    if (Object.prototype.hasOwnProperty.call(a, n) && a[n]) { if (rep) rep.answerKeys.push(n); return a[n]; }
     if (n.indexOf("{at ") === 0) return "";      /* this employer's own question: only its own answer, never one given to another employer */
     /* an answer kept before October 22 under the question's own words (the bridge kept those): the same question when its key matches,
        unless that old key was about an employer ("{co}", or another employer's name in it) */
-    for (var k in a) if (Object.prototype.hasOwnProperty.call(a, k) && a[k] && k.indexOf("{") < 0 && akey(k, "") === n && !EMP_Q.test(n)) return a[k];
+    for (var k in a) if (Object.prototype.hasOwnProperty.call(a, k) && a[k] && k.indexOf("{") < 0 && akey(k, "") === n && !EMP_Q.test(n)) { if (rep) rep.answerKeys.push(k); return a[k]; }
     return "";
   }
 
@@ -512,19 +519,23 @@
     p = p || {};
     var dry = !!opts.dry, t0 = Date.now(), job = opts.job || {};
     var rep = { url: location.href, seen: 0, filled: 0, left: [], leftReq: 0, eeoSkipped: 0, prefilled: 0, consentLeft: 0, consentReq: 0, fromAnswers: 0, fromAnswersOpt: 0, humanCheck: false, checkKind: "", checkShown: false,
-      resumeInput: false, resumeAttached: false, submit: false, ms: 0, filledKeys: [] };
+      resumeInput: false, resumeAttached: false, submit: false, ms: 0, filledKeys: [], keys: [], answerKeys: [] };
     if (dry) rep.questions = [];
     if (opts.debug) rep.fields = [];
     function note(label, key, how, req) { if (rep.fields) rep.fields.push({ q: String(label).slice(0, 80), key: key || "", how: how, req: !!req }); }
     /* left for the person; in a scan, the question to ask before the form (kind and choices as UAply's question box shows them) */
+    /* keys: every profile item a field on this form asks for (filled or not); answerKeys: the saved answers it used. The phone app hands
+       the fill only those (uaply-nav.js, assistOnly), never the whole profile */
+    function addKey(k) { if (k && rep.keys.indexOf(k) < 0) rep.keys.push(k); }
     function leave(label, key, req, why, ask) {
+      addKey(key);
       rep.left.push((req ? "(required) " : "") + String(label).slice(0, 70)); if (req) rep.leftReq++;
       note(label, key, why || "left", req);
       if (dry && ask && label) rep.questions.push({ q: String(label).slice(0, 600), key: akey(label, job.co) || String(label).slice(0, 160), kind: ask.kind, opts: ask.opts && ask.opts.length ? ask.opts.slice(0, 300) : undefined, required: !!req });
     }
     function consentLeft(label, req, why) { rep.consentLeft++; if (req) rep.consentReq++; rep.left.push((req ? "(required) " : "") + String(label).slice(0, 70)); if (req) rep.leftReq++; note(label, "", why, req); }
     var typed = [];
-    function got(label, key, req, how, el, saved) { rep.filled++; if (saved) { rep.fromAnswers++; if (!req) rep.fromAnswersOpt++; } rep.filledKeys.push(key || "answer"); note(label, key, (saved ? "answer, " : "") + (how || "filled"), req); if (el) typed.push([el, label, key, req]); }
+    function got(label, key, req, how, el, saved) { addKey(key); rep.filled++; if (saved) { rep.fromAnswers++; if (!req) rep.fromAnswersOpt++; } rep.filledKeys.push(key || "answer"); note(label, key, (saved ? "answer, " : "") + (how || "filled"), req); if (el) typed.push([el, label, key, req]); }
     var done = new Set(), prevKey = "", heardOther = false;
     /* a page drawn on the server and then taken over by React (Greenhouse's Remix form) throws away whatever was typed before that:
        wait until its fields are live (up to 10 s) */
@@ -554,7 +565,7 @@
         rep.seen++;
         if (el.type === "checkbox" && CONSENT.test(label + " " + otexts.join(" "))) { consentLeft(label + " (the person ticks it)", req, "the person ticks it"); continue; }
         if (el.type === "radio" && CONSENT_Q.test(label + " " + otexts.join(" "))) { consentLeft(label + " (the person answers it)", req, "the person answers it"); continue; }   /* an agreement drawn as radios */
-        var key = keyOf(label), ans = savedAnswer(label, p, job.co), hits = [];
+        var key = keyOf(label), ans = savedAnswer(label, p, job.co, rep), hits = [];
         if (el.type === "checkbox" && !single && ans) {   /* tick every one that applies: the person's answer, one choice per line */
           var want = String(ans).split("\n").map(norm).filter(Boolean);
           hits = group.filter(function (g, j) { return want.indexOf(norm(otexts[j])) >= 0; });
@@ -581,8 +592,8 @@
       rep.seen++;
       if ((CONSENT_Q.test(label2) || PRIVACY_Q.test(label2) || (el.tagName === "SELECT" && [].slice.call(el.options).some(function (o) { return CONSENT_OPT.test(o.text); }))) && el.tagName !== "TEXTAREA" && (el.type !== "text" || el.getAttribute("role") === "combobox")) { consentLeft(label2 + " (the person answers it)", req2, "the person answers it"); continue; }
       var k = keyOf(label2);
-      if ((k === "endmonth" || k === "endyear") && p.company && !p.jobEnd && currentBox()) { rep.seen--; note(label2, k, "current job: no end date", req2); continue; }
-      var saved = savedAnswer(label2, p, job.co), val = saved || (k ? textFor(k, p, el, job, req2, label2) : "");
+      if ((k === "endmonth" || k === "endyear") && p.company && !p.jobEnd && currentBox()) { addKey(k); rep.seen--; note(label2, k, "current job: no end date", req2); continue; }
+      var saved = savedAnswer(label2, p, job.co, rep), val = saved || (k ? textFor(k, p, el, job, req2, label2) : "");
       if (!k && !saved && heardOther && prevKey === "heard" && /\bother\b|specify/i.test(label2) && el.tagName !== "SELECT") val = "UAply";   /* "If other, please specify" after How did you hear: Other */
       if (saved && el.tagName !== "SELECT" && (el.type === "date" || el.type === "month" || /^\d{4}-\d{2}(-\d{2})?$/.test(saved))) val = dateFor(el, saved);
       prevKey = k || "";
@@ -644,7 +655,7 @@
       if (CONSENT_Q.test(q)) { rep.seen++; consentLeft(q + " (the person answers it)", false, "the person answers it"); return; }
       rep.seen++;
       var req = /[*✱]/.test(q) || bs.some(function (b) { return b.closest("[aria-required=true],[required]"); });
-      var key = keyOf(q), ans = savedAnswer(q, p, job.co), at = chooseOpt(bt, key, p, ans);
+      var key = keyOf(q), ans = savedAnswer(q, p, job.co, rep), at = chooseOpt(bt, key, p, ans);
       if (at >= 0) { if (!dry) bs[at].click(); got(q, key, req, "button", null, !!ans); } else leave(q, key, req, "", { kind: "select", opts: ["Yes", "No"] });
     });
     if (!dry) {
@@ -696,5 +707,38 @@
       /\/(confirmation|thank[-_]?you|thanks|submitted|success)\b/i.test(location.pathname);
   }
 
-  window.UAplyAssist = { fill: fill, scan: scan, confirmed: confirmed, submitIfAllowed: submitIfAllowed, humanCheck: humanCheck, keyOf: keyOf, answerKey: akey, savedAnswer: savedAnswer, ynOf: ynOf, eeo: EEO, eeoOption: EEO_OPT, labelOf: labelOf };
+  /* the phone app's one way in (AssistActivity.CALL, which first checks the page's own address): what the page shows ("ask"), the scan
+     and the fill. Their results stay in here, never in page globals, which the page could write itself (window.__uaplyScan was one: a
+     page could have put its own questions into UAply's question box, or said Sent) */
+  var STATE = { ran: "", scan: null, rep: null };
+  function run(C) {
+    C = C || {};
+    if (C.act === "ask") {
+      return JSON.stringify({ c: confirmed(), n: document.querySelectorAll("input:not([type=hidden]),textarea,select").length, ran: STATE.ran === location.href,
+        rep: STATE.rep, scan: STATE.scan, url: location.href });
+    }
+    if (C.act === "scan") {
+      STATE.ran = location.href; STATE.scan = null;
+      scan(C.p || {}, { job: C.j || {} }).then(function (r) {
+        STATE.scan = JSON.stringify({ questions: r.questions || [], seen: r.seen, filled: r.filled, keys: r.keys, answerKeys: r.answerKeys, resume: !!r.resumeInput });
+      }, function () { STATE.scan = JSON.stringify({ questions: [] }); });
+      return "scanning";
+    }
+    if (C.act === "fill") {
+      STATE.ran = location.href; STATE.rep = null;
+      fill(C.p || {}, { job: C.j || {}, banner: true }).then(function (r) {
+        STATE.rep = JSON.stringify({ seen: r.seen, filled: r.filled, leftReq: r.leftReq, eeoSkipped: r.eeoSkipped, resumeAttached: r.resumeAttached,
+          humanCheck: r.humanCheck, checkKind: r.checkKind, submit: r.submit, ms: r.ms });
+        if (C.mode === "automatic") submitIfAllowed("automatic", r);
+      }, function () { STATE.rep = JSON.stringify({ error: true }); });
+      return "filling";
+    }
+    return "";
+  }
+
+  if (KEY) {   /* only run, under the name the page cannot guess, and fixed: the page can neither replace it nor wrap it */
+    Object.defineProperty(window, NAME, { value: Object.freeze({ run: run }), enumerable: false, writable: false, configurable: false });
+  } else {
+    window.UAplyAssist = { fill: fill, scan: scan, confirmed: confirmed, submitIfAllowed: submitIfAllowed, humanCheck: humanCheck, keyOf: keyOf, answerKey: akey, savedAnswer: savedAnswer, ynOf: ynOf, eeo: EEO, eeoOption: EEO_OPT, labelOf: labelOf, run: run };
+  }
 })();

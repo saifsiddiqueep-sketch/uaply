@@ -609,24 +609,39 @@ function apply(w,host){
     return /(^|\.)greenhouse\.io$/.test(h)?"greenhouse":/(^|\.)lever\.co$/.test(h)?"lever":/(^|\.)ashbyhq\.com$/.test(h)?"ashby":/(^|\.)smartrecruiters\.com$/.test(h)?"smartrecruiters":/(^|\.)workable\.com$/.test(h)?"workable":"other"}
   function assistMode(cfg,sys){var s=cfg&&cfg.systems&&cfg.systems[sys];return s&&s.mode==="automatic"&&s.counsel_approved===true&&s.human_check_share===0?"automatic":"assisted"}
   w.__uaplyAssistMode=assistMode;w.__uaplyAtsOf=atsOf;   /* for the browser test */
+  /* What the employer's page is given (October 22 review). The scan (the first look at the form) gets stand-ins for the person's contact
+     details, links, address, pay, texts and resume file ("a@example.com"), so it can tell which fields the profile fills without the page
+     ever holding them; it keeps what the form's lists are matched against (city, state, school, degree, dates, yes/no answers, short saved
+     answers). The fill then gets only the profile items the scan saw the form ask for, the saved answers it used and the ones just given,
+     and the resume only when the form takes one: never the whole profile. Only the hiring systems' hosts (assist-systems.json, "hosts")
+     and this job's own page are ever filled (AssistActivity checks the address before every look at the page). */
+  var ASSIST_KEEP=/^(city|state|country|school|degree|major|grad|jobStart|jobEnd|auth|sponsor|adult|start|relocate|office|former|govt|phd|heard)$/;
+  var ASSIST_STANDIN={first:"A",last:"B",name:"A B",email:"a@example.com",phone:"2155550100",linkedin:"https://www.linkedin.com/in/a",website:"https://example.com",street:"1 Main St",zip:"00000",gpa:"3.0",salary:"1"};
+  var ASSIST_NEED={first:"first name",last:"last name",name:"name first last",email:"email",phone:"phone country",phonecc:"country",linkedin:"linkedin",github:"website",website:"website",company:"company jobEnd",title:"title jobEnd",current:"company jobEnd",school:"school",degree:"degree",major:"major",grad:"grad",gradmonth:"grad",gradyear:"grad",gpa:"gpa",start:"start",jobmonth:"jobStart",jobyear:"jobStart",endmonth:"jobEnd company",endyear:"jobEnd company",heard:"heard",salary:"salary",why:"why",summary:"summary",headline:"headline",zip:"zip",csz:"city state zip",street:"street city state zip",country:"country",state:"state",city:"city state country",auth:"auth sponsor",sponsor:"sponsor auth",nosponsor:"auth sponsor",relocate:"relocate",office:"office",former:"former",govt:"govt",phd:"phd",adult:"adult"};
+  function assistShape(p){var s={};Object.keys(p||{}).forEach(function(k){var v=p[k];if(k==="answers"){var a={};Object.keys(v||{}).forEach(function(q){var x=String(v[q]||"");a[q]=x.length<=80?x:"A"});s.answers=a}else if(k==="resume")s.resume=v?{name:"resume.pdf",type:String(v.type||"application/pdf")}:null;else if(ASSIST_KEEP.test(k))s[k]=v;else s[k]=v?(Object.prototype.hasOwnProperty.call(ASSIST_STANDIN,k)?ASSIST_STANDIN[k]:"A"):""});return s}
+  function assistOnly(p,sc,asked){var o={answers:{}},own=Object.prototype.hasOwnProperty;if(!p||!sc)return o;(sc.keys||[]).forEach(function(k){if(own.call(ASSIST_NEED,k))ASSIST_NEED[k].split(" ").forEach(function(f){if(own.call(p,f)&&f!=="answers"&&f!=="resume")o[f]=p[f]})});var want={};(sc.answerKeys||[]).concat(asked||[]).forEach(function(k){want[String(k)]=1});Object.keys(p.answers||{}).forEach(function(k){if(own.call(want,k))o.answers[k]=p.answers[k]});if(sc.resume===true&&p.resume)o.resume=p.resume;return o}
+  function assistHosts(cfg,url){var out=[],add=function(h){h=String(h||"").toLowerCase();if(/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(h)&&out.indexOf(h)<0)out.push(h)},s=cfg&&cfg.systems||{};Object.keys(s).forEach(function(k){var hs=s[k]&&s[k].hosts;if(Array.isArray(hs))hs.forEach(add)});try{var u=new w.URL(url);if(u.protocol==="https:")add(u.hostname)}catch(e){}return out}
+  w.__uaplyAssistShape=assistShape;w.__uaplyAssistOnly=assistOnly;w.__uaplyAssistHosts=assistHosts;   /* for the browser tests */
   var assistBusy=false;
   function assistedApply(j,AP){
     var prof=w.__uaplyAssistProfile&&w.__uaplyAssistProfile(j);if(!prof||assistBusy)return false;
-    assistBusy=true;var sys=atsOf(j.url);
+    assistBusy=true;var sys=atsOf(j.url),url=handoffURL(j.url);
     Promise.all([w.fetch("/uaply-assist.js").then(function(r){if(!r.ok)throw 0;return r.text()}),w.fetch("/assist-systems.json").then(function(r){return r.ok?r.json():{}}).catch(function(){return {}})]).then(function(r){
-      var base={url:handoffURL(j.url),engine:r[0],profile:prof,job:{co:j.co,role:j.role},system:sys,mode:assistMode(r[1],sys)};
-      /* the bridge: the app reads the form first (scan, nothing changed) and returns what the profile cannot answer; UAply asks those in
-         its own question box (required first, then the optional ones, which may be left blank), keeps the answers like every question-box
-         answer, and only then opens the form, filled with them. No questions, or a scan that failed: the form opens as it is. */
-      return AP.open(Object.assign({},base,{scan:true})).catch(function(){return null}).then(function(sc){
+      var base={url:url,engine:r[0],allow:assistHosts(r[1],url),job:{co:j.co,role:j.role},system:sys,mode:assistMode(r[1],sys)};
+      /* the bridge: the app reads the form first (scan, nothing changed, with stand-ins for the person's details) and returns what the
+         profile cannot answer and which profile items the form asks for; UAply asks those in its own question box (required first, then
+         the optional ones, which may be left blank), keeps the answers like every question-box answer, and only then opens the form,
+         filled with just those items and answers. No questions: the form opens filled the same way; a scan that failed: as it is. */
+      return AP.open(Object.assign({},base,{scan:true,profile:assistShape(prof)})).catch(function(){return null}).then(function(sc){
         if(sc&&sc.questions===undefined)return {confirmed:false,cancelled:true};   /* the person closed it while the form was being read */
         var qs=(sc&&sc.questions||[]).filter(function(q){return q&&q.q&&q.kind!=="file"}).slice(0,25);
-        if(!qs.length||!w.__uaplyAskSheet)return AP.open(base);
+        var only=function(){return assistOnly(w.__uaplyAssistProfile(j)||prof,sc,qs.map(function(q){return String(q.key||q.q)}))};
+        if(!qs.length||!w.__uaplyAskSheet)return AP.open(Object.assign({},base,{profile:only()}));
         qs.sort(function(a,b){return (b.required?1:0)-(a.required?1:0)});
         qs=qs.map(function(q){return {q:String(q.q),key:String(q.key||q.q),kind:q.kind||"text",opts:q.opts,optional:!q.required}});
         var nReq=qs.filter(function(q){return !q.optional}).length;
         return new Promise(function(done){
-          w.__uaplyAskSheet(j,qs,sc.filled||0,sc.seen||0,function(){done(AP.open(Object.assign({},base,{profile:w.__uaplyAssistProfile(j)||prof})))},function(){done({confirmed:false,cancelled:true})},
+          w.__uaplyAskSheet(j,qs,sc.filled||0,sc.seen||0,function(){done(AP.open(Object.assign({},base,{profile:only()})))},function(){done({confirmed:false,cancelled:true})},
             {lead:j.co+"'s form asks "+(nReq?nReq+" thing"+(nReq===1?"":"s")+" your profile does not have":"a few optional things your profile does not have")+". Answer "+(nReq?"them":"any you like")+" here and UAply puts them in the form, with everything else from your profile; you still review it and tap Submit there. Your answers are saved for the next employer that asks the same thing.",
              yes:"Continue to "+j.co+"'s form"});
         });
@@ -1802,15 +1817,16 @@ function apply(w,host){
     var au=x.auth||"",sp=x.sponsor||"",ea=String(authOf()),es=String(sponsorOf());
     var res=w.__uaplyResume(),m=res&&/^data:([^;]+);base64,(.*)$/.exec(res.data);
     var ans={};try{ans=JSON.parse(w.localStorage.getItem((w.__uaplyKey||"uaply")+".answers"))||{}}catch(e){ans={}}
-    /* an answer written for one employer (a cover letter, "why us", anything naming that company) is not put into another one's form:
-       the bridge asks it again there */
+    /* an answer written for one employer (a cover letter, "why us", anything naming that company, or a question that names it: it can
+       never match another employer's form, and would tell that page where else the person applied) is not handed to another one's
+       form: the bridge asks it again there */
     var asked={};try{asked=JSON.parse(w.localStorage.getItem((w.__uaplyKey||"uaply")+".answersAsked"))||{}}catch(e){asked={}}
     /* an answer kept for one employer ("{at <employer>}", autofill.norm) goes only into that employer's page, and an older one about an
        employer ("{co}" in its key) into none: the profile handed to an employer's page never carries another employer's answer */
     if(job&&ans&&typeof ans==="object"){var mine="{at "+String(job.co||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim().slice(0,60)+"} ";
       Object.keys(ans).forEach(function(k){if((k.indexOf("{at ")===0&&!(job.co&&k.indexOf(mine)===0))||(k.indexOf("{at ")!==0&&k.indexOf("{co}")>-1))delete ans[k]})}
     if(job&&job.co&&ans&&typeof ans==="object")Object.keys(ans).forEach(function(k){var m=asked[k]||{},co=String(m.co||"");if(!co||co===job.co)return;
-      if(/cover letter|^why\b|why (do|would) you (want|like)|interested in (working|joining)|what (makes|draws|attracts) you/i.test(k)||String(ans[k]).toLowerCase().indexOf(co.toLowerCase())>-1)delete ans[k]});
+      if(/cover letter|^why\b|why (do|would) you (want|like)|interested in (working|joining)|what (makes|draws|attracts) you/i.test(k)||String(ans[k]).toLowerCase().indexOf(co.toLowerCase())>-1||k.toLowerCase().indexOf(co.toLowerCase())>-1)delete ans[k]});
     return {first:nm[0]||"",last:nm.slice(1).join(" "),name:p.name||"",email:p.email||"",phone:phoneOf(),linkedin:linkOf("linkedin"),website:linkOf("portfolio"),
       city:loc[0]||"",state:ad.state||loc[1]||"",zip:ad.zip||"",street:ad.street?ad.street+(ad.unit?" "+ad.unit:""):"",country:x.country||"US",
       company:x.job_end?"":(x.employer||""),title:x.job_end?"":(x.job_title||""),jobStart:x.job_start||"",jobEnd:x.job_end||"",

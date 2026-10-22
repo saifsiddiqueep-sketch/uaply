@@ -439,11 +439,27 @@ def is_cloudflare(addr):
     return any(a in n for n in _cf_nets if n.version == a.version)
 
 
+def limit_key(addr):
+    """The visitor as the limits count them: an IPv4 address as it is; an IPv6 address by its /64 network ("2001:db8:1:2::/64"). One home or
+    one server is given a whole /64 and can pick any of its 18 quintillion addresses for every request, so counting each address apart let
+    one visitor past every per-address limit (and use up the site's hour of code emails alone). An IPv4 address written as IPv6
+    (::ffff:198.51.100.7) counts as the IPv4 address."""
+    try:
+        a = ipaddress.ip_address(addr)
+    except ValueError:
+        return addr
+    if a.version == 6:
+        if a.ipv4_mapped:
+            return str(a.ipv4_mapped)
+        return str(ipaddress.ip_network("%s/64" % a, strict=False))
+    return str(a)
+
+
 def client_ip(peer, headers, public=None):
     """The address limits are counted against. This computer: the connection's own address. A public server: the last public address in
     X-Forwarded-For, read from the right (the hop the host's proxy added; a proxy's own internal 10.x / 172.16-31.x / 192.168.x / 100.64.x
     entry after it is skipped, so the visitors are never all counted as one), or Cloudflare's CF-Connecting-IP when that hop is a Cloudflare
-    server. Entries to the left of it were written by the sender and are never used."""
+    server. Entries to the left of it were written by the sender and are never used. An IPv6 visitor is counted by its /64 (limit_key)."""
     if not (PUBLIC if public is None else public):
         return peer
     hops = [_ip_or_none(h) for h in (headers.get("X-Forwarded-For") or "").split(",") if h.strip()]
@@ -457,8 +473,8 @@ def client_ip(peer, headers, public=None):
             last = h
             break
     if is_cloudflare(last):
-        return _ip_or_none(headers.get("CF-Connecting-IP")) or last
-    return last
+        return limit_key(_ip_or_none(headers.get("CF-Connecting-IP")) or last)
+    return limit_key(last)
 
 
 def too_fast(path, ip):
@@ -1089,12 +1105,12 @@ class H(http.server.SimpleHTTPRequestHandler):
             if CODE_SIGNIN and p == "/api/auth/signup" and payload.get("passwordless") is True:
                 self._stat = "skip"                              # counted as a sign-up once its code is typed (/api/auth/code/verify)
                 code, out, mail = auth_api.signup_passwordless(payload.get("email"), ip, payload.get("agree"), dns_check(),
-                                                               auth_api.SIGNUPS_PER_HOUR if PUBLIC else None, self._known())
+                                                               auth_api.SIGNUPS_PER_HOUR if PUBLIC else None, self._known(), self._token())
                 if mail:                                         # new address or not, a code goes out, so the wait is the same
                     out = dict(out, delivery=uaply_api.send_verification_mail(*mail))
                 return self._send(code, out)
             if CODE_SIGNIN and p == "/api/auth/code/send":
-                code, out, mail = auth_api.send_login_code(payload.get("email"), ip, self._known(), defer=True)
+                code, out, mail = auth_api.send_login_code(payload.get("email"), ip, self._known(), defer=True, session=self._token())
                 self._send(code, out)                            # the same answer whether or not the address has an account, and as fast:
                 if mail:                                         # the code is made and emailed only once the answer has gone out
                     _mail_later(_login_code_mail, mail[0])

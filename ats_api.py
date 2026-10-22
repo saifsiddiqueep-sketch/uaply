@@ -123,25 +123,70 @@ def _basic(key):
 
 _FORMS = {}            # (kind, base, posting, a fingerprint of the key) -> (when, form, status, why): the key itself is never kept here
 _FORMS_LOCK = threading.Lock()
+BUSY_SECONDS = 60      # an employer system that answered 429 (too many requests) is not asked about that posting again for a minute
+FORM_WAIT = 25         # seconds a request waits for a read of the same posting already under way (one read gives up after 20)
+_READING = {}          # cache key -> {"done": Event, "out": answer}: a read under way; a second request for that posting waits for it
+_READING_LOCK = threading.Lock()
+
+
+def form_keep(form, status):
+    """How long a posting's form read is remembered: six hours when it was read, a minute after a 429, five minutes after another refusal."""
+    return 6 * 3600 if form is not None else BUSY_SECONDS if status == 429 else 300
+
+
+def one_read(key, read):
+    """read() once for every request that asks for the same posting while it runs (readiness asks for each card, then the swipe asks
+    again, often at the same moment): the first request reads, the others wait for its answer instead of each calling the employer's
+    system. None when the read under way did not finish within FORM_WAIT seconds."""
+    with _READING_LOCK:
+        job = _READING.get(key)
+        mine = job is None
+        if mine:
+            job = _READING[key] = {"done": threading.Event(), "out": None}
+    if not mine:
+        job["done"].wait(FORM_WAIT)
+        return job["out"]
+    try:
+        job["out"] = read()
+        return job["out"]
+    finally:
+        with _READING_LOCK:
+            _READING.pop(key, None)
+        job["done"].set()
 
 
 def _cached_form(kind, posting, key, read):
-    """(form or None, HTTP status, short reason). A posting's form read with the employer's key, kept for six hours (a failed read for five minutes), so the question check before a swipe
-    and the send right after it read the form once. The cache is keyed by a fingerprint of the key, so a corrected key is tried at once."""
+    """(form or None, HTTP status, short reason). A posting's form read with the employer's key, kept for six hours (a failed read for five
+    minutes, a 429 for a minute), so the question check before a swipe and the send right after it read the form once, and a system that
+    said "too many requests" is not asked again on every card. Requests for the same posting at the same moment share one read. The cache
+    is keyed by a fingerprint of the key, so a corrected key is tried at once."""
     ck = (kind, _base(kind), posting, hashlib.sha256(key.encode("utf-8")).hexdigest()[:16])
-    now = time.time()
-    with _FORMS_LOCK:
-        hit = _FORMS.get(ck)
-        if hit and now - hit[0] < (6 * 3600 if hit[1] is not None else 300):
-            return hit[1], hit[2], hit[3]
-    form, status, why = read()
-    with _FORMS_LOCK:
-        if len(_FORMS) >= 600:
-            for k in sorted(_FORMS, key=lambda k: _FORMS[k][0])[:150]:
-                _FORMS.pop(k, None)
-        if form is not None or status not in (0, 401, 403, 429):      # a key, network or rate problem is not remembered: the next swipe asks again
-            _FORMS[ck] = (now, form, status, why)
-    return form, status, why
+
+    def kept():
+        with _FORMS_LOCK:
+            hit = _FORMS.get(ck)
+            return hit[1:] if hit and time.time() - hit[0] < form_keep(hit[1], hit[2]) else None
+    hit = kept()
+    if hit:
+        return hit
+
+    def read_and_keep():
+        again = kept()                     # a read that ended between the look above and this one: its answer, not a second read
+        if again:
+            return again
+        try:
+            form, status, why = read()
+        except Exception:                                              # never leave the requests waiting on this one without an answer
+            form, status, why = None, 0, "the employer's system could not be read"
+        with _FORMS_LOCK:
+            if len(_FORMS) >= 600:
+                for k in sorted(_FORMS, key=lambda k: _FORMS[k][0])[:150]:
+                    _FORMS.pop(k, None)
+            if form is not None or status not in (0, 401, 403):        # a key or network problem is not remembered: the next swipe asks again
+                _FORMS[ck] = (time.time(), form, status, why)
+        return form, status, why
+    out = one_read(("ats",) + ck, read_and_keep)
+    return out if out is not None else (None, 0, "the employer's system did not answer in time")
 
 
 # ---------------------------------------------------------------- Greenhouse ----------------------------------------------------------------

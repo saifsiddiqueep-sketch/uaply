@@ -42,9 +42,20 @@ import java.io.FileOutputStream;
  *
  * When the person taps the page's own resume box, the phone's file chooser is replaced by a choice: their UAply resume, or another file.
  * The result goes back to AssistPlugin: confirmed is true only when the confirmation page appeared.
+ *
+ * What the page can get (October 22 review): nothing at all on a host that is not allowed (AssistPlugin.allow: the hiring systems' hosts
+ * and this job's own page). The app checks the address before every call, and CALL checks it again inside the page before anything
+ * else, so a redirect between the two changes nothing. The script lives in the page under a name made from a random key, new each
+ * time this screen opens, so a page that defines its own "UAplyAssist" (or writes the old window.__uaplyScan) gets nothing and cannot
+ * put questions into UAply's question box. And the fill is handed only the profile items the scan saw the form ask for.
  */
 public class AssistActivity extends AppCompatActivity {
+    /** The one call into the page, as (CALL)({name, allow, act, p, j, mode}). Before anything else it reads the page's own address, which
+     *  the page cannot fake (location is the browser's), calling no function the page could have replaced, and answers 'off' anywhere but
+     *  an allowed https host; then 'none' while the script is not in the page yet. tools/test-assist-hostile.js runs this very text. */
+    static final String CALL = "(function(C){var h=location.hostname,a=C.allow||[],ok=false;if(location.protocol==='https:')for(var i=0;i<a.length;i++)if(a[i]===h)ok=true;if(!ok)return 'off';var E=window[C.name];if(!E||typeof E.run!=='function')return 'none';return E.run(C)})";
     private static final int PICK_FILE = 41;
+    private final String key = newKey();   // the name the script lives under in the page: random, new every time this screen opens
     private WebView web;
     private final Handler tick = new Handler(Looper.getMainLooper());
     private String lastReport = null;
@@ -127,20 +138,66 @@ public class AssistActivity extends AppCompatActivity {
         tick.postDelayed(this::poll, 1500);
     }
 
-    /** puts the assist script into the page once per document (it keeps itself to one copy) */
+    private static String newKey() {
+        byte[] b = new byte[16];
+        new java.security.SecureRandom().nextBytes(b);
+        StringBuilder s = new StringBuilder();
+        for (byte x : b) s.append(String.format(java.util.Locale.ROOT, "%02x", x));
+        return s.toString();
+    }
+
+    /** the page in front is https on an allowed host (checked again inside the page by CALL, so a redirect in between changes nothing) */
+    private boolean onAllowedHost() {
+        if (web == null) return false;
+        String u = web.getUrl();
+        if (u == null) return false;
+        Uri p = Uri.parse(u);
+        String h = p.getHost();
+        return "https".equals(p.getScheme()) && h != null && AssistPlugin.allow.contains(h.toLowerCase(java.util.Locale.ROOT));
+    }
+
+    /** CALL with one request: "ask" (what the page shows), or "scan" / "fill" with the profile items to use */
+    private String call(String act, String profile) {
+        try {
+            JSONObject c = new JSONObject();
+            c.put("name", "__uaplyAssist_" + key);
+            c.put("allow", new org.json.JSONArray(AssistPlugin.allow));
+            c.put("act", act);
+            if (profile != null) {
+                c.put("p", new JSONObject(profile));
+                c.put("j", new JSONObject(AssistPlugin.jobJson));
+                c.put("mode", AssistPlugin.mode);
+            }
+            return CALL + "(" + c.toString() + ")";
+        } catch (Exception e) {
+            return "'off'";
+        }
+    }
+
+    /** puts the assist script into the page, under this screen's key, once per document; only on an allowed host */
     private void inject() {
-        if (web == null || AssistPlugin.engine.isEmpty()) return;
-        web.evaluateJavascript(AssistPlugin.engine, null);
+        if (web == null || AssistPlugin.engine.isEmpty() || !onAllowedHost()) return;
+        web.evaluateJavascript(call("ask", null), v -> {
+            if (web != null && "\"none\"".equals(v) && onAllowedHost())
+                web.evaluateJavascript("(function(__uaplyAssistKey){" + AssistPlugin.engine + "\n})('" + key + "')", null);
+        });
     }
 
     /** the page's state every 1.5 s: the confirmation page ends it; a form not yet filled at this address gets filled, once */
     private void poll() {
         if (finished || web == null) return;
-        String ask = "(function(){if(!window.UAplyAssist)return 'none';var n=document.querySelectorAll('input:not([type=hidden]),textarea,select').length;"
-            + "return JSON.stringify({c:UAplyAssist.confirmed(),n:n,ran:window.__uaplyAssistRan===location.href,rep:window.__uaplyRep||null,scan:window.__uaplyScan||null,url:location.href})})()";
-        web.evaluateJavascript(ask, v -> {
+        if (!onAllowedHost()) {   // another site (a redirect, a link the person tapped): nothing is asked of it or put into it
+            if (scanMode && System.currentTimeMillis() > scanDeadline) { finishScan("{\"questions\":[]}"); return; }
+            tick.postDelayed(this::poll, 1500);
+            return;
+        }
+        web.evaluateJavascript(call("ask", null), v -> {
             try {
-                if (v == null || v.equals("null") || v.equals("\"none\"")) { inject(); return; }
+                if (v == null || v.equals("null") || v.equals("\"off\"")) {
+                    if (scanMode && System.currentTimeMillis() > scanDeadline) finishScan("{\"questions\":[]}");
+                    return;
+                }
+                if (v.equals("\"none\"")) { inject(); return; }
                 JSONObject o = new JSONObject(new JSONObject("{\"s\":" + v + "}").getString("s"));
                 if (!o.isNull("rep")) lastReport = o.optString("rep");
                 if (o.optBoolean("c")) {   // the employer's confirmation page: leave it on screen a moment, then report Sent
@@ -163,13 +220,11 @@ public class AssistActivity extends AppCompatActivity {
         });
     }
 
-    /** the bridge's first pass: UAplyAssist.scan lists what the profile cannot answer (with each question's kind and choices) */
+    /** the bridge's first pass: the scan lists what the profile cannot answer (with each question's kind and choices) and which profile
+     *  items the form asks for; it is given stand-ins for the person's details, not the details (uaply-nav.js, assistShape) */
     private void scan() {
-        String js = "(function(P,J){window.__uaplyAssistRan=location.href;window.__uaplyScan=null;"
-            + "UAplyAssist.scan(P,{job:J}).then(function(r){window.__uaplyScan=JSON.stringify({questions:r.questions||[],seen:r.seen,filled:r.filled})})"
-            + ".catch(function(){window.__uaplyScan=JSON.stringify({questions:[]})})"
-            + "})(" + AssistPlugin.profileJson + "," + AssistPlugin.jobJson + ")";
-        web.evaluateJavascript(js, null);
+        if (!onAllowedHost()) return;
+        web.evaluateJavascript(call("scan", AssistPlugin.profileJson), null);
     }
 
     private void finishScan(String json) {
@@ -184,23 +239,21 @@ public class AssistActivity extends AppCompatActivity {
         finish();
     }
 
-    /** fills the form once at this address; the profile is a call argument, not a page global, and is dropped after */
+    /** fills the form once at this address with what the scan saw it ask for (a call argument, never a page global), dropped after */
     private void fill() {
-        String auto = "automatic".equals(AssistPlugin.mode) ? "UAplyAssist.submitIfAllowed('automatic',r);" : "";
-        String js = "(function(P,J){window.__uaplyAssistRan=location.href;window.__uaplyRep=null;"
-            + "UAplyAssist.fill(P,{job:J,banner:true}).then(function(r){window.__uaplyRep=JSON.stringify({seen:r.seen,filled:r.filled,leftReq:r.leftReq,"
-            + "eeoSkipped:r.eeoSkipped,resumeAttached:r.resumeAttached,humanCheck:r.humanCheck,checkKind:r.checkKind,submit:r.submit,ms:r.ms});" + auto + "})"
-            + "})(" + AssistPlugin.profileJson + "," + AssistPlugin.jobJson + ")";
-        web.evaluateJavascript(js, null);
+        if (!onAllowedHost()) return;
+        web.evaluateJavascript(call("fill", AssistPlugin.profileJson), null);
     }
 
-    /** the page's own resume box: offer the resume the person keeps in UAply first */
+    /** the page's own resume box: offer the resume the person keeps in UAply first (only on an allowed host, and only when the scan saw
+     *  the form take one) */
     private void chooseFile(ValueCallback<Uri[]> cb, WebChromeClient.FileChooserParams params) {
         if (pendingChooser != null) pendingChooser.onReceiveValue(null);
         pendingChooser = cb;
         pendingParams = params;
         String name = null;
-        try { JSONObject r = new JSONObject(AssistPlugin.profileJson).optJSONObject("resume"); if (r != null) name = r.optString("name", null); } catch (Exception ignored) {}
+        if (!scanMode && onAllowedHost())
+            try { JSONObject r = new JSONObject(AssistPlugin.profileJson).optJSONObject("resume"); if (r != null && r.has("b64")) name = r.optString("name", null); } catch (Exception ignored) {}
         AlertDialog.Builder b = new AlertDialog.Builder(this).setTitle("Attach a file");
         if (name != null) b.setMessage("Your UAply resume: " + name).setPositiveButton("Use my UAply resume", (d, w) -> giveResume());
         b.setNeutralButton("Choose another file", (d, w) -> pickOther());
@@ -210,6 +263,7 @@ public class AssistActivity extends AppCompatActivity {
     }
 
     private void giveResume() {
+        if (scanMode || !onAllowedHost()) { answerChooser(null); return; }   // the page may have moved to another site while the choice was open
         try {
             JSONObject r = new JSONObject(AssistPlugin.profileJson).getJSONObject("resume");
             String safe = r.optString("name", "resume.pdf").replaceAll("[^A-Za-z0-9._ -]", "_");

@@ -9,6 +9,12 @@
 const fs = require("fs");
 const path = require("path");
 const ENGINE = fs.readFileSync(path.join(__dirname, "..", "shared", "uaply-assist.js"), "utf8");
+// uaply-nav.js's own assistShape / assistOnly / assistHosts (what the phone app hands the page), taken from the file as they are
+function assistHelpers() {
+  const nav = fs.readFileSync(path.join(__dirname, "..", "shared", "uaply-nav.js"), "utf8");
+  const code = nav.split("\n").filter((l) => /^\s*var ASSIST_[A-Z]+=|^\s*function assist(Shape|Only|Hosts)\(/.test(l)).join("\n");
+  return new Function("w", code + "\nreturn {assistShape:assistShape,assistOnly:assistOnly,assistHosts:assistHosts};")({ URL: URL });
+}
 const RESUME = fs.readFileSync(path.join(__dirname, "fixtures", "resumes", "twocolumn.pdf")).toString("base64");
 const PERSON = {
   first: "Sam", last: "Rivera", name: "Sam Rivera", email: "sam.rivera.test@example.com", phone: "215-555-0142",
@@ -95,6 +101,30 @@ module.exports = async ({ ev, sleep, send }) => {
       await sleep(200);
       check(sys + ": after the person's Submit, the thank-you page counts as confirmed", (await ev("typeof UAplyAssist!=='undefined'&&UAplyAssist.confirmed()")) === true);
     }
+  }
+  // the phone app never hands a page the whole profile (October 22 review): the scan gets stand-ins for the person's details
+  // (uaply-nav.js assistShape), the fill only the items the scan saw the form ask for (assistOnly). It must fill exactly as well.
+  const H = assistHelpers();
+  const shape = H.assistShape(PERSON), shapeText = JSON.stringify(shape);
+  check("the scan's profile holds none of the person's contact details, links, address, pay or resume file",
+    !/Sam|Rivera|sam\.rivera|215-555|linkedin\.com\/in\/samrivera|samrivera\.example|19122|Philly Coffee|Shift lead|customer and writing/.test(shapeText) && !(shape.resume || {}).b64 && shapeText.length < 2000, shapeText.slice(0, 200));
+  check("...but keeps what the form's lists are matched against (state, school, degree, dates, yes/no answers)",
+    shape.state === "PA" && shape.school === "Temple University" && shape.degree === "Bachelor" && shape.grad === "2026-05" && shape.auth === "yes" && shape.sponsor === "no" && shape.email === "a@example.com" && shape.first === "A");
+  for (const [sys, , want] of CASES) {
+    await open(sys);
+    await ev(ENGINE);
+    const sc = JSON.parse(await ev("UAplyAssist.scan(" + JSON.stringify(shape) + ",{job:{co:'Example Co',role:'Analyst'}}).then(r=>JSON.stringify({keys:r.keys,answerKeys:r.answerKeys,resume:!!r.resumeInput}))"));
+    const only = H.assistOnly(PERSON, sc, []);
+    const full = table.find((x) => x[0] === sys);
+    await open(sys);
+    await ev(ENGINE);
+    const r = JSON.parse(await ev("UAplyAssist.fill(" + JSON.stringify(only) + ",{job:{co:'Example Co',role:'Analyst'},banner:false}).then(r=>JSON.stringify(r))"));
+    let same = true, diff = "";
+    for (const [sel, re] of want) { const v = await val(sel); if (re === null ? v !== null : !(v !== null && re.test(v))) { same = false; diff += sel + "=" + JSON.stringify(v) + " "; } }
+    check(sys + ": filled from only what the scan saw it ask for, every field lands the same as with the whole profile", same && r.filled === full[2] && r.leftReq === full[3] && r.resumeAttached,
+      diff + "filled " + r.filled + "/" + full[2] + " leftReq " + r.leftReq + "/" + full[3] + " items " + Object.keys(only).join(","));
+    const unused = Object.keys(PERSON).filter((k) => k !== "answers" && PERSON[k] && !(k in only));
+    check(sys + ": ...and the page was not handed the rest of the profile", unused.length > 0 && !("answers" in only && Object.keys(only.answers).length), "not handed: " + unused.join(","));
   }
   // the "required left" bridge: scan reads the form and changes nothing; it asks the required questions the profile cannot answer (never a
   // voluntary or consent question); the person's answers, given in UAply's question box, then land in their fields, and nothing required is
