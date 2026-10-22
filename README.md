@@ -53,12 +53,14 @@ updates once the owner merges.
 
 A push to `sandbox` or `dev` also republishes that hosted page (see below). Nothing is published from `main`.
 
-## Hosted copies (retired)
+## Hosted copies
 
-The GitHub Pages previews of `/sandbox/` and `/dev/` were retired on October 21, 2026: the repository is private, so its Pages job
-failed on every commit, and the job was removed. Run the sandbox and dev locally instead (`python serve.py 8766 sandbox --api` and
-`python serve.py 8767 dev --api`); the live site is https://uaply.net. `node share/build-share.js --full` still builds the static
-preview pages into `share/` for anyone who wants to look at one without a server (example jobs only).
+The previews are back (October 22, 2026, while the repository is public until launch). `.github/workflows/pages.yml` builds them
+with `node share/build-share.js --full` after each push to `sandbox` or `dev` and publishes them on GitHub Pages:
+https://saifsiddiqueep-sketch.github.io/uaply/sandbox.html and https://saifsiddiqueep-sketch.github.io/uaply/dev.html (also the
+`.full.html` names and the older `/sandbox/` and `/dev/` addresses). The second copy is the Render preview,
+https://uaply-sandbox-preview.onrender.com/sandbox.html. A static host cannot run the Python back end, so the hosted copies use the
+example jobs only and say they are previews; real jobs and application sending need `serve.py --api` running somewhere.
 
 ## One-time repository setup (owner)
 
@@ -109,7 +111,7 @@ and `node tools/cdp.js tools/ui-sweep.js`.
 ## Release build (dev)
 
 `dev` is what users get; `sandbox` is the test bench. Details and the owner's launch checklist are in `DEPLOY.md`, version notes in
-`CHANGELOG.md`. The GitHub Pages previews were retired on October 21, 2026 (local sandbox and dev servers replace them); run
+`CHANGELOG.md`. The hosted GitHub Pages copy of dev is a static preview with no server (no accounts, no real jobs); run
 `python serve.py 8767 dev --api` or deploy to Render for the real thing. To test the release build:
 
     node check.js

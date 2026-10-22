@@ -156,15 +156,17 @@ console.log("Python lint (pyflakes, when installed)");
 
 console.log("Hosted icons");
 {
-  /* the pages ask for their icons next to themselves; a missing file is a 404, and the browser then shows a plain globe in the tab and in
-     bookmarks (the GitHub Pages copies that also had to publish them were retired on October 21, 2026) */
+  /* the hosted pages ask for their icons next to themselves; a file that is not copied by the publish workflow is a 404, and the
+     browser then shows a plain globe in the tab and in bookmarks */
+  const pages = fs.readFileSync(".github/workflows/pages.yml", "utf8");
   ["sandbox", "dev"].forEach((dir) => {
     const html = fs.readFileSync(dir + "/index.html", "utf8");
     const files = [...html.matchAll(/<link rel="(?:icon|apple-touch-icon)"[^>]*href="([^"?]+)/g)].map((m) => m[1]);
     if (!files.length) bad(dir + "/index.html declares no icons");
     files.forEach((f) => {
       if (!fs.existsSync(dir + "/" + f)) bad(dir + "/" + f + " is declared but missing");
-      else ok(dir + "/" + f + " exists");
+      else if (!pages.includes(dir + "/" + f)) bad(dir + "/" + f + " is not copied by .github/workflows/pages.yml, so the hosted page would show a plain globe");
+      else ok(dir + "/" + f + " exists and is published");
     });
   });
 }
