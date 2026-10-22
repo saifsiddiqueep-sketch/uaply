@@ -170,6 +170,7 @@ done
 PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/ph" UAPLY_PLANS_HIDDEN=1 UAPLY_CONFIG_JSON='{"feeds":[],"smtp":{},"owner_copy":""}' start python serve.py 18832 dev --api)"
 wait_port 18832
 run "a free-only launch (UAPLY_PLANS_HIDDEN=1): Plan & billing shows Free and coming soon, no Choose buttons; dev without it still offers them" env W=390 H=844 PORT=18832 SHOWN_PORT=18767 node tools/cdp.js tools/ui-plans-hidden.js
+run "the phone apps (Capacitor ios or android, and the Google Play app with no Capacitor): Plan & billing shows what each plan includes and no button that opens Stripe, the weekly limit offers no plans; the website keeps Choose Plus and Choose Pro" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-store-checkout.js
 PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/mv" UAPLY_PUBLIC_URL=https://uaply.test UAPLY_CONFIG_JSON='{"feeds":[],"smtp":{},"owner_copy":""}' start python serve.py 18833 dev --api)"
 wait_port 18833
 run "the old address's 'UAply has moved' page: straight on with nothing to keep, a backup first with a profile, Restore once on the new address" env W=390 H=844 PORT=18833 NEW_PORT=18767 node tools/cdp.js tools/ui-moved.js

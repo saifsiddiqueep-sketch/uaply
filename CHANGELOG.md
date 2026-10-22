@@ -6,6 +6,19 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 
+### The phone apps: the last ways to a plan purchase closed (Mohammed, October 22; on top of the October 25 store-app change)
+- **Plan & billing in the apps** (`storeApp()` in `shared/uaply-nav.js`): the Google Play app is also recognised by a start address with
+  `?src=twa` (as well as `?src=play`), and the launch referrer must be exactly `android-app://com.uaply.app`. Paid plan cards show no
+  price (as help answers already do); the lead says "What each plan includes." instead of Stripe's checkout; a failed renewal says to
+  update the card in Manage billing on uaply.net; signed out it says "Sign in to see your plan." A Choose or billing button that reached
+  the screen some other way opens nothing in the apps and says "Plans are managed on uaply.net." The website keeps every button.
+- **The weekly limit inside the apps** (only once payments are on): the server's "Choose a bigger plan in Profile, Plan and billing" and
+  the See plans button are replaced by "The limit counts the last 7 days, so you can apply again as older applications drop off."
+  (`shared/uaply-live.js`). The simulated sandbox Plan screen shows no paid price and no Choose, Switch or Cancel in the apps, and the
+  "Message the hiring manager" field's See plans button is hidden in the apps as well.
+- Tests: `tools/ui-store-checkout.js` (new; iPhone, Android and Google Play app, weekly limit and no-server sandbox cases), in
+  `tools/run-all-tests.sh`.
+
 ### Always jobs, and an incomplete profile never blocks a swipe (Saif, October 24)
 - The deck never runs dry while there are jobs: the filters (stack, work style, minimum match, the rest) rank first; under 20 cards the
   deck goes on with the jobs outside them, nearest first, each card saying "Outside your filters: ..." on one line. Blocked companies and
