@@ -15,7 +15,7 @@
    "body": "Swiping right applies for you at connected employers and takes you to the employer's page everywhere else. The first time, UAply explains what is sent and asks you to agree. If the employer has agreed to receive applications through UAply, your profile details are sent to them. Otherwise nothing is sent: the job is saved in Job Tracker, Applied, where See the job posting and Finish applying on their site open the employer's own page so you can finish there. You can tap Undo right after a swipe. In this test version, applications go to a test inbox and nothing reaches a real company. A swipe right never sends an incomplete application: without your name, your email, and a phone number or a resume, it opens Finish your profile first and sends nothing. Each card says before you swipe whether it is Ready, Ready to apply, or how many answers the employer's form still needs; those questions are asked once, and a job whose question you leave for later waits in Job Tracker as Not sent yet, with Answer now.",
    "go": "dash:applied",
    "release": {
-    "body": "Swiping right applies for you at connected employers and takes you to the employer's page everywhere else. The first time, UAply explains what is sent and asks you to agree. If the employer has agreed to receive applications through UAply (the card says Applies instantly), your profile details are sent to them. For every other job (the card says Ready, or Ready, one tap on their site when their page asks for a quick human check) nothing is sent: the job is kept in Job Tracker, Applied with the status Finish on their site. There, See the job posting opens the listing and Finish applying on their site copies your name, email, phone and links so you can paste them into the employer's own form. You can tap Undo right after a swipe. Swiping left (Pass) only hides the job: nothing is sent, and Undo brings it back. A swipe right never sends an incomplete application: without your name, your email, and a phone number or a resume, it opens Finish your profile first and sends nothing. Each card says before you swipe whether it is Ready, Ready to apply, or how many answers the employer's form still needs; those questions are asked once, and a job whose question you leave for later waits in Job Tracker as Not sent yet, with Answer now."
+    "body": "Swiping right applies for you at connected employers and takes you to the employer's page everywhere else. The first time, UAply explains what is sent and asks you to agree. If the employer has agreed to receive applications through UAply (the card says Applies instantly), your profile details are sent to them. For every other job (the card says Ready, or Ready, one tap on their site when their page asks for a quick human check) nothing is sent: the job is kept in Job Tracker, Applied with the status Finish on their site. There, See the job posting opens the listing and Finish applying on their site copies your name, email, phone and links so you can paste them into the employer's own form. In the UAply phone app, Finish applying on their site opens the employer's form in the app and fills it in from your profile; you review it and tap the employer's own Submit button yourself. You can tap Undo right after a swipe. Swiping left (Pass) only hides the job: nothing is sent, and Undo brings it back. A swipe right never sends an incomplete application: without your name, your email, and a phone number or a resume, it opens Finish your profile first and sends nothing. Each card says before you swipe whether it is Ready, Ready to apply, or how many answers the employer's form still needs; those questions are asked once, and a job whose question you leave for later waits in Job Tracker as Not sent yet, with Answer now."
    }
   },
   {
@@ -50,10 +50,10 @@
    "id": "no-jobs",
    "title": "Why don't I see any jobs (or only a few)?",
    "tags": "no jobs empty nothing few listings missing where jobs come from source feed",
-   "body": "Three things can hide jobs. Your filters (Profile, Filters) may be too strict: try Clear all filters. Your target titles hide full-time and part-time roles that don't match (never internships or co-ops, and when nothing in a section matches, all its roles are shown): add more titles or turn that filter off. And UAply currently lists jobs from employers that agreed to work with it, plus example listings, so there are not many real openings yet. More employers are being added.",
+   "body": "Three things can hide jobs. Your filters (Profile, Filters) may be too strict: try Clear all filters. Your target titles hide full-time and part-time roles that don't match (never internships or co-ops, and when nothing in a section matches, all its roles are shown): add more titles or turn that filter off. And the listings are real postings from employers' public hiring systems (Greenhouse, Lever, Ashby, SmartRecruiters and Workable) and their own careers pages, plus employers connected to UAply, so the mix changes as employers add and remove openings. Most are full-time jobs and internships; part-time and Coop roles are rare, so those lists can be short or empty.",
    "go": "prof:filters",
    "release": {
-    "body": "Three things can hide jobs. Your filters (Profile, Filters) may be too strict: try Clear all filters. Your target titles hide full-time and part-time roles that don't match (never internships or co-ops, and when nothing in a section matches, all its roles are shown): add more titles or turn that filter off. And UAply lists real postings from employers' own public career pages, so the mix changes as employers add and remove openings. Most listings are full-time jobs and internships; part-time and Coop roles are rare, so those lists can be short or empty."
+    "body": "Three things can hide jobs. Your filters (Profile, Filters) may be too strict: try Clear all filters. Your target titles hide full-time and part-time roles that don't match (never internships or co-ops, and when nothing in a section matches, all its roles are shown): add more titles or turn that filter off. And the listings are real postings from employers' public hiring systems (Greenhouse, Lever, Ashby, SmartRecruiters and Workable) and their own careers pages, plus employers connected to UAply, so the mix changes as employers add and remove openings. Most are full-time jobs and internships; part-time and Coop roles are rare, so those lists can be short or empty."
    }
   },
   {
@@ -100,22 +100,31 @@
    "id": "account",
    "title": "Accounts, signing in and email receipts",
    "tags": "account sign in sign up log in login create password email receipt confirmation google apple",
-   "body": "Tap Sign in at the top right to create an account with your email and a password. You must be 18 or older. Once you are signed in and have confirmed your email with the 6-digit code, every swipe right sends a receipt to your email. Google sign-in appears when it has been switched on for this server. Apple, phone and email-link sign-in are not available yet.",
-   "go": "prof:account"
+   "body": "Open Profile, then Account. To create an account, enter your email, first and last name, tick the box to confirm you are 18 or older, and tap Create my account: UAply emails you a 6-digit code, and typing it creates the account. There is no password. To sign in later, tap Have an account? Sign in, enter your email and tap Email me a code. Continue with Google works too when it is switched on. Once you are signed in, an application UAply sends to an employer gets a confirmation email, and the jobs you still finish on the employer's own site come together in one reminder a day, not an email per swipe. Apple and phone sign-in are not available yet.",
+   "go": "prof:account",
+   "release": {
+    "body": "Tap Sign in at the top right to create an account with your email and a password. You must be 18 or older. Once you are signed in and have confirmed your email with the 6-digit code, an application UAply sends to an employer gets a confirmation email, and the jobs you still finish on the employer's own site come together in one reminder a day, not an email per swipe. Google sign-in appears when it has been switched on for this server. Apple, phone and email-link sign-in are not available yet."
+   }
   },
   {
    "id": "forgot-password",
    "title": "I forgot my password",
-   "tags": "forgot password reset change locked out can't log in",
-   "body": "Open Profile, then Account, tap I already have an account, then Forgot password?. Enter your account email and UAply emails you a link that works for one hour. Open it and choose a new password; that signs you out on every device, so log in again with the new password. If no email arrives, check spam, then use Talk to a person. After too many wrong tries, wait a few minutes before trying again.",
-   "go": "prof:account"
+   "tags": "forgot password reset change locked out can't log in can't sign in code",
+   "body": "There is no password to forget: UAply accounts sign in with a code sent to your email. Open Profile, then Account, tap Have an account? Sign in, enter your email and tap Email me a code. The code works for 10 minutes; only the newest one works, and Resend code sends another. If no email arrives, check spam, then use Talk to a person. After too many tries, wait a while before trying again.",
+   "go": "prof:account",
+   "release": {
+    "body": "Open Profile, then Account, tap I already have an account, then Forgot password?. Enter your account email and UAply emails you a link that works for one hour. Open it and choose a new password; that signs you out on every device, so sign in again with the new password. If no email arrives, check spam, then use Talk to a person. After too many wrong tries, wait a few minutes before trying again."
+   }
   },
   {
    "id": "delete",
    "title": "Deleting my account or my data",
    "tags": "delete remove account data erase privacy close cancel account",
-   "body": "To delete your account, open Profile, then Account, scroll to the bottom and open More account options, then tap Delete my account. You'll be offered a short, anonymous survey (you can skip it), then asked for your password and to confirm. That removes your receipts and application records from UAply's server and can't be undone. To erase what is saved on this device, open Profile, then Data and privacy, and use Delete all my data.",
-   "go": "prof:account"
+   "body": "To delete your account, open Profile, then Account, scroll to the bottom and open More account options, then tap Delete my account. You'll be offered a short, anonymous survey (you can skip it), then asked to type DELETE to confirm (there is no password: you sign in with a code sent to your email or with Google; an older account that still has a password asks for it instead). That removes your receipts and application records from UAply's server and can't be undone. To erase what is saved on this device, open Profile, then Data and privacy, and use Delete all my data.",
+   "go": "prof:account",
+   "release": {
+    "body": "To delete your account, open Profile, then Account, scroll to the bottom and open More account options, then tap Delete my account. You'll be offered a short, anonymous survey (you can skip it), then asked for your password and to confirm (an account made with Google types DELETE instead). That removes your receipts and application records from UAply's server and can't be undone. To erase what is saved on this device, open Profile, then Data and privacy, and use Delete all my data."
+   }
   },
   {
    "id": "voluntary",
@@ -161,8 +170,11 @@
    "id": "privacy",
    "title": "What data does UAply keep, and does it sell my data?",
    "tags": "privacy data personal information stored keep share sell sold selling sells cookies",
-   "body": "Your profile is saved on your device. Each time you swipe right, UAply's server keeps a record of that application (the job and the details sent with it) so it can deliver it and show what happened. If you create an account, your email, a scrambled form of your password and your receipts are kept too; deleting your account removes them and the applications you made while signed in. Employers only receive your details when you apply to one that agreed to receive applications. UAply does not sell your information. The Privacy Policy, linked at the bottom of the app, has the details.",
-   "go": "prof:data"
+   "body": "Your profile is saved on your device. Each time you swipe right, UAply's server keeps a record of that application (the job and the details sent with it) so it can deliver it and show what happened. If you create an account, your email, when you created it and last signed in, when you agreed to the Terms, your plan, the link to your Google account if you use Continue with Google, and your receipts are kept too (there is no password: you sign in with a code sent to your email or with Google); deleting your account removes them and the applications you made while signed in. Employers only receive your details when you apply to one that agreed to receive applications. UAply does not sell your information. The Privacy Policy, linked at the bottom of the app, has the details.",
+   "go": "prof:data",
+   "release": {
+    "body": "Your profile is saved on your device. Each time you swipe right, UAply's server keeps a record of that application (the job and the details sent with it) so it can deliver it and show what happened. If you create an account, your email, a scrambled form of your password and your receipts are kept too; deleting your account removes them and the applications you made while signed in. Employers only receive your details when you apply to one that agreed to receive applications. UAply does not sell your information. The Privacy Policy, linked at the bottom of the app, has the details."
+   }
   },
   {
    "id": "assistant",

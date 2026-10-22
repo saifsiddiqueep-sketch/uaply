@@ -91,6 +91,7 @@ run "many sources: job-boards.json, per-source health, switching a failing board
 run "employers' careers sites: sitemap, JobPosting data, robots.txt, human checks, the packed cache and saved list" python tools/test-career-pages.py
 run "human checks on application pages: captchas and challenge pages found (never solved), robots.txt with * and $, the route label, no job removed" python tools/test-human-checks.py
 run "where a job is: every US city, town and township with its state, the app using it for near you, every ZIP3 for home, co-ops first on careers sites" python tools/test-placement.py
+run "a long-running local server: files added to shared/ are served without a restart, no escape from shared/, a stale-code header and log line (local only)" python tools/test-stale-server.py
 run "backups: pack the data folder, restore it, refuse damaged ones, encrypt, upload to a private GitHub repository" python tools/test-backup.py 18806
 run "every path from swipe right to inbox, replayed in a browser" python tools/ui-apply-paths.py
 run "the swipe guarantee: resume to profile, then swipe right into Greenhouse, Lever, Ashby, SmartRecruiters, Workable, an email employer and a hand-off; a question box, a file it cannot ask, the weekly limit" python tools/test-swipe-e2e.py 18830
@@ -135,6 +136,10 @@ run "dev: the stranger-walk fixes (messages fit the phone, Save and continue, Li
 run "dev on a laptop (1280x800): one centred column about 960 px wide, Account and Plan & billing in its middle" env W=1280 H=800 PORT=18767 CDP_LIMIT_MS=600000 node tools/cdp.js tools/ui-walk.js
 run "dev: starts without waiting on the font site, and a reload before the job list arrives keeps every swipe" env W=390 H=844 PORT=18767 node tools/cdp.js tools/ui-boot.js
 run "sandbox: the same" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-boot.js
+for sz in 390x844 1280x800; do
+  run "dev at ${sz}: a signed-out first visit leaves a clean console (no 4xx, no console error)" env W="${sz%x*}" H="${sz#*x}" PORT=18767 node tools/cdp.js tools/ui-clean-load.js
+  run "sandbox at ${sz}: the same (Hiring mode asks for a company only with a session)" env W="${sz%x*}" H="${sz#*x}" PORT=18766 node tools/cdp.js tools/ui-clean-load.js
+done
 for sz in 390x844 1280x800; do
   run "sandbox at ${sz}: a student's target titles never empty a section (internships and co-ops never filtered by title; 'Showing all roles' with Filters)" env W="${sz%x*}" H="${sz#*x}" PORT=18766 node tools/cdp.js tools/ui-title-filter.js
 done

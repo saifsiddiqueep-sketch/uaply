@@ -106,7 +106,11 @@ pw = client()
 call(pw, "/api/auth/signup", {"email": "linked@gmail.com", "password": "correct horse 99", "agree": True})
 t("a new password account starts unverified", me(pw)["emailVerified"], False)
 g = client()                                    # pw stays signed in: the link below must sign it out
+# the account's address was never proven, so joining it needs this person's own 18+ / Terms tick (auth_api.oauth_login answers "agree")
 s, out = call(g, "/api/auth/google/token", {"credential": token(email="linked@gmail.com", sub="9004")})
+t("without the 18+ / Terms tick, Google into that unproven account is refused with 'agree', and nothing is linked",
+  (s, out.get("code"), me(g), me(pw)["email"]), (400, "agree", None, "linked@gmail.com"))
+s, out = call(g, "/api/auth/google/token", {"credential": token(email="linked@gmail.com", sub="9004"), "agree": True})
 t("Google with the same Gmail address signs into that same account", (s, out["user"]["email"]), (200, "linked@gmail.com"))
 t("...the password nobody confirmed by email is removed, and the page is told", (out["user"]["hasPassword"], out.get("passwordRemoved")), (False, True))
 t("...whoever set that password is signed out of it", me(pw), None)
@@ -121,7 +125,7 @@ t("the same Google id with a changed email is still the same account", out["user
 # a Workspace account links to an existing account on its own domain...
 call(pw, "/api/auth/signup", {"email": "boss@corp.example", "password": "correct horse 99", "agree": True})
 call(pw, "/api/auth/logout", {})
-s, out = call(client(), "/api/auth/google/token", {"credential": token(email="boss@corp.example", sub="9031", hd="corp.example")})
+s, out = call(client(), "/api/auth/google/token", {"credential": token(email="boss@corp.example", sub="9031", hd="corp.example"), "agree": True})   # an unproven account: the tick
 t("a Workspace account links to the existing account with its address (its unconfirmed password removed)", (s, out["user"]["email"], out["user"]["hasPassword"]), (200, "boss@corp.example", False))
 # ...but a plain "verified" address on any other domain can NOT take over an existing account (the address may have changed hands)
 call(pw, "/api/auth/signup", {"email": "victim@example.com", "password": "correct horse 99", "agree": True})

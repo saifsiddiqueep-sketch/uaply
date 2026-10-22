@@ -42,7 +42,14 @@ module.exports = async ({ ev, sleep, nav, logs, send }) => {
   check("a password account with that Gmail exists (made through the API)", (await post("/api/auth/signup", { email: pwEmail, password: "someone elses 1", agree: true })) === 200);
   await post("/api/auth/logout", {});
   await nav(BASE + "/"); await sleep(2500);
-  check("pressing the button goes to Google and back", await googleFlow({ email: pwEmail, sub: "ios-" + stamp, verified: "1" }, false));
+  // the account's address was never proven, so joining it needs this person's own 18+ / Terms tick (auth_api.oauth_login answers "agree")
+  await googleFlow({ email: pwEmail, sub: "ios-" + stamp, verified: "1" }, false);
+  check("without the 18+ / Terms tick, Google into that unproven account is refused: the person is told to tick the box", /Tick the box/.test(await msg()), (await msg()).slice(0, 100));
+  check("...nobody is signed in, and the account still has its password (nothing was linked)",
+    (await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>j.user===null)")) && (await post("/api/auth/login", { email: pwEmail, password: "someone elses 1" })) === 200);
+  await post("/api/auth/logout", {});
+  await nav(BASE + "/"); await sleep(2500);
+  check("pressing the button with the box ticked goes to Google and back", await googleFlow({ email: pwEmail, sub: "ios-" + stamp, verified: "1" }, true));
   check("back in the app, the address bar is clean again", await ev("location.pathname==='/'&&location.search===''"), await ev("location.href"));
   const m1 = await msg();
   check("it says the person is signed in with Google, and that the unconfirmed password was removed", /Signed in with Google/.test(m1) && /removed/.test(m1), m1.slice(0, 120));

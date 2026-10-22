@@ -23,6 +23,17 @@ production page and only changes when the owner decides.
   without their fix; each Plan screen is read only once the server's billing status is on it, never the placeholder shown while it
   loads), in `tools/run-all-tests.sh`; ui-plans-hidden 6, apply paths all passed.
 
+### Terms and help say what the app does (October 22)
+- **Terms of Service, section 3: "Applications on your behalf"** (the consent version 3 sentence, drafted in LEGAL-REVIEW.md;
+  Saif decided on October 21 that it goes in the Terms). **Pending the lawyer's read before launch.** The list under it names the
+  three ways a swipe right goes: sent straight to an employer that connected its hiring system or posted on UAply, sent by email to an
+  employer who agreed to that, or assisted on the employer's own site, where the person taps the employer's Submit. It used to say
+  UAply sends only to employers who agreed. Last updated October 22, 2026.
+- Help: where jobs come from (public hiring systems and employers' own careers pages, plus connected employers; no "example
+  listings, not many real openings"); on the sandbox, signing up and in is by emailed code with no password (Accounts, and "I forgot
+  my password" now says there is none to forget); the release wording keeps the password and says Sign in, not log in.
+- The empty deck says "your applications are in Job Tracker, Applied".
+
 ### Release candidate review, surgical fixes (Reviewer 2, October 22)
 - **Careers sites:** every request (robots.txt, the sitemap, each page) goes through a public-only opener (`jobs_api._cp_open`): a
   redirect is followed only to a public https address, and the name is looked up once and refused unless every address is public (not

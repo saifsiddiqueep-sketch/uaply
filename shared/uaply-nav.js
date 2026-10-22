@@ -1006,7 +1006,7 @@ function apply(w,host){
         what={job:"full-time jobs",parttime:"part-time jobs",internship:"internships",coop:"co-ops"}[type]||"jobs";
     if(!all.length)return ["Nothing listed here right now","New postings appear as employers publish them. Try another section or check back soon."];
     if(hid)return [(seen?"No more ":"No ")+what+" match your filters yet",'Widen them in <button type="button" class="linkbtn" data-open-filters="1">Filters</button>, or pick another kind of job in the Jobs menu.'+(seen?" Jobs you passed on can come back.":"")];
-    return ["You have seen every one of these","Jobs you passed on can come back, and your applications are in the Job Tracker."];
+    return ["You have seen every one of these","Jobs you passed on can come back, and your applications are in Job Tracker, Applied."];
   };
   /* a short note when you are looking at an opportunity type you did not pick in your profile */
   function typeNote(){

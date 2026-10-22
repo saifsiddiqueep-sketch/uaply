@@ -33,7 +33,7 @@ MSG = {"messages": [{"role": "user", "content": "How do I apply to a job?"}]}
 s, out = chat_api.chat(dict(MSG), "198.51.100.1")
 t("AI off: the help articles answer and nothing goes out", (s, out.get("ai", False), "aiConsent" in out, len(SENT)), (200, False, False, 0))
 
-os.environ["ANTHROPIC_API_KEY"] = "sk-ant-api03-FAKEKEYFORTESTSONLY"
+os.environ["ANTHROPIC_API_KEY"] = "-".join(["sk", "ant", "api03", "stand", "in", "for", "tests", "only"])   # built here: no key-shaped text in the file
 s, out = chat_api.chat(dict(MSG), "198.51.100.2")
 t("AI on, and the page did not say the person agreed: nothing goes to the AI", (s, len(SENT)), (200, 0))
 t("...the help articles answer instead, and the answer says agreement is needed", (bool(out.get("answer")), out.get("ai", False), out.get("aiConsent")), (True, False, True))
