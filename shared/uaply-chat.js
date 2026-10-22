@@ -32,6 +32,8 @@ var CSS=`
 #uaChat input{flex:1;min-width:0;min-height:44px;padding:0 14px;border:1px solid var(--line);border-radius:999px;background:var(--bg);color:var(--ink);font:inherit}
 #uaChat form button{min-width:44px;min-height:44px;border:0;border-radius:999px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);font-weight:700;padding:0 16px;cursor:pointer}
 #uaChat .ft{padding:0 14px 10px;font-size:14px;color:var(--muted);background:var(--surface)}
+#uaChat .ft button{display:inline-flex;align-items:center;min-height:44px;margin-left:4px;padding:0 4px;border:0;background:none;color:var(--accent);font:inherit;font-size:14px;font-weight:600;text-decoration:underline;cursor:pointer}
+#uaChat .bot .src a{color:var(--accent);text-decoration:underline}
 #uaNudge{position:fixed;right:16px;bottom:calc(var(--above-nav,96px) + 60px);z-index:44;width:min(330px,calc(100vw - 24px));background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:14px;display:flex;flex-direction:column;gap:10px}
 #uaNudge p{margin:0;font-weight:700;padding-right:44px}
 #uaNudge small{color:var(--muted)}
@@ -79,14 +81,14 @@ function apply(w,host){
     return (out.join("\n").replace(/\n{3,}/g,"\n\n").trim()+" Plans are managed on uaply.net.").trim();
   }
   w.__uaplyIosAnswer=iosAnswer;   /* for the tests */
-  /* the Support page sits in legal/ next to the app (one folder up on the hosted /dev/ and /sandbox/ copies) */
-  var lp=(host&&host.defaultView&&host.defaultView.location.pathname)||"/",SUPPORT=(/\/(sandbox|dev)\/(index\.html)?$/.test(lp)?"../legal/":"legal/")+"support.html";
+  /* the Support and Privacy pages sit in legal/ next to the app (one folder up on the hosted /dev/ and /sandbox/ copies) */
+  var lp=(host&&host.defaultView&&host.defaultView.location.pathname)||"/",LEGAL=/\/(sandbox|dev)\/(index\.html)?$/.test(lp)?"../legal/":"legal/",SUPPORT=LEGAL+"support.html",PRIVACY=LEGAL+"privacy.html";
   if(!d.body)return;
   var st=d.createElement("style");st.textContent=CSS;d.head.appendChild(st);
   var K=(w.__uaplyKey||"uaply")+".chat";
   function load(){try{return JSON.parse(w.localStorage.getItem(K))||{}}catch(e){return {}}}
   function store(o){try{w.localStorage.setItem(K,JSON.stringify(o))}catch(e){}}
-  var CFG={ai:false,support:""},hist=[],flow=null,started=false,busy=false;
+  var CFG={ai:false,support:""},hist=[],flow=null,started=false,busy=false,cfgSettled=false,cfgReady=null,histPlain=false;
 
   /* ---------- launcher and panel ---------- */
   var btn=d.createElement("button");btn.type="button";btn.id="uaChatBtn";btn.setAttribute("aria-haspopup","dialog");btn.setAttribute("aria-expanded","false");btn.setAttribute("aria-controls","uaChat");
@@ -117,6 +119,7 @@ function apply(w,host){
   function open(){
     p.hidden=false;btn.setAttribute("aria-expanded","true");hideNudge(false);
     if(!started){started=true;greet()}
+    if(CFG.ai)providerName();   /* look the AI company's name up now, so it is usually ready before the first question */
     setTimeout(function(){input.focus()},30);
   }
   function close(){p.hidden=true;btn.setAttribute("aria-expanded","false");btn.focus()}
@@ -150,14 +153,40 @@ function apply(w,host){
       .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j}},function(){return {ok:false,j:{}}})})
       .catch(function(){return {ok:false,j:{error:"I couldn't reach UAply just now. Check your connection and try again."}}});
   }
+  /* the AI company's name, exactly as the Privacy Policy gives it ("our AI provider, X," / "our AI provider (X)"): that page is the one
+     place the name is written. Not found or not reachable: "" (the notice then points to the Privacy Policy), and it is asked again next time.
+     A slow or stalled request waits at most 3 seconds (the chat is busy meanwhile, so a hang would lock it: no chips, typing ignored),
+     then gives "" and the next ask starts a fresh lookup. Nothing is sent either way: the line still asks first. */
+  var provider=null;
+  function providerName(){
+    if(!provider){var pr=provider=w.fetch(PRIVACY,{credentials:"same-origin"}).then(function(r){return r.ok?r.text():""}).then(function(t){
+      pr.done=true;var m=/our AI provider(?:,\s*|\s*\()([A-Z][A-Za-z0-9.&' -]{0,40}?)\s*[,)]/.exec(t);if(!m&&provider===pr)provider=null;return m?m[1]:"";
+    },function(){pr.done=true;if(provider===pr)provider=null;return ""})}
+    var cur=provider;
+    return Promise.race([cur,new Promise(function(r){setTimeout(function(){if(!cur.done&&provider===cur)provider=null;r("")},3000)})]);
+  }
+  /* the remembered Yes counts only for the company it named: an older yes (a bare time, from the unnamed "Continue" line), a yes to the
+     "named in our Privacy Policy" line, or a different company in the Privacy Policy later all ask again */
+  function agreed(name){var a=load().aiOk;return !!(name&&a&&typeof a==="object"&&a.to===name)}
+  /* a stored yes that can never count (a bare time, or the one-question yes to the unnamed line) is dropped; a yes to a different company
+     is dropped once the Privacy Policy's name is known. A yes to a named company is kept while the name cannot be read (it does not count
+     then, and does not travel with the question either: see send) */
+  function dropStale(name){var s=load(),a=s.aiOk;if(!a)return;
+    if(typeof a!=="object"||!a.to||(name&&a.to!==name)){delete s.aiOk;store(s);paintMode()}}
 
   /* ---------- greeting: say clearly that this is automated / AI ---------- */
   function paintMode(){
     p.querySelector("#uaChatTag").textContent=CFG.ai?"AI":"AUTOMATED";
     p.querySelector("#uaChatTag").title=CFG.ai?"Answers are written by AI":"Answers come from UAply's help articles";
-    p.querySelector("#uaChatFt").textContent=CFG.ai
+    var ft=p.querySelector("#uaChatFt");
+    ft.textContent=CFG.ai
       ?"AI-written answers can be wrong. Don't share passwords or sensitive details."
       :"Automated answers from UAply's help articles. Don't share passwords or sensitive details.";
+    /* a Yes takes one tap, so taking it back takes one tap too: after it, nothing goes to the AI company until the person says yes again */
+    var ok=load().aiOk;
+    if(CFG.ai&&ok&&ok.to){var b=d.createElement("button");b.type="button";b.id="uaChatStopAi";b.textContent="Stop sending to the AI";
+      b.onclick=function(){var s=load();delete s.aiOk;store(s);paintMode();botSay("Done. Nothing more goes to our AI provider unless you say yes again.");input.focus()};
+      ft.appendChild(d.createTextNode(" "));ft.appendChild(b)}
   }
   function greet(){
     botSay(CFG.ai
@@ -177,26 +206,60 @@ function apply(w,host){
   }
 
   /* ---------- questions ---------- */
-  function ask(q){
+  /* ask(q, how): how is unset for a new question; after the checks it is "ai" (a counted yes to the named company), "once" (Yes to the
+     unnamed line: this question only) or "plain" (no yes: sent with aiOk false, so the server answers from the help articles and nothing
+     leaves UAply). cfgWaited: the wait for the chat's settings is over. */
+  function ask(q,ok,cfgWaited){
     if(busy)return;
     if(isPreview()){clearChips();previewSay();starters();return}
-    /* AI answers on: the first time, say in one line that the message goes to an outside AI, and send it only on Continue (remembered on
-       this device). Not now sends nothing (October 22: the Help chat went to the AI provider without asking) */
-    if(CFG.ai&&!load().aiOk){
-      clearChips();
-      botSay("AI answers are on: your message goes to our AI provider, Anthropic, to write the reply (it is not kept). Send it?");
-      chips([{label:"Continue",pri:true,run:function(){var s=load();s.aiOk=Date.now();store(s);meSay("Continue");ask(q)}},
-        {label:"Not now",run:function(){meSay("Not now");botSay("Nothing was sent. You can still talk to a person, report a problem or give feedback.");starters()}}]);
+    /* the settings (/api/chat/config) say whether AI is on. Until they arrive the chat cannot know, so it waits for them (at most 3 seconds:
+       a stalled request must not lock the chat) instead of sending with whatever yes is stored (CTO round 2: a stored yes to another
+       company, or to the unnamed line, went out as aiOk: true with no notice when a starter was tapped before the settings came) */
+    if(!ok&&!cfgSettled&&!cfgWaited&&cfgReady){
+      busy=true;clearChips();typing(true);
+      Promise.race([cfgReady,new Promise(function(r){setTimeout(r,3000)})]).then(function(){typing(false);busy=false;ask(q,ok,true)});
+      return;
+    }
+    /* AI off (or not known) and no stored yes: nothing can go to the AI company, the server answers from the help articles */
+    if(!ok&&!CFG.ai&&!load().aiOk){ask(q,"plain");return}
+    /* AI answers on: the first time, say in one line which outside AI company the message goes to, and send it only on Yes (remembered on
+       this device). No sends nothing (October 22: the Help chat went to the AI provider without asking; Apple 5.1.2(i) wants the
+       company named and a clear yes). The company's name is read from the Privacy Policy, so that page stays its one source. */
+    if(!ok){   /* AI on, or a stored yes to check before it travels with the question */
+      busy=true;clearChips();typing(true);
+      providerName().then(function(name){
+        typing(false);busy=false;
+        if(agreed(name)){ask(q,"ai");return}
+        dropStale(name);
+        /* AI off, or the settings never came: a yes that does not count is not used, and the question goes without one (the server
+           keeps it from the AI); if AI turns out to be on, the answer says so and the next question asks */
+        if(!CFG.ai){ask(q,"plain");return}
+        botSay("AI answers are on: to write the reply, your message goes to our AI provider"+(name?", "+name:" (named in our Privacy Policy)")+". UAply does not keep it. Send it?",
+          '<span class="src"><a href="'+PRIVACY+'" target="_blank" rel="noopener noreferrer" data-privacy="1">Privacy Policy</a></span>');
+        /* both buttons look the same: the choice is not nudged. A yes to the line without a name sends this question only (to:"" never
+           counts as agreed), so the named line is shown next time */
+        chips([{label:"Yes, send it",run:function(){meSay("Yes, send it");if(!name){ask(q,"once");return}var s=load();s.aiOk={at:Date.now(),to:name};store(s);paintMode();ask(q,"ai")}},
+          {label:"No, don't send",run:function(){var s=load();if(s.aiOk){delete s.aiOk;store(s);paintMode()}meSay("No, don't send");botSay("Nothing was sent. You can still talk to a person, report a problem or give feedback.");starters()}}]);
+      });
       return;
     }
     busy=true;clearChips();
+    /* the stored yes travels with this question only when it was just checked ("ai") or given for it ("once", stored for the one post
+       and removed straight after it); for "plain" it is set aside for the post and put back. Turns sent without a yes stay on UAply, so
+       they are dropped before a question goes to the AI company (the server sends the whole history to it) */
+    var aiNow=ok==="ai"||ok==="once",st=load(),kept=st.aiOk;
+    if(ok==="once")st.aiOk={at:Date.now(),to:""};else if(!aiNow)delete st.aiOk;
+    if(ok!=="ai")store(st);
+    if(aiNow&&histPlain)hist=[];
+    histPlain=!aiNow;
     hist.push({role:"user",content:q});hist=hist.slice(-10);
     typing(true);
-    post("/api/chat",{messages:hist,aiOk:!!load().aiOk}).then(function(r){   /* aiOk: the person said Continue to the AI notice; the server checks it too */
+    post("/api/chat",{messages:hist,aiOk:!!load().aiOk}).then(function(r){   /* aiOk: the person said Yes to the AI notice; the server checks it too */
       typing(false);busy=false;
+      if(r.j&&r.j.aiConsent&&!CFG.ai){CFG.ai=true;paintMode()}   /* AI is on after all (the settings came late or not at all): the next question asks */
       if(!r.ok){botSay((r.j&&r.j.error)||"Something went wrong on my side.");chips([{label:"Try again",run:function(){hist.pop();meSay(q);ask(q)}},{label:"Talk to a person",run:function(){meSay("Talk to a person");startHuman()}}]);return}
       var j=r.j||{};
-      if(j.ai!==undefined&&!!j.ai!==CFG.ai){CFG.ai=!!j.ai;paintMode()}
+      if(!j.aiConsent&&j.ai!==undefined&&!!j.ai!==CFG.ai){CFG.ai=!!j.ai;paintMode()}
       var src=(j.sources||[]).map(function(s){return s.title}).join(", ");
       j.answer=iosAnswer(j.answer||"");
       botSay(j.answer||"",src?'<span class="src">From help: '+esc(src)+'</span>':'');
@@ -204,19 +267,26 @@ function apply(w,host){
       var acts=[],ids=(j.sources||[]).map(function(s){return s.id});
       (j.sources||[]).slice(0,1).forEach(function(s){if(s.go)acts.push({label:"Take me there",pri:true,run:function(){goTo(s.go)}})});
       acts.push({label:"Yes, that helped",run:function(){meSay("Yes, that helped");post("/api/feedback",{topic:"answer",helpful:true,articles:ids,page:where(),source:"chat"});botSay("Great! Anything else?");starters()}});
-      acts.push({label:"No",aria:"No, that did not help",run:function(){meSay("No");notHelpful(q,ids)}});
+      acts.push({label:"No",aria:"No, that did not help",run:function(){meSay("No");notHelpful(q,ids,j.answer)}});
       if(j.needs_human)acts.push({label:"Talk to a person",run:function(){meSay("Talk to a person");startHuman()}});
       (j.related||[]).forEach(function(s){acts.push({label:s.title,run:function(){meSay(s.title);ask(s.title)}})});
       chips(acts);
     });
+    if(ok!=="ai"){st=load();if(kept&&typeof kept==="object"&&kept.to)st.aiOk=kept;else delete st.aiOk;store(st)}
   }
-  function notHelpful(q,ids){
-    botSay("Sorry about that. What were you looking for? Your answer goes to the team so we can fix it.");
-    flow={kind:"answer",step:"text",data:{topic:"answer",helpful:false,articles:ids}};
+  /* a "No" carries the answer's own words (not only its article ids), so a wrong or offensive answer can be reported as it was written.
+     The server keeps 2,000 characters of text: the person's note first, then as much of the answer as fits */
+  function reportText(note,ans){
+    var n=note?"What I was looking for: "+note+"\n":"",a="The answer I got: ";
+    return n+a+String(ans||"").trim().slice(0,Math.max(0,2000-n.length-a.length));
+  }
+  function notHelpful(q,ids,ans){
+    botSay("Sorry about that. What were you looking for, or what was wrong with the answer? Your note and the answer above go to the team so we can fix it.");
+    flow={kind:"answer",step:"text",data:{topic:"answer",helpful:false,articles:ids},answer:ans};
     hint("What were you looking for?");
     /* an answer that did not help is the moment people want a person: offer it here, not two taps later behind Skip */
-    chips([{label:"Talk to a person",pri:true,run:function(){meSay("Talk to a person");flow=null;hint();post("/api/feedback",{topic:"answer",helpful:false,articles:ids,page:where(),source:"chat"});startHuman()}},
-      {label:"Skip",run:function(){meSay("Skip");finish({topic:"answer",helpful:false,articles:ids})}}]);
+    chips([{label:"Talk to a person",pri:true,run:function(){meSay("Talk to a person");flow=null;hint();post("/api/feedback",{topic:"answer",helpful:false,articles:ids,text:reportText("",ans),page:where(),source:"chat"});startHuman()}},
+      {label:"Skip",run:function(){meSay("Skip");finish({topic:"answer",helpful:false,articles:ids,text:reportText("",ans)})}}]);
   }
 
   /* ---------- feedback: one question at a time ---------- */
@@ -304,7 +374,7 @@ function apply(w,host){
       }
       if(flow.kind==="bug"&&flow.step==="what"){flow.data.text="What happened: "+t;flow.step="doing";botSay("Thanks. What were you trying to do when it happened? (optional)");hint("What were you trying to do?");chips([{label:"Skip",run:function(){meSay("Skip");askFollowup()}}]);return}
       if(flow.kind==="bug"&&flow.step==="doing"){flow.data.text+="\nTrying to: "+t;askFollowup();return}
-      if(flow.kind==="answer"){flow.data.text=t;finish(flow.data);return}
+      if(flow.kind==="answer"){flow.data.text=reportText(t,flow.answer);finish(flow.data);return}
       if(flow.step==="text"){flow.data.text=t;askFollowup();return}
       if(flow.step==="rating"){var n=parseInt(t,10);if(n>=1&&n<=5){setRating(n);return}botSay("Pick a number from 1 to 5, or tap Skip.");return}
       if(flow.step==="followup"){botSay("Tap one of the options above, or type your email.");if(EMAIL.test(t)){flow.data.email=t;flow.data.followup=true;finish(flow.data)}return}
@@ -350,9 +420,9 @@ function apply(w,host){
 
   /* mode: AI or help articles, from the server */
   paintMode();
-  w.fetch("/api/chat/config").then(function(r){return r.ok?r.json():null}).then(function(c){
-    if(c){CFG.ai=!!c.ai;CFG.support=c.support||"";CFG.owner=!!c.owner;paintMode()}
-  }).catch(function(){});
+  cfgReady=w.fetch("/api/chat/config").then(function(r){return r.ok?r.json():null}).then(function(c){
+    if(c){CFG.ai=!!c.ai;CFG.support=c.support||"";CFG.owner=!!c.owner;paintMode();if(CFG.ai&&started)providerName()}
+  }).catch(function(){}).then(function(){cfgSettled=true});
 }
 
 window.UAplyChat={apply:apply};

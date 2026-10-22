@@ -134,6 +134,7 @@ run "dev: skill chips, the empty Add button and the file downloads" env W=390 H=
 run "dev in the phone apps (a stand-in Capacitor): Android Back goes back one screen and leaves only on a second press; the export buttons share a file, or copy and say so" env W=390 H=844 PORT=18767 node tools/cdp.js tools/ui-native-back-export.js
 run "sandbox in the phone apps: the same" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-native-back-export.js
 run "sandbox: the first-application agreement shows once, swipes throw no error" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-consent-once.js
+run "sandbox: the Help chat names the AI company and asks before anything goes to it; No on an answer reports its words" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-chat-consent.js
 run "dev: the first-application agreement shows once, swipes throw no error" env W=390 H=844 PORT=18767 node tools/cdp.js tools/ui-consent-once.js
 run "sandbox: every profile checklist item lands on its field" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-checklist.js
 run "sandbox: hostile text in every form never runs, and the owner's inbox escapes it" env W=390 H=844 PORT=18770 node tools/cdp.js tools/ui-inject.js
