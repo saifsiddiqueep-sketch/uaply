@@ -40,4 +40,13 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Jobs near you (on dev, the site the apps open; shared/uaply-nav.js): the page asks through the web view (navigator.geolocation) and Capacitor's
+         web view turns that into this app's own location prompt. It asks for both at once and accepts "Approximate" on Android 12+;
+         the page rounds the position to about a mile, keeps it on the phone and never sends it to the server. Never in the background. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+    <!-- interview reminders (@capacitor/local-notifications): Android 13+ shows no notification without it. The plugin's own manifest
+         merges it in too; it is listed here so the permission is visible and checked (tools/test-mobile-perms.py). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>
