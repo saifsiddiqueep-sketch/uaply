@@ -6,6 +6,9 @@
    READY_MIN in shared/uaply-nav.js, still needs a phone number or a resume). Returning people: Google, or Email me a code.
    What is kept where (the screen says the same): the account (email, when the 18+ box was ticked) on the server; first and last name, the
    work picks and the place on this device only, in the app's own profile (Profile setup shows them). Nothing here is sent anywhere else.
+   A shared device: a sign-in to another account than the ones whose details this device holds asks Keep / Start fresh first (while it
+   asks, the swipe deck takes no keys and an application waiting to be sent is held), the name typed before Google goes only to that same
+   address, and Sign out offers "Remove my details from this device" (default keeps them).
    patch() adds the card's styles to the production page with once(); apply() fills the Account screen through four small hooks in
    shared/uaply-nav.js (look for "sign-up v2" there). A missing hook or anchor stops this experiment loudly, never silently. */
 (function(){
@@ -178,6 +181,16 @@ var CSS=`
   .sg-q4f{padding:10px 24px 12px}.sg-pvcard{padding:14px 16px;gap:7px}.sg-pvr{padding-top:7px}.sg-pvh{margin-bottom:6px}}
 @media (max-width:360px){.sg-two{grid-template-columns:1fr}#acctSec .sg .sg-code input{height:50px}}
 @media (prefers-reduced-motion:reduce){.sg *,.sg *::before,.sg *::after{animation-duration:1ms!important;animation-iteration-count:1!important;transition-duration:1ms!important}}
+/* the sheet that asks before anything on this device is kept or removed (sign-in to another account, Sign out): the card's own look */
+.sg-sheet{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:16px;background:color-mix(in srgb,#000 45%,transparent)}
+.sg-sheet .sg-card{max-width:440px;max-height:100%;overflow:auto;text-align:left}
+.sg-sheet h2{font-size:22px;line-height:1.2}
+.sg-sheet .sg-sub b{color:var(--ink);overflow-wrap:anywhere}
+.sg-acts{display:flex;flex-wrap:wrap;gap:10px;margin-top:4px}
+.sg-acts .sg-btn{flex:1 1 150px}
+.sg-sheet .sg-agree b{font-weight:600}
+.sg-sheet .sg-agree small{display:block;color:var(--muted);font-size:13px;margin-top:2px}
+@media (max-width:700px){.sg-sheet{align-items:flex-end}.sg-acts{flex-direction:column-reverse}.sg-acts .sg-btn{flex:none;width:100%}}
 `;
 
 /* the card's styles go into the production page's own style sheet, so the card never shows unstyled */
@@ -220,6 +233,201 @@ function apply(w,host){
   function setCodeStep(c){try{var s=topStore();if(!s)return;if(c)s.setItem(CODEK,JSON.stringify(c));else s.removeItem(CODEK)}catch(e){}}
   function ownGet(){try{var o=JSON.parse(w.localStorage.getItem(OWN));return o&&typeof o==="object"?o:{}}catch(e){return {}}}
   function ownSet(o){try{w.localStorage.setItem(OWN,JSON.stringify(o))}catch(e){}}
+
+  /* ---------- whose profile this device holds (PR #49 finding 5, PR #50's clean start, Saif's sign-out note of Oct 22) ----------
+     UAply keeps the profile, phone, resume, saved answers and the swipe list on the device only. The device remembers which account last
+     used them (OWNER: the signed-in account's email, never an email typed in the profile) and, after a Keep, the other accounts that share
+     them. A sign-in to any other account, new or existing, by code or by Google, first asks in a sheet: Keep (applications go out with the
+     profile saved here as it is, and the Account screen says whose name it carries) or Start fresh (those details are removed from this
+     device). Nothing is removed, and no waiting application is sent, before that choice. */
+  var DK=w.__uaplyKey||"uaply",OWNER=DK+".signup.owner";
+  function lc(s){return String(s||"").trim().toLowerCase()}
+  function lsJSON(k){try{var o=JSON.parse(w.localStorage.getItem(k));return o&&typeof o==="object"?o:null}catch(e){return null}}
+  function ownerGet(){var o=lsJSON(OWNER);return o&&typeof o.email==="string"&&o.email?o:null}
+  function emList(a){var seen={};return (Array.isArray(a)?a:[]).map(lc).filter(function(x){if(!x||seen[x])return false;seen[x]=1;return true}).slice(0,20)}
+  /* {email: the account using the details now, with: the other accounts that share them after a Keep, keptBy: the accounts that chose Keep} */
+  function ownerSet(email,shared,keptBy){
+    email=lc(email).slice(0,200);
+    try{if(!email){w.localStorage.removeItem(OWNER);return}
+      var kb=emList(keptBy);
+      w.localStorage.setItem(OWNER,JSON.stringify({email:email,kept:kb.indexOf(email)>-1,"with":emList(shared).filter(function(x){return x!==email}),keptBy:kb}))}catch(e){}
+  }
+  function keptByOf(o){return !o?[]:Array.isArray(o.keptBy)?emList(o.keptBy):o.kept?[lc(o.email)]:[]}
+  function ownerKept(o){return !!o&&keptByOf(o).indexOf(lc(o.email))>-1}
+  /* anything personal on this device: a profile someone filled in, a phone, a resume, links, an address, saved answers, a swipe, a saved location */
+  function deviceHasData(){
+    var p=A.S.profile||{},a=lsJSON(DK+".acct")||{},ad=a.addr||{},an=lsJSON(DK+".answers"),lo=lsJSON(DK+".loc"),le=A.S.learn;
+    return !!((p.custom&&(p.name||p.email||p.title||p.loc||(p.skills||[]).length))||a.phone||a.resumeName||a.resumeData||a.resumeUrl||a.linkedin||a.portfolio||
+      a.summary||a.cover||ad.street||ad.zip||Object.keys(A.S.decisions||{}).length||(an&&Object.keys(an).length)||(lo&&typeof lo.lat==="number")||
+      (le&&Array.isArray(le.ev)&&le.ev.length));
+  }
+  /* the accounts the saved details belong to: the one that last used them here, and any that share them after Keep. A device from before
+     this record: the account whose name the card saved with its email. An email typed in Profile setup is never used: a device nobody has
+     signed in on yet is taken as it is by the first account (the device cannot tell that person from another) */
+  function holders(){var o=ownerGet();if(o)return emList([o.email].concat(o["with"]||[]));var oe=lc(ownGet().email);return oe?[oe]:[]}
+  function otherProfile(email){email=lc(email);var hs=holders();return !!email&&hs.length>0&&hs.indexOf(email)<0&&deviceHasData()}
+  /* the same person, someone the profile is shared with, or a device with nothing of anyone's: this account now uses what is here (a
+     profile with no email takes this one). Sharing is remembered only among the accounts that already share. An account that shares the
+     profile applies with its own address: the live server sends an application straight to an employer only when the profile's email is
+     the signed-in account's (uaply_api.py, "Use your account email in Profile setup"), so another sharer's email is replaced */
+  function adopt(email){
+    var p=A.S.profile||{},em=lc(email),hs=holders(),o=ownerGet(),shared=!!o&&hs.indexOf(em)>-1,pe=lc(p.email);
+    if(p.custom&&(!pe||(shared&&pe!==em&&hs.indexOf(pe)>-1))){p.email=String(email).slice(0,200);commit()}
+    if(shared)ownerSet(em,hs,keptByOf(o));else ownerSet(em,[],[]);
+  }
+  /* Keep: this account shares the profile saved here with the accounts that already had it (each of them signs in again without the
+     question). The name, phone and resume are shared; the email becomes this account's own, as the sheet says (see adopt) */
+  function keepFor(email){
+    var o=ownerGet(),p=A.S.profile||{};ownerSet(email,holders(),keptByOf(o).concat([lc(email)]));
+    if(p.custom&&lc(p.email)!==lc(email)){p.email=String(email).slice(0,200);commit()}
+  }
+  /* Start fresh, or Remove my details at Sign out: the profile, phone, links, resume, work authorization and other answers, the address,
+     saved form answers, the agreement to apply, the help chat's record (with its agreement to the AI notice), the swipe list (Applied and passed jobs, with their application notes), what "Learns from
+     your swipes" learned (as its own Reset does), the plan and payments shown on this device, the company and keyword filters, and the
+     saved device location leave this device. The location the app already read stays in use until UAply next opens (the sheet says so) */
+  function wipeDevice(email){
+    email=lc(email).slice(0,200);
+    A.S.profile={name:"",title:"",years:0,edu:"",skills:[],salary:0,loc:"",modes:{remote:false,hybrid:false,onsite:false},reloc:false,email:email,custom:true};
+    A.S.decisions={};A.S.history=[];
+    var le=A.S.learn;if(le&&typeof le==="object"&&Array.isArray(le.ev)){le.ev=[];le.n=0;le.ver=(+le.ver|0)+1}
+    B.acct(function(a){a.phone=a.linkedin=a.portfolio=a.summary=a.auth=a.notice=a.cover=a.resumeName=a.resumeData=a.resumeUrl="";a.resumeSize=0;a.titles=[];a.apps={};
+      a.eeo={auth:"",sponsor:"",veteran:"",hisp:"",race:[],disability:"",gender:""};a.addr={street:"",unit:"",state:"",zip:""};
+      a.plan="trial";a.pay=[];a.since=Date.now();a.renews=0;a.canceled=false;a.fCo="";a.fKw=""});
+    [".answers",".answersAsked",".consent",".loc",".chat"].forEach(function(x){try{w.localStorage.removeItem(DK+x)}catch(e){}});
+    if(email)ownSet({first:"",last:"",email:email});else try{w.localStorage.removeItem(OWN)}catch(e){}
+    ownerSet(email);commit();
+  }
+  /* while the Keep / Start fresh question is open, an application waiting to be sent (shared/uaply-live.js sends those again 1.5 s after
+     the jobs load, and every 30 s while the server is out of reach) would go out under the account that just signed in with the profile
+     saved here: it is held. Keep sends it as before; Start fresh drops it (its swipe is gone too, so nothing is sent later). The hold also
+     covers a page that opens with a session, until the start-up check below has looked. A dropped one is answered "not sent" (409, code
+     "preview": shared/uaply-live.js then takes the swipe back with no button and queues nothing), never a failed request, which uaply-live
+     reads as "could not reach the server" and promises to send later */
+  var holdApply=false,heldApply=[],fetch0=w.fetch;
+  if(typeof fetch0==="function")w.fetch=function(u){
+    var url=String(u&&typeof u==="object"&&u.url?u.url:u||""),args=arguments,ap=/^(?:https?:\/\/[^\/]+)?\/api\/apply(?:[?#]|$)/.test(url);
+    if(ap&&!holdApply)try{watchAs()}catch(e){}   /* a sign-in the page has not looked at yet: look first (below), so the question can hold this */
+    if(holdApply&&ap)return new Promise(function(res,rej){heldApply.push({go:function(){fetch0.apply(w,args).then(res,rej)},drop:function(why){res(notSent(why))}})});
+    return fetch0.apply(w,args);
+  };
+  function notSent(why){var b=JSON.stringify({error:why,code:"preview"});try{return new w.Response(b,{status:409,headers:{"Content-Type":"application/json"}})}catch(e){return {ok:false,status:409,json:function(){return Promise.resolve(JSON.parse(b))}}}}
+  var FRESHNS="Not sent: you chose Start fresh.",OUTNS="Not sent: you signed out before choosing Keep or Start fresh.";
+  function releaseApply(send,why){holdApply=false;var q=heldApply;heldApply=[];q.forEach(function(x){try{if(send)x.go();else x.drop(why||FRESHNS)}catch(e){}})}
+  /* a sheet in the card's own style (never the browser's confirm box): a choice must be made, focus stays inside it */
+  var sheetOn=null,sheetCtl=null;
+  function closeSheet(){var r=sheetOn;sheetOn=null;sheetCtl=null;if(r&&r.parentNode)r.parentNode.removeChild(r)}
+  function sheetStops(root){return [].slice.call(root.querySelectorAll("button,input,a[href]")).filter(function(x){return !x.disabled})}
+  /* while a sheet is open it owns the keyboard, on the window in the capture phase so it runs before anything on the page: the swipe
+     deck's keys (ArrowLeft, ArrowRight, Z) and every other key aimed behind the sheet never arrive there (a reload with the question
+     open put it over the deck, and one ArrowRight applied with the other person's profile), Tab stays inside, Esc is the sheet's own */
+  w.addEventListener("keydown",function(e){
+    var root=sheetOn;if(!root)return;
+    var k=e.key,t=e.target,inside=!!(t&&t.nodeType===1&&root.contains(t));
+    if(k==="Escape"){e.preventDefault();e.stopPropagation();if(sheetCtl&&sheetCtl.escNo)sheetCtl.done(false);return}
+    if(k==="Tab"){
+      var f=sheetStops(root),first=f[0],last=f[f.length-1],ae=d.activeElement;
+      if(!inside||!ae||!root.contains(ae)){e.preventDefault();e.stopPropagation();fx(e.shiftKey?last:first);return}
+      if(e.shiftKey&&(ae===first||ae.tagName==="H2")){e.preventDefault();fx(last)}
+      else if(!e.shiftKey&&ae===last){e.preventDefault();fx(first)}
+      return;
+    }
+    if(!inside){e.preventDefault();e.stopPropagation();return}
+    if(k==="ArrowLeft"||k==="ArrowRight"||k==="z"||k==="Z"){e.stopPropagation();if(t.tagName!=="INPUT"||t.type==="checkbox")e.preventDefault()}
+  },true);
+  /* focus that something else moves behind the open sheet comes back to it */
+  d.addEventListener("focusin",function(e){var root=sheetOn;if(root&&e.target&&e.target.nodeType===1&&!root.contains(e.target)){var f=sheetStops(root);fx(f[0]||root.querySelector("h2"))}},true);
+  function sheet(o){
+    closeSheet();
+    var hid=uid("sh"),bid=uid("sb");
+    var root=h('<div class="sg sg-sheet"><section class="sg-card sg-pop" role="alertdialog" aria-modal="true" aria-labelledby="'+hid+'" aria-describedby="'+bid+'">'+
+      '<h2 id="'+hid+'" tabindex="-1">'+o.title+'</h2><div class="sg-stack" id="'+bid+'">'+o.body+'</div>'+
+      '<div class="sg-acts"><button type="button" class="sg-btn ghost" data-sh="no">'+o.no+'</button><button type="button" class="sg-btn pri" data-sh="yes">'+o.yes+'</button></div></section></div>');
+    var prev=d.activeElement;d.body.appendChild(root);sheetOn=root;
+    /* afterwards focus goes back where it was, unless what the choice did put it somewhere else */
+    function done(yes){if(sheetOn!==root)return;closeSheet();o.then(yes,root);var ae=d.activeElement;if(prev&&prev.isConnected&&(!ae||ae===d.body))fx(prev)}
+    sheetCtl={escNo:!!o.escNo,done:done};
+    root.querySelector('[data-sh="yes"]').onclick=function(){done(true)};
+    root.querySelector('[data-sh="no"]').onclick=function(){done(false)};
+    /* a press on the dark background (or on the sheet's text) never takes focus out of the sheet; buttons and the tick box still work */
+    root.addEventListener("mousedown",function(e){var t=e.target;if(!(t&&t.closest&&t.closest("button,input,a[href],label")))e.preventDefault()});
+    fx(root.querySelector("h2"));
+    return root;
+  }
+  /* before the choice the sheet shows nothing of the other person's details (not their name): only that the device holds another profile */
+  function askFresh(email,then){
+    holdApply=true;
+    sheet({title:"This device holds another person’s profile.",
+      body:'<p class="sg-sub">Start fresh for <b>'+esc(email)+'</b>?</p>'+
+        '<p class="sg-fine">UAply keeps profiles on the device only.</p>'+
+        '<p class="sg-fine"><b>Start fresh</b> removes that profile, phone, resume, saved answers and swipe list (Applied) from this device, with what UAply learned from those swipes, the plan shown here and the saved location (jobs stop being sorted by it the next time UAply opens). '+
+        '<b>Keep</b> uses that profile for your applications: its name, phone and resume, with your account email.</p>',
+      no:"Keep",yes:"Start fresh",then:function(fresh){then(fresh);releaseApply(!fresh)}});
+  }
+  /* every sign-in passes here once the session is real; go() carries on with the card */
+  function guard(email,go){
+    email=lc(email);
+    if(!otherProfile(email)){adopt(email);releaseApply(true);go();return}
+    V.view="ask";render();
+    askFresh(email,function(fresh){
+      if(fresh){wipeDevice(email);V.cleared=true;V.kept=false}else{keepFor(email);V.kept=true;V.cleared=false}
+      go();
+    });
+  }
+  /* "Your applications from this device go out with ...": after Keep, the Account screen says whose profile it is */
+  function keptHTML(user,cls){
+    var o=ownerGet(),em=lc(user&&user.email);if(!ownerKept(o)||!em||o.email!==em)return "";
+    var p=A.S.profile||{},nm=p.custom?String(p.name||"").trim():"",own=lc(p.email)===em;
+    /* the email is this account's own after Keep; if another one was typed in Profile setup since, the line says so without showing it */
+    return '<p class="'+cls+'" style="margin:0">You kept the profile saved on this device, so your applications from here go out as <b>'+(nm?esc(nm):"no name yet")+'</b>, with that profile’s phone and resume and '+
+      (own?'your account email':'the email in Profile setup (applications sent straight to an employer need your account email there)')+'. Change it in Profile setup.</p>';
+  }
+  /* the page opened with a session already (a reload, or a sign-in from before this check): the same question when the device's details
+     belong to another account; with no record yet, this account takes the device as it is */
+  function startCheck(user){
+    if(!user||!user.email||V.user||V.view==="ask"||sheetOn||getPending())return;
+    var em=lc(user.email);
+    if(!otherProfile(em)){adopt(em);return}
+    askFresh(em,function(fresh){if(fresh)wipeDevice(em);else keepFor(em);try{B.redraw()}catch(e){}});
+  }
+  /* a device holding someone's details holds applications from the start, until the server says who is signed in and the check has run
+     (a return from Google waits for the card's own check, guard()) */
+  holdApply=holders().length>0&&deviceHasData();
+  /* after the start-up check, a sign-in that did not come through the card (the app's own password sign-in in shared/uaply-nav.js, when
+     the server has code sign-in off, or a sign-in in another tab) gets the same check as soon as the page sees the new account. The card's
+     own sign-ins are skipped by startCheck (V.user, the "ask" view, a return from Google) because guard() looks at those */
+  var seenAs=null;
+  function watchAs(){if(seenAs===null)return;var u=srv().user,em=lc(u&&u.email);if(em===seenAs)return;seenAs=em;if(em)startCheck(u)}
+  (function(){var n=0,iv=setInterval(function(){var s=srv();if(!s.up&&++n<120)return;clearInterval(iv);if(s.user)startCheck(s.user);
+    seenAs=lc(s.user&&s.user.email);setInterval(watchAs,500);
+    if(!sheetOn&&V.view!=="ask"&&!(s.user&&getPending()))releaseApply(true)},500)})();
+
+  /* ---------- Sign out (the app's button, shared/uaply-nav.js "sout"): the choice to remove this person's details from this device ----------
+     Saif's review (Oct 22, 2:39 AM). The default keeps them. They are removed only once the server has ended the session. */
+  var soutPass=false,wipeAt=0;
+  d.addEventListener("click",function(e){
+    if(soutPass)return;
+    var b=e.target&&e.target.closest&&e.target.closest('#acctSec [data-auth="sout"]');if(!b)return;
+    e.preventDefault();e.stopPropagation();
+    var u=srv().user||{};
+    sheet({title:"Sign out of UAply?",
+      body:'<p class="sg-sub">Signed in as <b>'+esc(u.email||"")+'</b>.</p>'+
+        '<label class="sg-agree"><input type="checkbox" class="sg-rm" data-f="rm"><span><b>Remove my details from this device</b><small>Your profile, phone, resume, saved answers and swipe list (Applied) on this device, with what UAply learned from your swipes, the plan shown here and the saved location. Your account stays.</small></span></label>'+
+        '<p class="sg-fine">Left unticked, they stay on this device for your next sign-in.</p>',
+      no:"Cancel",yes:"Sign out",escNo:true,then:function(yes,root){
+        if(!yes)return;
+        var rm=!!(root.querySelector(".sg-rm")||{}).checked,nb=b.isConnected?b:d.querySelector('#acctSec [data-auth="sout"]');
+        if(!nb)return;
+        wipeAt=rm?Date.now():0;
+        soutPass=true;try{nb.click()}finally{soutPass=false}
+        if(rm){var k=0,iv=setInterval(function(){if(!srv().user){clearInterval(iv);signedOut()}else if(++k>100){clearInterval(iv);wipeAt=0}},150)}
+      }});
+  },true);
+  /* the session ended: when this person asked, their details leave this device now (never while the server still has them signed in) */
+  function signedOut(){
+    if(!wipeAt||Date.now()-wipeAt>15e3)return;
+    wipeAt=0;wipeDevice("");
+    setTimeout(function(){msg("Signed out. Your details were removed from this device.")},0);
+  }
 
   /* the app's readiness rule (shared/uaply-nav.js): null when that nav has no such rule */
   function ready(){try{return typeof w.__uaplyReadiness==="function"?w.__uaplyReadiness():null}catch(e){return null}}
@@ -322,7 +530,9 @@ function apply(w,host){
 
   /* ---------- the Account screen asks for the card (hook in renderAcct) ---------- */
   w.__uaplySignCard=function(el,user){
-    if(user)wasIn=true;else if(wasIn||V.user)forget();   /* signed out since the last drawing */
+    if(!user)signedOut();   /* a Sign out that asked to remove this person's details: the session has ended, so now */
+    /* signed out since the last drawing; an application held for a question nobody answered is not sent */
+    if(user)wasIn=true;else if(wasIn||V.user){forget();closeSheet();if(holdApply||heldApply.length)releaseApply(false,OUTNS)}
     var pend=getPending();
     if(codeOn===false)return false;
     if(codeOn===null&&!pend){
@@ -334,7 +544,7 @@ function apply(w,host){
     }
     host0=el;   /* back from Google before the server's answer: the card already knew */
     if(user){
-      if(V.view==="q"||V.view==="signedin"||(V.view==="code"&&V.kind==="g")){render();restoreFocus();return true}
+      if(V.view==="q"||V.view==="signedin"||V.view==="ask"||(V.view==="code"&&V.kind==="g")){render();restoreFocus();return true}
       if(pend){startAfterGoogle(user,pend);return true}
       return false;   /* signed in, nothing to ask: the app's own signed-in card */
     }
@@ -349,7 +559,7 @@ function apply(w,host){
     if(signed&&pwGone)V.pwGone=true;   /* Google proved the inbox and the server removed a password nobody had proven: the card says so */
     if(!pend&&!mine())return false;
     if(er){
-      setPending(null);
+      setPending(null);if(!sheetOn)releaseApply(true);
       if(pend){V.first=pend.first||V.first;V.last=pend.last||V.last;V.email=pend.email||V.email;V.agreed=!!pend.agreed}
       if(er==="agree_owner"){
         /* Google proved this person owns the address, which has an account someone opened and never finished: their own tick, then Google */
@@ -380,7 +590,7 @@ function apply(w,host){
   w.__uaplyNoPwNote=function(user){
     if(codeOn!==true)return "";
     var s=srv(),g=!s.hideGoogle&&(s.google||s.testInbox)&&!gOff(user&&user.email);
-    return '<p class="note" style="margin:0">You sign in with an emailed code'+(g?' or with Google':'')+'. No password needed.</p>';
+    return '<p class="note" style="margin:0">You sign in with an emailed code'+(g?' or with Google':'')+'. No password needed.</p>'+keptHTML(user,"note");
   };
 
   /* ---------- drawing ---------- */
@@ -398,6 +608,7 @@ function apply(w,host){
     else if(V.view==="code")code(focus);
     else if(V.view==="q")profile(focus);
     else if(V.view==="signedin")signedIn(focus);
+    else if(V.view==="ask")askWait();
     else signup(focus);
   }
   /* Esc goes back wherever there is a "back"; one listener on the Account screen, so redraws never stack them */
@@ -604,8 +815,11 @@ function apply(w,host){
           if(kind==="g"){var u=Object.assign({},V.user||srv().user||{},{emailVerified:true});V.user=u;B.signedIn(u);V.view="q";startQuestions();return}
           var user=r.j&&r.j.user;if(!user){cm.textContent="Signed in, but the answer was incomplete. Reload the page.";return}
           setPending(null);setCodeStep(null);V.noSend=false;V.user=user;V.viaG=false;V.cd=null;if(user.googleRemoved)gGone=String(user.email||"").toLowerCase();
-          if(user["new"]){V.isNew=true;claimDevice(user.email);saveName(V.first,V.last,user.email);V.view="q";B.signedIn(user);startQuestions()}
-          else{if(kind==="up")saveName(V.first,V.last,user.email,true);V.view="signedin";B.signedIn(user);render(true)}
+          holdApply=true;   /* the session is already this account's: nothing waiting goes out until guard() has looked */
+          /* the session is real; when this device holds another account's details the card waits for Keep or Start fresh (guard) */
+          V.view="ask";B.signedIn(user);
+          if(user["new"]){V.isNew=true;guard(user.email,function(){saveName(V.first,V.last,user.email,V.kept);startQuestions()})}
+          else guard(user.email,function(){if(kind==="up")saveName(V.first,V.last,user.email,true);V.view="signedin";render(true)});
         },RM()?50:350);
       });
     }
@@ -646,22 +860,32 @@ function apply(w,host){
     setPending(null);
     var gh=user.google||null;   /* serve.py (sandbox): whether the account was made just now. Google is asked for "openid email" only */
     V.user=user;V.email=user.email;V.viaG=true;
+    /* the name typed on the card belongs to the email typed with it: it is used only when Google signed in that same address (or no
+       address was typed). A different Google account (a partner's, on a shared phone) gets empty name boxes and the name question */
+    if(pend.email&&lc(pend.email)!==lc(user.email)){pend=Object.assign({},pend,{first:"",last:""});V.first=V.last=""}
     if(!V.first&&!V.last){V.first=pend.first||"";V.last=pend.last||""}
     V.isNew=gh&&typeof gh["new"]==="boolean"?gh["new"]:pend.mode==="up";
+    V.view="ask";
     if(!V.isNew){
-      if(pend.first&&pend.last)saveName(pend.first,pend.last,user.email,true);
-      V.view="signedin";render(true);return;
-    }
-    V.typedName=!!(pend.first&&pend.last);
-    claimDevice(user.email);
-    if(V.typedName)saveName(V.first,V.last,user.email);
-    if(user.emailVerified===false){
-      /* Google vouches only for Gmail and Google-run addresses: any other address gets the code before anything is sent for it */
-      V.kind="g";V.view="code";render(true);
-      B.post("/api/auth/resend",{}).then(function(r){if(r.ok&&r.j&&r.j.delivery){V.delivery=r.j.delivery;if(V.view==="code")render()}});
+      guard(user.email,function(){if(pend.first&&pend.last)saveName(pend.first,pend.last,user.email,true);V.view="signedin";render(true)});
       return;
     }
-    V.view="q";startQuestions();
+    V.typedName=!!(pend.first&&pend.last);
+    guard(user.email,function(){
+      if(V.typedName)saveName(V.first,V.last,user.email,V.kept);
+      if(user.emailVerified===false){
+        /* Google vouches only for Gmail and Google-run addresses: any other address gets the code before anything is sent for it */
+        V.kind="g";V.view="code";render(true);
+        B.post("/api/auth/resend",{}).then(function(r){if(r.ok&&r.j&&r.j.delivery){V.delivery=r.j.delivery;if(V.view==="code")render()}});
+        return;
+      }
+      V.view="q";startQuestions();
+    });
+  }
+  /* behind the sheet: the card says what it is waiting for */
+  function askWait(){
+    back=null;
+    shell('<div class="sg-done"><h2 tabindex="-1">One question first</h2><p class="sg-sub">This device holds another person’s profile. Choose Keep or Start fresh to go on.</p></div>');
   }
 
   /* ---------- what is kept on this device (the app's own profile and settings; nothing here goes to the server) ---------- */
@@ -671,22 +895,6 @@ function apply(w,host){
     /* the example profile (Jordan Lee) is never copied into a real one: start from empty, like Profile setup does */
     A.S.profile={name:"",title:"",years:0,edu:p.edu,skills:[],salary:0,loc:"",modes:{remote:false,hybrid:false,onsite:false},reloc:false,email:"",custom:true};
     return A.S.profile;
-  }
-  /* a NEW account on a device whose profile belongs to another account (a shared phone or computer, or a second person after Sign out):
-     before, only the name changed, so this account's applications would have gone out with the other person's email, phone, resume and
-     answers while the screens said otherwise. Now it starts from a clean profile with its own email; the other person's phone, links,
-     resume, work authorization and other answers, saved form answers and agreement to apply are cleared from this device (they were kept
-     on this device only), and the first question says so. The same person (same email, or a profile with no email yet) keeps everything. */
-  function claimDevice(email){
-    email=String(email||"").toLowerCase();if(!email)return false;
-    var p=A.S.profile||{},pe=p.custom?String(p.email||"").toLowerCase():"",oe=String(ownGet().email||"").toLowerCase();
-    if(!(pe&&pe!==email)&&!(!pe&&oe&&oe!==email)){if(p.custom&&!p.email){p.email=email.slice(0,200);commit()}return false}
-    A.S.profile={name:"",title:"",years:0,edu:"",skills:[],salary:0,loc:"",modes:{remote:false,hybrid:false,onsite:false},reloc:false,email:email.slice(0,200),custom:true};
-    B.acct(function(a){a.phone=a.linkedin=a.portfolio=a.summary=a.auth=a.notice=a.cover=a.resumeName=a.resumeData=a.resumeUrl="";a.resumeSize=0;a.titles=[];
-      a.eeo={auth:"",sponsor:"",veteran:"",hisp:"",race:[],disability:"",gender:""};a.addr={street:"",unit:"",state:"",zip:""}});
-    var k=w.__uaplyKey||"uaply";[".answers",".answersAsked",".consent"].forEach(function(x){try{w.localStorage.removeItem(k+x)}catch(e){}});
-    ownSet({first:"",last:"",email:email});commit();V.cleared=true;
-    return true;
   }
   function commit(){try{A.save()}catch(e){}try{A.renderAll()}catch(e){}try{if(w.__uaplySyncPrefs)w.__uaplySyncPrefs()}catch(e){}}
   function saveName(first,last,email,onlyIfEmpty){
@@ -719,9 +927,11 @@ function apply(w,host){
        started on another device), and after Google unless typed. It is never taken from an earlier account on this device: on a
        shared computer that would put someone else's name on applications */
     var needName=!(V.first&&V.last)||(V.viaG&&!V.typedName);
+    if(keptName())needName=false;   /* Keep: the profile saved here goes out as it is, with its own name */
     V.steps=needName?["name","work","where"]:["work","where"];
     V.k=0;V.view="q";render(true);
   }
+  function keptName(){var p=A.S.profile||{};return !!(V.kept&&p.custom&&String(p.name||"").trim())}
   function profile(focus){
     back=null;wide(true);
     var steps=V.steps.length?V.steps:["work","where"],n=steps.length,k=Math.min(V.k,n),step=k<n?steps[k]:"done";
@@ -737,7 +947,7 @@ function apply(w,host){
     [].forEach.call(root.querySelectorAll(".sg-prog i"),function(x,i){x.classList.toggle("on",i<k);x.classList.toggle("cur",i===k)});
     function paintPV(flashKey){
       /* the meter counts the app's minimum to apply (READY_MIN in shared/uaply-nav.js): a name, an email, and a phone number or a resume */
-      var p=A.S.profile||{},own=!!p.custom,name=(V.first+" "+V.last).trim()||(own?String(p.name||"").trim():""),title=V.work[0]||V.other||(own?p.title||"":""),
+      var p=A.S.profile||{},own=!!p.custom,name=keptName()?String(p.name).trim():(V.first+" "+V.last).trim()||(own?String(p.name||"").trim():""),title=V.work[0]||V.other||(own?p.title||"":""),
         where=V.where||(own?p.loc||"":""),em=(own&&p.email)||email,pr=hasPR(),
         filled=[name,/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em),pr].filter(Boolean).length,pct=Math.round(filled/3*100);
       /* confirmed only from the server's emailVerified; it is not sent to employers, so it sits under their view, not on it */
@@ -759,7 +969,8 @@ function apply(w,host){
       '<p class="sg-made">'+I.check+' Account created'+(V.first?', '+esc(V.first):'')+'.</p>';
     if(k===0&&V.pwGone)made+='<p class="sg-fine">'+PWGONE()+'</p>';
     if(k===0&&gOff(email))made+='<p class="sg-fine">'+GGONE+'</p>';
-    if(k===0&&V.cleared)made+='<p class="sg-fine">This device had another account’s details (phone, resume, saved answers). They were cleared here, so your applications carry only your own.</p>';
+    if(k===0&&V.cleared)made+='<p class="sg-fine">You chose Start fresh: the other person’s profile, phone, resume, saved answers and swipe list were removed from this device, so your applications carry only your own.</p>';
+    if(k===0&&V.kept)made+=keptHTML(user,"sg-fine");
     if(step==="name")html=made+eyebrow+'<h2 tabindex="-1">What should employers call you?</h2><div class="sg-two">'+textFieldHTML("First name","given-name","",V.first,"sg-fn","next")+textFieldHTML("Last name","family-name","",V.last,"sg-ln","next")+'</div><p class="sg-fine">Employers need a name on every application. Kept on this device. Use the name on your resume.</p>';
     if(step==="work")html=made+eyebrow+'<h2 tabindex="-1">What kind of work are you after?</h2><p class="sg-sub">We’ll show these first. You can change this later.</p><div class="sg-chips" role="group" aria-label="Kinds of work">'+WORK.map(function(x){return '<button type="button" class="sg-chip" aria-pressed="'+(V.work.indexOf(x)>-1)+'">'+x+'</button>'}).join("")+'</div>'+textFieldHTML("Something else","off","e.g. dental assistant",V.other,"","next");
     if(step==="where")html=eyebrow+'<h2 tabindex="-1">Where do you want to work?</h2>'+textFieldHTML("City or ZIP code","address-level2","Austin, TX",V.where,"","done")+'<div class="sg-chips"><button type="button" class="sg-chip sg-rem" aria-pressed="'+V.remote+'">Remote is fine</button>'+(s.near?'<button type="button" class="sg-chip sg-loc" aria-pressed="'+V.near+'">'+I.pin+' Use my location</button>':'')+'</div><p class="sg-fine sg-locmsg" aria-live="polite">'+(s.near?(V.near?"Using your device location, rounded to about a mile. It stays on this device and is never sent to our server.":"Your browser asks before it shares your location. It stays on this device and is never sent to our server."):"Kept on this device. Used to sort jobs by distance.")+'</p>';
@@ -776,7 +987,7 @@ function apply(w,host){
       var fn=wireReq(q.querySelector(".sg-fn"),"Add your first name."),ln=wireReq(q.querySelector(".sg-ln"),"Add your last name.");
       fn.input.addEventListener("input",function(){V.first=fn.value();paintPV()});
       ln.input.addEventListener("input",function(){V.last=ln.value();paintPV()});
-      advance=function(){var a=fn.validate(),b=ln.validate();if(!a){fxs(fn.input);return}if(!b){fxs(ln.input);return}V.first=fn.value();V.last=ln.value();V.typedName=true;saveName(V.first,V.last,email);V.k=k+1;render(true)};
+      advance=function(){var a=fn.validate(),b=ln.validate();if(!a){fxs(fn.input);return}if(!b){fxs(ln.input);return}V.first=fn.value();V.last=ln.value();V.typedName=true;saveName(V.first,V.last,email,V.kept);V.k=k+1;render(true)};
     }
     if(step==="work"){
       [].forEach.call(q.querySelectorAll(".sg-chip"),function(cp){cp.onclick=function(){var on=cp.getAttribute("aria-pressed")!=="true";cp.setAttribute("aria-pressed",on);var x=cp.textContent;if(on)V.work.push(x);else V.work=V.work.filter(function(y){return y!==x});paintPV("work");paintNext()}});
@@ -818,7 +1029,7 @@ function apply(w,host){
     paintPV();
     if(focus)fx(q.querySelector("h2"));
   }
-  function resetV(){V.view="";V.steps=[];V.k=0;V.work=[];V.other="";V.where="";V.remote=false;V.near=false;V.isNew=false;V.viaG=false;V.typedName=false;V.pwGone=false;V.cleared=false;back=null;wide(false)}
+  function resetV(){V.view="";V.steps=[];V.k=0;V.work=[];V.other="";V.where="";V.remote=false;V.near=false;V.isNew=false;V.viaG=false;V.typedName=false;V.pwGone=false;V.cleared=false;V.kept=false;back=null;wide(false)}
   function finish(){
     resetV();
     try{B.cards()}catch(e){}
@@ -831,6 +1042,7 @@ function apply(w,host){
     var s=srv(),user=V.user||s.user||{},o=ownGet(),first=o.email&&o.email===String(user.email||"").toLowerCase()?o.first||"":"",rr=ready();   /* this account's own name only */
     var c=shell('<div class="sg-done"><span class="sg-okc">'+I.check+'</span><h2 tabindex="-1">'+(first?'You’re signed in, '+esc(first)+'.':'You’re signed in.')+'</h2><p class="sg-sub">Signed in as '+esc(user.email||V.email)+'.</p>'+
       (user.passwordRemoved||V.pwGone?'<p class="sg-fine">'+PWGONE()+'</p>':'')+(gOff(user.email)?'<p class="sg-fine">'+GGONE+'</p>':'')+
+      (V.cleared?'<p class="sg-fine">You chose Start fresh: the other person’s profile, phone, resume, saved answers and swipe list were removed from this device.</p>':keptHTML(user,"sg-fine"))+
       (rr&&!rr.min?'<p class="sg-fine">Before UAply can apply, add '+esc(joinAnd(rr.missing))+'.</p>'+fixesHTML(rr):'')+
       '<button type="button" class="sg-btn pri wide sg-start">'+(rr&&!rr.min?"Show me jobs":"Start swiping")+'</button></div>');
     c.querySelector(".sg-start").onclick=function(){finish()};

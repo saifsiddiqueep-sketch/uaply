@@ -6,6 +6,32 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 
+### Sign-up card on a shared device: ask before keeping or removing anyone's details (Mohammed, October 22)
+- **Another account signs in** (by code or Google, new or existing) on a device that holds someone else's profile: a sheet in the card's
+  own style asks "This device holds another person's profile. Start fresh for <email>?" with Keep and Start fresh. It shows nothing of the
+  other person's details (not their name). Nothing is removed until the person answers. Start fresh removes the profile, phone, resume,
+  saved answers, the swipe list (Applied), what UAply learned from those swipes, the plan shown on the device, the company and keyword
+  filters, the saved location (the sheet says jobs stop being sorted by it the next time UAply opens) and the help chat's record, with
+  its agreement to the AI notice (one person's agreement never carries over to the next). Keep uses that profile's name, phone and
+  resume (also for a new account) with the signed-in account's own email, since the live server sends an application straight to an
+  employer only from the account's email; the first account gets its own email back when it signs in again. The Account screen says
+  whose name the applications carry. PR #49 finding 5, and PR #50's clean start now asks first.
+- **Whose profile it is** comes only from accounts: the account that last used the device, and after a Keep the accounts that share it
+  (the one the profile came from signs in again without the question). An email typed in Profile setup never counts, so a person who
+  typed a work email before making an account is not told their own profile is someone else's.
+- **While the question is open** no key reaches the swipe deck behind it (a reload with the question open put it over the deck, and
+  ArrowRight applied with the other person's details), focus stays in the sheet, and an application waiting to be sent is held: Keep
+  sends it, Start fresh drops it with a plain "Not sent" (never "could not reach the server", which promised a later send). A session
+  that ends while the question is open drops it the same way.
+- **A sign-in outside the card** (the app's own password sign-in, used when the server has code sign-in off) gets the same question as
+  soon as the page sees the new account, and an application asked for before that is held for it.
+- **The name typed before Continue with Google** is used only when Google signs in that same address (or none was typed); otherwise the
+  name boxes stay empty and the name question asks (PR #49 finding 6).
+- **Sign out** offers "Remove my details from this device" (unticked by default; removed only once the server has ended the session),
+  per Saif's review of October 22.
+- All in `shared/uaply-signup.js`; no server file changed. Tests: `tools/ui-signup.js` 106 checks at 1280x720 and 390x844 (codes are now
+  read from the test inbox by recipient, newest first, never one already used; a choice in the sheet waits for the sheet to close).
+
 ### Release candidate review, surgical fixes (Reviewer 2, October 22)
 - **Careers sites:** every request (robots.txt, the sitemap, each page) goes through a public-only opener (`jobs_api._cp_open`): a
   redirect is followed only to a public https address, and the name is looked up once and refused unless every address is public (not
