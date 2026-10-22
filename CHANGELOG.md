@@ -77,6 +77,15 @@ production page and only changes when the owner decides.
   With only the required questions answered: 89%, 92%, 72%, 85%. docs/assisted-apply.md has the table.
 - Tests: `tools/test-assist.js` 213 checks (every new mapping and the bridge on a mock form per system), `tools/ui-assist-tracker.js`
   26 (the bridge in Job Tracker: asks, blocks a blank required answer, skips answered ones, Not now opens nothing, keeps a cover letter to its employer).
+### Apply wording from the job's route; learner, caching and uptime
+- **The card and the Job Tracker row read the job's `route`:** connected or email: "Applies instantly"; one-tap: "Ready, one tap on their
+  site"; assisted or ready: "Ready" (the server's labels "Ready" and "Ready, one tap" read the same). "Apply instantly" and "Opens employer
+  site" are gone from the app, the help answer, the employers page and the Play listing. tools/ui-route.js checks every route at 390 and 1280.
+- **Learns from your swipes** no longer pushes strong matches down for a new person: no reordering before 8 swipes or while every swipe
+  is a yes, an attribute counts from 2 swipes, and before 30 swipes a 90%+ match loses at most 10 points.
+- **Scripts and the legal style sheet are cached a year** under content-hashed names (uaply-nav.<hash>.js); pages, /api and the service
+  worker stay no-store; a changed file gets a new name at once.
+- **docs/uptime.md**: the UptimeRobot free monitor for https://uaply.net/healthz, for the owner to set up.
 
 ### Sign-up, nothing hidden: no password, an emailed code, two questions (Mohammed's design, Oct 21)
 - **One card in the middle of the Account screen**, with the UAply mark directly above it and the two centered together on phones and

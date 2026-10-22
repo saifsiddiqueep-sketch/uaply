@@ -32,6 +32,12 @@ function patch(s){
            'var X=!p.custom;$("pName").value=X?"":p.name;$("pTitle").value=X?"":p.title;$("pYears").value=X?"":p.years;$("pEdu").value=p.edu;');
   s=once(s,'regional cookbooks."}','regional cookbooks."}'+EXTRA);
   s=once(s,'var busy=false,F="all";','var busy=false,F="all",TYPE="job",MINPCT=0;');
+  /* how a swipe right reaches this employer, in the job's "route" (from the server): connected or email -> "Applies instantly",
+     one-tap -> "Ready, one tap on their site", assisted or ready -> "Ready". Read by the card and by the Job Tracker row (October 22:
+     "Apply instantly" and "Opens employer site" are not used any more). The server's labels ("Ready", "Ready, one tap") read the same. */
+  s=once(s,'var busy=false,F="all",TYPE="job",MINPCT=0;','var busy=false,F="all",TYPE="job",MINPCT=0;'+
+    'window.__uaplyRouteWord=function(j){var r=String(j&&j.route||"").toLowerCase();if(r==="connected"||r==="email"||(j&&j.instant))return "Applies instantly";'+
+    'if(/one[- ]?tap/.test(r))return "Ready, one tap on their site";return "Ready"};');
   /* the app never says how many jobs a section holds (the owner's rule; counts stay on the owner's pages and /api/status): the line
      above the deck keeps only the person's own "N applied" */
   s=once(s,`innerHTML='<span>'+q.length+' job'+(q.length===1?'':'s')+' left</span>`,`innerHTML='<span></span>`);
@@ -47,7 +53,7 @@ function patch(s){
   s=once(s,'salary:num($("pSalary").value,0,10000000),loc:$("pLoc").value.trim(),','salary:num($("pSalary").value,0,10000000),loc:$("pLoc").value.trim(),email:($("pEmail")?$("pEmail").value.trim():""),');
   s=once(s,'$("pSalary").value=p.salary;$("pLoc").value=p.loc;','$("pSalary").value=p.salary;$("pLoc").value=p.loc;if($("pEmail"))$("pEmail").value=X?"":(p.email||"");if(X){$("pSkills").value="";$("pSalary").value="";$("pLoc").value=""}');
   s=once(s,'title:S.profile.title||""};','title:S.profile.title||"",st:"applied"};');
-  s=once(s,"<span>'+cap(j.mode)+'</span>","<span>'+cap(j.mode)+'</span>'+(j.jobType?'<span>'+({\"full-time\":\"Full-time\",\"part-time\":\"Part-time\",internship:\"Internship\",\"co-op\":\"Co-op\",contract:\"Contract\",temporary:\"Temporary\"}[j.jobType]||\"\")+'</span>':(j.type&&j.type!==\"job\"?'<span>'+({internship:\"Internship\",coop:\"Co-op\",parttime:\"Part-time\"}[j.type]||\"Job\")+'</span>':''))+(j.live?(j.instant?'<span class=\"inst\">Apply instantly</span>':'<span class=\"ext\">Opens employer site</span>'):'')+(j.live&&j.via?'<span class=\"via\">via '+esc(j.via)+'</span>':'')+'");
+  s=once(s,"<span>'+cap(j.mode)+'</span>","<span>'+cap(j.mode)+'</span>'+(j.jobType?'<span>'+({\"full-time\":\"Full-time\",\"part-time\":\"Part-time\",internship:\"Internship\",\"co-op\":\"Co-op\",contract:\"Contract\",temporary:\"Temporary\"}[j.jobType]||\"\")+'</span>':(j.type&&j.type!==\"job\"?'<span>'+({internship:\"Internship\",coop:\"Co-op\",parttime:\"Part-time\"}[j.type]||\"Job\")+'</span>':''))+(j.live?'<span class=\"'+(window.__uaplyRouteWord(j)===\"Applies instantly\"?\"inst\":\"ext\")+'\">'+window.__uaplyRouteWord(j)+'</span>':'')+(j.live&&j.via?'<span class=\"via\">via '+esc(j.via)+'</span>':'')+'");
   /* target titles count toward the match score: Title 15 points, Skills 30, Experience 15 (the total stays 100) */
   s=once(s,'{k:"Skills",w:40,','{k:"Skills",w:30,');
   s=once(s,'{k:"Experience",w:20,','{k:"Experience",w:15,');
@@ -546,7 +552,7 @@ function apply(w,host){
     w.__uaplyTrack=function(){if(!tp.hidden)renderTrack()};   /* called when an application's state changes while the list is open */
     function row(o,acts,view){
       var t=A.tone(o.x.pct),e=A.esc;
-      return '<div class="row"><div class="logo" aria-hidden="true" style="background:hsl('+A.hue(o.j.id)+' 60% 46%)">'+e(o.j.co.charAt(0))+'</div><div class="info"><b>'+e(o.j.role)+'</b>'+modeChip(o.j)+'<small>'+e(o.j.co)+' · '+e(o.j.loc)+' · '+TYPE_LABEL[o.j.type||"job"]+'</small>'+
+      return '<div class="row"><div class="logo" aria-hidden="true" style="background:hsl('+A.hue(o.j.id)+' 60% 46%)">'+e(o.j.co.charAt(0))+'</div><div class="info"><b>'+e(o.j.role)+'</b>'+modeChip(o.j)+'<small>'+e(o.j.co)+' · '+e(o.j.loc)+' · '+TYPE_LABEL[o.j.type||"job"]+(o.j.live&&w.__uaplyRouteWord?'<span class="rtword"> · '+e(w.__uaplyRouteWord(o.j))+'</span>':'')+'</small>'+
         (view!=="passed"?'<small>Applied '+new Date(o.x.at).toLocaleDateString(undefined,{month:"short",day:"numeric"})+'</small>':'')+
         detLine(o,view)+(view!=="passed"?stChip(o):'')+sentLine(o)+(view!=="passed"?jobLinks(o):'')+'</div><span class="pill tone-'+t+'">'+o.x.pct+'%</span>'+
         '<div class="acts">'+extraActs(o,acts,view).map(function(a,i){return '<button type="button" class="btn'+(i?' ghost':'')+'" data-act="'+a[0]+'" data-id="'+o.j.id+'" aria-label="'+a[1]+': '+e(o.j.role)+' at '+e(o.j.co)+'">'+a[1]+'</button>'}).join("")+'</div>'+(OPEN[o.j.id]&&view!=="passed"?detForm(o,view):"")+'</div>';

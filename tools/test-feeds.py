@@ -446,7 +446,7 @@ def http_checks(port):
             r = subprocess.run(["node", os.path.join(HERE, "cdp.js"), os.path.join(HERE, "ui-via.js")], env=dict(os.environ, PORT=str(port), W="390", H="844"),
                                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
             print(r.stdout.strip())
-            t("browser: the card shows 'via ...' next to 'Opens employer site' (tools/ui-via.js)", r.returncode == 0 and "FAIL" not in r.stdout and "PASS" in r.stdout, True)
+            t("browser: the card shows 'via ...' next to its apply wording (tools/ui-via.js)", r.returncode == 0 and "FAIL" not in r.stdout and "PASS" in r.stdout, True)
         else:
             print("SKIP browser check: Chrome or node not found")
     finally:
