@@ -6,6 +6,17 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 
+### Help wording: what a swipe right really does (Mohammed's review, October 22)
+- **The help answers** "How do I apply?" (test and release wording) and "What is UAply?" now give the honest rule: a swipe right
+  applies through UAply only for employers who take UAply applications; for every other job UAply sends nothing to the employer and saves it in
+  Job Tracker, Applied, where Finish applying on their site opens the employer's own page (the swipe itself opens nothing). They used to open with "Swiping right applies for you", which the landing page's rule contradicts.
+- **In the app:** the empty Job Tracker, Applied list and the last sign-up step ("A swipe right applies for you.") say the same rule; the sign-up
+  step's second line no longer says "we open their own site" (it says the job waits in Job Tracker with a link to their site).
+- **Checked:** `node check.js` has a new "Honest swipe-right wording" section: no help article or in-app script may say a swipe right
+  "applies for you" in a sentence that does not name who takes UAply applications, and the swipe-right article must say both halves
+  (it fails on the old wording), and a help sentence about every other job may not say nothing is sent without "to the employer"
+  (the profile still reaches UAply's server, which keeps a record). It scans the help articles, prod, dev and sandbox index.html, and every shared script.
+
 ### Always jobs, and an incomplete profile never blocks a swipe (Saif, October 24)
 - The deck never runs dry while there are jobs: the filters (stack, work style, minimum match, the rest) rank first; under 20 cards the
   deck goes on with the jobs outside them, nearest first, each card saying "Outside your filters: ..." on one line. Blocked companies and

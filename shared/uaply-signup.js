@@ -1026,8 +1026,8 @@ function apply(w,host){
     /* the end: honest about the app's readiness rule. Below READY_MIN a swipe right sends nothing, so this says what is missing, one tap from its field */
     if(step==="done"){var rr=ready(),low=!!(rr&&!rr.min);
       html='<div class="sg-done" style="text-align:left"><span class="sg-okc" style="margin:0">'+I.check+'</span><h2 tabindex="-1">'+(low?"Almost ready":"You’re ready to swipe.")+'</h2>'+
-        (low?'<p class="sg-sub">Before UAply can apply, add '+esc(joinAnd(rr.missing))+'. You can look through jobs now.</p>'+fixesHTML(rr):'<p class="sg-sub">A swipe right applies for you.</p>')+
-        '<p class="sg-sub">For employers who don’t take UAply applications yet, we open their own site instead.</p></div>'}
+        (low?'<p class="sg-sub">Before UAply can apply, add '+esc(joinAnd(rr.missing))+'. You can look through jobs now.</p>'+fixesHTML(rr):'<p class="sg-sub">A swipe right applies through UAply for employers who take UAply applications.</p>')+
+        '<p class="sg-sub">For employers who don’t take UAply applications, the job waits in Job Tracker with a link to their own site to finish there.</p></div>'}
     q.innerHTML='<div class="sg-stack sg-qstack">'+html+'</div>';
     var ins=q.querySelectorAll("input"),advance=function(){V.k=k+1;render(true)};
     /* one main button: Skip while the question is empty, Continue once something is picked or typed */
