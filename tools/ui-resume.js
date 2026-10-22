@@ -81,6 +81,30 @@ module.exports = async ({ ev, sleep, nav, shot, logs }) => {
   const broken = await ev(F + ".getElementById('rsMsg').textContent");
   check("a file that is not really a PDF gets a plain sentence from the server", /could not read|not switched on|scanned/i.test(broken), broken);
   await snap("resume-error");
+
+  // a business student, fresh browser: the latest job is part-time (Barista), so it fills the job fields, not the target title
+  await ev("localStorage.clear()");
+  await nav("http://127.0.0.1:" + PORT + "/?app=1"); await sleep(3500);
+  await ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b)b.click()})()"); await sleep(300);
+  await ev("(()=>{" + W + ".__uaplyOpenProf('back')})()"); await sleep(800);
+  const BIZ = fs.readFileSync(path.join(__dirname, "fixtures", "resumes", "business.pdf")).toString("base64");
+  await ev("(()=>{const w=" + W + ",d=w.document,i=d.getElementById('rsFile');const b=Uint8Array.from(atob(" + JSON.stringify(BIZ) + "),c=>c.charCodeAt(0));const dt=new w.DataTransfer();" +
+    "dt.items.add(new w.File([b],'business.pdf',{type:'application/pdf'}));i.files=dt.files;i.dispatchEvent(new w.Event('change',{bubbles:true}));return true})()");
+  await sleep(300); await waitMsg();
+  await snap("resume-student");
+  const biz = {};
+  for (const id of ["pName", "pTitle", "px-employer", "px-job_title", "px-job_start", "px-job_end", "pSkills"]) biz[id] = await val(id);
+  const pdfOn = !/not switched on|Word or text/i.test(await ev(F + ".getElementById('rsMsg').textContent"));
+  if (!pdfOn) console.log("SKIP the student's PDF (this server cannot read PDFs: pip install pypdf)");
+  else {
+    // the resume says "Expected June 2028": from then on Jordan has graduated, and the latest job is a fair target title again
+    const studying = new Date() < new Date(2028, 5, 1);
+    check(studying ? "a student's part-time job is not made their target title" : "after graduation the latest job is the target title",
+      biz.pTitle === (studying ? "" : "Barista and Shift Lead (part-time)"), JSON.stringify(biz));
+    check("...it fills Your job title there, the employer and the start month instead", biz["px-job_title"] === "Barista and Shift Lead (part-time)" &&
+      /^Lancaster Avenue Coffee Co\.?$/.test(biz["px-employer"]) && biz["px-job_start"] === "2023-09" && biz["px-job_end"] === "", JSON.stringify(biz));
+    check("...the accented name arrives whole and the skills have no half brackets", biz.pName === "Jordan Álvarez" && !/[()]/.test(biz.pSkills) && /Excel/.test(biz.pSkills), JSON.stringify([biz.pName, biz.pSkills]));
+  }
   check("no script errors", logs.length === 0, logs.join(" / ").slice(0, 300));
   console.log(bad ? bad + " problem(s)" : "All good");
 };

@@ -286,7 +286,7 @@ US_RE = re.compile(r"United States|\bUSA\b|\bU\.S\.|\bUS\b|, (?:%s)\b|, (?:%s)\b
     "|".join(STATES), STATE_NAMES, US_STATE_WORDS, US_CITIES, "|".join(STATES)))       # the last: "Abilene TX" (Lever boards write places without the comma)
 # "City, Region, CC" with a country code at the end (SmartRecruiters, Workable): "Munich, BY, DE" is Germany, "Mumbai, MH, IN" India
 FOREIGN_CODE_RE = re.compile(r",\s*[A-Z]{2,3}\s*,\s*(?!US\b|USA\b)[A-Z]{2}\s*$")
-FOREIGN_RE = re.compile(r"Germany|Mumbai|Bangalore|Bengaluru|Hyderabad|Chennai|Pune|Delhi|Gurugram|Gurgaon|Noida|Kolkata|Tel Aviv|Bogot|Medell|Manila|Cebu|Lagos|Nairobi|Warsaw|Krak|Prague|Bucharest|Kyiv|Istanbul|Cairo|Riyadh|Shanghai|Beijing|Shenzhen|Taipei|Bangkok|Jakarta|Kuala Lumpur|Ho Chi Minh|Hanoi|Buenos Aires|São Paulo|Sao Paulo|Mexico City|Guadalajara|Monterrey|Madrid|Barcelona|Milan|Rome|Zurich|Zürich|Geneva|Vienna|Stockholm|Copenhagen|Oslo|Helsinki|Brussels|Edinburgh|Manchester|Munich|Frankfurt|Hamburg|Cologne|Stuttgart|Düsseldorf|Dusseldorf|United Kingdom|\bUK\b|India|Canada|Ireland|France|Spain|Brazil|(?<!New )Mexico|Poland|Netherlands|Japan|Australia|New Zealand|\bANZ\b|Singapore|EMEA|APAC|Europe|LATAM|Latin America|Berlin|London|Dublin|Toronto|Vancouver|Montreal|Sydney|Amsterdam|Lisbon|Paris|Tokyo|Seoul|Hong Kong|Israel|Dubai|Philippines|Argentina|Colombia|Chile|Vietnam|Indonesia|Malaysia|Thailand|South Africa|Nigeria|Kenya|Egypt|Turkey|Romania|Ukraine|Czech|Portugal|Italy|Sweden|Norway|Denmark|Finland|Switzerland|Belgium|Austria", re.I)
+FOREIGN_RE = re.compile(r"Germany|Mumbai|Bangalore|Bengaluru|Hyderabad|Chennai|Pune|Delhi|Gurugram|Gurgaon|Noida|Kolkata|Tel Aviv|Bogot|Medell|Manila|Cebu|Lagos|Nairobi|Warsaw|Krak|Prague|Bucharest|Kyiv|Istanbul|Cairo|Riyadh|Shanghai|Beijing|Shenzhen|Taipei|Bangkok|Jakarta|Kuala Lumpur|Ho Chi Minh|Hanoi|Buenos Aires|São Paulo|Sao Paulo|Mexico City|Guadalajara|Monterrey|Madrid|Barcelona|Milan|Rome|Zurich|Zürich|Geneva|Vienna|Stockholm|Copenhagen|Oslo|Helsinki|Brussels|Edinburgh|Manchester|Munich|Frankfurt|Hamburg|Cologne|Stuttgart|Düsseldorf|Dusseldorf|United Kingdom|\bUK\b|\bIndia\b|Canada|Ireland|France|Spain|Brazil|(?<!New )Mexico|Poland|Netherlands|Japan|Australia|New Zealand|\bANZ\b|Singapore|EMEA|APAC|Europe|LATAM|Latin America|Berlin|London|Dublin|Toronto|Vancouver|Montreal|Sydney|Amsterdam|Lisbon|Paris|Tokyo|Seoul|Hong Kong|Israel|Dubai|Philippines|Argentina|Colombia|Chile|Vietnam|Indonesia|Malaysia|Thailand|South Africa|Nigeria|Kenya|Egypt|Turkey|Romania|Ukraine|Czech|Portugal|Italy|Sweden|Norway|Denmark|Finland|Switzerland|Belgium|Austria", re.I)
 EXPLICIT_US = re.compile(r"United States|\bUSA\b|\bU\.S\.|\bUS\b")
 
 
@@ -1169,11 +1169,13 @@ def _normalize(raw, kind, name, board=None):
     out = dict(id=jid, co=company, role=title, loc=_place(loc, mode), mode=mode,
                sal=raw.get("sal") or _salary(raw["salary_text"], text), yrs=yrs, edu=edu, skills=skills, blurb=blurb, desc=desc,
                type=typ, jobType=jtype, url=raw["url"], source=src, contact="", apply="link", live=True, ats=ats,
-               posted=raw.get("posted", 0), perks=_perks(text), comm=bool(COMM_RE.search(text)))
+               posted=_ts(raw.get("posted")), perks=_perks(text), comm=bool(COMM_RE.search(text)))
     if jtype in ("internship", "co-op") and _grad_only(title, text):
         out["gradOnly"] = True                                    # the Internship and Co-op stacks show undergraduate roles first
-    if (raw.get("updated") or 0) > (raw.get("posted") or 0):
-        out["updated"] = raw["updated"]                           # Greenhouse: the employer touched the posting after first publishing it
+    # dates in epoch ms whatever the caller gave (_ts: seconds are converted): a date in seconds reads as January 1970, and the 60-day rule
+    # (MAX_AGE_DAYS) would drop the posting without a word
+    if _ts(raw.get("updated")) > out["posted"]:
+        out["updated"] = _ts(raw.get("updated"))                  # Greenhouse: the employer touched the posting after first publishing it
     # Credit every feed, on the card ("via ...") and in the application record ("credit"): each free feed asks for it, and an employer board is the employer's own
     out["via"] = VIA.get(kind, "%s").replace("%s", name) + (", listed by " + list_credit if list_credit else "")
     out["credit"] = "via USAJOBS; apply on the official announcement" if kind == "usajobs" else "via " + out["via"]

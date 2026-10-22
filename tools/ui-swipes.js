@@ -123,23 +123,40 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   await sleep(3500);
   check("choices survive a reload", JSON.stringify(await decisions()) === JSON.stringify(dec), JSON.stringify(await decisions()));
   check("a passed or applied job does not come back after a reload", (await topKey()) !== k0);
-  // 9. a signed-in account must verify its email before it gets confirmation emails; then the message says where the confirmation is
-  await ev("fetch('/api/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'sam.swipes@example.com',password:'correct horse 99',agree:true})}).then(r=>r.status)");
-  await nav("http://127.0.0.1:" + PORT + "/");
-  await sleep(3500);
-  await click("btnYes"); await sleep(3000);
-  const unverifiedText = await ev("(" + F + ").body.innerText.split(" + NL + ").join(' ')");
+  // 9. a signed-in account gets a confirmation for each swipe right, kept in the test inbox here (no real email is connected). Since the
+  //    quiet swipe (Oct 21) a swipe right on a job that takes applications on its own site says only "Saved <company> to Applied · N%
+  //    match" (tools/ui-apply-paths.js and ui-walk.js check that wording), so the confirmation is checked where it lands: the test inbox.
+  //    The address is new on every run, so a second run on the same server is not an "already has an account" sign-up.
+  const who = "sam.swipes." + Date.now() + "@example.com";
+  await ev("fetch('/api/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'" + who + "',password:'correct horse 99',agree:true})}).then(r=>r.status)");
+  const inboxFor = (co) => ev("fetch('/outbox').then(r=>r.text()).then(t=>t.split(" + JSON.stringify(co) + ").length-1)");
+  const swipeAndInbox = async () => {
+    await nav("http://127.0.0.1:" + PORT + "/"); await sleep(3500);
+    const co = await ev("(()=>{const w=" + FW + ",c=w.document.querySelector('.card.top'),id=c?+c.getAttribute('data-id'):0,j=w.__uaply.JOBS.find(x=>x.id===id);return j?j.co:''})()");   // the card Apply acts on
+    const n0 = await inboxFor(co);
+    await click("btnYes");
+    // the swipe goes out after its few seconds of Undo time and its message comes with the server's answer: wait for both, up to 20 s
+    let n1 = n0, text = "";
+    for (let i = 0; i < 40; i++) {
+      await sleep(500);
+      if (n1 <= n0) n1 = await inboxFor(co);
+      if (!/Saved .+ to Applied · \d+% match|Applied to /.test(text)) text = await ev("(" + F + ").body.innerText.split(" + NL + ").join(' ')");
+      if (n1 > n0 && /Saved .+ to Applied · \d+% match|Applied to /.test(text)) break;
+    }
+    return { co, before: n0, after: n1, text };
+  };
+  const u = await swipeAndInbox();
   // with no real email connected (this test), nothing leaves the server, so even an unverified account's confirmation is kept in the test inbox;
   // with real email connected, an unverified account is told to verify first (covered by test-verify.py)
-  check("signed in but not verified: the swipe says where the confirmation is kept", /Verify your email|Confirmation is in the test inbox/.test(unverifiedText), unverifiedText.slice(-150));
-  const code = await ev("fetch('/outbox').then(r=>r.text()).then(t=>{const m=t.match(/([0-9]{6}) is your UAply verification code/);return m?m[1]:''})");
+  check("signed in but not verified: the swipe right is saved, and its confirmation is kept in the test inbox",
+    /Saved .+ to Applied · \d+% match|Applied to /.test(u.text) && u.after > u.before, JSON.stringify({ co: u.co, before: u.before, after: u.after }) + " " + u.text.slice(-120));
+  // this account's own code (the test inbox lists every account's mail): the subject is "123456 is your UAply verification code to <address>"
+  const code = await ev("fetch('/outbox').then(r=>r.text()).then(t=>{t=t.replace(/<[^>]+>/g,' ').replace(/\\s+/g,' ');const m=t.match(new RegExp('([0-9]{6}) is your UAply verification code to '+" + JSON.stringify(who.replace(/\./g, "\\.")) + "));return m?m[1]:''})");
   check("the verification code is in the test inbox", /^[0-9]{6}$/.test(code), code);
   check("the code verifies the account", (await ev("fetch('/api/auth/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:'" + code + "'})}).then(r=>r.status)")) === 200);
-  await nav("http://127.0.0.1:" + PORT + "/");
-  await sleep(3500);
-  await click("btnYes"); await sleep(3000);
-  const toastText = await ev("(" + F + ").body.innerText.split(" + NL + ").join(' ')");
-  check("verified: the message says where the confirmation is", toastText.includes("Confirmation is in the test inbox: http://127.0.0.1:" + PORT + "/outbox"), toastText.slice(-170));
+  const v = await swipeAndInbox();
+  check("verified: the swipe right is saved, and its confirmation is in the test inbox", /Saved .+ to Applied · \d+% match|Applied to /.test(v.text) && v.after > v.before,
+    JSON.stringify({ co: v.co, before: v.before, after: v.after }) + " " + v.text.slice(-120));
   check("the test inbox page opens and lists the confirmation", /Sam Rivera|sam.swipes@example.com/.test(await ev("fetch('/outbox').then(r=>r.text())")));
   check("no script errors during any of it", logs.length === 0, logs.join(" / ").slice(0, 160));
   console.log(bad ? "\n" + bad + " check(s) failed" : "\nAll swipe checks passed");

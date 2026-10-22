@@ -17,7 +17,13 @@ function readCache(){
     return c.jobs.filter(function(j){return j&&j.id>=100000&&Date.now()-(j.seen||0)<MAX_AGE});
   }catch(e){return []}
 }
-function writeCache(jobs){try{localStorage.setItem(cacheKey(),JSON.stringify({jobs:jobs.slice(-MAX_CACHE)}))}catch(e){}}
+/* the saved copy of the job list: every job the person swiped on first (their Applied and Passed rows need the job itself, even after it
+   leaves the feed), then the newest of the rest, MAX_CACHE in all. Keeping only the last MAX_CACHE of the list lost the swiped ones as
+   soon as the feed passed 400 postings (it is over 1,000 now). */
+function writeCache(jobs,decided){
+  var keep=decided?jobs.filter(function(j){return decided[j.id]}):[],rest=decided?jobs.filter(function(j){return !decided[j.id]}):jobs;
+  try{localStorage.setItem(cacheKey(),JSON.stringify({jobs:keep.slice(-MAX_CACHE).concat(rest.slice(-Math.max(0,MAX_CACHE-keep.length)))}))}catch(e){}
+}
 
 /* ---------------- live ---------------- */
 function patch(s){
@@ -28,6 +34,9 @@ function patch(s){
     "var JOB_BY_ID={};JOBS.forEach(function(j){JOB_BY_ID[j.id]=j});\nwindow.__uaplyJobs={add:function(list){var n=0;list.forEach(function(j){if(!JOB_BY_ID[j.id]){JOBS.push(j);JOB_BY_ID[j.id]=j;n++}else{var o=JOB_BY_ID[j.id];if(j.posted)o.posted=j.posted;if(j.perks)o.perks=j.perks;if(j.type)o.type=j.type;if(j.jobType)o.jobType=j.jobType;o.comm=!!j.comm}});renderAll();return n}};\n"+
     /* Links open as real anchor clicks (a user gesture), which popup blockers accept; window.open can be refused silently. */
     "window.__uaplyOpen=function(u){if(!/^https:\\/\\//.test(u||\"\"))return;var a=document.createElement(\"a\");a.href=u;a.target=\"_blank\";a.rel=\"noopener noreferrer\";document.body.appendChild(a);a.click();a.remove()};");
+  /* a swipe on a real posting is kept when the page starts, even before the job list arrives (or after the job left the feed): the start-up
+     read used to drop every decision whose job was not in the list yet, and the next save made that loss permanent */
+  s=once(s,'if(JOB_BY_ID[k]&&x&&(x.s==="applied"||x.s==="passed"))','if((JOB_BY_ID[k]||+k>=100000)&&x&&(x.s==="applied"||x.s==="passed"))');
   s=once(s,"return !S.decisions[j.id]&&","return !S.decisions[j.id]&&(j.live||!window.__uaplyHideSamples)&&");
   s=once(s,"'+money(j.sal[0])+'–'+money(j.sal[1])+'<small>per year</small>","'+(j.sal[1]>0?money(j.sal[0])+'–'+money(j.sal[1])+'<small>per year</small>':'Pay not listed')+'");
   s=once(s,"var salOk=job.sal[1]>=p.salary;","var unk=job.sal[1]<=0;var salOk=unk||job.sal[1]>=p.salary;");
@@ -82,7 +91,7 @@ function apply(w,host){
     var all=readCache(),ids={};all.forEach(function(j){ids[j.id]=1});
     var byId={};fresh.forEach(function(j){byId[j.id]=j;if(!ids[j.id])all.push(j)});
     all.forEach(function(c){var f=byId[c.id];if(f){c.posted=f.posted;c.perks=f.perks;c.type=f.type;c.jobType=f.jobType;c.comm=!!f.comm;c.via=f.via}});   /* keep saved copies current */
-    writeCache(all);
+    writeCache(all,(w.__uaply&&w.__uaply.S&&w.__uaply.S.decisions)||null);
     var src=Object.keys(data.sources||{}).map(function(k){return k+": "+data.sources[k]}).join(" · ");
     say("Real postings: "+fresh.length+" loaded ("+added+" new). "+src);
   }).catch(function(e){w.__uaplyLoadingJobs=false;
@@ -617,6 +626,9 @@ function kitApply(w,host){
         if(j.status==="needs_answers"){
           var qs=Array.isArray(j.questions)?j.questions:[];
           if(retry||!qs.length){mark("needs_answers");return}      /* asked when the person taps Answer now in Applied */
+          /* marked before the box opens: if the person leaves it open, goes to Applied or closes the app, the job says "Not sent yet",
+             never a plain "Applied" for an application nothing was sent for. Sending replaces the mark; Not now takes the swipe back */
+          mark("needs_answers");
           askSheet(job,qs,j.filled||0,j.total||0,deliver,function(){revert();toast("Not sent. "+job.co+" is back in your deck.")});
           return;
         }

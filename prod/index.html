@@ -7,7 +7,9 @@
 <title>UAply</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap">
+<!-- the fonts never hold the app back: loaded as a non-blocking stylesheet (media=print, switched to all once it arrives), so a slow or
+     blocked fonts.googleapis.com never delays the page's scripts; until then the system fonts in the CSS below are used -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" media="print" onload="this.media='all'">
 <style>
 /* Layout: one-screen app. Header with tabs, a centered swipe deck (max 460px) with action buttons, list and form views as scrolling panes. */
 :root{

@@ -47,5 +47,13 @@
     "employer": "Lone Star Credit Union", "job_title": ["Help Desk Technician", "help desk technician"], "job_start": "2022", "job_end": "present",
     "skills": ["Windows", "Active Directory", "Excel", "Networking"],
     "location": {"city": "Austin", "state": "TX", "zip": "78701"}
+  },
+  "business.pdf": {
+    "name": "Jordan Álvarez", "email": "jordan.alvarez@example.edu", "phone": "(267) 555-0182",
+    "linkedin": "https://www.linkedin.com/in/jordan-alvarez-example",
+    "school": "Drexel University", "major": "Business Administration", "grad": "2028-06", "gpa": "3.58",
+    "employer": ["Lancaster Avenue Coffee Co", "Lancaster Avenue Coffee Co."], "job_title": "Barista and Shift Lead (part-time)", "job_start": "2023-09", "job_end": "present",
+    "skills": ["Excel", "Tableau", "SQL", "Canva", "HubSpot"],
+    "location": {"city": "Philadelphia", "state": "PA", "zip": "19104"}
   }
 }

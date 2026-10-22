@@ -32,6 +32,9 @@ function patch(s){
            'var X=!p.custom;$("pName").value=X?"":p.name;$("pTitle").value=X?"":p.title;$("pYears").value=X?"":p.years;$("pEdu").value=p.edu;');
   s=once(s,'regional cookbooks."}','regional cookbooks."}'+EXTRA);
   s=once(s,'var busy=false,F="all";','var busy=false,F="all",TYPE="job",MINPCT=0;');
+  /* the app never says how many jobs a section holds (the owner's rule; counts stay on the owner's pages and /api/status): the line
+     above the deck keeps only the person's own "N applied" */
+  s=once(s,`innerHTML='<span>'+q.length+' job'+(q.length===1?'':'s')+' left</span>`,`innerHTML='<span></span>`);
   s=once(s,'.sort(function(a,b){return b.m.pct-a.m.pct});','.sort(window.__uaplyDeckSort?window.__uaplyDeckSort(TYPE):function(a,b){return b.m.pct-a.m.pct});');   /* the Internship and Co-op stacks: see __uaplyDeckSort */
   s=once(s,'&&(F==="all"||j.mode===F)}).map(function(j){return {j:j,m:evaluate(j,S.profile)}}).sort(',
            '&&(j.type||"job")===TYPE&&!(window.__uaplyHide&&window.__uaplyHide(j))&&(F==="all"||j.mode===F)}).map(function(j){return {j:j,m:evaluate(j,S.profile)}}).filter(function(x){return x.m.pct>=MINPCT}).sort(');
@@ -387,7 +390,7 @@ function apply(w,host){
 
   function count(k,v){
     var n=0;
-    if(k==="prof"||v==="overview"||(k==="svc"&&OPTS.hideServiceCounts))return "";
+    if(k==="prof"||v==="overview"||k==="svc")return "";   /* never how many jobs a section holds (Jobs menu); Dashboard keeps the person's own counts */
     A.JOBS.forEach(function(j){
       if(w.__uaplyHideSamples&&!j.live)return;
       if(w.__uaplyHide&&w.__uaplyHide(j))return;
@@ -682,6 +685,7 @@ function apply(w,host){
     return cleanF(a);
   }
   var acct=loadA();
+  var TITLE_FREE={internship:1,coop:1},NOTITLE=false,RELAX=null;   /* the target-title filter's exceptions: see titleRelaxed below */
   function saveA(){try{w.localStorage.setItem(AK,JSON.stringify(acct));return true}catch(e){return false}}
   try{if(!w.localStorage.getItem(AK))saveA()}catch(e){}   /* fix the trial start date on first visit instead of resetting it each reload */
   function list(s){return String(s).split(",").map(function(x){return x.trim().toLowerCase()}).filter(Boolean)}
@@ -827,36 +831,53 @@ function apply(w,host){
     titleList().forEach(function(t){var tk=tokens(t);if(!tk.length)return;var fr=tk.filter(function(x){return hasWord(role,x)}).length/tk.length;if(fr>best){best=fr;name=t}});
     return {fr:best,name:name};
   }
-  /* a short note above the cards when the target-title filter is what is hiding every listing */
+  /* "Hide roles that do not match my target titles" never empties a stack by itself (the October 21 student walk: a new student's two
+     marketing titles hid nearly every internship and the Jobs menu read "Internships 0"):
+     - Internships and Co-op are never filtered by title: a student takes an internship in whatever role it is.
+     - On any other stack where no listing matches a target title, the roles are shown anyway, with a one-line note (titleNote).
+     The other filters still apply. titleRelaxed is worked out once per stack per moment (the cache empties on the next tick). */
+  function titleKind(j){return !TITLE_FREE[j.type||"job"]}
+  function titleRelaxed(ty){
+    if(!RELAX){RELAX={};setTimeout(function(){RELAX=null},0)}
+    var key=ty+"\u0001"+titleList().join("\u0001");   /* titles changed and the deck redrawn in the same moment: worked out again */
+    if(Object.prototype.hasOwnProperty.call(RELAX,key))return RELAX[key];
+    RELAX[key]=false;
+    var any=false,match=false;
+    NOTITLE=true;                                   /* every other filter, without the title one */
+    try{
+      for(var i=0;i<A.JOBS.length&&!match;i++){
+        var j=A.JOBS[i];
+        if((j.type||"job")!==ty||(w.__uaplyHideSamples&&!j.live)||w.__uaplyHide(j))continue;
+        any=true;if(titleBest(j).fr>=0.6)match=true;
+      }
+    }finally{NOTITLE=false}
+    return (RELAX[key]=any&&!match);
+  }
+  /* the one-line note above the cards when target titles were set aside on this stack, with the way to Filters */
   function titleNote(){
     var pane=d.getElementById("pane-swipe");if(!pane)return;
     var n=d.getElementById("titleNote");
     if(!n){n=d.createElement("p");n.id="titleNote";n.className="note";n.setAttribute("role","status");n.style.cssText="margin:0 0 8px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface)";var deck=d.getElementById("deck");deck.parentNode.insertBefore(n,deck)}
-    var ty=A.getType(),shown=0,byTitle=0,saved=acct.fTitleOnly;
-    if(saved&&A.S.profile.custom&&titleList().length){
-      A.JOBS.forEach(function(j){
-        if((j.type||"job")!==ty||A.S.decisions[j.id]||(w.__uaplyHideSamples&&!j.live))return;
-        if(!w.__uaplyHide(j))shown++;else{acct.fTitleOnly=false;if(!w.__uaplyHide(j))byTitle++;acct.fTitleOnly=saved}
-      });
-    }
-    n.hidden=!(shown===0&&byTitle>0);
-    if(!n.hidden){
-      n.textContent=byTitle+" listing"+(byTitle===1?" is":"s are")+" hidden because "+(byTitle===1?"it does":"they do")+" not match your target titles. Add more titles in Profile setup, under Jobs you want, or show every role here. ";
-      /* one tap instead of a trip to Profile, Filters: the same switch as "Hide roles that do not match my target titles" there */
-      var b=d.createElement("button");b.type="button";b.className="btn ghost";b.id="titleShowAll";b.textContent="Show all roles";b.style.cssText="margin-top:8px;display:block";
-      b.onclick=function(){acct.fTitleOnly=false;saveA();try{A.renderAll()}catch(e){}};
+    var ty=A.getType();
+    n.hidden=!(acct.fTitleOnly&&A.S.profile.custom&&titleList().length&&titleKind({type:ty})&&titleRelaxed(ty));
+    if(!n.hidden&&!d.getElementById("titleFilters")){
+      n.textContent="Showing all roles: none matched your target titles. ";
+      var b=d.createElement("button");b.type="button";b.className="linkbtn";b.id="titleFilters";b.textContent="Filters";
+      b.onclick=function(){w.__uaplyOpenProf("filters")};
       n.appendChild(b);
     }
   }
   /* what an empty deck says (heading, line). "You have seen every one of these" only when the person really has: when every listing of
      this kind is hidden by their filters or target titles (a new profile whose titles the feed does not have yet), it says so and where to
      widen them, instead of telling someone who has seen nothing that they have seen everything. */
+  d.addEventListener("click",function(e){var b=e.target.closest&&e.target.closest("[data-open-filters]");if(b)w.__uaplyOpenProf("filters")});   /* the empty deck's Filters link */
   w.__uaplyEmpty=function(jobs,S,type){
+    /* no numbers: the app never says how many jobs a section holds (the owner's rule), only what to do next */
     var all=jobs.filter(function(j){return (j.type||"job")===type&&(j.live||!w.__uaplyHideSamples)}),
         seen=all.filter(function(j){return S&&S.decisions&&S.decisions[j.id]}).length,hid=all.length-seen,
-        n=function(k){return k+" listing"+(k===1?" is":"s are")};
+        what={job:"full-time jobs",parttime:"part-time jobs",internship:"internships",coop:"co-ops"}[type]||"jobs";
     if(!all.length)return ["Nothing listed here right now","New postings appear as employers publish them. Try another section or check back soon."];
-    if(hid)return [(seen?"No more jobs here match":"No jobs here match")+" your profile and filters",n(hid)+" hidden by your filters or target titles. Open Profile, then Filters to see more, or pick another kind of job in the Jobs menu."+(seen?" Jobs you passed on can come back.":"")];
+    if(hid)return [(seen?"No more ":"No ")+what+" match your filters yet",'Widen them in <button type="button" class="linkbtn" data-open-filters="1">Filters</button>, or pick another kind of job in the Jobs menu.'+(seen?" Jobs you passed on can come back.":"")];
     return ["You have seen every one of these","Jobs you passed on can come back, and your applications are in the Dashboard."];
   };
   /* a short note when you are looking at an opportunity type you did not pick in your profile */
@@ -911,7 +932,7 @@ function apply(w,host){
     for(var i=0;i<acct.fPerks.length;i++){
       if(!j.perks){if(strict)return true}else if(j.perks.indexOf(acct.fPerks[i])<0)return true;
     }
-    if(acct.fTitleOnly&&A.S.profile.custom&&titleList().length&&titleBest(j).fr<0.6)return true;
+    if(acct.fTitleOnly&&!NOTITLE&&A.S.profile.custom&&titleList().length&&titleKind(j)&&!titleRelaxed(j.type||"job")&&titleBest(j).fr<0.6)return true;
     if(acct.fNoComm&&isSales()&&j.comm)return true;
     if(acct.fLevels.length&&acct.fLevels.indexOf(levelOf(j.yrs)[0])<0)return true;
     if(acct.fEdu){var je=LEVELS.indexOf(j.edu),pe=LEVELS.indexOf(A.S.profile.edu);if(je>-1&&pe>-1&&je>pe)return true}
@@ -1166,7 +1187,7 @@ function apply(w,host){
       '<div class="checks" style="margin-top:8px"><label><input type="checkbox" id="fApp"> Under 10 applicants</label><label><input type="checkbox" id="fInstant"> Only jobs I can apply to instantly</label></div><small id="fAppNote">Applicant counts come from UAply. Listings from outside feeds do not have one yet.</small>'+
       (NEAR?'<div id="fMilesWrap" class="nearbox"><label for="fMiles">Commute distance</label><input type="range" id="fMiles" min="0" max="105" step="5" value="105" aria-describedby="fMilesV"><div class="rngrow"><b id="fMilesV" aria-live="polite"></b><span class="m">Left end: remote only. Right end: any distance.</span></div><small id="fMilesNote"></small><div id="fLoc"><small id="fLocState"></small><button type="button" class="btn ghost" id="fLocBtn">Use my location</button></div></div>'
         :'<div id="fMilesWrap"><label for="fMiles">Distance from your city</label><select id="fMiles"><option value="any">Any distance</option><option value="10">Within 10 miles</option><option value="20">Within 20 miles</option><option value="50">Within 50 miles</option><option value="100">Within 100 miles</option></select><small id="fMilesNote"></small></div>')+
-      '<div class="checks" style="margin-top:8px"><label><input type="checkbox" id="fTitleOnly"> Hide roles that do not match my target titles</label></div><small>Uses your target titles in Profile setup. Off if you have not set your own details.</small>'+
+      '<div class="checks" style="margin-top:8px"><label><input type="checkbox" id="fTitleOnly"> Hide roles that do not match my target titles</label></div><small>Uses your target titles in Profile setup. Off if you have not set your own details. Internships and co-ops are never hidden by title, and when no listing in a section matches your titles, all its roles are shown.</small>'+
       '<div class="checks" style="margin-top:8px"><label><input type="checkbox" id="fWsPick"> Hide work styles I did not pick</label></div><small>Uses the work styles ticked in Profile setup, under Where and pay. If none are ticked, every style shows.</small>'+
       '<div id="fCommWrap"><div class="checks" style="margin-top:8px"><label><input type="checkbox" id="fNoComm"> Remove commission-only roles</label></div><small>Shown because your titles are in sales. Based on what the posting says.</small></div>'+
       '<span class="l" style="margin-top:8px;display:block">Experience level</span><div class="checks" id="fLevels">'+XP.map(function(x){return '<label><input type="checkbox" data-lvl="'+x[0]+'"> '+x[1]+'</label>'}).join("")+'</div><small>Pick none to see every level.</small>'+
@@ -2242,7 +2263,7 @@ function apply(w,host){
      built above and by the Application profile experiment; each is assigned to a step by the ids listed in `anchors`. */
   var STEPS=[
     {k:"about",t:"About you",s:"About you",q:"Who should employers contact?",use:"These details go on every application you send, so an employer can reply to you.",anchors:["pName","pEmail","pPhone","px-phone","px-headline"]},
-    {k:"jobs",t:"Jobs you want",s:"Jobs",q:"What kind of work are you looking for?",use:"This is the core of your matches. Titles, skills, experience and education change every score and decide which jobs show. The opportunity types you pick open first in Services.",anchors:["pTitle","px-types-fulltime","pSkills","pYears","pEdu"]},
+    {k:"jobs",t:"Jobs you want",s:"Jobs",q:"What kind of work are you looking for?",use:"This is the core of your matches. Titles, skills, experience and education change every score and decide which jobs show. The opportunity types you pick open first in the Jobs menu at the bottom.",anchors:["pTitle","px-types-fulltime","pSkills","pYears","pEdu"]},
     {k:"where",t:"Where and pay",s:"Where and pay",q:"Where, how, and for how much?",use:"City, work style, distance, willingness to relocate and minimum pay all change your match score and which jobs show. Your state, ZIP code and country also fill in employer forms, and your state and ZIP code help find your location for distance. Your street stays on this device.",anchors:["aAddr","pm-remote","aMilesF","pSalary","px-start","aNoticeF"]},
     {k:"back",t:"Background and links",s:"Background",q:"Show employers who you are.",use:"Sent with your applications. Your headline, summary and major also count as skills when a job asks for them. GPA is optional and never changes a match.",anchors:["px-school","px-major","px-grad","px-gpa","px-employer","px-job_title","px-job_start","px-job_end","px-summary","px-resume","px-linkedin","px-portfolio","aResF","aSummaryF","aLinkedF","aSiteF","aCoverF"]},
     {k:"final",t:"Eligibility and extras",s:"Eligibility",q:"Last details.",use:"Work authorization is added to applications only. It never changes a match or hides a job. The optional section at the bottom is yours to skip.",anchors:["px-auth","px-sponsor","aElig","aAutoF","aKept","aEeo"]}

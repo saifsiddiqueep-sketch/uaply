@@ -4,8 +4,8 @@
 // 1. a message after a swipe uses the phone's width (it used to wrap into a column half the screen wide, over the card)
 // 2. Save and continue in Profile setup opens the next step at its top (it used to scroll to the step's last field)
 // 3. a LinkedIn link typed as "linkedin.com/in/..." is completed to https:// instead of blocking Save
-// 4. an empty deck where every listing is hidden by the target titles says so (not "You have seen every one of these") and
-//    "Show all roles" brings the jobs back in one tap
+// 4. when no listing matches the target titles, the deck shows the roles anyway with "Showing all roles: none matched your target
+//    titles" and a way to Filters (since Oct 21); an empty deck that other filters hide says so (not "You have seen every one of these")
 // 5. Data & privacy: a restore says "Restored." (the message used to be wiped at once); "Show it again" drops "You only see this once"
 // 6. Account: the line above "You are signed in" no longer asks to sign in; "Sign in" everywhere (not "Log in"); a sign-out or a
 //    password change that reaches a restarting server (502) says so, and a failed sign-out never claims "Signed out."
@@ -107,16 +107,16 @@ module.exports = async ({ ev, sleep, nav, send, logs, on }) => {
     (await q("return w.__uaplyFullLink('www.example.com/me')+' | '+w.__uaplyFullLink('http://site.org')+' | '+w.__uaplyFullLink('my site')")) === "https://www.example.com/me | https://site.org | my site",
     await q("return w.__uaplyFullLink('www.example.com/me')+' | '+w.__uaplyFullLink('http://site.org')+' | '+w.__uaplyFullLink('my site')"));
 
-  // 4. finish: every listing is hidden by the target title
+  // 4. finish: no listing matches the target title. Since Oct 21 the title filter never empties a stack: the roles show, with a note
   await tap("d.getElementById('wzNext')");
-  const empty = await waitFor("return !d.querySelector('.card.top')&&d.querySelector('#deck .empty h2')?d.querySelector('#deck .empty').innerText.replace(/\\s+/g,' '):''", 8000);
-  check("4. an empty deck hidden by filters says '(No|No more) jobs here match your profile and filters'", /No (more )?jobs here match your profile and filters/.test(empty || ""), empty);
-  check("4. ...with how many are hidden, not 'You have seen every one of these'", !/You have seen every one/.test(empty || "") && /\d+ listings? (is|are) hidden by your filters or target titles/.test(empty || ""), empty);
+  const back = await waitFor("return d.querySelectorAll('.card').length", 8000);
   const note = await text("#titleNote");
-  check("4. the target-title note offers Show all roles", /hidden because/.test(note) && !!(await q("return !!d.getElementById('titleShowAll')")), note);
-  await tap("d.getElementById('titleShowAll')");
-  const back = await waitFor("return d.querySelectorAll('.card').length", 5000);
-  check("4. one tap on Show all roles brings the jobs back and turns the filter off", back > 0 && (await q("return d.getElementById('titleNote').hidden")) === true, back);
+  check("4. when no listing matches the target titles, the deck still shows the jobs", back > 0, back);
+  check("4. ...with the one-line note 'Showing all roles: none matched your target titles' and a way to Filters",
+    /^Showing all roles: none matched your target titles\. Filters$/.test(note) && !!(await q("return !!d.getElementById('titleFilters')")), note);
+  const empty = await q("const A=w.__uaply;return w.__uaplyEmpty(A.JOBS,{decisions:{}},'job').join(' ')");
+  check("4. an empty deck that other filters hide still says so (no number), not 'You have seen every one of these'",
+    /No full-time jobs match your filters yet/.test(empty) && /Filters/.test(empty) && !/\d/.test(empty.replace(/<[^>]+>/g, "")) && !/You have seen every one/.test(empty), empty);
 
   // 5. Data & privacy: restore, then Show it again
   await menu("nb-prof", "data");
