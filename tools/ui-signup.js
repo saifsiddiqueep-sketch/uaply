@@ -132,7 +132,7 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   await click(".sg-next"); await sleep(400);
   t = await text();
   check("then 'Almost ready': a phone number or a resume before UAply can apply, one tap from each, and the line about employers' own sites",
-    /Almost ready/.test(t) && /Before UAply can apply, add a phone number or a resume/.test(t) && /open their own site/.test(t) && !/only when a job needs/i.test(t) &&
+    /Almost ready/.test(t) && /Before UAply can apply, add a phone number or a resume/.test(t) && /For employers who don.t take UAply applications, the job waits in Job Tracker/.test(t) && !/applies for you/i.test(t) && !/only when a job needs/i.test(t) &&
     (await ev("!!" + q("[data-ready=phone]") + "&&!!" + q("[data-ready=resume]"))), t.slice(0, 300));
   await click(".sg-next"); await sleep(1200);
   check("Start swiping goes to the cards", await ev("!" + F + ".getElementById('pane-swipe').hidden"));
