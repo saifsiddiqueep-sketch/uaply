@@ -179,7 +179,7 @@ try:
         try:
             J._public_ip(host + ".acme.example")
             refused = False
-        except J.NotPublic:
+        except (J.NotPublic, J.NoAddress):
             refused = True
         t("a careers site whose name resolves to %s is refused before any connection" % (NAMES.get(host + ".acme.example") or "nothing"), refused, True)
     t("...a name with a public address is fine", J._public_ip("pub.acme.example"), "93.184.216.34")

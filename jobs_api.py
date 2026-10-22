@@ -256,13 +256,18 @@ class NotPublic(OSError):
     """A careers site's address (or a redirect from it) that is not a public https address: refused before anything is sent."""
 
 
+class NoAddress(OSError):
+    """A name that does not resolve (perhaps only for now): nothing was sent. Not the same as NotPublic, so the dead-link check does not
+    count a DNS hiccup as a dead page."""
+
+
 def _public_ips(host, port=443):
     """Every address `host` has, in the order to try them, when all of them are public; NotPublic otherwise (private, loopback,
     link-local such as the cloud metadata address 169.254.169.254, shared 100.64/10, reserved, multicast, or a name that does not resolve)."""
     try:
         infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     except (socket.gaierror, UnicodeError) as e:
-        raise NotPublic("%s does not resolve" % host) from e
+        raise NoAddress("%s does not resolve" % host) from e
     out = []
     for info in infos:
         raw = str(info[4][0]).split("%")[0]
@@ -274,7 +279,7 @@ def _public_ips(host, port=443):
         if raw not in out:
             out.append(raw)
     if not out:
-        raise NotPublic("%s does not resolve" % host)
+        raise NoAddress("%s does not resolve" % host)
     return out
 
 
@@ -283,9 +288,9 @@ def _public_ip(host, port=443):
     return _public_ips(host, port)[0]
 
 
-class _PublicHTTPSConnection(http.client.HTTPSConnection):
-    """An https connection that looks the name up once, refuses it unless every address is public (_public_ip), and connects to that very
-    address (the certificate is still checked against the name), so a name that answers differently a moment later changes nothing."""
+class _PublicConnect:
+    """A connection that looks the name up once, refuses it unless every address is public (_public_ips), and connects to those very
+    addresses (an https certificate is still checked against the name), so a name that answers differently a moment later changes nothing."""
 
     def __init__(self, *a, **k):
         super().__init__(*a, **k)
@@ -304,23 +309,61 @@ class _PublicHTTPSConnection(http.client.HTTPSConnection):
         raise err
 
 
+class _PublicHTTPSConnection(_PublicConnect, http.client.HTTPSConnection):
+    pass
+
+
+class _PublicHTTPConnection(_PublicConnect, http.client.HTTPConnection):
+    pass
+
+
 class _PublicHTTPSHandler(urllib.request.HTTPSHandler):
     def https_open(self, req):
         return self.do_open(_PublicHTTPSConnection, req, context=self._context)
 
 
+class _PublicHTTPHandler(urllib.request.HTTPHandler):
+    def http_open(self, req):
+        return self.do_open(_PublicHTTPConnection, req)
+
+
+class RedirectRefused(urllib.error.HTTPError):
+    """A redirect to an address that is not allowed (see _PublicRedirect): it was not followed."""
+
+
 class _PublicRedirect(urllib.request.HTTPRedirectHandler):
-    """A careers site's redirect is followed only to a public https address (the same rules as its first address), every hop."""
+    """A careers site's redirect is followed only to a public https address (the same rules as its first address), every hop; with
+    http_ok (the dead-link check) also to a public http one. urllib's own cap on redirects (10) still applies."""
+    http_ok = False
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        if not _public_https(newurl):
-            raise urllib.error.HTTPError(req.full_url, code, "a redirect to an address that is not public https was not followed", headers, fp)
+        if not (_public_link(newurl) if self.http_ok else _public_https(newurl)):
+            raise RedirectRefused(req.full_url, code, "a redirect to an address that is not public was not followed", headers, fp)
         return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+class _PublicLinkRedirect(_PublicRedirect):
+    http_ok = True
+
+
+def _public_link(url):
+    """A public http or https address: a named host (no IP address, no localhost or .local / .internal name), no user:password, and no
+    port but the scheme's own (80 or 443): the only kind the dead-link check opens or follows a redirect to."""
+    try:
+        u = urllib.parse.urlsplit(str(url or ""))
+        port = u.port
+    except ValueError:
+        return False
+    host = (u.hostname or "").lower()
+    return (u.scheme in ("http", "https") and port in (None, 80 if u.scheme == "http" else 443) and bool(host) and "." in host and not u.username
+            and not re.match(r"^[\d.]+$|^\[", host) and not host.endswith((".local", ".internal", ".localhost", "localhost")))
 
 
 # every request to an employer's careers site (robots.txt, the sitemap, each job page), October 22 review: urllib's own opener followed a
 # redirect anywhere (http, an internal address) and connected to whatever the name resolved to
 _cp_open = urllib.request.build_opener(_PublicHTTPSHandler(), _PublicRedirect()).open
+# the dead-link check of every job's apply page (_link_alive): the same rules, plain http allowed
+_link_open = urllib.request.build_opener(_PublicHTTPSHandler(), _PublicHTTPHandler(), _PublicLinkRedirect()).open
 
 
 def _public_https(url):
@@ -2200,19 +2243,26 @@ _link_thread = []
 
 
 def _link_alive(url):
-    """True: the page answers (a person can open it); False: it is gone (404/410, or the board's own "no longer open" page); None:
-    cannot tell (blocked by a bot check, rate-limited, a time-out): never counted against a source."""
+    """True: the page answers (a person can open it); False: it is gone (404/410, or the board's own "no longer open" page), or it is not
+    a public page (an internal or metadata address, or a redirect to one: never opened or followed, _link_open); None: cannot tell
+    (blocked by a bot check, rate-limited, a time-out): never counted against a source."""
+    if not _public_link(url):
+        return False
     try:
         req = urllib.request.Request(url, headers={"User-Agent": LINK_UA, "Accept": "text/html,*/*"})
-        with urllib.request.urlopen(req, timeout=15) as r:
+        with _link_open(req, timeout=15) as r:
             final = r.geturl() or url
             body = r.read(20000).decode("utf-8", "replace").lower()
         if re.search(r"[?&]error=true\b", final) or "job not found" in body or "no longer accepting applications" in body or \
                 "this job is no longer available" in body or "the job you are looking for is no longer open" in body or "posting has been closed" in body:
             return False                         # Greenhouse sends a closed posting to its board with ?error=true; others say so on the page
         return True
+    except RedirectRefused:
+        return False
     except urllib.error.HTTPError as e:
         return False if e.code in (404, 410) else None
+    except urllib.error.URLError as e:
+        return False if isinstance(e.reason, NotPublic) else None
     except Exception:
         return None
 
