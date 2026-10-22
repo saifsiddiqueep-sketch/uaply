@@ -556,13 +556,22 @@ function apply(w,host){
     }
     tp.innerHTML=h;
   }
-  /* a source tag on Greenhouse and Lever links only, added as text so the rest of the address stays exactly as the employer wrote it */
+  /* "Finish applying on their site" opens the employer's application form, not the posting (apply journey, October 22): Lever's form is the
+     posting's address plus /apply, Ashby's plus /application, SmartRecruiters' the posting with ?oga=true (the applyUrl its own API gives,
+     checked October 22); Greenhouse shows the form on the posting page. A source tag goes on Greenhouse and Lever links. All of it is added
+     as text, so the rest of the address stays exactly as the employer wrote it (nothing is re-encoded) */
   function handoffURL(u){
     try{
-      var h=new w.URL(u).hostname.toLowerCase(),k=/(^|\.)greenhouse\.io$/.test(h)?"gh_src":/(^|\.)lever\.co$/.test(h)?"lever-source":"";
-      if(!k||new RegExp("[?&]"+k+"=").test(u.split("#")[0]))return u;
-      var i=u.indexOf("#"),base=i<0?u:u.slice(0,i),hash=i<0?"":u.slice(i);
-      return base+(base.indexOf("?")<0?"?":(/[?&]$/.test(base)?"":"&"))+k+"=uaply"+hash;
+      var url=new w.URL(u),h=url.hostname.toLowerCase(),path=url.pathname;
+      var i=u.indexOf("#"),base=i<0?u:u.slice(0,i),hash=i<0?"":u.slice(i),qi=base.indexOf("?"),where=qi<0?base:base.slice(0,qi),query=qi<0?"":base.slice(qi);
+      var UUID="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",add=[];
+      if(h==="jobs.lever.co"&&new RegExp("^/[^/]+/"+UUID+"/?$","i").test(path))where=where.replace(/\/?$/,"/apply");
+      else if(h==="jobs.ashbyhq.com"&&new RegExp("^/[^/]+/"+UUID+"/?$","i").test(path))where=where.replace(/\/?$/,"/application");
+      else if(h==="jobs.smartrecruiters.com"&&/^\/[^\/]+\/\d{6,20}(-[^\/]*)?\/?$/.test(path)&&!/[?&]oga=/.test(query))add.push("oga=true");
+      var k=/(^|\.)greenhouse\.io$/.test(h)?"gh_src":/(^|\.)lever\.co$/.test(h)?"lever-source":"";
+      if(k&&!new RegExp("[?&]"+k+"=").test(query))add.push(k+"=uaply");
+      if(add.length)query=(query?query+(/[?&]$/.test(query)?"":"&"):"?")+add.join("&");
+      return where+query+hash;
     }catch(e){return u}
   }
   function prefillText(){
@@ -1711,7 +1720,7 @@ function apply(w,host){
   function autoAllowed(){if(REL||(typeof SRV!=="undefined"&&SRV&&SRV.up))return BILL.plan!=="free"||!BILL.enabled;var s=planState();return s.plan!==PLANS.trial&&s.ok}
   w.__uaplyAutoMsg=function(){return autoAllowed()&&!!acct.fAuto};
   /* what the application sends besides the profile: the details saved in Profile setup, Background and links (phone, LinkedIn, portfolio, About you, resume link) win over the optional profile form */
-  w.__uaplyApplyExt=function(){var x=Object.assign({},XV());var ph=phoneOf(),li=linkOf("linkedin"),pf=linkOf("portfolio"),su=summaryOf(),rs=resumeLinkOf();if(ph)x.phone=ph;if(li)x.linkedin=li;if(pf)x.portfolio=pf;if(su)x.summary=su;if(rs)x.resume=rs;var ad=acct.addr||{};if(ad.zip)x.zip=ad.zip;if(A.S.profile&&A.S.profile.reloc&&x.relocate!=="no")x.relocate="yes";if(ad.state)x.state=ad.state;x.ack=x.ack==="yes";return x};
+  w.__uaplyApplyExt=function(){var x=Object.assign({},XV());var ph=phoneOf(),li=linkOf("linkedin"),pf=linkOf("portfolio"),su=summaryOf(),rs=resumeLinkOf();if(ph)x.phone=ph;if(!x.start&&acct.notice)x.notice=acct.notice;if(li)x.linkedin=li;if(pf)x.portfolio=pf;if(su)x.summary=su;if(rs)x.resume=rs;var ad=acct.addr||{};if(ad.zip)x.zip=ad.zip;if(A.S.profile&&A.S.profile.reloc&&x.relocate!=="no")x.relocate="yes";if(ad.state)x.state=ad.state;x.ack=x.ack==="yes";return x};
   w.__uaplyResume=function(){return acct.resumeData&&DATA_URL.test(acct.resumeData)?{name:acct.resumeName,size:acct.resumeSize,data:acct.resumeData}:null};   /* the file uploaded in Profile setup, Background and links */
   w.__uaplyMessage=function(job,m,p){
     var skills=(m.matched||[]).slice(0,3),name=p.name||"[Your name]",sumv=summaryOf();

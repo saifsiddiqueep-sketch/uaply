@@ -6,6 +6,22 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 
+### Apply journey fixes (50 real swipes on the Galaxy A17 and a laptop, October 22)
+- **The card tells the truth before the swipe.** Where the server previews forms in test mode (the sandbox), a swipe right on any Greenhouse
+  posting reads its form and asks its questions; the card now asks the server for that same plan (POST /api/apply/plan) and says
+  "N answers needed" instead of "Ready". `/api/apply/config` says `formPreview`; one rule (`uaply_api.form_preview`) decides both.
+- **The question box on a phone.** It opens with no field focused (the keyboard no longer covers it before it is read), and it is fitted to
+  the screen left above the keyboard (the top page's visual viewport), with Send application pinned to its bottom.
+- **Start date.** "When can you start?" from Profile, Account goes with the application when Profile setup's start date is empty, and fills
+  the employer's start-date question (`autofill._NOTICE`).
+- **Finish applying opens the form**, not the posting: Lever `/apply`, Ashby `/application`, SmartRecruiters `?oga=true` (its own API's
+  applyUrl), added as text so nothing else in the address changes. Learns from your swipes still recognises the job.
+- **Old messages go.** A "Saved ... Undo" message whose time ran out while the tab was hidden goes when the tab is shown again.
+- **Job Tracker after a reload.** A swiped job is saved with the swipe, so its row is still there after a phone reloads the tab, even when the
+  server's list no longer has the job (job 14769135 on the Galaxy).
+- Tests: `tools/ui-journey.js` (10 checks, run by `tools/ui-questions.py`), 2 more in `tools/ui-questions.js` (phone keyboard, focus), 3 in
+  `tools/test-autofill.py`. Each fails on the code before this change.
+
 ### A swipe right only sends a complete application (the front end of the readiness rule)
 - **The minimum, in one place.** `READY_MIN` in `shared/uaply-nav.js`: a name, an email employers can reply to, and a phone number or a
   resume. The deck, the cards and every checklist read it. Below it, a swipe right (finger, Apply or the arrow key) opens **Finish your

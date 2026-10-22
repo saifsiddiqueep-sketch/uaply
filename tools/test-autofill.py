@@ -90,6 +90,17 @@ wa = autofill.plan_greenhouse(WA, CAND, {"co": "Waymo"})["items"][0]
 t("Work authorization (options are sentences): picks 'authorized to work for any employer'", wa["a"].startswith("I am authorized to work for any employer"), True)
 wa2 = autofill.plan_greenhouse(WA, cand_with(sponsor="yes"), {"co": "Waymo"})["items"][0]
 t("...and someone who needs sponsorship gets the sponsorship sentence instead", wa2["a"].startswith("I require"), True)
+# ---- the start date from Profile, Account's "When can you start?" (apply journey, October 22) ----------------------------------------------
+# the readiness checklist accepts that notice as the start date; the filler used to read only Profile setup's coded one and asked again
+SD = {"company_name": "Acme", "title": "Analyst", "location_questions": [], "questions": [{"required": True, "label": "When can you start?",
+      "fields": [{"name": "question_9", "type": "input_text", "values": []}]}]}
+x_notice = uaply_api._ext({"notice": "2 weeks"})
+sd = autofill.plan_greenhouse(SD, dict(CAND, ext=dict(CAND["ext"], start="", notice=x_notice.get("notice", ""))), {"co": "Acme"})
+t("start date: with only the notice from Profile, Account ('2 weeks'), the form gets 'Within 2 weeks' and nothing is asked",
+  ([i["a"] for i in sd["items"] if i["q"] == "When can you start?"], len(sd["missing"])), (["Within 2 weeks"], 0))
+sd2 = autofill.plan_greenhouse(SD, dict(CAND, ext=dict(CAND["ext"], start="now", notice="2 months or more")), {"co": "Acme"})
+t("...and Profile setup's own start date still comes first when both are set", [i["a"] for i in sd2["items"] if i["q"] == "When can you start?"], ["Immediately"])
+t("...and a notice that is not one of the four choices is dropped", uaply_api._ext({"notice": "<b>tomorrow</b>"}).get("notice"), "")
 reg = item(p, r"state/region in which you currently reside")
 t("a state list without the person's state: 'Another State in the US' (never a wrong state)", reg and reg["a"], "Another State in the US")
 st = item(plan("affirm"), r"state or canadian province")
