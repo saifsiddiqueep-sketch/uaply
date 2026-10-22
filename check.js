@@ -48,6 +48,34 @@ try {
   if (!fs.existsSync("legal/style.css")) bad("legal/style.css is missing");
 } catch (e) { bad("legal pages: " + e.message); }
 
+console.log("Store forms and the account-deletion page");
+try {
+  /* the App Store and Google Play answers (docs/store) cite the code line each rests on; a cited file that is gone or got shorter than the
+     line cited means an answer must be checked again. Google also needs a public deletion page, reachable without the app. */
+  const DEL = "https://uaply.net/legal/delete-account.html";
+  ["docs/store/app-privacy-apple.md", "docs/store/data-safety-google.md"].forEach((f) => {
+    if (!fs.existsSync(f)) return bad(f + " is missing");
+    const md = fs.readFileSync(f, "utf8"), lost = [];
+    const cites = [...md.matchAll(/`([\w./-]+\.(?:py|js|html|json|xml|plist|css|md)):(\d+)`/g)];
+    cites.forEach(([, file, line]) => {
+      if (!fs.existsSync(file)) lost.push(file + " (no such file)");
+      else if (fs.readFileSync(file, "utf8").split("\n").length < +line) lost.push(file + ":" + line + " (past the end)");
+    });
+    !cites.length ? bad(f + " cites no code") : lost.length ? bad(f + ": recheck these answers, the code they cite moved: " + lost.join(", "))
+      : ok(f + " (" + cites.length + " code citations, every one points at a real line)");
+    md.includes(DEL) ? ok(f + " gives the deletion page " + DEL) : bad(f + " does not give the deletion page " + DEL);
+  });
+  const del = fs.readFileSync("legal/delete-account.html", "utf8");
+  /mailto:[^"?]+@/.test(del) && /id="cannot-sign-in"/.test(del) ? ok("legal/delete-account.html says how to ask by email without the app")
+    : bad("legal/delete-account.html lost the email route for people who cannot sign in (Google Play requires one)");
+  !/href="delete-account\.html"/.test(fs.readFileSync("legal/privacy.html", "utf8")) ? bad("legal/privacy.html no longer links to delete-account.html")
+    : ok("the Privacy Policy links to the deletion page");
+  const delArt = JSON.parse(fs.readFileSync("help/articles.json", "utf8")).articles.find((a) => a.id === "delete") || {};
+  const noLink = [["", delArt.body], [" (release)", delArt.release && delArt.release.body]].filter(([, b]) => !String(b || "").includes("uaply.net/legal/delete-account.html"));
+  noLink.length ? bad("help/articles.json: the delete article" + noLink.map((x) => x[0] || " (sandbox)").join(" and") + " does not name uaply.net/legal/delete-account.html")
+    : ok("the help assistant's delete answer names the deletion page (sandbox and release)");
+} catch (e) { bad("store forms: " + e.message); }
+
 console.log("Every experiment still applies to the production page");
 try {
   global.window = {}; global.localStorage = { getItem() { return null; } };

@@ -3,7 +3,7 @@
 Answers for the UAply Android app (the Trusted Web Activity of uaply.net), checked against `legal/privacy.html` (October 16, 2026) and the
 code on October 21, 2026; the account answers updated on October 23 for the sign-in gate (nobody reaches anything without an account). Google counts data as **collected** when it leaves the device to UAply's server, and as **shared** when it goes
 to another company. Data kept only on the phone (the street address, voluntary self-identification, device location, the resume file
-between applications) is **not collected**. Re-check this table whenever `legal/privacy.html` changes, and before paid plans open.
+between applications) is **not collected**. Re-check this table whenever `legal/privacy.html` changes, and before paid plans open. The code line behind each answer: `docs/store/data-safety-google.md`.
 
 ## Overview questions
 
