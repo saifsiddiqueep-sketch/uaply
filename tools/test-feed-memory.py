@@ -277,7 +277,7 @@ def main():
             print("made up %d boards and the 4 newer sources, %.0f MB in all" % (len(SIZES), sum(os.path.getsize(os.path.join(boards, f)) for f in os.listdir(boards)) / 1e6))
         data = os.path.join(tmp, "data")
         os.makedirs(data)
-        results = {}
+        results = {}                           # (scenario, mode) -> what that child printed
         for scenario in ("cold", "refresh"):
             for mode in ("rss", "trace"):
                 if scenario == "cold" and os.path.exists(os.path.join(data, "jobs-cache.json")):
@@ -291,11 +291,18 @@ def main():
                     got = {}
                 if not got:
                     print(r.stdout[-2000:], r.stderr[-2000:])
-                results.setdefault(scenario, {}).update(got)
+                results[(scenario, mode)] = got
             # leave a saved copy in place for the refresh scenario
-        for scenario, r in results.items():
-            print("  %-8s %s" % (scenario, json.dumps(r)))
-        cold, ref = results.get("cold", {}), results.get("refresh", {})
+        # Timings and counts come from the normal run; the traced run (tracemalloc slows every allocation, so its answer takes several
+        # times longer) gives only Python's own allocation peak. Until October 23 the traced run's timing overwrote the normal one, and the
+        # 3-second warm-restart check failed at 3.2 to 20 s while the real answer took 0.3 s.
+        merged = {}
+        for scenario in ("cold", "refresh"):
+            rss, trace = results.get((scenario, "rss"), {}), results.get((scenario, "trace"), {})
+            merged[scenario] = dict(rss, trace_peak_mb=trace.get("trace_peak_mb"), traced_answered_s=trace.get("answered_s"))
+            print("  %-8s %s" % (scenario, json.dumps(merged[scenario])))
+            print("  %-8s answered in %s s (normal run), %s s with allocation tracing on" % (scenario, rss.get("answered_s"), trace.get("answered_s")))
+        cold, ref = merged["cold"], merged["refresh"]
         t("cold: the first visitor is answered within 15 s (%s s: %s jobs, %s sources still loading) and never waits for every board" % (
           cold.get("answered_s"), cold.get("first_jobs"), cold.get("first_pending")), (cold.get("answered_s") or 99) < 15)
         t("cold: every board was read behind that answer (%s of them with jobs, %s jobs)" % (cold.get("sources_ok"), cold.get("jobs")), (cold.get("sources_ok") or 0) >= 20)
