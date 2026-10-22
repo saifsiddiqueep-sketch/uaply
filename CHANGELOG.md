@@ -6,6 +6,15 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 
+### The phone walk checks the sign-up card; two fit fixes it found (October 22)
+- `tools/phone-walk.js` walks the sandbox's sign-up card by real touch: Continue with Google, email, names, the 18+ tick, the code from
+  the stand-in inbox, the two questions, sign out, sign-in by code, and Google through the stand-in Google. Not finding a sign-up form is a
+  FAIL (it used to be skipped). Taps count the keyboard's offset and are measured again when Chrome's address bar changes the page.
+- A short turned phone (667x375): the Help button scrolls with the header row instead of lying over the card's Last name box.
+- With a person's own profile, the job type buttons (All, Remote, Hybrid, On-site) are 44 px targets again on short phones (they were 39).
+- Checked on the Galaxy A17: 38 screens, 0 fit problems; `ui-phone.js` green at 440x956, 375x667, 390x844 and turned at 667x375,
+  844x390 and 832x384 (the two turned sizes are now in `tools/run-all-tests.sh`).
+
 ### Employer outreach kit and "Test this connection" (the first connected employer)
 - **docs/employers/connect-kit.md**: the outreach email (a swipe right *starts* an application; it is *sent* only where the employer
   connected), the one-page kit with the ten-minute steps for Greenhouse, Lever, Ashby, SmartRecruiters and Workable and the privacy line,
