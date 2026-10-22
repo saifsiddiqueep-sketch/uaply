@@ -11,8 +11,8 @@ can run the commands that need no secret. Nothing here needs a secret typed into
 |---|---|
 | Live site | https://uaply.net (Cloudflare, proxied, SSL/TLS **Full (strict)**) → Render service `uaply` (`srv-db9i3i6q1p3s738b5b4g`, https://uaply.onrender.com), branch `dev` |
 | Release before this one | `v1.0.0-rc.13` = `e6aced4d950d7b83f5c1c803462205c32e55b227` |
-| Repository | `saifsiddiqueep-sketch/uaply`, private (no GitHub Pages; the only workflow that matters is **Check the code**) |
-| Live settings (Render, Environment) | `OWNER_PASSWORD`, `UAPLY_CONFIG_JSON`, `UAPLY_PUBLIC_URL=https://uaply.net`, `UAPLY_USAJOBS_KEY`, `UAPLY_USAJOBS_EMAIL`, `UAPLY_DATA_DIR=/var/data`, `MALLOC_ARENA_MAX=2`, `UAPLY_FEEDS`, Stripe test keys |
+| Repository | `saifsiddiqueep-sketch/uaply`. **Public until launch** (since October 22, so testers can open the GitHub Pages copies at https://saifsiddiqueep-sketch.github.io/uaply/sandbox.html and dev.html, published by the workflow **Publish hosted sandbox and dev**); it goes **private again in step 1.5**. The workflow that matters for a release is **Check the code** |
+| Live settings (Render, Environment; values only in the dashboard) | From `render.yaml`: `PYTHON_VERSION`, `HOST=0.0.0.0`, `UAPLY_DATA_DIR=/var/data`, `MALLOC_ARENA_MAX=2`, `UAPLY_FEEDS=greenhouse,lever,ashby`. Set by the owner: `OWNER_PASSWORD`, `SUPPORT_EMAIL`, `UAPLY_CONFIG_JSON` (smtp, google, delivery, and the extra feeds: `usajobs` is on only when its `feeds` list names it), `UAPLY_PUBLIC_URL=https://uaply.net`, `UAPLY_USAJOBS_KEY`, `UAPLY_USAJOBS_EMAIL`, the four Stripe test keys (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_PLUS`, `STRIPE_PRICE_PRO`). Optional: `ANTHROPIC_API_KEY` (AI answers, off today), `UAPLY_COS_USER_ID` and `UAPLY_COS_TOKEN` (CareerOneStop) |
 
 ## 0. Before you start (Friday night or Saturday morning, 15 minutes)
 1. **Freeze.** Nothing new merges into `sandbox` after the release candidate is chosen. The full suite is green on it
@@ -35,6 +35,15 @@ can run the commands that need no secret. Nothing here needs a secret typed into
 3. Tag it: `git fetch origin && git tag -a v1.0.0-rc.14 origin/dev -m "Release candidate 14" && git push origin v1.0.0-rc.14`, and move
    the CHANGELOG's "Unreleased (sandbox)" heading under a new `## 1.0.0-rc.14 (dev, <date>)` in the next small PR.
 4. Write down the new commit: `git rev-parse --short origin/dev` (7 letters). Every check below compares against it.
+5. **Make the repository private again** (owner, 3 minutes; it has been public only for the testers' GitHub Pages copies):
+   1. GitHub → `saifsiddiqueep-sketch/uaply` → **Settings** → **Pages** → **Unpublish site** (on a free account a private repository
+      cannot serve Pages, so the copies at `saifsiddiqueep-sketch.github.io/uaply/` go away; testers use https://uaply.net from now on).
+   2. **Actions** → **Publish hosted sandbox and dev** → **...** → **Disable workflow**, so later pushes do not fail on it.
+   3. **Settings** → **General** → **Danger Zone** → **Change repository visibility** → **Make private**, and confirm.
+   4. Good: `gh api repos/saifsiddiqueep-sketch/uaply --jq .visibility` says `private`, and the deploy in step 2 still builds (Render
+      reads the private repository through its GitHub app, installed on October 21). A deploy that fails with "repository not found":
+      GitHub → Settings → Applications → **Render** → **Configure** → give it access to `uaply`, then deploy again.
+   Mohammed's fork is a separate public repository; making it private is his to do.
 
 ## 2. Deploy (owner or coordinator, 3 minutes)
 1. Render → `uaply` → **Events**. If a deploy for the new commit started on its own within 2 minutes of the merge, wait for it. If not
@@ -44,23 +53,30 @@ can run the commands that need no secret. Nothing here needs a secret typed into
    service with a disk stops the old copy first).
 3. Render → **Logs**, search `[uaply] dev on`. The newest start-up line must say all of: `data: /var/data (persistent disk)`, `email:
    on`, `Google sign-in: on`, `payments: on` (TEST mode until the live Stripe keys exist), `UAPLY_CONFIG_JSON: valid`, `feeds:` with
-   `usajobs` in the list, and `commit: <the 7 letters>`. Anything else: stop and fix it before going on (a typo in Environment is the
+   `usajobs` in the list (only if `UAPLY_CONFIG_JSON`'s `feeds` names it: `UAPLY_FEEDS` in render.yaml has just greenhouse, lever and
+   ashby), and `commit: <the 7 letters>`. Anything else: stop and fix it before going on (a typo in Environment is the
    usual cause; each save restarts the service, so batch the changes).
 
 ## 3. Live check from outside (coordinator, 3 minutes)
 `python tools/live-check.py --base https://uaply.net --expect all`
-Good: no FAIL line, and "the site runs the latest push" names the new commit. `--expect all` turns email, Google, payments and the
+Good: no FAIL line, and "the site runs the latest push" names the new commit (it reads `dev` from GitHub itself, so any checkout will
+do). Every SKIP line says on that line what it needs. It signs nobody up and sends no email: its only writes are ones the site must
+refuse (a sign-in from another site, six wrong passwords for a made-up `@example.com` address, a webhook without a signature). `--expect all` turns email, Google, payments and the
 persistent disk from SKIP into FAIL when one is off, so a missing setting cannot pass quietly. A FAIL on "latest push": the deploy did
 not happen; go back to step 2.
 
 ## 4. A stranger's first visit in a browser (coordinator, 5 minutes)
 `node tools/cdp.js tools/ui-live.js --base https://uaply.net --out ui-live-shots`
-Good: every line PASS at phone size (390x844) and computer size (1280x800): the agreement box, tips, a swipe, the Account wording,
+Its first lines time `/healthz` and say how long the first job card took (a cold server can take many seconds; it waits up to 60 s),
+so a slow start is named instead of failing. Good: no FAIL line (the SKIP for sign-up by email code is expected; step 6 covers it) at
+phone size (390x844) and computer size (1280x800): the agreement box, tips, a swipe, the Account wording,
 Continue with Google leading to Google's page (it never signs in), Plan and billing, the help assistant.
 
 ## 5. The phone walk on the Galaxy (owner plugs it in; coordinator runs it, 10 minutes)
-USB debugging on, Chrome on the phone. `node tools/phone-walk.js live` (read only on the live site: screens and fit checks, no swipes, no
-sign-up). It opens **one** Chrome tab of its own and leaves the phone's other tabs alone. Never run `adb forward --remove-all` (it
+USB debugging on, Chrome on the phone, the phone awake and unlocked. adb is not on this computer's PATH, so name it:
+`ADB=<path to platform-tools>/adb.exe node tools/phone-walk.js live` (Git Bash; in PowerShell set `$env:ADB` first). If adb is gone,
+unzip https://dl.google.com/android/repository/platform-tools-latest-windows.zip and use the `adb.exe` in it. The walk is read only on
+the live site: screens and fit checks, no swipes, no sign-up. It opens **one** Chrome tab of its own and leaves the phone's other tabs alone. Never run `adb forward --remove-all` (it
 cuts every other tool's connection to the phone); remove only a forward you added yourself. Good: the summary has 0 FAIL; screenshots are in `phone-walk/live-<time>/`. Look
 at the first screen, the card, Profile and Job Tracker shots yourself.
 
@@ -113,9 +129,17 @@ It deploys exactly the rc.13 commit and answers with the new deploy's id and `"s
 1. `python tools/live-check.py --base https://uaply.net --expect all --commit e6aced4` passes (the site runs rc.13 again).
 2. Close the terminal window (the key goes with it).
 3. A deploy of a chosen commit leaves auto-deploy as it was: the next merge into `dev` deploys `dev` again. So fix forward on
-   `sandbox`, release that as rc.15 through steps 1 to 4, and do not merge anything else into `dev` meanwhile.
+   `sandbox`, release that as rc.15 through steps 1 to 4 (the repository stays private), and do not merge anything else into `dev` meanwhile.
 4. If data itself went wrong (not just the code): DEPLOY.md, Backups, "To restore", with the backup from step 0.2.
 
-## 10. After launch day
+## 10. The computer's own servers (coordinator, 2 minutes, after step 4 is green)
+The three local servers (prod 8765, sandbox 8766, dev 8767, started by `start-uaply.bat`) keep running the code they started with; the
+release does not reach them until they restart. Say so in chat first: other sessions may be using them. In
+`C:\Users\arasa\Downloads\UAply`: `git fetch origin` and bring the checked-out branch up to date (`git pull --ff-only`). Then close
+the windows **UAply sandbox 8766** and **UAply dev 8767**, and **UAply prod 8765** too (`start-uaply.bat` starts all three, and a second
+prod would not get its port), and double-click `start-uaply.bat`. Good: http://localhost:8766/healthz and http://localhost:8767/healthz
+answer `{"ok": true}`, and each window's first line says `commit:` and the new commit.
+
+## 11. After launch day
 - A short note in the CHANGELOG entry for rc.14: what was seen in the first day (the daily line, any warning).
 - HANDOFF.md: the live commit and anything that changed in Render's Environment.

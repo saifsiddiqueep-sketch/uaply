@@ -1,25 +1,32 @@
 # Job sources
 
-Where UAply's jobs come from, what each source allows, and the free keys the owner can request. Checked October 21, 2026. This is
-not legal advice: have the lawyer confirm before launch. The code is `jobs_api.py` (`SOURCES`, `VIA`, `TTL`, `KEEP`).
+Where UAply's jobs come from, what each source allows, and the free keys the owner can request. Checked against the code on
+October 23, 2026 (origin/sandbox 666c81e). This is not legal advice: have the lawyer confirm before launch. The code is `jobs_api.py`
+(`SOURCES`, `VIA`, `TTL`, `KEEP`) and the list of boards and careers sites is `job-boards.json`.
 
 Every source is **off** unless its kind is listed in `UAPLY_FEEDS` (Render, Environment) or in `"feeds"` in `UAPLY_CONFIG_JSON`, for
-example `UAPLY_FEEDS=greenhouse,lever,ashby,workable,smartrecruiters,usajobs,careeronestop,jobicy,muse,simplify,himalayas,remoteok`.
+example `UAPLY_FEEDS=greenhouse,lever,ashby,workable,smartrecruiters,careerpage,usajobs,careeronestop,jobicy,muse,simplify,himalayas,remoteok`.
 Jobs from every source are **link-out only**: swiping right opens the employer's (or the board's) own page. Nothing is emailed to
 anyone, unless the employer is a partner or connected its own hiring system.
 
-Rules for every source: postings older than 60 days are hidden (USAJOBS and partner jobs exempt), the same job from two feeds is shown
-once (the employer's own board wins), every job carries `jobType` (full-time, part-time, internship, co-op, contract or temporary) and
-`postedDays`, and each employer board keeps 14 roles plus up to 10 more in Pennsylvania, New Jersey or Delaware.
+Rules for every source: postings older than 60 days are hidden (USAJOBS and partner jobs exempt, and part-time and temporary roles on
+an employer's board or careers site, which stay open for months), the same job from two feeds is shown once (the employer's own board
+wins), every job carries `jobType` (full-time, part-time, internship, co-op, contract or temporary) and `postedDays`, and each employer
+board keeps 14 roles (internships, co-ops and part-time roles first, up to 10 of them) plus up to 10 more in Pennsylvania, New Jersey
+or Delaware. A public list is kept whole up to a limit instead: the City of Philadelphia, USAJOBS and the Simplify lists 120 each,
+CareerOneStop 100 per search.
 
 ## Coverage
 
-* **Anywhere in the US:** 80+ employer boards (tech, healthcare clinics, retail, restaurants, gyms, warehouses, plants, launch sites),
-  remote jobs from Jobicy (15 industries), Himalayas (all, internships, part-time) and Remote OK, internships and co-ops from the
-  Simplify / Pitt CSC lists. A remote job open to the US is shown to everyone; the distance filter never hides it (except "remote only").
+* **Anywhere in the US:** 1,926 employer sources: 692 Greenhouse, 419 Ashby, 223 Lever, 184 SmartRecruiters and 98 Workable boards
+  (80 of them hand-picked in `SOURCES`, the rest from `job-boards.json`) and 310 employers' own careers sites (298 on Workday, 12 on
+  iCIMS); remote jobs from Jobicy (15 industries), Himalayas (all, internships, part-time) and Remote OK; internships and co-ops from
+  the Simplify / Pitt CSC lists. A remote job open to the US is shown to everyone; the distance filter never hides it (except "remote
+  only").
 * **Pennsylvania, New Jersey, Delaware:** USAJOBS around Philadelphia (50 mi), Wilmington DE (40), Trenton NJ (40), Newark NJ (40) and
   Camden NJ (25), each also for Pathways (students and recent graduates) and part-time schedules; CareerOneStop (the state job banks'
-  jobs) around the same five cities; the City of Philadelphia; employers with PA, NJ and DE offices (`SOURCES` names each with its count).
+  jobs) around the same five cities (once its key arrives); the City of Philadelphia; employers with PA, NJ and DE offices, among them
+  the careers sites of ChristianaCare, DuPont, Chemours, WSFS, Sallie Mae, Campbell's, Jefferson Health and Vanguard.
 
 ## Adding employer boards in bulk
 
@@ -57,7 +64,8 @@ Each job carries `geo` ([lat, lng], two decimals) when its place names a US city
 "New York City"), or a ZIP code. The points come from `us-places.tsv.gz` (about 44,000 places; `tools/make-us-places.py` builds it from
 the US Census Bureau's 2024 Gazetteer place and county-subdivision files, public domain), read on first use and kept as one string with
 an index. The app's "near you" order and distance filter use `geo` first and its own city list after; "where you live" now knows every
-ZIP code's first three digits. On October 21, 2026 the app's list placed 54% of on-site jobs; with `geo`, 88%. Careers sites read their
+ZIP code's first three digits. On October 21, 2026 the app's own list placed 52% of on-site jobs; with `geo`, 92% (the server's point
+88%, the app's list the rest). Careers sites read their
 co-op and internship pages first, then their Pennsylvania, New Jersey and Delaware ones, as each page's own address says.
 
 ## Human checks on application pages
@@ -71,8 +79,10 @@ are human"); Cloudflare's quiet bot tag is noted but is not a check. A check is 
 challenge page is not asked for again. Per source it writes `humanCheck` (none / sometimes / always / unknown), `formKind` (html-form,
 js-app, redirect to another system, sign-in) and the sample date to `human-checks.json`; `--merge --skip-known` adds new sources later
 without reading the old ones again, and a stopped scan picks up from its checkpoint. The server reads the file at start: each job
-carries `route` ("Ready" when UAply sends the application itself, "Ready, one tap" where a check is likely, "Ready" otherwise), and
-`/api/feed-health` shows each source's result and the totals. No job is removed because of a check.
+carries `route` ("Ready" when UAply sends the application itself, "Ready, one tap" where a check is likely, "Ready" otherwise). A
+source the scan has not sampled yet is "Ready, one tap" when at least 80% of the sampled sources on its hiring system had a check (on
+October 21: Greenhouse, Lever, Ashby, SmartRecruiters and Workable), else "Ready". `/api/feed-health` shows each source's result and the
+totals. No job is removed because of a check.
 
 ## Registry
 
@@ -81,30 +91,48 @@ clearly cover a third party showing it; **High** = terms that forbid our use (no
 
 | Source (kind) | What it is | Terms | Allowed use | Credit shown on the card | Refresh | Apply path | Job types | Risk |
 |---|---|---|---|---|---|---|---|---|
-| Greenhouse boards (`greenhouse`) | Employers' own public job boards | https://developers.greenhouse.io/job-board.html | A public, keyless API meant for careers pages; no terms for third-party readers | "via Acme on Greenhouse" | 30 min | Employer's posting | Custom "Employment Type" field, else title | **Medium**: public and read only, but no terms say an aggregator may show it; we link out and never copy applications |
+| Greenhouse boards (`greenhouse`) | Employers' own public job boards | https://developers.greenhouse.io/job-board.html | A public, keyless API meant for careers pages; no terms for third-party readers | "via Acme on Greenhouse" | 30 min for a hand-picked board, 2 h (spread) for one from `job-boards.json`; the same for Lever, Ashby and Workable | Employer's posting | Custom "Employment Type" field, else title | **Medium**: public and read only, but no terms say an aggregator may show it; we link out and never copy applications |
 | Lever boards (`lever`) | Employers' own public postings | https://github.com/lever/postings-api | Same as Greenhouse | "via Acme on Lever" | 30 min | Employer's posting | `categories.commitment` | **Medium**: same reason |
 | Ashby boards (`ashby`) | Employers' own public job boards | https://developers.ashbyhq.com/docs/public-job-posting-api | Same as Greenhouse | "via Acme on Ashby" | 30 min | Employer's posting | `employmentType` | **Medium**: same reason |
 | Workable (`workable`) | Employers' own public jobs feed | https://help.workable.com/hc/en-us/articles/115012771647 | Documented for custom careers pages | "via Acme on Workable" | 30 min | Employer's posting | `employment_type` | **Medium**: same reason |
-| SmartRecruiters (`smartrecruiters`) | City of Philadelphia (whole list) and employer boards (Equinox, Red Bull) | https://developers.smartrecruiters.com/docs/posting-api | Public Posting API, no key | "via City of Philadelphia on SmartRecruiters" | 1 h (descriptions daily, 40 a day for an employer board) | Employer's posting | `typeOfEmployment` | **Low** for the City (public body's own postings); **Medium** for employers |
+| SmartRecruiters (`smartrecruiters`) | City of Philadelphia (whole list) and employer boards (Equinox, Red Bull) | https://developers.smartrecruiters.com/docs/posting-api | Public Posting API, no key | "via City of Philadelphia on SmartRecruiters" | 1 h (an employer board: at most 24 descriptions, each read again after a day or when re-released) | Employer's posting | `typeOfEmployment` | **Low** for the City (public body's own postings); **Medium** for employers |
 | USAJOBS (`usajobs`) | Federal jobs around 5 tri-state cities, plus Pathways and part-time searches: 15 searches every 3 h = 120 requests a day | https://developer.usajobs.gov/general/terms-of-service | Public data, may be copied and republished, commercial use included | "via USAJOBS; apply on the official announcement" | 3 h | The announcement on usajobs.gov | Schedule (part-time), Pathways = internship, Temporary offering | **Low**: the government's own API; we credit it and link to the announcement |
 | CareerOneStop (`careeronestop`) | The National Labor Exchange (the PA, NJ and DE state job banks' jobs) around 5 tri-state cities (all, internship, part-time) plus remote: 16 searches every 3 h = 128 requests a day, the last 7 days | License shown on https://www.careeronestop.org/Developers/WebAPI/registration.aspx ; API https://www.careeronestop.org/Developers/WebAPI/Jobs/list-jobs.aspx | Royalty-free for the purpose stated at registration; no altering the data; credit both the U.S. Department of Labor ETA and Minnesota DEED on every page that shows it; key kept secret; license lasts 36 months | "via CareerOneStop (U.S. Department of Labor ETA and Minnesota DEED)" | 3 h | The posting on the NLx (jobsyn.org) | Title words, "part-time" in the summary | **Low**: public, free, attribution only. Note: new Jobs API access now goes through the NLx Research Hub (see the key list) |
 | Jobicy (`jobicy`) | Remote jobs open to the US, 15 industries | https://jobicy.com/jobs-rss-feed | Free; credit Jobicy, link to the job on Jobicy, at most one sync pass an hour | "via Jobicy" | 1 h | The job on Jobicy | `jobType` | **Low**: the source's own published conditions, followed |
 | The Muse (`muse`) | Internship and entry-level jobs | https://www.themuse.com/developers/api/v2 | Public API; register an app (key) for production use | "via The Muse" | 30 min | The job on The Muse | The Internship level | **Medium** until the app is registered (key), then **Low** |
 | Simplify and Pitt CSC lists (`simplify`) | GitHub lists of internships and co-ops, https://github.com/SimplifyJobs/Summer2027-Internships (README.md, README-Off-Season.md) | No license file, no reuse terms | Rows are facts (company, title, place, link); only rows linking to a Greenhouse, Lever or SmartRecruiters posting are used, each read from the employer's own board | "via Acme on Greenhouse, listed by Simplify and Pitt CSC" | 6 h (each posting checked daily) | Employer's own posting | Internship or co-op | **Medium**: no license; we credit the list and show only the employer's own data |
 | Himalayas (`himalayas`) | Remote jobs open to the US: all, internships, part-time (3 pages each) | https://himalayas.app/api , https://himalayas.app/terms#api | Show on our own app only; link to the job on Himalayas; `applicationLink` unchanged; never pass jobs on to other boards, Google Jobs or LinkedIn; remove expired jobs | "via Himalayas" | 3 h | `applicationLink` | `employmentType` | **Low**: its published API terms, followed |
-| Employers' careers sites (`careerpage`) | Employers whose own careers site publishes a sitemap of job pages with schema.org JobPosting data (iCIMS sites such as Hackensack Meridian Health, Piedmont, UnityPoint, OHSU, NYU Langone, Dental Care Alliance, Sonrava; Workday sites such as ChristianaCare), found with `tools/find-boards.py` and listed in `job-boards.json` with their sitemap | Each site's robots.txt (read first, its Disallow rules and Crawl-delay followed; a site whose robots.txt cannot be read is not read) | JobPosting data is published for search engines to show; UAply reads at most 40 job pages per site every 6 hours (14 on a site's first read; a page again only when its lastmod changes, or after 2 days when the sitemap gives none), one request at a time with at least 2 seconds between them, only pages on the sitemap's own host, never a page behind a login or a human check (the site is then left alone) | "via Acme careers site" | 6 h | The employer's own job page (assisted hand-off) | `employmentType` | **Medium**: public structured data meant to be shown by job search engines, read politely as robots.txt allows; each employer's site terms are not individually reviewed |
+| Employers' careers sites (`careerpage`) | Employers whose own careers site publishes a sitemap of job pages with schema.org JobPosting data (iCIMS sites such as Hackensack Meridian Health, Piedmont, UnityPoint, OHSU, NYU Langone, Dental Care Alliance, Sonrava; Workday sites such as ChristianaCare), found with `tools/find-boards.py` and listed in `job-boards.json` with their sitemap | Each site's robots.txt (read first, its Disallow rules and Crawl-delay followed; a site whose robots.txt cannot be read is not read) | JobPosting data is published for search engines to show; UAply reads at most 40 job pages per site every 6 hours (14 on a site's first read; a page again only when its lastmod changes, or after 2 days when the sitemap gives none), one request at a time with at least 2 seconds between them, only pages on the sitemap's own host or another host of the same domain (an iCIMS site moves its pages to externalcareers-), only over public https (every redirect checked again), never a page behind a login or a human check (that page is left alone until it changes) | "via Acme careers site" | 6 h | The employer's own job page (assisted hand-off) | `employmentType` | **Medium**: public structured data meant to be shown by job search engines, read politely as robots.txt allows; each employer's site terms are not individually reviewed |
 | Remote OK (`remoteok`) | Remote jobs | The notice in https://remoteok.com/api | Link back to the job on Remote OK (followed link) and name Remote OK; no logo | "via Remote OK" | 6 h | The job on Remote OK | Title words | **Low**: its published conditions, followed |
 | Remotive (`remotive`) | Remote jobs | https://remotive.com/api-documentation | Forbids using listings to collect sign-ups or emails, which UAply does | n/a | n/a | n/a | n/a | **High**: **do not switch on** without written permission |
 | Partner employers | Employers who post on UAply | UAply's own employer terms | The employer gave the posting and agreed to receive applications | "Posted on UAply by ..." | live | Sent to the employer | The employer's own pick | **Low** |
 
 **Checked and not added:** the State of Delaware, Camden County, the cities of Camden, Wilmington, Trenton and Newark, NJ Transit,
-ChristianaCare, Cooper University Health Care, Incyte, Chemours, WSFS, Sallie Mae, Navient, Campbell's, Subaru of America and the
-universities (Rutgers, Princeton, UDel) are not on a public Greenhouse, Lever, Ashby, SmartRecruiters or Workable board (they use
-Workday, iCIMS, NEOGOV, PeopleAdmin or their own sites, which UAply does not read). Anduril's board (44 MB) is over the 40 MB cap.
-Arbeitnow lists European jobs only; Reed is UK only. The Muse's API has no internship filter beyond its levels.
+Cooper University Health Care, Incyte, Navient, Subaru of America and the universities (Rutgers, Princeton, UDel) are not on a public
+board UAply reads (they use NEOGOV, PeopleAdmin, other systems or their own sites). ChristianaCare, Chemours, WSFS, Sallie Mae and
+Campbell's, on that list until October 21, are now read as Workday careers sites. Anduril's board is read without descriptions (an
+eighth of its 44 MB), so it is under the 40 MB cap. Arbeitnow lists European jobs only; Reed is UK only. The Muse's API has no
+internship filter beyond its levels.
 
 **Never used, never scraped:** LinkedIn, Indeed, ZipRecruiter, Handshake and Glassdoor (closed or partner-only programs whose terms
 forbid copying listings). Google for Jobs is a search feature, not an API.
+
+## How careers sites and apply links are read
+
+Every request to an employer's careers site (its robots.txt, its sitemap, each job page) and every check of a job's apply link goes
+through a public-only opener: the host's name is looked up once and only public addresses are used (never private, loopback,
+link-local such as the 169.254.169.254 metadata address, shared 100.64/10, reserved or multicast), the connection goes to those very
+addresses, and every redirect is checked against the same rules before it is followed (careers sites: https only; the apply-link check:
+http or https on the scheme's own port). The board APIs (Greenhouse, Lever, Ashby, SmartRecruiters, Workable, USAJOBS, CareerOneStop
+and the lists) are read at their own fixed addresses. Feed text has its entities decoded before its tags are taken out.
+
+## Coming after launch (round 4, not in this release)
+
+On branch `feeds-round4` (f04a000), merged after launch: 21 more sources (law: DLA Piper, Skadden, Hogan Lovells, Jackson Lewis,
+Ballard Spahr, Lewis Brisbois, Thomson Reuters, Consilio; dental: Dental365, Spark Dental Management; real estate: Bozzuto, CoStar,
+Avison Young, Federal Realty, VTS, HomeLight, SmartRent, UWM, Sotheby's; HNTB and Rent the Runway); careers sites read 24 at a time
+and boards 7 at a time; company names as plain text of at most 120 characters; CareerOneStop errors named plainly (a refused key, an
+unknown user id, a rate limit) and `tools/check-careeronestop.py` to check the key once it arrives; no race on the Greenhouse caches.
 
 ## Keys the owner can request (Claude cannot fill in or submit these forms)
 
