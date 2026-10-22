@@ -25,7 +25,8 @@ module.exports = async ({ ev, sleep, nav }) => {
   await ev("(()=>{window.__assistCalls=[];window.__assistNext={confirmed:false,url:''};" +
     "window.__assistQs=[{q:'Describe a project you led',key:'Describe a project you led',kind:'textarea',required:true},{q:'Cover letter',key:'Cover letter',kind:'textarea',required:false}];" +
     "window.Capacitor={isNativePlatform:()=>true,getPlatform:()=>'android',Plugins:{UAplyAssist:{open:(o)=>{window.__assistCalls.push(o);" +
-    "if(o.scan){const a=(o.profile&&o.profile.answers)||{};return Promise.resolve({confirmed:false,questions:window.__assistQs.filter(q=>!a[q.key]),seen:20,filled:15})}" +
+    "if(o.scan){const a=(o.profile&&o.profile.answers)||{};return Promise.resolve({confirmed:false,questions:window.__assistQs.filter(q=>!a[q.key]),seen:20,filled:15," +
+    "keys:['first','last','email','phone','city','auth','sponsor','school','heard','adult'],answerKeys:[],resume:true})}" +
     "return Promise.resolve(window.__assistNext)}}}}})()");
   // a hand-off job in Applied (an employer on Greenhouse that is not connected to UAply)
   const ID = 990001;
@@ -49,6 +50,10 @@ module.exports = async ({ ev, sleep, nav }) => {
   await sleep(1500);
   let c = await calls();
   check("the app is first asked to read the form (scan), with the employer's page", c.length === 1 && c[0].scan === true && /^https:\/\/job-boards\.greenhouse\.io\/exampleco\/jobs\/4001\?gh_src=uaply$/.test(c[0].url || ""), JSON.stringify(c.map((x) => [x.scan, x.url])));
+  const sp = (c[0] || {}).profile || {};
+  check("the scan is handed stand-ins for the person's details, never them or the resume file", sp.first === "A" && sp.email === "a@example.com" && sp.phone === "2155550100" && !(sp.resume && sp.resume.b64) &&
+    !/Sam|Rivera|sam\.rivera|555-0142/.test(JSON.stringify(sp)) && sp.school === "Temple University", JSON.stringify(sp).slice(0, 200));
+  check("only the hiring systems' hosts and this job's page may be filled", Array.isArray(c[0].allow) && c[0].allow.includes("job-boards.greenhouse.io") && c[0].allow.includes("jobs.lever.co") && !c[0].allow.some((h) => !/^[a-z0-9.-]+$/.test(h)), JSON.stringify(c[0].allow));
   const s1 = await sheet();
   check("UAply's question box asks the form's questions before the form opens", /2 questions from Example Co/.test(s1) && /Describe a project you led/.test(s1) && /Cover letter \(optional\)/.test(s1) && /Continue to Example Co's form/.test(s1), s1.slice(0, 300));
   // the required one cannot be skipped
@@ -63,7 +68,9 @@ module.exports = async ({ ev, sleep, nav }) => {
   check("mode is assisted (the shipped switch)", c[1].mode === "assisted" && c[1].system === "greenhouse", c[1].mode + " " + c[1].system);
   check("the profile carries the person's details", p.name === "Sam Rivera" && p.first === "Sam" && p.email === "sam.rivera.test@example.com" && p.phone === "215-555-0142" && p.city === "Philadelphia" && p.auth === "yes" && p.sponsor === "no" && p.school === "Temple University" && p.heard === "UAply" && p.adult === "yes",
     JSON.stringify(Object.assign({}, p, { resume: undefined, answers: undefined })).slice(0, 300));
-  check("the resume file goes with it", !!(p.resume && p.resume.b64 && /pdf/.test(p.resume.type)));
+  check("the resume file goes with it (the scan saw the form take one)", !!(p.resume && p.resume.b64 && /pdf/.test(p.resume.type)));
+  check("...and nothing the scan did not see the form ask for (no title, degree, start date, summary)", ["title", "degree", "start", "summary", "headline", "linkedin", "website"].every((k) => !(k in p)),
+    Object.keys(p).join(","));
   const flat = JSON.stringify(Object.assign({}, p, { resume: null }));
   check("no voluntary answer and no pronouns in what the app gets", !/gender|race|ethnic|hispanic|veteran|disab|pronoun|they\/them/i.test(flat), flat.slice(0, 200));
   await sleep(300);
@@ -96,11 +103,14 @@ module.exports = async ({ ev, sleep, nav }) => {
   // an answer written for one employer stays with it: a cover letter for Example Co is not put into Other Co's form; a plain answer is
   await ev("(()=>{const w=" + FW + ",k=(w.__uaplyKey||'uaply');const a=JSON.parse(w.localStorage.getItem(k+'.answers')||'{}'),m=JSON.parse(w.localStorage.getItem(k+'.answersAsked')||'{}');" +
     "a['Cover letter']='Dear Example Co team, I would love to join you.';m['Cover letter']={q:'Cover letter',kind:'textarea',co:'Example Co',at:Date.now()};" +
+    "a['Have you worked at Example Co before?']='No';m['Have you worked at Example Co before?']={q:'Have you worked at Example Co before?',kind:'select',co:'Example Co',at:Date.now()};" +
     "w.localStorage.setItem(k+'.answers',JSON.stringify(a));w.localStorage.setItem(k+'.answersAsked',JSON.stringify(m))})()");
   const own = JSON.parse(await ev("JSON.stringify(" + FW + ".__uaplyAssistProfile({co:'Example Co'}).answers)"));
   const other = JSON.parse(await ev("JSON.stringify(" + FW + ".__uaplyAssistProfile({co:'Other Co'}).answers)"));
   check("a cover letter written for one employer is not put into another's form", own["Cover letter"] && !other["Cover letter"], JSON.stringify(Object.keys(other)));
   check("a plain answer is used for every employer", own["Describe a project you led"] === "A help center I rebuilt" && other["Describe a project you led"] === "A help center I rebuilt");
+  check("a question that names one employer is not handed to another's page (it tells where else the person applied)",
+    own["Have you worked at Example Co before?"] === "No" && !("Have you worked at Example Co before?" in other), JSON.stringify(Object.keys(other)));
   // an answer kept for one employer ("{at <employer>}", as the server and the bridge key it) and an older "{co}" one (October 22)
   await ev("(()=>{const w=" + FW + ",k=(w.__uaplyKey||'uaply');const a=JSON.parse(w.localStorage.getItem(k+'.answers')||'{}');" +
     "a['{at example co} why do you want to work at {co}']='EXAMPLE-ONLY';a['why do you want to work at {co}']='OLD-CO';" +

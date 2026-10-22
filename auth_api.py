@@ -762,7 +762,7 @@ def resend_code(token, ip):
     if user["emailVerified"]:
         return 200, {"ok": True, "already": True}, None
     with _lock:
-        busy = _site_code_refusal()
+        busy = _site_code_refusal(ip)                     # an account still unproven: anyone can make one, so its session is no pass
         if busy:
             return 429, busy, None
         if (len(_recent(_code_sends, ("u", user["id"]), 3600)) >= 3 or len(_recent(_code_sends, ("ip", ip), 3600)) >= CODES_PER_IP_PER_HOUR
@@ -771,7 +771,7 @@ def resend_code(token, ip):
                          "the newest works), or try again in an hour."}, None
         for k in (("u", user["id"]), ("ip", ip), ("ipe", ip, user["email"])):
             _code_sends.setdefault(k, []).append(time.time())
-        _count_site_code()
+        _count_site_code(ip)
         with _db() as c:
             digits = _new_code(c, user["id"])
     return 200, {"ok": True, "message": "A new code is on its way. The old one no longer works."}, (user["id"], user["email"], digits)
@@ -829,19 +829,43 @@ try:
 except ValueError:
     CODE_SENDS_SITE_PER_HOUR = 500
 CODE_BUSY_MSG = "UAply is sending a lot of sign-in codes right now. Try again in a few minutes, or use Continue with Google."
+# No one visitor address may use more than SITE_SHARE_PERCENT of that hour (25 of the default 500), so a handful of addresses cannot use
+# it all up and keep everyone else from signing in for an hour (serve.client_ip counts an IPv6 visitor by its /64). A device that signed
+# in to the address with a code before (the known-device cookie), or that is signed in to that address's verified account right now, is
+# never held back by the site's hour or by this share: the owner of an account can always get a code.
+SITE_SHARE_PERCENT = 5
 
 
-def _site_code_refusal():
-    """The site-wide hourly cap on code emails: None while there is room, else the 429 body. Call with _lock held."""
+def site_share():
+    """How many of the site's hourly code emails one visitor address may use (at least 1)."""
+    return max(1, CODE_SENDS_SITE_PER_HOUR * SITE_SHARE_PERCENT // 100)
+
+
+def _site_code_refusal(ip=None):
+    """The site-wide hourly cap on code emails, and one address's share of it: None while there is room, else the 429 body. Call with
+    _lock held."""
     if len(_recent(_code_sends, ("site",), 3600)) >= CODE_SENDS_SITE_PER_HOUR:
         return {"error": CODE_BUSY_MSG, "code": "code_busy"}
+    if ip is not None and len(_recent(_code_sends, ("site-ip", ip), 3600)) >= site_share():
+        return {"error": CODE_LIMIT_MSG, "code": "code_limit"}
     return None
 
 
-def _count_site_code():
-    """One more code email toward the site-wide hour. Call with _lock held. "Email me a code" for an address with no account counts too (it
-    sends nothing), so the answers stay the same whether or not an address has an account."""
-    _code_sends.setdefault(("site",), []).append(time.time())
+def _count_site_code(ip=None):
+    """One more code email toward the site-wide hour (and, with ip, toward that address's share). Call with _lock held. "Email me a code"
+    for an address with no account counts too (it sends nothing), so the answers stay the same whether or not an address has an account."""
+    now = time.time()
+    _code_sends.setdefault(("site",), []).append(now)
+    if ip is not None:
+        _code_sends.setdefault(("site-ip", ip), []).append(now)
+
+
+def _signed_in_as(row, token):
+    """True when `token` is a live session of the verified account in `row` (the person is signed in to that very address)."""
+    if not token:
+        return False
+    u = user_for(token)                 # looked up whether or not the address has an account, so the time taken says nothing about that
+    return bool(row and u and u["id"] == row["id"] and u.get("emailVerified"))
 # One answer for every code that does not sign in: wrong digits, a code that ran out of time or tries, an address with no code or no account.
 # How many tries are left stays on the server, so a wrong code never tells a stranger whether the address has an account.
 WRONG_CODE_MSG = "That code is not right, or it has expired. Check the newest email from UAply, or press Resend code."
@@ -899,9 +923,10 @@ def _code_send_refusal(email, ip, user_id=None, known=False):
     Every check is the same for an address with or without an account, so the answer never says which it is. user_id: the account at
     that address, when there is one; its code emails are also counted under ("u", user_id), the key resend_code reads, so Create my account,
     Email me a code and Resend share one limit of 3 an hour for that account. known: the request comes from a device that signed in to this
-    address with a code before; when the address's hourly or daily allowance is used up it may still send CODE_SENDS_KNOWN_DAY a day."""
+    address with a code before, or one signed in to its verified account right now; it is never held back by the site's hour or one
+    address's share of it, and when the address's hourly or daily allowance is used up it may still send CODE_SENDS_KNOWN_DAY a day."""
     now = time.time()
-    busy = _site_code_refusal()
+    busy = None if known else _site_code_refusal(ip)
     if busy:
         return busy
     # the same limits as resend_code: 80 an hour per visitor address (serve.client_ip, the host's last hop), 5 an hour per address and email
@@ -925,7 +950,7 @@ def _code_send_refusal(email, ip, user_id=None, known=False):
     _code_sends.setdefault(("e", email), []).append(now)
     if user_id is not None:
         _code_sends.setdefault(("u", user_id), []).append(now)
-    _count_site_code()
+    _count_site_code(None if known else ip)      # the owner's own device does not use up its address's share for the others there
     return None
 
 
@@ -951,14 +976,14 @@ def resend_code_daily(token, ip):
     return status, body, mail
 
 
-def signup_passwordless(email, ip, agree=False, check_dns=False, per_hour=None, device=""):
+def signup_passwordless(email, ip, agree=False, check_dns=False, per_hour=None, device="", session=""):
     """Create my account with no password. Returns (status, body, mail) where mail is (user_id, email, digits) to send, or None.
 
     A new address gets an account with no usable password (has_password=0, the same kind "Continue with Google" makes), terms_at set to
     now (the 18+ / Terms box was ticked) and email_verified=0; no session yet. An address that already has an account gets a sign-in
     code instead, and the answer is the same either way, so this cannot be used to find out who has an account: every request counts
     toward the connection's sign-up limit, the checks run in the same order for both, and the connection's sign-up limit and code limit
-    give one and the same 429 answer. device: the known-device cookie (see _code_send_refusal)."""
+    give one and the same 429 answer. device: the known-device cookie; session: the session cookie (see _code_send_refusal)."""
     email = _clean_email(email)
     if not email:
         return 400, {"error": "Enter a valid email address."}, None
@@ -973,7 +998,7 @@ def signup_passwordless(email, ip, agree=False, check_dns=False, per_hour=None, 
             row = c.execute("SELECT id, salt FROM users WHERE email=?", (email,)).fetchone()
         if len(_recent(_signups, ip, 3600)) >= (per_hour or SIGNUPS_PER_HOUR_LOCAL):
             return 429, {"error": CODE_LIMIT_MSG, "code": "code_limit"}, None
-        refusal = _code_send_refusal(email, ip, row["id"] if row else None, _is_known(row, device))
+        refusal = _code_send_refusal(email, ip, row["id"] if row else None, _is_known(row, device) or _signed_in_as(row, session))
         if refusal:
             return 429, refusal, None
         _signups.setdefault(ip, []).append(time.time())
@@ -994,10 +1019,10 @@ def signup_passwordless(email, ip, agree=False, check_dns=False, per_hour=None, 
     return 200, {"ok": True, "email": email}, (uid, email, digits)
 
 
-def send_login_code(email, ip, device="", defer=False):
+def send_login_code(email, ip, device="", defer=False, session=""):
     """Email me a code, on the sign-in card. Always answers the same way (like request_reset), so nobody can use it to find out who has
     an account. Returns (status, body, mail) where mail is (user_id, email, digits) only when the address has an account. device: the
-    known-device cookie (see _code_send_refusal).
+    known-device cookie; session: the session cookie (see _code_send_refusal).
 
     defer (serve.py): the code is not made here; mail is (user_id, email, None) and issue_login_code makes it on the background thread
     that emails it, so an address with an account does no more work before the answer than one without (no database write, no email)."""
@@ -1008,7 +1033,7 @@ def send_login_code(email, ip, device="", defer=False):
         _prune()
         with _db() as c:
             row = c.execute("SELECT id, salt FROM users WHERE email=?", (email,)).fetchone()
-        refusal = _code_send_refusal(email, ip, row["id"] if row else None, _is_known(row, device))
+        refusal = _code_send_refusal(email, ip, row["id"] if row else None, _is_known(row, device) or _signed_in_as(row, session))
         if refusal:
             return 429, refusal, None
         if not row:

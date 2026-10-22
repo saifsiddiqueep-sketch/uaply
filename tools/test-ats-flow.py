@@ -267,6 +267,79 @@ try:
     uaply_api.hide_errors = False
     t("a refused key is reported as failed, with a plain sentence and no key or employer detail", (out["status"], out.get("error"), "wrong-key" in json.dumps(out)),
       ("failed", "Your application to Acme Robotics could not be sent right now. Try again in a moment.", False))
+
+    # an employer's system that says "too many requests" (429) is not asked about that posting again for a minute (readiness asks for every
+    # card), and requests for the same posting at the same moment share one read instead of each calling the employer's system
+    import threading
+    asked = []
+
+    def busy():
+        asked.append(1)
+        return None, 429, "too many requests"
+    first = ats_api._cached_form("ashby", "busy-posting-1", "ashby-key-789", busy)
+    again = ats_api._cached_form("ashby", "busy-posting-1", "ashby-key-789", busy)
+    t("a 429 from the employer's system is remembered: the next card does not ask it again", (first[1], again[1], len(asked)), (429, 429, 1))
+    busy_s = getattr(ats_api, "BUSY_SECONDS", 60)
+    for ago, want in ((busy_s - 5, len(asked)), (busy_s + 1, len(asked) + 1)):
+        for k in [k for k in ats_api._FORMS if k[2] == "busy-posting-1"]:
+            ats_api._FORMS[k] = (time.time() - ago,) + ats_api._FORMS[k][1:]
+        ats_api._cached_form("ashby", "busy-posting-1", "ashby-key-789", busy)
+        t("...still remembered 55 seconds later" if ago < busy_s else "...and asked again once the minute is over (not after five minutes, as a missing posting is)",
+          len(asked), want)
+    refused = []
+    for _ in range(2):
+        ats_api._cached_form("ashby", "key-posting-1", "ashby-key-789", lambda: (refused.append(1), (None, 401, "bad key"))[1])
+    t("a refused key (401) is still never remembered: a corrected key is tried on the next swipe", len(refused), 2)
+
+    def together(n, read, call):
+        gate, outs, reads = threading.Event(), [], []
+
+        def slow():
+            reads.append(1)
+            gate.wait(5)
+            return read()
+        ths = [threading.Thread(target=lambda: outs.append(call(slow))) for _ in range(n)]
+        for th in ths:
+            th.start()
+        time.sleep(0.4)
+        gate.set()
+        for th in ths:
+            th.join(10)
+        return reads, outs
+    reads, outs = together(8, lambda: ({"definition": {"sections": []}, "title": "x"}, 200, ""),
+                           lambda r: ats_api._cached_form("ashby", "same-posting-2", "ashby-key-789", r))
+    t("eight requests for one posting at the same moment make one read of the employer's system, and all eight get its answer",
+      (len(reads), len(outs), sorted(set(o[1] for o in outs))), (1, 8, [200]))
+    reads, outs = together(5, lambda: (None, 401, "bad key"), lambda r: ats_api._cached_form("ashby", "same-posting-3", "ashby-key-789", r))
+    t("...the same when that read fails (the others share its answer instead of each asking)", (len(reads), sorted(set(o[1] for o in outs))), (1, [401]))
+    reads, outs = together(3, lambda: 1 / 0, lambda r: ats_api._cached_form("ashby", "same-posting-4", "ashby-key-789", r))
+    t("...and a read that breaks still answers every request waiting on it", (len(reads), len(outs), sorted(set(o[1] for o in outs))), (1, 3, [0]))
+    # Greenhouse's public form (read without a key) works the same way
+    real_call, gh = ats_api._call, []
+    try:
+        ats_api._call = lambda req, timeout=20: (gh.append(req.full_url), (429, None))[1]
+        autofill.read_form("acme", "7001")
+        autofill.read_form("acme", "7001")
+        t("Greenhouse's public form: a 429 is remembered for a minute too", len(gh), 1)
+        hit = autofill._CACHE[(ats_api._base("greenhouse"), "acme", "7001")]
+        autofill._CACHE[(ats_api._base("greenhouse"), "acme", "7001")] = (time.time() - busy_s - 1,) + hit[1:]
+        autofill.read_form("acme", "7001")
+        t("...and read again after it", len(gh), 2)
+
+        def slow_gh(req, timeout=20):
+            gh.append(req.full_url)
+            time.sleep(0.5)
+            return 200, {"questions": [], "title": "Analyst"}
+        ats_api._call, gh[:] = slow_gh, []
+        outs = []
+        ths = [threading.Thread(target=lambda: outs.append(autofill.read_form("acme", "7002"))) for _ in range(6)]
+        for th in ths:
+            th.start()
+        for th in ths:
+            th.join(10)
+        t("...and six requests for one posting at the same moment make one read", (len(gh), len(outs), all(o[1] == 200 for o in outs)), (1, 6, True))
+    finally:
+        ats_api._call = real_call
 finally:
     mock.terminate()
 

@@ -32,6 +32,8 @@ run "audit of every file (JSON, Python, JS, HTML, links, XML, images, secrets, g
 run "every page and email renders, every script parses, no line break JavaScript would join, shell scripts parse" python tools/test-pages.py
 run "taps and focus: the one rule (shared/uaply-focus.css) word for word in every page UAply serves" python tools/test-focus.py
 run "taps and focus in Chrome at phone size: no default tap highlight anywhere, no ring after a tap, a keyboard ring, the starting-up retries" env W=390 H=844 node tools/cdp.js tools/ui-focus.js
+run "assisted apply on a mock form of each hiring system: every field lands, nothing voluntary, never Submit; filled from only what the scan saw" env W=390 H=844 node tools/cdp.js tools/test-assist.js
+run "assisted apply against hostile pages: a page's own UAplyAssist, a redirect to another site and a look-alike host receive nothing" env W=390 H=844 node tools/cdp.js tools/test-assist-hostile.js
 run "Google Play listing pack: picture sizes and formats, text lengths, the Data safety and App content answers" python tools/test-play-listing.py
 if python -m ruff --version >/dev/null 2>&1; then run "Python syntax errors and undefined names (Ruff)" python -m ruff check --select E9,F63,F7,F82 .; fi
 

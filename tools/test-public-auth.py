@@ -1,8 +1,8 @@
 """Sign-in on a server run the way the live site runs it: public (any address but 127.0.0.1), behind Render's HTTPS proxy, which sends
 X-Forwarded-Proto: https and X-Forwarded-For, for the addresses uaply.net, www.uaply.net and the onrender.com addresses. Starts its own throwaway
-servers (a stand-in Google on PORT+1, UAply on PORT, and for the sandbox's emailed-code sign-in a stand-in mail server on PORT+2 and two
-sandbox servers on PORT+3 and PORT+4) and stops them at the end, so it needs nothing running:
-  python tools/test-public-auth.py [port]          (default 18780; uses that port and the next four)
+servers (a stand-in Google on PORT+1, UAply on PORT, and for the sandbox's emailed-code sign-in a stand-in mail server on PORT+2 and three
+sandbox servers on PORT+3 to PORT+5) and stops them at the end, so it needs nothing running:
+  python tools/test-public-auth.py [port]          (default 18780; uses that port and the next five)
 Checks: the cookies, the same-site check for each real address, Google tokens (good, wrong and forged), linking a Google account to a
 password account, a new Google account starting empty, signing in again after a server restart, the password rules, the lock-out after
 wrong passwords (also when the attacker changes the address it claims to come from), and the 6-digit code's expiry, tries and resends.
@@ -307,7 +307,7 @@ try:
     t("the callback signs the person in and goes back to the app", (s, h3.get("location")), (302, "/?signed_in=google"))
     t("...and they are signed in on www.uaply.net", (me(jar(fck), host=host) or {}).get("email"), "iphone.user@gmail.com")
     # ---------- the sandbox's emailed-code sign-in (sign-up v2): the real visitor's address, the shared limits, a site-wide cap ----------
-    MAILPORT, SBPORT, CAPPORT = PORT + 2, PORT + 3, PORT + 4
+    MAILPORT, SBPORT, CAPPORT, CAP2PORT = PORT + 2, PORT + 3, PORT + 4, PORT + 5
     PROCS.append(subprocess.Popen([sys.executable, os.path.join(HERE, "fake-smtp.py"), str(MAILPORT), os.path.join(DATA, "fake-smtp.jsonl")],
                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
     SBCFG = dict(CFG, smtp={"host": "127.0.0.1", "port": MAILPORT, "starttls": False, "from_addr": "uaply@example.com"})
@@ -327,7 +327,7 @@ try:
                 time.sleep(0.25)
         raise SystemExit("the sandbox test server did not start")
 
-    start_sandbox(SBPORT, DATA + "-sb")
+    start_sandbox(SBPORT, DATA + "-sb", {"UAPLY_CODE_SENDS_PER_HOUR": "2000"})   # room for 80 from one address (5% of 2000 is 100)
     t("the sandbox server signs in by emailed code (its mail server is set up)", (req("GET", "/api/auth/providers", port=SBPORT)[1] or {}).get("codeSignin"), True)
     # the code routes count the host's last hop too: a made-up first X-Forwarded-For entry on every try changes nothing
     wrong = [req("POST", "/api/auth/code/verify", {"email": "nobody.%d@example.com" % i, "code": "000000"}, xff="7.7.%d.%d, 198.51.100.230" % (i, i),
@@ -357,6 +357,64 @@ try:
     t("...with a plain answer: try again in a few minutes, or use Google", "few minutes" in (caps[3][1] or {}).get("error", "") and "Google" in (caps[3][1] or {}).get("error", ""), True)
     t("...and Create my account is held back the same way", (req("POST", "/api/auth/signup", {"email": "cap.new@example.com", "agree": True, "passwordless": True},
                                                                xff="198.51.100.250", port=CAPPORT)[1] or {}).get("code"), "code_busy")
+
+    # ---------- the site's hour cannot be used up by a few addresses, and an account's owner always gets a code (October 22 review) ----------
+    t("one address may use 5% of the site's hour of code emails: 25 of the default 500", (getattr(auth_api, "SITE_SHARE_PERCENT", None), getattr(auth_api, "site_share", lambda: None)()), (5, 25))
+    start_sandbox(CAP2PORT, DATA + "-cap2", {"UAPLY_CODE_SENDS_PER_HOUR": "40"})          # 40 an hour, so 2 per address
+
+    def mail_code(addr, after="", wait=6.0):
+        end = time.time() + wait
+        while time.time() < end:
+            try:
+                with open(os.path.join(DATA, "fake-smtp.jsonl"), encoding="utf-8") as f:
+                    rows = [json.loads(x) for x in f if x.strip()]
+            except (OSError, ValueError):
+                rows = []
+            for r in reversed(rows):
+                m = re.search(r"([0-9]{6}) is your UAply verification code", r.get("raw", ""))
+                if addr in json.dumps(r.get("to")) and m:
+                    if m.group(1) != after:
+                        return m.group(1)
+                    break
+            time.sleep(0.1)
+        return ""
+
+    def cookie_named(cookies, name):
+        for c in cookies:
+            m = re.match(r"(%s=[^;]+)" % re.escape(name), c)
+            if m:
+                return m.group(1)
+        return ""
+    send2 = lambda email, xff, cookie="": req("POST", "/api/auth/code/send", {"email": email}, xff=xff, cookie=cookie, port=CAP2PORT)
+    # the owner of an account signs in with a code once on their phone: it keeps the known-device cookie and a session
+    req("POST", "/api/auth/signup", {"email": "known.owner@example.com", "agree": True, "passwordless": True}, xff="198.51.100.10", port=CAP2PORT)
+    c0 = mail_code("known.owner@example.com")
+    s, out, cks, _ = req("POST", "/api/auth/code/verify", {"email": "known.owner@example.com", "code": c0, "agree": True}, xff="198.51.100.10", port=CAP2PORT)
+    known_ck, sess_ck = cookie_named(cks, "uaply_sandbox_session_known"), cookie_named(cks, "uaply_sandbox_session")
+    t("(set-up) the owner's code sign-in gives the known-device cookie and a session", (s, bool(known_ck), bool(sess_ck)), (200, True, True))
+    share = [send2("share.%d@example.com" % i, "198.51.100.20")[0] for i in range(3)]
+    shared = send2("share.x@example.com", "198.51.100.20")[1] or {}
+    t("one address uses its share of the site's hour (2 of 40 here), then gets the plain limit answer, not 'UAply is busy'",
+      (share, shared.get("code")), ([200, 200, 429], "code_limit"))
+    v6 = [send2("six.%d@example.com" % i, x)[0] for i, x in enumerate(("2001:db8:5:6::1", "2001:db8:5:6::ffff:2", "2001:db8:5:6:abcd::3", "2001:db8:5:7::1"))]
+    t("IPv6: every address of one /64 counts as one visitor (a third address in it is held back); another /64 is another visitor",
+      v6, [200, 200, 429, 200])
+    filled = [send2("fill.%d.%d@example.com" % (n, k), "198.51.101.%d" % (n + 1))[0] for n in range(17) for k in range(2)]
+    stranger = send2("someone.new@example.com", "198.51.102.1")[1] or {}
+    t("(set-up) 17 more addresses use up the rest of the hour; a newcomer is then told UAply is busy",
+      (filled == [200] * 34, stranger.get("code")), (True, "code_busy"))
+    t("...the owner's address from a device that never signed in is held back like anyone else", (send2("known.owner@example.com", "198.51.102.2")[1] or {}).get("code"), "code_busy")
+    s, out, _, _ = send2("known.owner@example.com", "198.51.102.2", cookie=known_ck)
+    c1 = mail_code("known.owner@example.com", after=c0)
+    t("...but the owner's known device still gets a code while the site's hour is used up", (s, bool(c1)), (200, True))
+    s, out, _, _ = send2("known.owner@example.com", "198.51.102.3", cookie=sess_ck)
+    t("...and so does a device signed in to that verified account", (s, bool(mail_code("known.owner@example.com", after=c1))), (200, True))
+    t("...while that session asks for another address's code in vain (no pass for other accounts, and nothing said about them)",
+      (send2("someone.else@example.com", "198.51.102.3", cookie=sess_ck)[1] or {}).get("code"), "code_busy")
+    s, out, ucks, _ = req("POST", "/api/auth/signup", {"email": "unproven@example.com", "password": "unproven pass 1", "agree": True}, xff="198.51.102.4", port=CAP2PORT)
+    ujar = cookie_named(ucks, "uaply_sandbox_session")
+    t("...and an account nobody proved yet (anyone can open one) gets no pass for Resend", (s, (req("POST", "/api/auth/resend", {}, xff="198.51.102.4", cookie=ujar, port=CAP2PORT)[1] or {}).get("code")),
+      (200, "code_busy"))
 
 finally:
     for p in PROCS:

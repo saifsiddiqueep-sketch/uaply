@@ -10,6 +10,12 @@ const fs = require("fs");
 const path = require("path");
 const URLS = JSON.parse(fs.readFileSync(process.env.URLS, "utf8"));
 const ENGINE = fs.readFileSync(path.join(__dirname, "..", "shared", "uaply-assist.js"), "utf8");
+// uaply-nav.js's own assistShape / assistOnly (what the phone app hands the page), taken from the file as they are
+const H = (() => {
+  const nav = fs.readFileSync(path.join(__dirname, "..", "shared", "uaply-nav.js"), "utf8");
+  const code = nav.split("\n").filter((l) => /^\s*var ASSIST_[A-Z]+=|^\s*function assist(Shape|Only|Hosts)\(/.test(l)).join("\n");
+  return new Function("w", code + "\nreturn {assistShape:assistShape,assistOnly:assistOnly};")({ URL: URL });
+})();
 const RESUME = fs.readFileSync(path.join(__dirname, "fixtures", "resumes", "twocolumn.pdf")).toString("base64");
 const PERSON = {
   first: "Sam", last: "Rivera", name: "Sam Rivera", email: "sam.rivera.test@example.com", phone: "215-555-0142",
@@ -85,11 +91,13 @@ module.exports = async ({ ev, sleep, nav, send, on, shot }) => {
       const job = { co: "the company", role: "this role" };
       let asked = [], who = PERSON;
       if (BRIDGE !== "off") {
-        const sc = await ev("UAplyAssist.scan(" + JSON.stringify(PERSON) + ",{job:" + JSON.stringify(job) + "}).then(r=>JSON.stringify(r.questions||[])).catch(e=>'[]')");
-        try { asked = JSON.parse(sc).filter((q) => BRIDGE === "all" || q.required); } catch (e) { asked = []; }
+        // as the phone app runs it: the scan gets stand-ins for the person's details, the fill only what the scan saw the form ask for
+        const sc = await ev("UAplyAssist.scan(" + JSON.stringify(H.assistShape(PERSON)) + ",{job:" + JSON.stringify(job) + "}).then(r=>JSON.stringify({questions:r.questions||[],keys:r.keys,answerKeys:r.answerKeys,resume:!!r.resumeInput})).catch(e=>'{}')");
+        let scan = {};
+        try { scan = JSON.parse(sc); asked = (scan.questions || []).filter((q) => BRIDGE === "all" || q.required); } catch (e) { asked = []; }
         const answers = {};
         asked.forEach((q) => { answers[q.key] = personAnswer(q); });
-        who = Object.assign({}, PERSON, { answers });
+        who = H.assistOnly(Object.assign({}, PERSON, { answers }), scan, asked.map((q) => q.key));
       }
       const rep = await ev("UAplyAssist.fill(" + JSON.stringify(who) + ",{banner:true,debug:" + (process.env.DEBUG ? "true" : "false") + ",job:" + JSON.stringify(job) + "}).then(r=>JSON.stringify(r)).catch(e=>JSON.stringify({error:String(e)}))");
       let r = {};

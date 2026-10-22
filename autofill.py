@@ -53,26 +53,37 @@ _EDU = {"High school": "High School", "Associate": "Associate's Degree", "Bachel
 
 def read_form(board, job_id):
     """(form, HTTP status) for the job's public Greenhouse application form; form is None when it could not be read.
-    Cached for six hours; a failed read is remembered for five minutes so a missing posting is not asked for on every swipe."""
+    Cached for six hours; a failed read is remembered for five minutes (a 429, "too many requests", for a minute) so a missing posting is
+    not asked for on every swipe, and requests for the same posting at the same moment share one read (ats_api.one_read)."""
     if not (isinstance(board, str) and ats_api.TOKEN_RE.match(board) and isinstance(job_id, str) and ats_api.ID_RE.match(job_id)):
         return None, 0
     key = (ats_api._base("greenhouse"), board, job_id)
-    now = time.time()
-    with _LOCK:
-        hit = _CACHE.get(key)
-        if hit and now - hit[0] < (TTL if hit[1] is not None else 300):
-            return hit[1], hit[2]
-    status, form = ats_api._call(urllib.request.Request("%s/v1/boards/%s/jobs/%s?questions=true" % (key[0], board, job_id),
-                                                        headers={"Accept": "application/json", "User-Agent": "UAply/1.0"}), timeout=8)
-    form = form if status == 200 and isinstance(form, dict) else None
-    if form:                                       # keep only what the plan needs (the posting text is large and not used here)
-        form = {k: form.get(k) for k in ("questions", "location_questions", "company_name", "title", "absolute_url")}
-    with _LOCK:
-        if len(_CACHE) >= MAX_CACHED:
-            for k in sorted(_CACHE, key=lambda k: _CACHE[k][0])[:MAX_CACHED // 4]:
-                _CACHE.pop(k, None)
-        _CACHE[key] = (now, form, status)
-    return form, status
+
+    def kept():
+        with _LOCK:
+            hit = _CACHE.get(key)
+            return hit[1:] if hit and time.time() - hit[0] < (TTL if hit[1] is not None else ats_api.BUSY_SECONDS if hit[2] == 429 else 300) else None
+    hit = kept()
+    if hit:
+        return hit
+
+    def read_and_keep():
+        again = kept()                     # a read that ended between the look above and this one: its answer, not a second read
+        if again:
+            return again
+        status, form = ats_api._call(urllib.request.Request("%s/v1/boards/%s/jobs/%s?questions=true" % (key[0], board, job_id),
+                                                            headers={"Accept": "application/json", "User-Agent": "UAply/1.0"}), timeout=8)
+        form = form if status == 200 and isinstance(form, dict) else None
+        if form:                                   # keep only what the plan needs (the posting text is large and not used here)
+            form = {k: form.get(k) for k in ("questions", "location_questions", "company_name", "title", "absolute_url")}
+        with _LOCK:
+            if len(_CACHE) >= MAX_CACHED:
+                for k in sorted(_CACHE, key=lambda k: _CACHE[k][0])[:MAX_CACHED // 4]:
+                    _CACHE.pop(k, None)
+            _CACHE[key] = (time.time(), form, status)
+        return form, status
+    out = ats_api.one_read(("greenhouse-public",) + key, read_and_keep)
+    return out if out is not None else (None, 0)
 
 
 def fetch_form(board, job_id):

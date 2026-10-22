@@ -6,6 +6,23 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 
+### Release review fixes (Reviewer 2, October 22): what an employer's page can get, the site's hour of codes, busy hiring systems
+- **Assisted apply hands a page nothing it does not ask for.** Only the hiring systems' own hosts (`hosts` in
+  `shared/assist-systems.json`) and this job's own page are ever filled; on a redirect, a tapped link, a look-alike host or http,
+  nothing goes in and nothing is read (`AssistActivity` checks the address before every call, `AssistActivity.CALL` again inside the
+  page). The script lives under a random name, new each time the screen opens, frozen and fixed: a page's own `window.UAplyAssist`
+  (which used to be handed the profile) is never called, and the old `window.__uaplyScan` / `__uaplyRep` globals are gone. The scan
+  gets stand-ins for the person's details; the fill gets only what the scan saw the form ask for (`assistShape`, `assistOnly`), and
+  fills the five mock forms exactly as the whole profile did; a saved answer whose question names another employer is not handed over
+  either (it told the page where else the person applied). The measurement tool now hands pages the same.
+- **The site's hour of code emails:** one address may use at most 5% of it (25 of 500), an IPv6 visitor counts by its /64
+  (`serve.limit_key`, for every limit), and an account's owner (known-device cookie, or signed in to that verified account) is never
+  held back by it.
+- **A busy hiring system:** a 429 from an employer's system is remembered for a minute (readiness no longer asks it again on every
+  card), and requests for the same posting at the same moment share one read (`ats_api.one_read`, also for Greenhouse's public form).
+- Tests: `tools/test-assist-hostile.js` (new, 33), test-assist 226 (12 new), ui-assist-tracker 31 (4 new), test-public-auth 107
+  (10 new), test-ats-flow 52 (10 new). Both assist tests now run in `tools/run-all-tests.sh`.
+
 ### The phone walk checks the sign-up card; two fit fixes it found (October 22)
 - `tools/phone-walk.js` walks the sandbox's sign-up card by real touch: Continue with Google, email, names, the 18+ tick, the code from
   the stand-in inbox, the two questions, sign out, sign-in by code, and Google through the stand-in Google. Not finding a sign-up form is a

@@ -51,6 +51,29 @@ government official, PhD, salary (used only where a form requires it), About you
 with {company} and {role} filled in), 18 or older (yes: the person confirmed it in the first-swipe agreement), how they heard
 ("UAply"), the answers saved in UAply's question box, and the resume file.
 
+**What the employer's page is given (October 22 review).** The page is somebody else's code, so it gets as little as the form needs:
+- **Only allowed hosts.** The hiring systems' own application hosts (`hosts` in `shared/assist-systems.json`: boards. and
+  job-boards.greenhouse.io and their EU ones, jobs.lever.co and jobs.eu.lever.co, jobs.ashbyhq.com, jobs.smartrecruiters.com,
+  apply.workable.com) and this job's own page, for this job only. A redirect to another site, a link the person taps, a look-alike
+  host (jobs.ashbyhq.com.evil.example) or plain http: nothing is put into the page and nothing is read from it. `AssistActivity`
+  checks the address before every call, and `AssistActivity.CALL` checks it again inside the page before it touches anything
+  (`location`, which the page cannot fake, and no function the page could have replaced), so a redirect between the two changes nothing.
+- **A name the page cannot guess.** The script is put in as `(function(__uaplyAssistKey){...})('<32 random hex digits>')`, new each
+  time the screen opens, and lives under `window.__uaplyAssist_<key>`, frozen and fixed, so the page can neither replace nor wrap
+  it. A page's own `window.UAplyAssist` is never called (before, a page that defined one first was handed the whole profile), and
+  results stay inside the script, so a page writing the old `window.__uaplyScan` cannot put its own questions into UAply's question
+  box or say Sent.
+- **Never the whole profile.** The scan gets stand-ins for the person's contact details, links, address, pay, texts, long answers and
+  resume file ("a@example.com"), keeping only what lists are matched against (city, state, country, school, degree, major, dates,
+  the yes/no answers, short saved answers). It returns which profile items the form asks for; the fill then gets only those, the
+  saved answers it used and the ones just given, and the resume only when the form takes one (`assistShape` and `assistOnly` in
+  `shared/uaply-nav.js`). On the five mock forms this fills exactly as the whole profile did.
+- Still true: a page can read what is typed into its own fields, and a page that rewrites JavaScript's built-ins before UAply's
+  script arrives can watch the fill. That is why only those hosts are filled and only with what their form asks.
+- Tests: `tools/test-assist-hostile.js` (33 checks: a hostile page that defines `UAplyAssist`, traps the old globals, hunts for
+  UAply's script and wraps the value setters, `JSON.stringify` and `Object.keys`; a posting that redirects to another site; a
+  look-alike host; each receives nothing beyond its own form's fields) and the minimised-fill checks in `tools/test-assist.js`.
+
 **How a field is matched (the synonym map in `shared/uaply-assist.js`, October 22).** Each field's words (label, aria, question
 block, placeholder, name) go through one ordered list of rules, with guards for questions that only share a word ("Why do you want
 to work at X" is not "have you worked at X"; "Name pronunciation", "Portfolio password", "When did you graduate from high school",
@@ -216,8 +239,9 @@ never filling voluntary questions, and saying Sent only on the employer's confir
 
 Done: the script (`shared/uaply-assist.js`); the switch file and its rule; the app side in Job Tracker; the Android plugin and screen
 (`AssistPlugin.java`, `AssistActivity.java`, registered in `MainActivity`, declared in the manifest); consent version 3; mock forms
-for all five systems (`tools/fixtures/assist/`, every mapping and the bridge on each) and tests (`tools/test-assist.js`, 213 checks;
-`tools/ui-assist-tracker.js`, 26 checks, the bridge in Job Tracker); the measurement in one command (`tools/assist-measure.py`).
+for all five systems (`tools/fixtures/assist/`, every mapping and the bridge on each) and tests (`tools/test-assist.js`, 226 checks;
+`tools/test-assist-hostile.js`, 33; `tools/ui-assist-tracker.js`, 31, the bridge in Job Tracker); the measurement in one command
+(`tools/assist-measure.py`, which hands the page what the app hands it).
 
 Not done, and why:
 - **The UAply app itself was not built or installed on the Galaxy.** Building needs Google's Android SDK, whose license only the
