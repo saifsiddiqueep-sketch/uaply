@@ -508,7 +508,7 @@ function apply(w,host){
     interview:[["accepted","Accepted"],["rejected","Rejected"],["applied","Back to applied"],["withdraw","Withdraw"]]
   };
   var EMPTY={
-    applied:"No applications yet. Swipe right on a job, internship or co-op: UAply applies for you at connected employers and takes you to the employer\'s page everywhere else.",
+    applied:"No applications yet. A swipe right on a job, internship or co-op applies through UAply only for employers who take UAply applications. Every other job waits here, with the employer\'s own page for you to finish there.",
     accepted:"Nothing here yet. Tap Accepted on an application when you get an offer.",
     rejected:"Nothing here. Tap Rejected on an application when you hear back.",
     interview:"Nothing here yet. Tap Interview on an application when a company invites you."
