@@ -14,7 +14,7 @@ The match percentage is a fixed formula, not a judgment about you: skills, exper
 YOUR PROFILE, ONCE
 Five short steps: about you, the jobs you want, your skills, background and links, and eligibility. Attach your resume once and it goes with the applications UAply sends. Optional answers employers often ask (work authorization, start date, expected pay) are kept with your profile so a connected employer's form can be completed without retyping. Voluntary self-identification answers stay on your device and are never sent for you.
 
-DASHBOARD: YOUR JOB TRACKER
+JOB TRACKER
 Every application in one place: move it to Interview, Accepted or Rejected, add an interview time, an offer or notes, add interviews to your calendar, and export everything as a spreadsheet.
 
 FILTERS THAT MATTER
