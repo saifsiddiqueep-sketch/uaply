@@ -9,7 +9,7 @@ const ROOT = path.join(__dirname, "..");
 const PREVIEW = "This is a preview with example jobs and no server, so sign-in, applying and email are off here. The real site is uaply.net.";
 const WRONG = /Cannot reach UAply|check your (internet|connection)|couldn't reach|Could not reach|unexpected reply|Something went wrong|undefined|\[object Object\]|\bNaN\b/i;
 
-function site() {   // the same steps as .github/workflows/pages.yml
+function site() {   // the same steps the retired GitHub Pages job used (share/build-share.js --full)
   const b = spawnSync(process.execPath, ["share/build-share.js", "--full"], { cwd: ROOT, encoding: "utf8" });
   if (b.status !== 0) throw new Error("share/build-share.js failed: " + b.stderr);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "uaply-preview-")), top = path.join(dir, "uaply");

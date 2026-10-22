@@ -76,7 +76,7 @@ SERVED = {os.path.basename(f) for f in files if f.startswith("shared/")} | {"pro
 
 def link_exists(base, ref):
     ref = ref.split("#")[0].split("?")[0]
-    if not ref or re.match(r"^(https?:|mailto:|tel:|data:|javascript:|//)", ref):
+    if not ref or re.match(r"^(https?:|mailto:|tel:|data:|javascript:|about:|//)", ref):
         return True
     if os.path.basename(ref) in SERVED:
         return True

@@ -86,6 +86,15 @@ production page and only changes when the owner decides.
   With only the required questions answered: 89%, 92%, 72%, 85%. docs/assisted-apply.md has the table.
 - Tests: `tools/test-assist.js` 213 checks (every new mapping and the bridge on a mock form per system), `tools/ui-assist-tracker.js`
   26 (the bridge in Job Tracker: asks, blocks a blank required answer, skips answered ones, Not now opens nothing, keeps a cover letter to its employer).
+### Apply wording from the job's route; learner, caching and uptime
+- **The card and the Job Tracker row read the job's `route`:** connected or email: "Applies instantly"; one-tap: "Ready, one tap on their
+  site"; assisted or ready: "Ready" (the server's labels "Ready" and "Ready, one tap" read the same). "Apply instantly" and "Opens employer
+  site" are gone from the app, the help answer, the employers page and the Play listing. tools/ui-route.js checks every route at 390 and 1280.
+- **Learns from your swipes** no longer pushes strong matches down for a new person: no reordering before 8 swipes or while every swipe
+  is a yes, an attribute counts from 2 swipes, and before 30 swipes a 90%+ match loses at most 10 points.
+- **Scripts and the legal style sheet are cached a year** under content-hashed names (uaply-nav.<hash>.js); pages, /api and the service
+  worker stay no-store; a changed file gets a new name at once.
+- **docs/uptime.md**: the UptimeRobot free monitor for https://uaply.net/healthz, for the owner to set up.
 
 ### Sign-up, nothing hidden: no password, an emailed code, two questions (Mohammed's design, Oct 21)
 - **One card in the middle of the Account screen**, with the UAply mark directly above it and the two centered together on phones and
@@ -135,6 +144,22 @@ production page and only changes when the owner decides.
 - **Measured** on the owner's Galaxy, 20 real postings per system, nothing submitted: see `docs/assisted-apply.md`.
 - Tests: `tools/test-assist.js` (mock form per system in `tools/fixtures/assist/`), `tools/ui-assist-tracker.js` (Job Tracker with a
   stand-in plugin), `tools/assist-measure.js` (real postings, every application-carrying request refused).
+### Five fixes from the October 22 audit
+- **Rate limits count the real visitor.** The visitor's address is the last hop the host's proxy added to X-Forwarded-For (an internal hop
+  after it is skipped), or CF-Connecting-IP when that hop is a Cloudflare server (Cloudflare's published ranges, read at start and every
+  24 hours, with a built-in copy). A script writing a new made-up first entry every try is now locked out like anyone else. The limits are
+  campus-friendly: 40 sign-ups an hour per address (was 5), 5 per address and email, codes 3 per account, 80 per address (was 12), 5 per
+  address and email; each refusal says what to do.
+- **Mark as applied.** A hand-off row in Job Tracker has Mark as applied: the row then says Sent (by you) with the date; Undo once.
+- **One reminder a day.** A hand-off swipe no longer sends its own "Finish your application" email: the jobs wait and go together, the first
+  reminder 30 minutes after the first such swipe, then at most one a day (kind "digest", held by the daily limit like other mail that can
+  wait; removed with the account). Receipts for applications UAply sends are unchanged.
+- **/.well-known/security.txt**: the company's contact address, the privacy page, and an expiry a year from now.
+- **Help chat and the outside AI.** With AI answers on, the first message shows a one-line notice that it goes to Anthropic, with Continue or
+  Not now (remembered on the device); Not now sends nothing.
+- A short message after a swipe is no longer a narrow column (phones use the screen's width; at least 320 px elsewhere).
+- Tests: tools/test-public-auth.py (forged X-Forwarded-For, Cloudflare, sign-up and code limits), tools/test-emails.py (the reminder),
+  tools/test-pages.py (security.txt), tools/ui-journey.js (Mark as applied, the chat notice); each fails on 512bf84.
 
 ### Apply journey fixes (50 real swipes on the Galaxy A17 and a laptop, October 22)
 - **The card tells the truth before the swipe.** Where the server previews forms in test mode (the sandbox), a swipe right on any Greenhouse

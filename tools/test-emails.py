@@ -149,21 +149,39 @@ try:
                                          "source": "Acme careers", "loc": "Philadelphia, PA", "type": "internship", "mode": "hybrid", "sal": [30000, 38000],
                                          "blurb": "Build and test the software that drives our warehouse robots."},
                "profile": {"ext": {"phone": "215-555-0100"}, "name": "Sam Rivera", "email": "sam@example.com", "skills": ["Python", "SQL"]}, "match": 87}
+    def mails():
+        return [json.loads(x) for x in open(mail_file, encoding="utf-8") if x.strip()] if os.path.exists(mail_file) else []
     code, res = uaply_api.submit(payload, user)
     time.sleep(1)
-    sent = [json.loads(x) for x in open(mail_file, encoding="utf-8")] if os.path.exists(mail_file) else []
+    sent = mails()
     t("swiping right in test mode answers ok", code, 200)
-    t("two emails went out: the receipt and the owner copy", sorted(sum((m["to"] for m in sent), [])), ["owner@example.com", "sam@example.com"])
-    rec = next((m for m in sent if m["to"] == ["sam@example.com"]), None)
-    if rec:
-        msg = email.message_from_string(rec["raw"], policy=email.policy.default)
-        t("the receipt subject says TEST and names the job", msg["Subject"].startswith("[TEST] ") and "Acme Robotics" in msg["Subject"], True)
-        t("the receipt has a plain-text and an HTML version", [p.get_content_type() for p in msg.walk() if not p.is_multipart()], ["text/plain", "text/html"])
-        body = msg.get_body(preferencelist=("plain",)).get_content()
-        t("the receipt shows the job description and what a swipe means", "warehouse robots" in body and "Swiping right means" in body, True)
-        t("the receipt is recorded in the test inbox with status sent", auth_api.mail_list(5)[0]["status"], "sent")
+    # a job that takes applications on the employer's own site: no "finish your application" email per swipe (October 22: one swipe
+    # could send two emails, 20 swipes forty); it waits for the day's reminder
+    t("a hand-off swipe sends only the owner copy now; the person's 'finish your application' waits for the day's reminder",
+      (sorted(sum((m["to"] for m in sent), [])), res.get("receipt", {}).get("status"), uaply_api.finish_waiting(user["id"])), (["owner@example.com"], "digest", 1))
     owner = next((m for m in sent if m["to"] == ["owner@example.com"]), None)
     t("the owner copy is labelled as a copy and shows the job", bool(owner) and "[UAply copy]" in owner["raw"] and "warehouse robots" in owner["raw"], True)
+    payload_b = dict(payload, job=dict(payload["job"], id=424250, co="Beta Labs", role="Data Intern", url="https://beta.example/jobs/7"))
+    uaply_api.submit(payload_b, user)
+    uaply_api.submit(payload_b, user)                                           # the same job again is listed once
+    n0 = len(mails())
+    t("before the hold is over nothing more is sent (one swiping session becomes one email)", (uaply_api.send_finish_digests(time.time() + 60), len(mails()) - n0), (0, 0))
+    t("...after it, one reminder goes, listing both jobs once each", uaply_api.send_finish_digests(time.time() + uaply_api.DIGEST_HOLD + 60), 1)
+    time.sleep(1)
+    dig = [m for m in mails()[n0:] if m["to"] == ["sam@example.com"]]
+    t("exactly one reminder reached the person", len(dig), 1)
+    if dig:
+        msg = email.message_from_string(dig[0]["raw"], policy=email.policy.default)
+        body = msg.get_body(preferencelist=("plain",)).get_content()
+        t("the reminder subject says TEST and counts the jobs", msg["Subject"], "[TEST] Finish your applications: 2 jobs waiting on the employers' sites")
+        t("the reminder has a plain-text and an HTML version", [p.get_content_type() for p in msg.walk() if not p.is_multipart()], ["text/plain", "text/html"])
+        t("the reminder lists each job once with its link", (body.count("Software Engineering Intern at Acme Robotics"), body.count("Data Intern at Beta Labs"),
+                                                             "https://acme.example/jobs/42" in body and "https://beta.example/jobs/7" in body), (1, 1, True))
+        t("the reminder is recorded in the test inbox with status sent", auth_api.mail_list(5)[0]["status"], "sent")
+    uaply_api.submit(dict(payload, job=dict(payload["job"], id=424251)), user)
+    t("another hand-off the same day waits: at most one reminder a day", uaply_api.send_finish_digests(time.time() + uaply_api.DIGEST_HOLD + 120), 0)
+    t("...and goes the next day", uaply_api.send_finish_digests(time.time() + uaply_api.DIGEST_EVERY + uaply_api.DIGEST_HOLD + 120), 1)
+    time.sleep(0.5)
     # when the person who swipes IS the owner address, one swipe sends one email (not a confirmation plus a copy)
     n_before = len([1 for x in open(mail_file, encoding="utf-8") if x.strip()])
     s2, out2, tok2 = auth_api.signup("owner@example.com", "correct horse 99", "127.0.0.2", True)
@@ -174,12 +192,18 @@ try:
     code2, res2 = uaply_api.submit(payload2, user2)
     time.sleep(1)
     new = [json.loads(x) for x in open(mail_file, encoding="utf-8") if x.strip()][n_before:]
-    t("owner swipes: exactly one email, the confirmation", (len(new), new[0]["to"] if new else None, res2["copied"]), (1, ["owner@example.com"], False))
-    # with no public_url set (a fresh host), the receipt links to the https address the person is using; a plain http address is never linked
+    t("owner swipes a hand-off: one email at the swipe (the copy), and its reminder waits for the day's email", (len(new), res2["copied"], uaply_api.finish_waiting(user2["id"])), (1, True, 1))
+    sams = lambda: [m for m in auth_api.mail_list(20) if m["to_addr"] == "sam@example.com"]      # noqa: E731
+    # with no public_url set (a fresh host), the reminder links to the https address the person is using; a plain http address is never linked
+    day = time.time() + 3 * uaply_api.DIGEST_EVERY
     uaply_api.submit(dict(payload, job=dict(payload["job"], id=424244)), user, "https://uaply-dev.onrender.com")
-    t("no public_url: the receipt links to the https site the person used", "Open UAply, then Job Tracker, then Applied. https://uaply-dev.onrender.com" in auth_api.mail_list(1)[0]["body"], True)
+    uaply_api.send_finish_digests(day)
+    t("no public_url: the reminder links to the https site the person used", "Mark each one as applied once you finish it. https://uaply-dev.onrender.com" in sams()[0]["body"], True)
     uaply_api.submit(dict(payload, job=dict(payload["job"], id=424245)), user, "http://127.0.0.1:8767")
-    t("...and an http address (this computer) is never put in an email", "127.0.0.1" in auth_api.mail_list(1)[0]["body"], False)
+    uaply_api.send_finish_digests(day + 2 * uaply_api.DIGEST_EVERY)
+    t("...and an http address (this computer) is never put in an email", ("127.0.0.1" in sams()[0]["body"], "Finish your application" in sams()[0]["subject"]), (False, True))
+    # a receipt for an application UAply really sends is unchanged: still one per swipe, at once (the partner email employer below)
+    t("the reminder is held by the daily limit like other mail that can wait", "digest" in __import__("mailer").DEFERRABLE, True)
 finally:
     proc.terminate()
 

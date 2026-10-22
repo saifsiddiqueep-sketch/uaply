@@ -1,4 +1,4 @@
-// The card credits where a real job came from: "via City of Philadelphia on SmartRecruiters" next to "Opens employer site", small and muted.
+// The card credits where a real job came from: "via City of Philadelphia on SmartRecruiters" next to its apply wording ("Ready"), small and muted.
 //   PORT=<port> W=390 H=844 node tools/cdp.js tools/ui-via.js      (tools/test-feeds.py <port> starts a server with recorded City jobs and runs this)
 // SHOT=<file.png> saves a picture of the card.
 const PORT = process.env.PORT || "8766";
@@ -12,9 +12,9 @@ module.exports = async ({ ev, sleep, nav, shot }) => {
     "const s=v&&getComputedStyle(v),xs=x&&getComputedStyle(x);return JSON.stringify({via:v?v.textContent:'',ext:x?x.textContent:'',next:!!(x&&x.nextElementSibling===v)," +
     "size:s?parseFloat(s.fontSize):0,extSize:xs?parseFloat(xs.fontSize):0,color:s?s.color:'',extColor:xs?xs.color:'',co:(c.querySelector('h2,h3')||c).textContent.trim().slice(0,80)})})()"));
   console.log("top card:", info.co);
-  check("the top card is a real City job and says 'Opens employer site'", info.ext === "Opens employer site", info.ext);
+  check("the top card is a real City job and says 'Ready' (its route; never the old 'Opens employer site')", /^Ready/.test(info.ext), info.ext);
   check("it says 'via City of Philadelphia on SmartRecruiters'", info.via === "via City of Philadelphia on SmartRecruiters", info.via);
-  check("the credit sits right after 'Opens employer site'", info.next, info.next);
+  check("the credit sits right after it", info.next, info.next);
   check("it is smaller than the line it follows, in the same muted color", info.size > 0 && info.size < info.extSize && info.color === info.extColor, JSON.stringify(info));
   if (process.env.SHOT) await shot(process.env.SHOT);
 };

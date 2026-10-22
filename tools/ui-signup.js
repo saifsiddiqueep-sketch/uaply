@@ -4,7 +4,7 @@
 // after Sign out in the app the next person gets an empty card with the box unticked.
 //   W=1280 H=720 PORT=<sandbox port> MOCK_GOOGLE_PORT=8790 node tools/cdp.js tools/ui-signup.js      (W=390 H=844 for a phone)
 // The sandbox server must run with smtp {} (codes land in the test inbox) and, for the Google part, google.* pointing at tools/mock-google.py.
-// Each run emails 5 codes from 127.0.0.1 and the server allows 12 an hour per connection: at most two runs per server start.
+// Each run emails 5 codes from 127.0.0.1 (the server allows 80 an hour per connection, and 10 sign-ups an hour from this computer).
 module.exports = async ({ ev, sleep, nav, send, logs }) => {
   const PORT = process.env.PORT, MG = process.env.MOCK_GOOGLE_PORT || "";
   const W = Number(process.env.W || 1280), H = Number(process.env.H || 720), phone = W < 700;
@@ -242,7 +242,9 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
     check("a new person on Welcome back + Google lands on Create your account with one clear note", /Create your UAply account/.test(t) && /no UAply account yet\. Tick the box/.test(t), t.slice(0, 900));
     check("...the note sits at the box (below the names), marked", await ev("!!" + q(".sg-agree.bad") + "&&/no UAply account yet/.test(" + q(".sg-amsg") + ".textContent)"));
 
-    // a password account on a Gmail address whose password was never confirmed: Google proves the inbox, the password goes, and the card says so
+    // a password account on a Gmail address whose password was never confirmed: Google proves the inbox, but whoever opened the account
+    // ticked the box for themselves, so the inbox's owner ticks it first (since October 22, PR #50 and a660b4a); then Google signs them in,
+    // the password goes, and the card says so
     const pm = "pw." + stamp + "@gmail.com";
     await ev("fetch('/api/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'" + pm + "',password:'correct horse 99',agree:true})})");
     await ev("fetch('/api/auth/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})");
@@ -252,9 +254,17 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
     await click("[data-sg=google]"); await sleep(6000);
     await openAccount(); await sleep(800);
     t = await text();
+    check("Google (no tick) on an account someone opened with an unconfirmed password: the owner is asked for their own tick, no session",
+      /Create your UAply account/.test(t) && /never finished\. Tick the box/.test(t) &&
+      (await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>j.user)")) === null, t.slice(0, 900));
+    await ev("(()=>{const a=" + q(".sg-ag") + ";if(!a.checked)a.click()})()");
+    await ev("fetch('http://127.0.0.1:" + MG + "/mock/next?email=" + pm + "&sub=sp" + stamp + "&verified=1',{mode:'no-cors'})"); await sleep(300);
+    await click("[data-sg=google]"); await sleep(6000);
+    await openAccount(); await sleep(800);
+    t = await text();
     const me2 = JSON.parse(await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>JSON.stringify(j.user))"));
-    check("Google on an account with an unconfirmed password: 'You're signed in' and the card says the password was removed",
-      /You’re signed in/.test(t) && /was removed to keep the account yours/.test(t) && me2 && me2.hasPassword === false, t.slice(0, 400));
+    check("...ticked, Continue with Google: signed in, and the card says the unconfirmed password was removed",
+      me2 && me2.email === pm && me2.hasPassword === false && /was removed to keep the account yours/.test(t), JSON.stringify(me2) + " " + t.slice(0, 600));
     await ev("fetch('/api/auth/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})");
   }
   const errs = logs.filter((l) => !/favicon|ERR_FILE_NOT_FOUND/.test(l));

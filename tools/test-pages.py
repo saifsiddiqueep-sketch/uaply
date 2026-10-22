@@ -259,14 +259,16 @@ def free_port():
     return n
 
 
-def server(extra):
+def server(extra, code=None):
+    """A throwaway server (code: a folder holding a copy of the code to run instead of this one)."""
+    code = code or ROOT
     port = free_port()
     env = dict(os.environ, UAPLY_DATA_DIR=tempfile.mkdtemp(dir=TMP), UAPLY_CONFIG_FILE="none", UAPLY_CONFIG_JSON='{"feeds":[],"smtp":{}}', **extra)
     for k in ("UAPLY_ASSETLINKS_SHA256", "UAPLY_PUBLIC_URL", "HOST"):
         if k not in extra:
             env.pop(k, None)
     log = open(os.path.join(TMP, "server-%d.log" % port), "w")
-    p = subprocess.Popen([sys.executable, os.path.join(ROOT, "serve.py"), str(port), os.path.join(ROOT, "dev"), "--api"], env=env, cwd=ROOT,
+    p = subprocess.Popen([sys.executable, os.path.join(code, "serve.py"), str(port), os.path.join(code, "dev"), "--api"], env=env, cwd=code,
                          stdout=subprocess.DEVNULL, stderr=log)
     for _ in range(120):
         try:
@@ -348,6 +350,64 @@ try:
     hs = get(A, "/.well-known/assetlinks.json", "HEAD")[0]
     t("UAPLY_ASSETLINKS_SHA256 unset: /.well-known/assetlinks.json is a plain 404 (JSON, GET and HEAD), not an empty statement",
       (st, ct, hs, b"package_name" in body) == (404, "application/json", 404, False), "%s %s %s" % (st, ct, body[:80]))
+    # /.well-known/security.txt (RFC 9116): who to tell about a security problem, the privacy page, and an expiry a year away
+    # ---- versioned script and style names: the pages ask for uaply-nav.<hash>.js, which may be kept a year; the pages themselves never ----
+    def hdr(port, path):
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+        c.request("GET", path)
+        r = c.getresponse()
+        out = (r.status, r.getheader("Cache-Control") or "", r.read())
+        c.close()
+        return out
+    import hashlib as _hl
+    st_home, cc_home, home = hdr(A, "/")
+    homes = home.decode("utf-8", "replace")
+    names = re.findall(r'<script src="(uaply-[a-z]+)\.([0-9a-f]{10})\.js"></script>', homes)
+    plain_left = re.findall(r'<script src="uaply-[a-z]+\.js"></script>', homes)
+    want = re.findall(r'<script src="(uaply-[a-z]+)\.js"></script>', dev_html)
+    t("the home page asks for every script by its versioned name (uaply-nav.<hash>.js), none by the plain name, and is itself never kept",
+      st_home == 200 and [n for n, _ in names] == want and not plain_left and cc_home == "no-store", "%s %s %s" % (names, plain_left, cc_home))
+    right = all(h == _hl.sha256(open(os.path.join(ROOT, "shared", n + ".js"), "rb").read()).hexdigest()[:10] for n, h in names)
+    t("...each name carries the first 10 hex digits of that file's SHA-256", bool(names) and right, names)
+    n0, h0 = names[0] if names else ("uaply-nav", "0" * 10)
+    st_v, cc_v, body_v = hdr(A, "/%s.%s.js" % (n0, h0))
+    t("a versioned script is sent with a year's cache (public, max-age=31536000, immutable) and is the file itself",
+      (st_v, cc_v, body_v == open(os.path.join(ROOT, "shared", n0 + ".js"), "rb").read()) == (200, "public, max-age=31536000, immutable", True), (st_v, cc_v))
+    st_o, cc_o, _ = hdr(A, "/%s.0000000000.js" % n0)
+    t("an old name (a page from before a deploy) gets today's file, never kept", (st_o, cc_o), (200, "no-store"))
+    st_l, cc_l, legal_page = hdr(A, "/legal/terms.html")
+    sty = re.search(r'href="style\.([0-9a-f]{10})\.css"', legal_page.decode("utf-8", "replace"))
+    st_s, cc_s, _ = hdr(A, "/legal/style.%s.css" % (sty.group(1) if sty else "x"))
+    t("the legal pages ask for style.<hash>.css, kept a year; the pages themselves and the API never",
+      bool(sty) and (st_s, cc_s, cc_l, hdr(A, "/api/auth/me")[1]) == (200, "public, max-age=31536000, immutable", "no-store", "no-store"), (cc_s, cc_l))
+    t("the service worker and the assist script keep their plain names (other programs ask for them by those)",
+      'register("/uaply-sw.js")' in homes and hdr(A, "/uaply-sw.js")[1] == "no-store")
+    # a changed file gets a new name: a copy of the code, one script changed
+    code = tempfile.mkdtemp(dir=TMP)
+    for name in os.listdir(ROOT):
+        src = os.path.join(ROOT, name)
+        if name.endswith(".py") and os.path.isfile(src):
+            shutil.copy2(src, code)
+    for d in ("shared", "dev", "legal", "prod", "help"):
+        shutil.copytree(os.path.join(ROOT, d), os.path.join(code, d))
+    pc, C, _ = server({}, code)
+    procs.append(pc)
+    before = dict(re.findall(r'<script src="(uaply-[a-z]+)\.([0-9a-f]{10})\.js"></script>', hdr(C, "/")[2].decode("utf-8", "replace")))
+    with open(os.path.join(code, "shared", "uaply-nav.js"), "a", encoding="utf-8") as fh:
+        fh.write("\n/* changed for the test */\n")
+    after = dict(re.findall(r'<script src="(uaply-[a-z]+)\.([0-9a-f]{10})\.js"></script>', hdr(C, "/")[2].decode("utf-8", "replace")))
+    t("a changed file gets a new name at once (no restart), and only that file",
+      before.get("uaply-nav") and after.get("uaply-nav") and before["uaply-nav"] != after["uaply-nav"]
+      and {k: v for k, v in before.items() if k != "uaply-nav"} == {k: v for k, v in after.items() if k != "uaply-nav"}, (before, after))
+    t("...and the old name is no longer kept (today's file, no-store)", hdr(C, "/uaply-nav.%s.js" % before.get("uaply-nav", "x"))[1], "no-store")
+
+    st, ct, sec, _, loc = get(A, "/.well-known/security.txt")
+    secs = sec.decode("utf-8", "replace")
+    exp = re.search(r"^Expires: (\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ)$", secs, re.M)
+    days = (time.mktime(time.strptime(exp.group(1), "%Y-%m-%dT%H:%M:%SZ")) - time.mktime(time.gmtime())) / 86400 if exp else 0
+    t("/.well-known/security.txt: plain text with the company's contact address, the privacy page, and an expiry a year from now",
+      st == 200 and ct.startswith("text/plain") and "Contact: mailto:uaplytechnologies@uaply.net" in secs and "/legal/privacy.html" in secs
+      and 360 <= days <= 366 and re.search(r"^Canonical: \S+/\.well-known/security\.txt$", secs, re.M) is not None, "%s %s %r" % (st, ct, secs[:300]))
 
     pb, B, logb = server({"UAPLY_ASSETLINKS_SHA256": " %s , %s, not-a-fingerprint, %s ,," % (FP1.lower(), FP2, FP1),
                           "UAPLY_PUBLIC_URL": "https://uaply.net"})

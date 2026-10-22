@@ -108,7 +108,7 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
     check("handoff", "the message is only 'Saved <company> to Applied · N% match' (never 'Finish on their site')", /^Saved .+ to Applied · \d+% match ?Undo$/.test(t), t);
     const r = await rowOf(id);
     check("handoff", "Applied shows the status Finish on their site", r && r.chip === "Finish on their site", JSON.stringify(r));
-    check("handoff", "...with See the job posting and Finish applying on their site", r && JSON.stringify(r.links) === JSON.stringify(["See the job posting ↗", "Finish applying on their site ↗"]), JSON.stringify(r));
+    check("handoff", "...with See the job posting, Finish applying on their site and Mark as applied", r && JSON.stringify(r.links) === JSON.stringify(["See the job posting ↗", "Finish applying on their site ↗", "Mark as applied"]), JSON.stringify(r));
     await send("Browser.grantPermissions", { origin: BASE, permissions: ["clipboardReadWrite", "clipboardSanitizedWrite"] });
     await send("Emulation.setFocusEmulationEnabled", { enabled: true });
     await q("w.__e2eOpened=[];w.__uaplyOpen=function(u){w.__e2eOpened.push(u)};d.querySelector('[data-finish=\"" + id + "\"]').click();return 1");
@@ -145,7 +145,7 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
     const st = await status(id); summary.statuses.file = st;
     check("cannot-ask", "nothing is sent and the person is told to finish there (hand-off), not left waiting", st === "handoff", st);
     const r = await rowOf(id);
-    check("cannot-ask", "Applied shows Finish on their site with both links", r && r.chip === "Finish on their site" && r.links.length === 2, JSON.stringify(r));
+    check("cannot-ask", "Applied shows Finish on their site with both links (and Mark as applied)", r && r.chip === "Finish on their site" && r.links.length === 3, JSON.stringify(r));
   }
 
   check("browser", "no script errors", logs.filter((l) => l.startsWith("EXC")).length === 0, logs.join(" | "));

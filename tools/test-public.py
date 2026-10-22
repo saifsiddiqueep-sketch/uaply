@@ -121,7 +121,9 @@ t("the server still answers after those", req("GET", "/healthz")[0], 200)
 home = req("GET", "/")[2]
 for p in ("/..%5Cserve.py", "/..%5C..%5Cserve.py/", "/%5C..%5Cuaply-config.json"):
     s, _, body = req("GET", p)
-    t("backslash path %s serves no source or settings" % p, s in (301, 404) or (s == 200 and body == home), True)
+    # the app's own page is all such a path may get (the home page as sent, or the same file with its plain script names)
+    page = re.sub(rb'(uaply-[a-z]+)\.[0-9a-f]{10}\.js', rb'\1.js', home)
+    t("backslash path %s serves no source or settings" % p, s in (301, 404) or (s == 200 and body in (home, page)), True)
 
 # a public server with no email login must say so, not promise a link it cannot send (tools/test-smtp.py covers real sending)
 s, h, body = req("POST", "/api/auth/forgot", {"email": "pub1@example.com"})

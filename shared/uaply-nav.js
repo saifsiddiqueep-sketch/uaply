@@ -32,6 +32,12 @@ function patch(s){
            'var X=!p.custom;$("pName").value=X?"":p.name;$("pTitle").value=X?"":p.title;$("pYears").value=X?"":p.years;$("pEdu").value=p.edu;');
   s=once(s,'regional cookbooks."}','regional cookbooks."}'+EXTRA);
   s=once(s,'var busy=false,F="all";','var busy=false,F="all",TYPE="job",MINPCT=0;');
+  /* how a swipe right reaches this employer, in the job's "route" (from the server): connected or email -> "Applies instantly",
+     one-tap -> "Ready, one tap on their site", assisted or ready -> "Ready". Read by the card and by the Job Tracker row (October 22:
+     "Apply instantly" and "Opens employer site" are not used any more). The server's labels ("Ready", "Ready, one tap") read the same. */
+  s=once(s,'var busy=false,F="all",TYPE="job",MINPCT=0;','var busy=false,F="all",TYPE="job",MINPCT=0;'+
+    'window.__uaplyRouteWord=function(j){var r=String(j&&j.route||"").toLowerCase();if(r==="connected"||r==="email"||(j&&j.instant))return "Applies instantly";'+
+    'if(/one[- ]?tap/.test(r))return "Ready, one tap on their site";return "Ready"};');
   /* the app never says how many jobs a section holds (the owner's rule; counts stay on the owner's pages and /api/status): the line
      above the deck keeps only the person's own "N applied" */
   s=once(s,`innerHTML='<span>'+q.length+' job'+(q.length===1?'':'s')+' left</span>`,`innerHTML='<span></span>`);
@@ -40,14 +46,14 @@ function patch(s){
            '&&(j.type||"job")===TYPE&&!(window.__uaplyHide&&window.__uaplyHide(j))&&(F==="all"||j.mode===F)}).map(function(j){return {j:j,m:evaluate(j,S.profile)}}).filter(function(x){return x.m.pct>=MINPCT}).sort(');
   s=once(s,'<h2>You have seen every job</h2><p>Jobs you passed on can come back, and your applications are in the Applied tab.</p>',
     `<h2>'+(window.__uaplyLoadingJobs?"Finding jobs for you…":window.__uaplyJobsFailed?"Could not load jobs":MINPCT>0?"No jobs at "+MINPCT+"% match or higher":(window.__uaplyEmpty||function(){return ["You have seen every one of these"]})(JOBS,S,TYPE)[0])+'</h2><p>'+(window.__uaplyLoadingJobs?"Looking for current postings. This takes a few seconds.":window.__uaplyJobsFailed?"Check your internet connection, then close and reopen UAply.":MINPCT>0?"Lower the minimum match in Profile, then Filters.":(window.__uaplyEmpty||function(){return ["","Jobs you passed on can come back, and your applications are in the Job Tracker."]})(JOBS,S,TYPE)[1])+'</p>`);
-  s=once(s,'title:String(x.title||"")};','title:String(x.title||""),st:(x.st==="interview"||x.st==="accepted"||x.st==="rejected")?x.st:"applied",sent:(x.sent&&typeof x.sent==="object")?{at:+x.sent.at||0,to:String(x.sent.to||"").slice(0,120),status:String(x.sent.status||"").slice(0,20)}:undefined};');
+  s=once(s,'title:String(x.title||"")};','title:String(x.title||""),st:(x.st==="interview"||x.st==="accepted"||x.st==="rejected")?x.st:"applied",sent:(x.sent&&typeof x.sent==="object")?{at:+x.sent.at||0,to:String(x.sent.to||"").slice(0,120),status:String(x.sent.status||"").slice(0,20),prev:String(x.sent.prev||"").slice(0,20),once:x.sent.once===true}:undefined};');
   /* profile gets an email so a recruiter can reply */
   s=once(s,'salary:100000,loc:"New York",','salary:100000,loc:"New York",email:"jordan.lee@example.com",');
   s=once(s,'loc:typeof p.loc==="string"?p.loc:"",','loc:typeof p.loc==="string"?p.loc:"",email:typeof p.email==="string"?p.email.slice(0,200):"",');
   s=once(s,'salary:num($("pSalary").value,0,10000000),loc:$("pLoc").value.trim(),','salary:num($("pSalary").value,0,10000000),loc:$("pLoc").value.trim(),email:($("pEmail")?$("pEmail").value.trim():""),');
   s=once(s,'$("pSalary").value=p.salary;$("pLoc").value=p.loc;','$("pSalary").value=p.salary;$("pLoc").value=p.loc;if($("pEmail"))$("pEmail").value=X?"":(p.email||"");if(X){$("pSkills").value="";$("pSalary").value="";$("pLoc").value=""}');
   s=once(s,'title:S.profile.title||""};','title:S.profile.title||"",st:"applied"};');
-  s=once(s,"<span>'+cap(j.mode)+'</span>","<span>'+cap(j.mode)+'</span>'+(j.jobType?'<span>'+({\"full-time\":\"Full-time\",\"part-time\":\"Part-time\",internship:\"Internship\",\"co-op\":\"Co-op\",contract:\"Contract\",temporary:\"Temporary\"}[j.jobType]||\"\")+'</span>':(j.type&&j.type!==\"job\"?'<span>'+({internship:\"Internship\",coop:\"Co-op\",parttime:\"Part-time\"}[j.type]||\"Job\")+'</span>':''))+(j.live?(j.instant?'<span class=\"inst\">Apply instantly</span>':'<span class=\"ext\">Opens employer site</span>'):'')+(j.live&&j.via?'<span class=\"via\">via '+esc(j.via)+'</span>':'')+'");
+  s=once(s,"<span>'+cap(j.mode)+'</span>","<span>'+cap(j.mode)+'</span>'+(j.jobType?'<span>'+({\"full-time\":\"Full-time\",\"part-time\":\"Part-time\",internship:\"Internship\",\"co-op\":\"Co-op\",contract:\"Contract\",temporary:\"Temporary\"}[j.jobType]||\"\")+'</span>':(j.type&&j.type!==\"job\"?'<span>'+({internship:\"Internship\",coop:\"Co-op\",parttime:\"Part-time\"}[j.type]||\"Job\")+'</span>':''))+(j.live?'<span class=\"'+(window.__uaplyRouteWord(j)===\"Applies instantly\"?\"inst\":\"ext\")+'\">'+window.__uaplyRouteWord(j)+'</span>':'')+(j.live&&j.via?'<span class=\"via\">via '+esc(j.via)+'</span>':'')+'");
   /* target titles count toward the match score: Title 15 points, Skills 30, Experience 15 (the total stays 100) */
   s=once(s,'{k:"Skills",w:40,','{k:"Skills",w:30,');
   s=once(s,'{k:"Experience",w:20,','{k:"Experience",w:15,');
@@ -107,6 +113,9 @@ var CSS=`
 .nitem[aria-checked="true"]{color:var(--accent);background:var(--bg)}
 .nitem .c{font:500 12px var(--mono);color:var(--muted)}
 .toast{bottom:var(--toast-at,var(--above-nav,calc(88px + var(--safe-b))));pointer-events:none;width:max-content;max-width:min(600px,calc(100vw - 32px))}.toast button{pointer-events:auto}
+/* a phone: every message uses the screen's width (the stranger walk, October 18: a short one sat in a narrow column over the card) */
+.toast{min-width:min(320px,calc(100vw - 32px))}   /* a short message is not a narrow column either (laptop) */
+@media (max-width:520px){.toast{width:calc(100vw - 32px)}}
 body{padding-bottom:calc(12px + var(--safe-b))}
 /* laptops: the header, the screens and the bottom bar share one centred column about 960 px wide, and the Account, Plan & billing,
    Data & privacy, Filters and Profile setup screens sit in its middle instead of against its left edge (Hiring mode keeps its own width) */
@@ -518,6 +527,9 @@ function apply(w,host){
       if(x.status==="sent")return '<small class="sent ok">Application sent to '+e(x.to||o.j.co)+'</small>';
       if(x.status==="delivered_test")return '<small class="sent ok">Sent to '+e((x.to||"the test inbox").replace(/ \(simulated\)$/,""))+' (test, nothing reached '+e(o.j.co)+')</small>';
       if(x.status==="handoff")return '<small class="sent todo">Not sent yet: '+e(o.j.co)+' takes applications on its own site.</small>';
+      /* the person said they finished on the employer's site ("Mark as applied"): theirs to undo once, if it was a slip of the finger */
+      if(x.status==="self")return '<small class="sent ok">You applied on '+e(o.j.co)+'\'s site · '+new Date(x.at).toLocaleDateString(undefined,{month:"short",day:"numeric"})+
+        (x.once?'':' <button type="button" class="linkbtn" data-act="unmark" data-id="'+o.j.id+'">Undo</button>')+'</small>';
       if(x.status==="pending")return '<small class="sent todo">Waiting to send: UAply sends it as soon as the connection is back.</small>';
       /* nothing reached the employer: say so, with a way to try again (the same as swiping right on it again) */
       var again='<button type="button" class="linkbtn" data-act="resend" data-id="'+o.j.id+'">';
@@ -530,7 +542,7 @@ function apply(w,host){
     function stChip(o){
       var st=o.x.st,x=o.x.sent,k,t;
       if(st==="interview"){k="interview";t="Interview"}else if(st==="accepted"){k="accepted";t="Accepted"}else if(st==="rejected"){k="rejected";t="Rejected"}
-      else if(x&&x.status==="sent"){k="sent";t="Sent"}else if(x&&x.status==="delivered_test"){k="sent";t="Sent (test)"}
+      else if(x&&x.status==="sent"){k="sent";t="Sent"}else if(x&&x.status==="self"){k="sent";t="Sent (by you)"}else if(x&&x.status==="delivered_test"){k="sent";t="Sent (test)"}
       else if(x&&x.status==="pending"){k="wait";t="Waiting to send"}else if(x&&x.status==="failed"){k="wait";t="Not sent"}
       else if(x&&x.status==="needs_answers"){k="wait";t="Not sent yet"}else{k="finish";t="Finish on their site"}
       return '<span class="stchip st-'+k+'">'+t+'</span>';
@@ -539,12 +551,13 @@ function apply(w,host){
     function jobLinks(o){
       var e=A.esc,u=o.j.url;if(!u||!/^https:\/\//.test(u))return "";
       return '<span class="joblinks"><button type="button" class="linkbtn" data-open="'+e(u)+'">See the job posting ↗</button>'+
-        (isHandoff(o)?'<button type="button" class="linkbtn" data-finish="'+o.j.id+'">Finish applying on their site ↗</button>':'')+'</span>';
+        (isHandoff(o)?'<button type="button" class="linkbtn" data-finish="'+o.j.id+'">Finish applying on their site ↗</button>'+
+          '<button type="button" class="linkbtn" data-act="markapplied" data-id="'+o.j.id+'">Mark as applied</button>':'')+'</span>';
     }
     w.__uaplyTrack=function(){if(!tp.hidden)renderTrack()};   /* called when an application's state changes while the list is open */
     function row(o,acts,view){
       var t=A.tone(o.x.pct),e=A.esc;
-      return '<div class="row"><div class="logo" aria-hidden="true" style="background:hsl('+A.hue(o.j.id)+' 60% 46%)">'+e(o.j.co.charAt(0))+'</div><div class="info"><b>'+e(o.j.role)+'</b>'+modeChip(o.j)+'<small>'+e(o.j.co)+' · '+e(o.j.loc)+' · '+TYPE_LABEL[o.j.type||"job"]+'</small>'+
+      return '<div class="row"><div class="logo" aria-hidden="true" style="background:hsl('+A.hue(o.j.id)+' 60% 46%)">'+e(o.j.co.charAt(0))+'</div><div class="info"><b>'+e(o.j.role)+'</b>'+modeChip(o.j)+'<small>'+e(o.j.co)+' · '+e(o.j.loc)+' · '+TYPE_LABEL[o.j.type||"job"]+(o.j.live&&w.__uaplyRouteWord?'<span class="rtword"> · '+e(w.__uaplyRouteWord(o.j))+'</span>':'')+'</small>'+
         (view!=="passed"?'<small>Applied '+new Date(o.x.at).toLocaleDateString(undefined,{month:"short",day:"numeric"})+'</small>':'')+
         detLine(o,view)+(view!=="passed"?stChip(o):'')+sentLine(o)+(view!=="passed"?jobLinks(o):'')+'</div><span class="pill tone-'+t+'">'+o.x.pct+'%</span>'+
         '<div class="acts">'+extraActs(o,acts,view).map(function(a,i){return '<button type="button" class="btn'+(i?' ghost':'')+'" data-act="'+a[0]+'" data-id="'+o.j.id+'" aria-label="'+a[1]+': '+e(o.j.role)+' at '+e(o.j.co)+'">'+a[1]+'</button>'}).join("")+'</div>'+(OPEN[o.j.id]&&view!=="passed"?detForm(o,view):"")+'</div>';
@@ -649,6 +662,12 @@ function apply(w,host){
     if(act==="ics"){exportIcs(id);return}
     if(act==="share"){var sj=A.JOBS.filter(function(j){return j.id===id})[0];if(sj)shareJob(sj);return}
     if(act==="resend"){if(w.__uaplyResend)w.__uaplyResend(id);return}
+    /* a hand-off finished on the employer's own site: the person marks it, so it no longer says "Finish on their site" (October 22).
+       Undo puts back what it said before, once; a second mark after an undo stays */
+    if(act==="markapplied"){var was=x.sent||null;x.sent={at:Date.now(),to:"",status:"self",prev:was?String(was.status||""):"",once:!!(was&&was.once)};A.save();renderTrack();
+      var nb=tp.querySelector('[data-act="unmark"][data-id="'+id+'"]')||tp.querySelector('.row [data-id="'+id+'"]');if(nb&&nb.focus)nb.focus();return}
+    if(act==="unmark"){if(x.sent&&x.sent.status==="self"&&!x.sent.once){x.sent={at:Date.now(),to:"",status:x.sent.prev||"handoff",prev:"",once:true};A.save();renderTrack();
+      var mb=tp.querySelector('[data-act="markapplied"][data-id="'+id+'"]');if(mb)mb.focus()}return}
     if(act==="withdraw"||act==="reconsider"){
       delete A.S.decisions[id];A.S.history=A.S.history.filter(function(i){return i!==id});delete acct.apps[id];saveA();
       if(act==="withdraw"&&w.__uaplyUndone)w.__uaplyUndone(x,A.JOBS.filter(function(j){return j.id===id})[0]);   /* an application that went out stays with the employer: say so */

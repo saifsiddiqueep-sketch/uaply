@@ -3,7 +3,8 @@
 // else, Filters must have a Reset that clears it, and nothing may throw a script error.
 //   W=390 H=844 PORT=19801 node tools/cdp.js tools/ui-learn.js        (SHOTS=<folder> also saves screenshots)
 // The test shows only its own 80 made-up jobs (on-site ones match the profile better than remote ones), and turns off the apply step
-// after a swipe right (sending is tested elsewhere): it checks what the learner does with the swipes, nothing else.
+// after a swipe right and the "Finish your profile first" gate before it (both are tested elsewhere): it checks what the learner does with
+// the swipes, nothing else.
 const PORT = process.env.PORT || "18766";
 const path = require("path");
 module.exports = async ({ ev, sleep, nav, send, logs, shot }) => {
@@ -44,7 +45,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot }) => {
   await ev(FW + ".__uaplyLearn.state().seed=20261016");
 
   // 80 made-up jobs: 40 on-site in New York asking for skills the example profile has (they match best), 40 remote asking for half of them
-  await ev("(()=>{const w=" + FW + ",A=w.__uaply;w.__uaplyOnDecision=null;w.__uaplyHideSamples=true;const h0=w.__uaplyHide;" +
+  await ev("(()=>{const w=" + FW + ",A=w.__uaply;w.__uaplyOnDecision=null;w.__uaplyReadyGate=function(){return false};w.__uaplyHideSamples=true;const h0=w.__uaplyHide;" +
     "w.__uaplyHide=function(j){return !(j.id>900000&&j.id<901000)||(h0?h0(j):false)};" +
     "A.S.profile.modes={remote:true,hybrid:true,onsite:true};A.S.profile.loc='New York';" +
     "const roles=['Software Engineer','Frontend Developer','Data Analyst','Product Designer'],mine=['JavaScript','React','TypeScript','CSS','HTML','SQL'],other=['Go','Rust','Kotlin','Elixir','Scala','Haskell'],list=[];" +

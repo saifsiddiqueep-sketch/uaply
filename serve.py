@@ -215,6 +215,8 @@ def no_redirect_path(p):
 # hand). They come from UAPLY_ASSETLINKS_SHA256 (comma-separated, as Play Console shows them, AA:BB:...), so adding or changing a key
 # needs only that setting and a restart, never a new build. Unset (or nothing valid in it): a plain 404, the same as before.
 ASSETLINKS_PATH = "/.well-known/assetlinks.json"
+SECURITY_TXT_PATH = "/.well-known/security.txt"
+SECURITY_CONTACT_DEFAULT = "uaplytechnologies@uaply.net"      # the company's contact address (legal/support.html); SUPPORT_EMAIL wins when set
 ANDROID_PACKAGE = "com.uaply.app"
 FINGERPRINT_RE = re.compile(r"^[0-9A-F]{2}(?::[0-9A-F]{2}){31}$")
 
@@ -262,6 +264,66 @@ def sitemap_xml():
     urls = ["/", "/legal/"] + ["/legal/" + n for n in names]
     body = "".join("<url><loc>%s</loc></url>" % escape(PUBLIC_BASE + u) for u in urls)
     return ('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">%s</urlset>\n' % body).encode("utf-8")
+
+
+# ---- versioned script and style files: browsers and the phone apps may keep them for a year ----
+# Every page used to be sent with Cache-Control: no-store, so each visit downloaded about 600 KB of the same scripts again (October 22).
+# A script or style file now has a name with its content's hash in it (uaply-nav.3f2a9c0d1e.js): the pages are rewritten to ask for that
+# name as they are sent, and a hashed name is sent with a year's cache (immutable). A changed file gets a new name, so a deploy is seen at
+# once (the pages themselves, the API and the service worker stay no-store). The plain names keep working, uncached, for anything else.
+VERSIONED = {}                                   # plain address ("/uaply-nav.js", "/legal/style.css") -> the file
+VERSION_RE = re.compile(r"^(/(?:legal/)?[A-Za-z0-9_-]+)\.([0-9a-f]{10})\.(js|css)$")
+_hashes = {}                                     # file -> ((mtime, size), hash)
+LONG_CACHE = "public, max-age=31536000, immutable"
+if api:          # the shared scripts the pages load, and the legal pages' style sheet (never the service worker or the assist script,
+                 # which other programs ask for by their plain names)
+    for url in ("/uaply-envs.js", "/uaply-nav.js", "/uaply-live.js", "/uaply-profile.js", "/uaply-chat.js", "/uaply-employers.js",
+                "/uaply-learn.js", "/uaply-resume.js"):
+        VERSIONED[url] = alias[url]
+    VERSIONED["/legal/style.css"] = os.path.join(HERE, "legal", "style.css")
+
+
+def content_hash(f):
+    """The first 10 hex digits of the file's SHA-256 (worked out again only when the file changes)."""
+    try:
+        st = os.stat(f)
+    except OSError:
+        return ""
+    sig = (st.st_mtime_ns, st.st_size)
+    hit = _hashes.get(f)
+    if hit and hit[0] == sig:
+        return hit[1]
+    import hashlib
+    with open(f, "rb") as fh:
+        h = hashlib.sha256(fh.read()).hexdigest()[:10]
+    _hashes[f] = (sig, h)
+    return h
+
+
+def versioned_url(plain):
+    """/uaply-nav.js -> /uaply-nav.<hash>.js (the plain address when it is not a versioned file)."""
+    f = VERSIONED.get(plain)
+    h = content_hash(f) if f else ""
+    if not h:
+        return plain
+    stem, ext = plain.rsplit(".", 1)
+    return "%s.%s.%s" % (stem, h, ext)
+
+
+_ASSET_RE = re.compile(rb'(<(?:script|link)\b[^>]*?\b(?:src|href)=")([A-Za-z0-9_./-]+\.(?:js|css))(")')
+
+
+def version_assets(body, page_dir="/"):
+    """A page's <script src> and <link href> to versioned files, rewritten to their hashed names (relative names stay relative)."""
+    def fix(m):
+        ref = m.group(2).decode("ascii")
+        plain = ref if ref.startswith("/") else page_dir + ref
+        if plain not in VERSIONED:
+            return m.group(0)
+        new = versioned_url(plain)
+        out = new if ref.startswith("/") else new[len(page_dir):]
+        return m.group(1) + out.encode("ascii") + m.group(3)
+    return _ASSET_RE.sub(fix, body)
 
 
 def log_oops(where, e):
@@ -576,6 +638,7 @@ class H(http.server.SimpleHTTPRequestHandler):
     def handle_one_request(self):
         """Count the requests being answered, so a stop (a deploy) can let them finish first. An idle kept-open connection is not counted."""
         self._counted = False
+        self._cache = None                                   # Cache-Control for this request (end_headers); a kept-open connection starts afresh
         self._code = None
         self._stat = None
         try:
@@ -732,10 +795,35 @@ class H(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         return True
 
+    def _versioned(self, head=False):
+        """GET or HEAD of /uaply-nav.<hash>.js or /legal/style.<hash>.css. True when answered."""
+        m = VERSION_RE.match(self.path.split("?", 1)[0])
+        if not m:
+            return False
+        plain = "%s.%s" % (m.group(1), m.group(3))
+        f = VERSIONED.get(plain)
+        if not f:
+            return False
+        try:
+            with open(f, "rb") as fh:
+                body = fh.read()
+        except OSError:
+            return False
+        current = m.group(2) == content_hash(f)
+        self.send_response(200)
+        self.send_header("Content-Type", "text/javascript; charset=utf-8" if plain.endswith(".js") else "text/css; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self._cache = LONG_CACHE if current else None       # an old hash (a page from before a deploy): today's file, never kept
+        self.end_headers()
+        if not head:
+            self.wfile.write(body)
+        return True
+
     def _tagged_page(self, head=False):
-        """On the public host, the home page and the legal and support pages are sent with their canonical link (and the home page with
-        the site's name for search results). True when answered; False leaves the page to the ordinary file serving."""
-        if not PUBLIC_BASE:
+        """The home page and the legal and support pages: their scripts and style sheet asked for by their versioned names, and on the
+        public host also their canonical link (and the home page the site's name for search results). True when answered; False leaves
+        the page to the ordinary file serving."""
+        if not api:
             return False
         p = self.path.split("?", 1)[0].split("#", 1)[0]
         if p in ("/", "/index.html"):
@@ -757,7 +845,9 @@ class H(http.server.SimpleHTTPRequestHandler):
         at = body.lower().find(b"</head>")
         if at < 0:
             return False
-        body = body[:at] + search_tags(canon, home) + body[at:]
+        if PUBLIC_BASE:
+            body = body[:at] + search_tags(canon, home) + body[at:]
+        body = version_assets(body, "/legal/" if p.startswith("/legal/") else "/")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
@@ -813,6 +903,8 @@ class H(http.server.SimpleHTTPRequestHandler):
             return self._health()
         if p == ASSETLINKS_PATH:                                            # the Play Store app's proof that it belongs to this site
             return self._assetlinks()
+        if p == SECURITY_TXT_PATH:                                          # who to tell about a security problem (RFC 9116)
+            return self._send(200, self._security_txt(), "text/plain; charset=utf-8")
         if self._to_public_host():
             return
         if p == "/robots.txt":
@@ -820,6 +912,8 @@ class H(http.server.SimpleHTTPRequestHandler):
         if PUBLIC_BASE and p == "/sitemap.xml":
             return self._send(200, sitemap_xml(), "application/xml; charset=utf-8")
         if self._tagged_page():
+            return
+        if self._versioned():
             return
         if api and p == "/legal":                                         # a typed uaply.net/legal (no slash) finds the legal pages too
             return self._redirect("/legal/")
@@ -893,6 +987,22 @@ class H(http.server.SimpleHTTPRequestHandler):
         if not head:
             self.wfile.write(body)
 
+    def _security_txt(self):
+        """/.well-known/security.txt: the company's contact address, the privacy page, and an expiry a year from now (written on each
+        request, so it never goes stale)."""
+        base = PUBLIC_BASE or (self._site_base() if api else "") or "https://uaply.net"
+        to = SECURITY_CONTACT_DEFAULT
+        try:
+            got = chat_api.support_email() if api else ""
+            if isinstance(got, str) and re.fullmatch(r"[^@\s<>]{1,64}@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", got.strip()):
+                to = got.strip()
+        except Exception:
+            pass
+        expires = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + 365 * 86400))
+        return ("# UAply: tell us about a security problem. We read every message and reply within 2 business days.\n"
+                "Contact: mailto:%s\nExpires: %s\nPreferred-Languages: en\nCanonical: %s%s\n"
+                "# Privacy policy: %s/legal/privacy.html\n" % (to, expires, base, SECURITY_TXT_PATH, base)).encode("utf-8")
+
     def _assetlinks(self, head=False):
         """GET or HEAD /.well-known/assetlinks.json: the statement built at start from UAPLY_ASSETLINKS_SHA256, or a plain 404 without it."""
         body = ASSETLINKS or json.dumps({"error": "No Android app is linked to this site yet."}).encode("utf-8")
@@ -908,7 +1018,7 @@ class H(http.server.SimpleHTTPRequestHandler):
             return self._health(head=True)
         if self.path.split("?", 1)[0] == ASSETLINKS_PATH:
             return self._assetlinks(head=True)
-        if self._to_public_host() or self._tagged_page(head=True):
+        if self._to_public_host() or self._tagged_page(head=True) or self._versioned(head=True):
             return
         super().do_HEAD()
 
@@ -1186,7 +1296,7 @@ class H(http.server.SimpleHTTPRequestHandler):
         self._send(code, out)
 
     def end_headers(self):
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", getattr(self, "_cache", None) or "no-store")   # a versioned file: a year (see VERSIONED); the rest never
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
         self.send_header("X-Frame-Options", "SAMEORIGIN")               # the app frames itself; other sites may not

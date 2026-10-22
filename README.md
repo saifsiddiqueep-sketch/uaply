@@ -53,11 +53,12 @@ updates once the owner merges.
 
 A push to `sandbox` or `dev` also republishes that hosted page (see below). Nothing is published from `main`.
 
-## Hosted copies
+## Hosted copies (retired)
 
-`.github/workflows/pages.yml` publishes `/sandbox/` and `/dev/` on GitHub Pages after each push to those branches.
-A static host cannot run the Python back end, so the hosted copies use the example jobs only.
-Real jobs and application sending need `serve.py --api` running somewhere.
+The GitHub Pages previews of `/sandbox/` and `/dev/` were retired on October 21, 2026: the repository is private, so its Pages job
+failed on every commit, and the job was removed. Run the sandbox and dev locally instead (`python serve.py 8766 sandbox --api` and
+`python serve.py 8767 dev --api`); the live site is https://uaply.net. `node share/build-share.js --full` still builds the static
+preview pages into `share/` for anyone who wants to look at one without a server (example jobs only).
 
 ## One-time repository setup (owner)
 
@@ -108,7 +109,7 @@ and `node tools/cdp.js tools/ui-sweep.js`.
 ## Release build (dev)
 
 `dev` is what users get; `sandbox` is the test bench. Details and the owner's launch checklist are in `DEPLOY.md`, version notes in
-`CHANGELOG.md`. The hosted GitHub Pages copy of dev is a static preview with no server (no accounts, no real jobs); run
+`CHANGELOG.md`. The GitHub Pages previews were retired on October 21, 2026 (local sandbox and dev servers replace them); run
 `python serve.py 8767 dev --api` or deploy to Render for the real thing. To test the release build:
 
     node check.js

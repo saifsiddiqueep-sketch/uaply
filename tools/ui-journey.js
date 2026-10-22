@@ -8,7 +8,7 @@
 //   6. a job swiped right still has its Job Tracker row after the page is reloaded, even when the server's list does not have it
 // (2, the question box on a phone's keyboard, is checked in tools/ui-questions.js at 390 px.)
 const PORT = process.env.PORT, FEED = Number(process.env.FEED_ID);
-module.exports = async ({ ev, sleep, nav, send }) => {
+module.exports = async ({ ev, sleep, nav, send, on }) => {
   const F = "document.querySelector('iframe').contentDocument", FW = "document.querySelector('iframe').contentWindow";
   const base = "http://127.0.0.1:" + PORT + "/";
   let pass = 0, fail = 0;
@@ -83,6 +83,57 @@ module.exports = async ({ ev, sleep, nav, send }) => {
   await inApp("const b=[...d.querySelectorAll('.nitem')].find(b=>b.getAttribute('data-v')==='applied');if(b)b.click();return 1"); await sleep(900);
   const row = await inApp("const r=d.querySelector('#pane-track [data-id=\"" + JID + "\"]')||d.querySelector('[data-finish=\"" + JID + "\"]');return r&&r.closest('.row')?'yes':'no'");
   check("...and after the page is reloaded its Job Tracker row is still there (the job was saved with the swipe)", row === "yes", row);
+
+  // ---- 7. Mark as applied: a hand-off finished on the employer's own site (Trello, October 22) ----
+  const rowOf = "const r=d.querySelector('#pane-track [data-id=\"" + JID + "\"]');const row=r&&r.closest('.row');";
+  const rowState = () => inApp(rowOf + "if(!row)return 'no row';const c=row.querySelector('.stchip');return JSON.stringify({chip:c&&c.textContent,mark:!!row.querySelector('[data-act=markapplied]'),undo:!!row.querySelector('[data-act=unmark]'),finish:!!row.querySelector('[data-finish]'),text:(row.querySelector('.sent')||{}).textContent||'',st:(w.__uaply.S.decisions[" + JID + "].sent||{}).status})");
+  const r0 = JSON.parse(await rowState());
+  check("7. a hand-off row offers Mark as applied next to Finish applying", r0.mark && r0.finish && r0.chip === "Finish on their site", JSON.stringify(r0));
+  await tapIn("[data-act=markapplied][data-id='" + JID + "']");
+  const raw1 = await rowState();
+  const r1 = JSON.parse(/^\{/.test(String(raw1)) ? raw1 : "{}");
+  check("...a tap marks it Sent (by you) with the date, and offers Undo", r1.chip === "Sent (by you)" && /You applied on Reload Freight's site/.test(r1.text) && r1.undo && !r1.finish && r1.st === "self", JSON.stringify(r1));
+  await tapIn("[data-act=unmark][data-id='" + JID + "']");
+  const r2 = JSON.parse(await rowState());
+  check("...Undo puts it back to Finish on their site", r2.chip === "Finish on their site" && r2.mark && !r2.undo, JSON.stringify(r2));
+  await tapIn("[data-act=markapplied][data-id='" + JID + "']");
+  const r3 = JSON.parse(await rowState());
+  check("...and a second mark stays (Undo is offered once)", r3.chip === "Sent (by you)" && !r3.undo, JSON.stringify(r3));
+  await nav(base); await sleep(4500);
+  await inApp("d.getElementById('nb-dash').click();return 1"); await sleep(400);
+  await inApp("const b=[...d.querySelectorAll('.nitem')].find(b=>b.getAttribute('data-v')==='applied');if(b)b.click();return 1"); await sleep(900);
+  const r4 = JSON.parse(await rowState());
+  check("...and it is still Sent (by you) after a reload", r4.chip === "Sent (by you)" && !r4.undo, JSON.stringify(r4));
+
+  // ---- 8. the Help chat asks before a message goes to the outside AI (Trello, October 22) ----
+  // AI answers are switched on here by answering /api/chat/config in the browser; /api/chat itself is answered too, and counted
+  let chatPosts = 0;
+  await send("Fetch.enable", { patterns: [{ urlPattern: "*/api/chat*", requestStage: "Request" }] });
+  on("Fetch.requestPaused", (p) => {
+    const cfg = /\/api\/chat\/config/.test(p.request.url);
+    if (!cfg) chatPosts++;
+    const body = cfg ? { ai: true, support: "", articles: 3 } : { answer: "Swipe right to apply.", ai: true, sources: [] };
+    send("Fetch.fulfillRequest", { requestId: p.requestId, responseCode: 200, responseHeaders: [{ name: "Content-Type", value: "application/json" }], body: Buffer.from(JSON.stringify(body)).toString("base64") });
+  });
+  await nav(base); await sleep(4500);
+  const openChat = async () => { await inApp("const b=d.getElementById('uaChatBtn');if(b&&b.getAttribute('aria-expanded')!=='true')b.click();return 1"); await sleep(900); };
+  const chip = (label) => inApp("const b=[...d.querySelectorAll('#uaChat button')].reverse().find(b=>b.offsetParent&&b.textContent.trim()===" + JSON.stringify(label) + ");if(!b)return 'none';b.click();return 'ok'");
+  const lastBot = () => inApp("const m=[...d.querySelectorAll('#uaChat .bot')];return m.length?m[m.length-1].textContent:''");
+  await openChat();
+  await chip("How do I apply?"); await sleep(700);
+  const n1 = String(await lastBot());
+  check("8. AI answers on: the first question shows a one-line notice that it goes to an AI provider, and nothing is sent yet",
+    /AI provider/.test(n1) && chatPosts === 0 && (await inApp("return [...d.querySelectorAll('#uaChat button')].filter(b=>b.offsetParent&&/^(Continue|Not now)$/.test(b.textContent.trim())).length")) === 2, n1 + " | posts " + chatPosts);
+  await chip("Not now"); await sleep(600);
+  check("...Not now sends nothing", chatPosts === 0 && /Nothing was sent/.test(String(await lastBot())), "posts " + chatPosts);
+  await chip("How do I apply?"); await sleep(700);
+  await chip("Continue"); await sleep(1200);
+  check("...Continue sends it (one message to the AI)", chatPosts === 1 && /Swipe right to apply/.test(String(await lastBot())), "posts " + chatPosts);
+  await nav(base); await sleep(4500);
+  await openChat();
+  await chip("How do I apply?"); await sleep(1200);
+  check("...and the choice is remembered on this device: the next question goes without asking again", chatPosts === 2 && /Swipe right to apply/.test(String(await lastBot())), "posts " + chatPosts);
+  await send("Fetch.disable");
 
   console.log("\n" + pass + " / " + (pass + fail));
   if (fail) process.exitCode = 1;

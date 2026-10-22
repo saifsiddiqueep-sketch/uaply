@@ -78,7 +78,7 @@ alltext = "\n".join(x or "" for x in (name, short, full))
 t("no emoji and no ranking claims Google refuses (best, top, #1)", not EMOJI.search(alltext) and not RANK.search(alltext),
   (EMOJI.findall(alltext), RANK.findall(alltext)))
 t("the full description says how it really applies: connected employers get the application, everywhere else it opens the employer's page",
-  full and "connected employer" in full and "Opens employer site" in full and "Nothing is sent for you" in full)
+  full and "connected employer" in full and "the card says Ready" in full and "Nothing is sent for you" in full)
 t("...and that it is free during early access, has no ads, is 18+, and links the privacy policy",
   full and "free during early access" in full.lower() and "no ads" in full.lower() and "18 and older" in full and "https://uaply.net/legal/privacy.html" in full)
 testers = read("testers.md") or ""
