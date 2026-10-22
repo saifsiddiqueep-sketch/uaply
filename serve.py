@@ -281,7 +281,7 @@ MAX_APPLY_BODY = 1500000
 MAX_COMPANY_BODY = 200000
 
 # Swipes per visitor per minute. A person swipes a few times a minute; a script hammering the server would otherwise fill its disk and memory.
-SWIPE_LIMITS = {"/api/apply": 40, "/api/decision": 150, "/api/profile/resume": 12}   # a person reads a resume once or twice
+SWIPE_LIMITS = {"/api/apply": 40, "/api/apply/plan": 120, "/api/decision": 150, "/api/profile/resume": 12}   # a person reads a resume once or twice
 _swipes, _swipes_lock = {}, threading.Lock()
 _resume_count, _resume_count_lock = [0], threading.Lock()          # resumes read since the start: the only thing the log says about them
 
@@ -682,7 +682,10 @@ class H(http.server.SimpleHTTPRequestHandler):
                 if p == "/outbox":
                     return self._send(200, uaply_api.outbox_html(), "text/html; charset=utf-8")
                 if p == "/api/status":
-                    return self._send(200, status_facts())
+                    facts = status_facts()
+                    if self._owner_ok():          # the owner (this computer, or OWNER_PASSWORD): which questions employers asked, by kind
+                        facts = dict(facts, questions=uaply_api.question_stats())
+                    return self._send(200, facts)
                 if p == "/api/auth/me":
                     return self._send(200, {"user": auth_api.user_for(self._token())})
                 if p == "/api/auth/providers":
@@ -768,7 +771,7 @@ class H(http.server.SimpleHTTPRequestHandler):
                 log_oops(p, e)
                 code, out = 500, {"error": OOPS}
             return self._send(code, out, headers=[("WWW-Authenticate", 'Basic realm="uaply"')] if code == 401 else ())
-        if not api or p not in ("/api/apply", "/api/decision", "/api/auth/signup", "/api/auth/login", "/api/auth/logout",
+        if not api or p not in ("/api/apply", "/api/apply/plan", "/api/decision", "/api/auth/signup", "/api/auth/login", "/api/auth/logout",
                                 "/api/auth/delete", "/api/auth/forgot", "/api/auth/reset", "/api/auth/change-password",
                                 "/api/setup/test-mail", "/api/setup/save-mail", "/api/setup/save-google", "/api/setup/save-ats", "/api/setup/remove-ats", "/api/setup/save-stripe", "/api/setup/save-feed-keys", "/api/auth/google/token", "/api/auth/verify", "/api/auth/resend", "/api/chat", "/api/feedback", "/api/billing/checkout", "/api/billing/portal",
                                 "/api/employer/company", "/api/employer/job", "/api/employer/job/status", "/api/employer/applicant",
@@ -916,6 +919,9 @@ class H(http.server.SimpleHTTPRequestHandler):
                 code, out = chat_api.chat(payload, ip)
             elif p == "/api/feedback":
                 code, out = chat_api.feedback(payload, ip, auth_api.user_for(self._token()), notify=uaply_api.send_support_ticket)
+            elif p == "/api/apply/plan":
+                # what a swipe right on this job would do now (the posting's form read and answered, nothing recorded or sent)
+                code, out = uaply_api.submit(dict(payload, plan_only=True), auth_api.user_for(self._token()), self._site_base())
             elif p == "/api/apply":
                 u = auth_api.user_for(self._token())
                 over = billing_api.limit_reached(u)

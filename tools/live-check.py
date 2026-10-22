@@ -173,7 +173,7 @@ def status():
     s, _, j = get_json("/api/status")
     if s == 200 and isinstance(j, dict) and j.get("ok") is True:
         STATUS.update(j, source="/api/status")
-        odd = {k: v for k, v in j.items() if k != "apply" and not (isinstance(v, bool) or v is None or (k == "commit" and isinstance(v, str) and re.fullmatch(r"[0-9a-f]{7}", v)))}
+        odd = {k: v for k, v in j.items() if k not in ("apply", "questions") and not (isinstance(v, bool) or v is None or (k == "commit" and isinstance(v, str) and re.fullmatch(r"[0-9a-f]{7}", v)))}
         t("/api/status answers with yes/no facts only (and the deployed commit's short id)", not odd, "a value that is not yes/no: %r" % odd)
         return
     # an older server (before /api/status): the same facts from the endpoints the app already reads
@@ -191,6 +191,21 @@ safe(status, "what is switched on")
 
 
 # ---------- the apply engine (tools/test-swipe-e2e.py proves every path locally; this proves the live one is up) ----------
+def owner_questions():
+    """The question types employers' forms asked, which /api/status shows only to the owner (this computer, or OWNER_PASSWORD)."""
+    qs = STATUS.get("questions")
+    if qs is None:
+        info("question types asked: shown only to the owner (not on a public server without the owner password)")
+        return
+    ok = isinstance(qs, dict) and isinstance(qs.get("asked"), int) and isinstance(qs.get("kinds"), dict) and isinstance(qs.get("top"), list) and \
+        all(isinstance(x, dict) and set(x) <= {"key", "kind", "n", "postings", "systems"} for x in qs["top"])
+    t("/api/status questions (owner only): counts by kind and the most-asked question keys, nothing else", ok, repr(qs)[:200])
+    info("question types asked so far: %s in all, by kind %s" % (qs.get("asked"), qs.get("kinds")))
+
+
+safe(owner_questions, "the question types asked")
+
+
 def apply_engine():
     ap = STATUS.get("apply")
     if not isinstance(ap, dict):

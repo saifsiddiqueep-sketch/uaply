@@ -68,10 +68,16 @@ module.exports = async ({ ev, sleep, nav, send, logs, on }) => {
   await tap(byText("/^Not now$/"));
   await tap("d.getElementById('tipsClose')");
 
-  // 1. the message after a swipe right (on the live site "Add your name and email in Profile setup...", here the saved-to-Applied
-  //    one): as wide as the phone allows, not a column half the screen wide over the card
+  // 0. (October 21) a swipe right with an empty profile never applies: it opens "Finish your profile first", and the card stays on top
+  const top0 = await q("return +d.querySelector('.card.top').getAttribute('data-id')");
   await swipe(240);
-  const t1 = await waitFor("const t=[...d.querySelectorAll('.toast')].find(x=>x.getClientRects().length&&x.innerText.length>40);return t?JSON.stringify({w:Math.round(t.getBoundingClientRect().width),h:Math.round(t.getBoundingClientRect().height),vw:w.innerWidth,t:t.innerText.slice(0,70)}):''", 6000);
+  const fin = await waitFor("const b=d.getElementById('rdyBox');return b?b.innerText.replace(/\\s+/g,' '):''", 4000);
+  check("0. a swipe right with an empty profile opens Finish your profile first (nothing is sent)", /^Finish your profile first/.test(fin || ""), fin);
+  check("0. ...and the card stays on top", (await q("return +d.querySelector('.card.top').getAttribute('data-id')")) === top0 && (await q("return !w.__uaply.S.decisions[" + top0 + "]")) === true, "");
+  await tap("d.getElementById('rdyNo')");
+  // 1. the message after a swipe (here "Passed on ..."): as wide as the phone allows, not a column half the screen wide over the card
+  await swipe(-240);
+  const t1 = await waitFor("const t=[...d.querySelectorAll('.toast')].find(x=>x.getClientRects().length&&x.innerText.length>10);return t?JSON.stringify({w:Math.round(t.getBoundingClientRect().width),h:Math.round(t.getBoundingClientRect().height),vw:w.innerWidth,t:t.innerText.slice(0,70)}):''", 6000);
   const r1 = t1 ? JSON.parse(t1) : {};
   check("1. the message after a swipe uses the phone's width (at least 300 of 390 px; it was 195)", r1.w >= 300 && r1.w <= r1.vw - 16, JSON.stringify(r1));
   check("1. ...and stays short (at most 4 lines' height; the live one was 9)", r1.h > 0 && r1.h <= 110, JSON.stringify(r1));
@@ -196,7 +202,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, on }) => {
   // 9. quiet swipe (Oct 20): a right swipe on a job that takes applications on its own site never interrupts with "Finish on their
   //    site"; the message is the short "Saved X to Applied · N% match" with Undo, and the Applied row carries the status and both links
   //    (the walk above restored a backup with no email, so the applicant's details are set again first)
-  await q("const p=w.__uaply.S.profile;p.name='Walk Tester';p.email='walk.tester@example.com';p.custom=true;w.__uaply.save();return 1");
+  await q("const p=w.__uaply.S.profile;p.name='Walk Tester';p.email='walk.tester@example.com';p.custom=true;p.ext=Object.assign({},p.ext,{phone:'(215) 555-0100'});w.__uaply.save();return 1");
   await tap("d.getElementById('nb-svc')"); await sleep(300);
   await tap("[...d.querySelectorAll('.nitem')].find(b=>b.offsetParent&&b.getAttribute('data-v')==='job')");
   await waitFor("return d.querySelector('.card.top h2')&&!d.getElementById('main').hidden", 8000);

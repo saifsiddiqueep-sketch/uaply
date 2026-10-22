@@ -80,7 +80,11 @@ function patch(s){
 }
 
 var CSS=`
-.facts .inst{color:var(--yes);font-weight:700}.facts .ext{color:var(--muted)}
+.facts .inst{color:var(--yes);font-weight:700}.facts .ext{color:var(--muted)}.facts .rdy{font-weight:700}.facts .rdy.ok{color:var(--yes)}.facts .rdy.need{color:var(--accent)}.facts .rdy.ext{color:var(--muted)}
+.rdyList{display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:14px;padding:14px;background:var(--surface)}
+.rdyItems{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}.rdyItems li{display:flex;align-items:center;gap:10px;min-height:44px;min-width:0}
+.rdyItems .rdyL{flex:1;min-width:0;overflow-wrap:anywhere}.rdyItems em{font-style:normal;font-size:12px;color:var(--accent);font-weight:600}.rdyItems li[data-done=true]{color:var(--muted)}
+.rdyItems .rdyMark{width:18px;text-align:center;font-weight:700}.rdyItems li[data-done=true] .rdyMark{color:var(--yes)}.rdyItems .rdyOk{font-size:12px}
 .facts .via{color:var(--muted);font-size:12px;opacity:.85}   /* where a feed job came from ("via USAJOBS"): every free feed asks for credit */
 .tabs{display:none}
 #bnav{display:flex;gap:4px;justify-content:center;flex:none;max-width:1100px;width:100%;margin-inline:auto;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px;position:relative}
@@ -493,7 +497,7 @@ function apply(w,host){
       if(st==="interview"){k="interview";t="Interview"}else if(st==="accepted"){k="accepted";t="Accepted"}else if(st==="rejected"){k="rejected";t="Rejected"}
       else if(x&&x.status==="sent"){k="sent";t="Sent"}else if(x&&x.status==="delivered_test"){k="sent";t="Sent (test)"}
       else if(x&&x.status==="pending"){k="wait";t="Waiting to send"}else if(x&&x.status==="failed"){k="wait";t="Not sent"}
-      else if(x&&x.status==="needs_answers"){k="wait";t="Needs an answer"}else{k="finish";t="Finish on their site"}
+      else if(x&&x.status==="needs_answers"){k="wait";t="Not sent yet"}else{k="finish";t="Finish on their site"}
       return '<span class="stchip st-'+k+'">'+t+'</span>';
     }
     /* two separate actions on a hand-off (a later version can make "Finish applying" a prefilled link); a sent application only links the posting */
@@ -1022,6 +1026,72 @@ function apply(w,host){
     L.push(["Resume file or link",!!(a.resumeName||resumeLinkOf()),"back",true],["Short summary (40+ characters)",summaryOf().length>=40,"back",false],["LinkedIn or portfolio link",!!(linkOf("linkedin")||linkOf("portfolio")),"back",false],["Work authorization",!!authOf(),"final",true]);
     return L;
   }
+
+  /* ---------- ready to apply (the owner's rule, October 21: a right swipe never sends an incomplete application, and never pretends) ----------
+     READY_MIN is the least UAply applies with, the one definition the deck, the cards and every checklist read: a name, an email employers
+     can reply to, and a phone number or a resume (each inner list needs one of its items). READY_ITEMS are what employers' forms ask most:
+     [key, label, the setup step, the fields that fix it (the first one on the page gets the focus)]. */
+  var READY_MIN=[["name"],["email"],["phone","resume"]];
+  var READY_ITEMS=[["name","Your name","about",["pName"]],["email","An email employers can reply to","about",["pEmail"]],
+    ["phone","Phone number","about",["px-phone","pPhone"]],["resume","Resume (a file, or a link to one)","back",["pResFile","px-resume"]],
+    ["auth","Work authorization","final",["px-auth","ev-auth"]],["edu","Education (your school)","back",["px-school","pEdu"]],
+    ["loc","Your city","where",["pLoc"]],["start","Earliest start date","where",["px-start","aNotice"]]];
+  var READY_WORDS={name:"your name",email:"an email employers can reply to",phone:"a phone number",resume:"a resume"};
+  function readyHave(){
+    var p=A.S.profile||{},c=!!p.custom,x=XV();
+    return {name:c&&!!String(p.name||"").trim(),email:c&&/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(p.email||""),phone:!!phoneOf(),
+      resume:!!(acct.resumeName||resumeLinkOf()||(w.__uaplyResume&&w.__uaplyResume())),auth:!!authOf(),edu:PX()?!!x.school:(c&&!!p.edu),loc:c&&!!String(p.loc||"").trim(),start:!!startOf()};
+  }
+  function readiness(){
+    var h=readyHave(),open=READY_MIN.filter(function(g){return !g.some(function(k){return h[k]})});
+    var items=READY_ITEMS.map(function(r){return {k:r[0],label:r[1],step:r[2],done:!!h[r[0]],needed:open.some(function(g){return g.indexOf(r[0])>-1})}});
+    return {min:!open.length,missing:open.map(function(g){return g.map(function(k){return READY_WORDS[k]}).join(" or ")}),items:items,
+      done:items.filter(function(i){return i.done}).length,total:items.length};
+  }
+  function joinAnd(a){return a.length<2?(a[0]||""):a.slice(0,-1).join(", ")+" and "+a[a.length-1]}
+  w.__uaplyReadyMin=READY_MIN;w.__uaplyReadiness=readiness;
+  function readyItemsHTML(r,onlyOpen){
+    return '<ul class="rdyItems">'+r.items.filter(function(i){return !onlyOpen||!i.done}).map(function(i){
+      return '<li data-done="'+i.done+'"'+(i.needed?' data-needed="true"':'')+'><span class="rdyMark" aria-hidden="true">'+(i.done?"✓":"○")+'</span><span class="rdyL">'+E(i.label)+
+        (i.needed?' <em>needed to apply</em>':'')+'</span>'+(i.done?'<span class="rdyOk">Done</span>':'<button type="button" class="btn ghost" data-ready="'+i.k+'" aria-label="Add '+E(i.label.toLowerCase())+'">Add</button>')+'</li>'}).join("")+'</ul>';
+  }
+  /* the checklist on Account and on the last setup step */
+  function readyHTML(where){
+    var r=readiness();
+    return '<div class="plan rdyList" data-where="'+where+'"><b>'+(r.min?(r.done===r.total?"Ready to apply":"Ready to apply · "+r.done+" of "+r.total+" filled in"):"Not ready to apply yet")+'</b>'+
+      '<small>'+(r.min?(r.done===r.total?"Everything employers' forms ask most is filled in.":"A swipe right can apply. The rest is what employers' forms ask most: with it, fewer jobs need a question first."):
+        "A swipe right needs "+joinAnd(r.missing)+" before UAply can apply.")+'</small>'+readyItemsHTML(r,false)+'</div>';
+  }
+  /* one tap to fix: the setup step with the field, and the field focused */
+  function fixReady(k){
+    var r=READY_ITEMS.filter(function(x){return x[0]===k})[0];if(!r)return;
+    var box=d.getElementById("rdyBox");if(box)box.remove();
+    var ids=r[3].filter(function(i){return d.getElementById(i)}),id=ids[0]||"",el=id?d.getElementById(id):null,top=el?topOf(el):null;
+    var i=top?stepOf(top):-1;if(i<0)i=stepIndex(r[2]);if(i<0)i=0;
+    if(!form.offsetParent||!form.classList.contains("wz")){wz.want=STEPS[i].k;closeMenus();sub.prof="settings";cur="prof";go("prof")}   /* the setup is not on screen: open it on that step */
+    else if(i!==wz.i){wz.i=i;wzPaint()}
+    function focusIt(){var t=id&&d.getElementById(id);if(t&&d.activeElement!==t){if(t.scrollIntoView)t.scrollIntoView({block:"center"});if(t.focus)t.focus()}}
+    setTimeout(focusIt,60);setTimeout(focusIt,400);   /* again once the screen has settled */
+  }
+  w.__uaplyFixReady=fixReady;
+  d.addEventListener("click",function(e){var b=e.target.closest&&e.target.closest("[data-ready]");if(b){e.preventDefault();fixReady(b.getAttribute("data-ready"))}});
+  /* a swipe right below READY_MIN (uaply-live.js, __uaplyReadyGate): nothing is sent, the card stays, and this says exactly what is missing */
+  w.__uaplyFinishProfile=function(job){
+    var old=d.getElementById("rdyBox");if(old)old.remove();
+    var r=readiness(),o=d.createElement("div");o.id="rdyBox";
+    o.style.cssText="position:fixed;inset:0;z-index:58;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.45);overflow:auto;overscroll-behavior:contain";
+    o.innerHTML='<div role="dialog" aria-modal="true" aria-labelledby="rdyH" style="background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:20px;max-width:460px;width:100%;box-sizing:border-box;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:10px">'+
+      '<h2 id="rdyH" style="margin:0;font:800 20px var(--display)">Finish your profile first</h2>'+
+      '<p style="margin:0">'+(job?'To apply to '+E(job.co)+', UAply':'UAply')+' needs '+E(joinAnd(r.missing))+'. Nothing was sent, and the job is still on top of your deck.</p>'+
+      readyItemsHTML(r,true)+
+      '<div style="display:flex;justify-content:flex-end"><button type="button" class="btn ghost" id="rdyNo">Not now</button></div></div>';
+    d.body.appendChild(o);
+    function close(){o.remove()}
+    d.getElementById("rdyNo").onclick=close;
+    o.addEventListener("click",function(e){if(e.target===o)close()});
+    o.addEventListener("keydown",function(e){if(e.key==="Escape")close()});
+    var f=o.querySelector('[data-needed] [data-ready]')||o.querySelector("[data-ready]")||d.getElementById("rdyNo");if(f)f.focus();
+  };
 
   /* per-application details (interview time, offer, rejection reason, notes) */
   function modeChip(j){var m={remote:"Remote",hybrid:"Hybrid",onsite:"In person"}[j.mode];return m?'<span class="mchip m-'+j.mode+'">'+m+'</span>':""}
@@ -1683,7 +1753,7 @@ function apply(w,host){
   function renderAcct(v){
     var h='<h3>'+label("prof",v)+'</h3><p class="lead">'+(v==="plan"&&earlyAccess()?EARLY:leadOf(v))+'</p>';
     /* preview: the release build shows only the preview note; the sandbox keeps its simulated sign-in below it */
-    if(v==="account"){acctSec.innerHTML=h+shieldsLine()+(preview()?previewHTML()+(REL?"":accountHTML()):accountHTML())+'<p class="note" id="aMsg" role="status"></p>';paintHeader();setTimeout(mountGoogle,0);return}
+    if(v==="account"){acctSec.innerHTML=h+shieldsLine()+readyHTML("account")+(preview()?previewHTML()+(REL?"":accountHTML()):accountHTML())+'<p class="note" id="aMsg" role="status"></p>';paintHeader();setTimeout(mountGoogle,0);return}
     if(v==="plan"&&preview()&&REL){
       h+=previewHTML();
     }else if(v==="plan"&&(SRV.up||REL)){
@@ -2271,6 +2341,7 @@ function apply(w,host){
   ];
   var wz={i:0,want:null,opened:false,dirty:false,pending:null};
   var wzGrid=form.querySelector(".grid");
+  var wzReady=d.createElement("div");wzReady.id="wzReady";wzReady.className="field full";if(wzGrid)wzGrid.appendChild(wzReady);
   function stepIndex(k){for(var i=0;i<STEPS.length;i++)if(STEPS[i].k===k)return i;return -1}
   function topOf(el){while(el&&el.parentElement!==wzGrid)el=el.parentElement;return el}
   function stepOf(el){
@@ -2327,6 +2398,8 @@ function apply(w,host){
     d.getElementById("wzBack").hidden=wz.i===0;
     d.getElementById("wzNext").textContent=wz.i===STEPS.length-1?"Finish and see matches":"Save and continue";
     wzPrevPaint();
+    if(wzGrid.lastElementChild!==wzReady)wzGrid.appendChild(wzReady);   /* the last thing on the last step, above Finish */
+    wzReady.innerHTML=readyHTML("setup");
   }
   function wzOpen(){
     if(wz.want!=null){var k=stepIndex(wz.want);if(k>-1)wz.i=k;wz.want=null;wz.opened=true}

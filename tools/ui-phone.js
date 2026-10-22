@@ -108,6 +108,8 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot }) => {
   check("the screen changed when menus were tapped (sanity)", (await ev("(" + F + ").body.innerText.length")) !== before);
 
   // ---------------------------------------------------------------- 2. swipes the way people swipe
+  // the least a swipe right needs to apply (October 21): a name, an email and a phone number; without them it opens "Finish your profile first"
+  await ev("(()=>{const A=document.querySelector('iframe').contentWindow.__uaply;Object.assign(A.S.profile,{name:'Phone Tester',email:'phone.tester@example.com',custom:true});A.S.profile.ext=Object.assign({},A.S.profile.ext,{phone:'+1 215 555 0100'});A.save();A.renderAll()})()");
   await menu("nb-svc", "Full-time"); await sleep(600);
   const swipe = async (name, dx, dy, steps, ms, bend, expect) => {
     const c = await cardCenter(); if (!c) { check(name, false, "no card"); return; }
