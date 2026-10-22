@@ -775,3 +775,238 @@ def verify_code(token, code, ip):
             c.execute("UPDATE users SET email_verified=1 WHERE id=?", (user["id"],))
             c.execute("DELETE FROM email_codes WHERE user_id=?", (user["id"],))
     return 200, {"ok": True}
+
+
+
+# /* sign-up v2 */ ----------------------------------------------------------------------------------------------------------------
+# Sign up and sign in with no password: an emailed 6-digit code proves the inbox and signs the person in. serve.py calls these only when
+# CODE_SIGNIN is on (the sandbox instance); dev and the live site never reach them. New functions and a short-lived name hint only;
+# nothing above this block was changed.
+#
+# Why no session at sign-up: if "Create my account" signed the person in at once, anyone could open an account on someone else's
+# address and stay signed in to it. Here the session only starts when the code from that inbox is typed in (login_with_code).
+CODE_SENDS_PER_EMAIL = 3         # code emails per address and hour, whether or not the address has an account (so a 429 reveals nothing)
+CODE_SENDS_PER_IP = 12           # code emails per visitor address and hour (the same numbers as resend_code)
+CODE_LOGIN_FAILS = 20            # wrong codes per visitor address, and per account from all addresses together, in FAIL_WINDOW
+CODE_LIMIT_MSG = "Too many codes requested. Check your inbox and spam folder, or try again in an hour."
+# A day's limits on top of the hourly ones. Hourly limits alone let one connection try 15 codes an hour against someone's address, every
+# hour, every day (360 a day), and send that inbox 72 code emails a day. With these: at most 6 code emails a day to one address, and after
+# 15 wrong codes for one address in a day, code sign-in for that address stops until the day is over (from every connection; Google and a
+# proven password still work). Unknown addresses are counted the same way, so the answers never say which addresses have an account.
+DAY = 86400
+CODE_SENDS_PER_EMAIL_DAY = 6
+CODE_FAILS_PER_EMAIL_DAY = 15
+CODE_DAY_MSG = "Too many wrong codes for this email today. Try again tomorrow."
+_code_day = {}       # ("send", email) or ("fail", email) -> timestamps in the last day (its own bucket: _prune forgets keys after an hour)
+_code_day_pruned = [0.0]
+
+
+def _code_day_recent(key):
+    """The last day's timestamps for `key` (and, at most once a minute, every key quiet for a day is forgotten). Call with _lock held."""
+    now = time.time()
+    if now - _code_day_pruned[0] >= 60 or now < _code_day_pruned[0]:
+        _code_day_pruned[0] = now
+        for k in [k for k, v in _code_day.items() if not v or now - v[-1] > DAY]:
+            del _code_day[k]
+    return _recent(_code_day, key, DAY)
+
+
+def _code_fail(key, every, email):
+    """Count one wrong, unknown or expired code: per connection and per account in FAIL_WINDOW, and per address for the day."""
+    now = time.time()
+    _fails.setdefault(key, []).append(now)
+    _fails.setdefault(every, []).append(now)
+    _code_day_recent(("fail", email)).append(now)
+
+
+def _code_send_allowed(email, ip, user_id=None):
+    """True (and counted) when one more code email may go to `email` from `ip`. Call with _lock held.
+
+    user_id: the account at that address, when there is one. Its code emails are also counted under ("u", user_id), the key resend_code
+    reads, so Create my account, Email me a code and Resend on a signed-in card share one limit of 3 an hour for that account."""
+    if len(_recent(_code_sends, ("ip", ip), 3600)) >= CODE_SENDS_PER_IP or len(_recent(_code_sends, ("e", email), 3600)) >= CODE_SENDS_PER_EMAIL:
+        return False
+    if user_id is not None and len(_recent(_code_sends, ("u", user_id), 3600)) >= CODE_SENDS_PER_EMAIL:
+        return False
+    if len(_code_day_recent(("send", email))) >= CODE_SENDS_PER_EMAIL_DAY:
+        return False
+    now = time.time()
+    _code_sends[("ip", ip)].append(now)
+    _code_sends[("e", email)].append(now)
+    if user_id is not None:
+        _code_sends[("u", user_id)].append(now)
+    _code_day[("send", email)].append(now)
+    return True
+
+
+def signup_passwordless(email, ip, agree=False, check_dns=False, per_hour=None):
+    """Create my account with no password. Returns (status, body, mail) where mail is (user_id, email, digits) to send, or None.
+
+    A new address gets an account with no usable password (has_password=0, the same kind "Continue with Google" makes), terms_at set to
+    now (the 18+ / Terms box was ticked) and email_verified=0; no session yet. An address that already has an account gets a sign-in
+    code instead, and the answer is the same either way, so this cannot be used to find out who has an account."""
+    email = _clean_email(email)
+    if not email:
+        return 400, {"error": "Enter a valid email address."}, None
+    if agree is not True:
+        return 400, {"error": "Confirm you are 18 or older and agree to the Terms and Privacy Policy."}, None
+    problem = mailbox_problem(email, check_dns)
+    if problem:
+        return 400, {"error": problem, "code": "mailbox"}, None
+    with _lock:
+        _prune()
+        with _db() as c:
+            row = c.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
+        if not row and len(_recent(_signups, ip, 3600)) >= (per_hour or SIGNUPS_PER_HOUR_LOCAL):
+            return 429, {"error": SIGNUP_LIMIT_MSG, "code": "signup_limit"}, None
+        if not _code_send_allowed(email, ip, row["id"] if row else None):
+            return 429, {"error": CODE_LIMIT_MSG, "code": "code_limit"}, None
+        now = int(time.time())
+        try:
+            with _db() as c:
+                if row:
+                    uid = row["id"]
+                else:
+                    _signups[ip].append(time.time())
+                    cur = c.execute("INSERT INTO users(email, salt, hash, created_at, last_login, terms_at, has_password, email_verified) "
+                                    "VALUES(?,?,?,?,?,?,0,0)", (email, secrets.token_bytes(16), secrets.token_bytes(32), now, now, now))
+                    uid = cur.lastrowid
+                digits = _new_code(c, uid)
+        except sqlite3.IntegrityError:               # a sign-up for the same address won the race: send that account a sign-in code
+            with _db() as c:
+                uid = c.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()["id"]
+                digits = _new_code(c, uid)
+    return 200, {"ok": True, "email": email}, (uid, email, digits)
+
+
+def send_login_code(email, ip):
+    """Email me a code, on the sign-in card. Always answers the same way (like request_reset), so nobody can use it to find out who has
+    an account. Returns (status, body, mail) where mail is (user_id, email, digits) only when the address has an account."""
+    email = _clean_email(email)
+    if not email:
+        return 400, {"error": "Enter a valid email address."}, None
+    with _lock:
+        _prune()
+        with _db() as c:
+            row = c.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
+        if not _code_send_allowed(email, ip, row["id"] if row else None):
+            return 429, {"error": CODE_LIMIT_MSG, "code": "code_limit"}, None
+        if not row:
+            return 200, {"ok": True}, None
+        with _db() as c:
+            digits = _new_code(c, row["id"])
+    return 200, {"ok": True}, (row["id"], email, digits)
+
+
+def login_with_code(email, code, ip, agree=False):
+    """Sign in with the emailed code (after signup_passwordless or send_login_code). Returns (status, body, session_token_or_None).
+
+    The code proves the person owns the inbox (the same power as a Forgot password link), so it also works for password and Google
+    accounts. body["user"]["new"] is True for an account that has never been signed in to (made by signup_passwordless and confirmed
+    just now), so the page says "Account created" only then. Five wrong tries end a code; 20 wrong codes per connection, and per
+    account from all connections together, in 15 minutes; 15 wrong codes for one address in a day stop code sign-in for it until the
+    day is over (CODE_FAILS_PER_EMAIL_DAY).
+
+    As in oauth_login and reset_password: a password nobody had proven belonged to this address's owner is removed (whoever chose it
+    may have signed up first with this person's address), every other session ends, and a Google sign-in Google was not the authority
+    for no longer opens this account.
+
+    An address that was never proven (email_verified 0) is finished only with `agree` True (the 18+ / Terms box ticked by the person
+    typing the code), and terms_at is then set to that tick: whoever opened the account (with no password, with a password, or with a
+    Google login Google does not vouch for) may not be the inbox's owner, so their tick is not taken as the owner's. Without it the
+    answer is needsAgree, after the code is checked (so it reveals nothing to someone without the code), and the code stays usable for
+    the ticked retry. body["user"]["googleRemoved"] is True when a Google sign-in was taken off the account here."""
+    email = _clean_email(email)
+    digits = "".join(ch for ch in (code if isinstance(code, str) else "") if ch.isdigit())
+    if not email:
+        return 400, {"error": "Enter a valid email address."}, None
+    if len(digits) != 6:
+        return 400, {"error": "Enter the 6-digit code from your email."}, None
+    gone = {"error": "That code is not right, or it has expired. Send a new code.", "expired": True}
+    key, every = (ip, "codelogin"), ("*codelogin", email)
+    with _lock:
+        _prune()
+        if len(_recent(_fails, key, FAIL_WINDOW)) >= CODE_LOGIN_FAILS or len(_recent(_fails, every, FAIL_WINDOW)) >= CODE_LOGIN_FAILS:
+            return 429, {"error": "Too many tries. Wait a few minutes and try again."}, None
+        if len(_code_day_recent(("fail", email))) >= CODE_FAILS_PER_EMAIL_DAY:
+            return 429, {"error": CODE_DAY_MSG, "code": "code_day"}, None
+        with _db() as c:
+            row = c.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
+            rec = c.execute("SELECT * FROM email_codes WHERE user_id=?", (row["id"],)).fetchone() if row else None
+            if not rec or rec["expires_at"] < int(time.time()):
+                _code_fail(key, every, email)
+                return 400, gone, None
+            if rec["attempts"] >= MAX_CODE_TRIES:
+                c.execute("DELETE FROM email_codes WHERE user_id=?", (row["id"],))
+                return 429, {"error": "Too many wrong tries. Send a new code.", "expired": True}, None
+            if not hmac.compare_digest(hashlib.sha256((rec["salt"] + digits).encode()).hexdigest(), rec["code_hash"]):
+                left = MAX_CODE_TRIES - rec["attempts"] - 1
+                _code_fail(key, every, email)
+                if left <= 0:
+                    c.execute("DELETE FROM email_codes WHERE user_id=?", (row["id"],))
+                    return 400, {"error": "That code is not right, and there are no tries left. Send a new code.", "expired": True}, None
+                c.execute("UPDATE email_codes SET attempts=attempts+1 WHERE user_id=?", (row["id"],))
+                return 400, {"error": "That code is not right. %d %s left." % (left, "try" if left == 1 else "tries"), "triesLeft": left}, None
+            uid = row["id"]
+            linked = c.execute("SELECT 1 FROM identities WHERE user_id=?", (uid,)).fetchone() is not None
+            new = not row["email_verified"] and not row["has_password"] and not linked
+            # whoever opened an unproven account ticked the box for themselves, not for the inbox's owner: the owner ticks it here
+            needs_tick = not row["email_verified"]
+            if needs_tick and agree is not True:
+                return 400, {"error": "This finishes a new UAply account. Tick the box to confirm you are 18 or older and agree, and it is done." if new else
+                             "Tick the box to confirm you are 18 or older and agree, and you are signed in.", "needsAgree": True}, None
+            removed = bool(row["has_password"]) and not row["email_verified"]
+            if removed:
+                c.execute("UPDATE users SET salt=?, hash=?, has_password=0 WHERE id=?", (secrets.token_bytes(16), secrets.token_bytes(32), uid))
+            g_removed = False
+            if not row["email_verified"]:
+                # the inbox's owner has just proven it for the first time: whatever got in before them (a password nobody had proven, a Google
+                # sign-in Google was not the authority for) is shut out, and every session they had ends, as in reset_password
+                g_removed = c.execute("DELETE FROM identities WHERE user_id=?", (uid,)).rowcount > 0
+                for table in ("sessions", "password_resets"):
+                    c.execute("DELETE FROM %s WHERE user_id=?" % table, (uid,))
+            if needs_tick:
+                c.execute("UPDATE users SET terms_at=? WHERE id=?", (int(time.time()), uid))   # this person's own tick
+            c.execute("DELETE FROM email_codes WHERE user_id=?", (uid,))
+            c.execute("UPDATE users SET email_verified=1, last_login=? WHERE id=?", (int(time.time()), uid))
+            token = _new_session(c, uid)
+            row = c.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
+        _fails.pop(key, None)
+    user = public_user(row)
+    user["new"] = new
+    if removed:
+        user["passwordRemoved"] = True
+    if g_removed:
+        user["googleRemoved"] = True                 # the card stops offering Google to this person (it would answer email_in_use)
+    return 200, {"user": user}, token
+
+
+# After a "Continue with Google" round trip the page needs one fact the redirect cannot carry: whether the account was made just now
+# (so it says "Account created" and asks the questions, or "You're signed in"). Kept in memory for 10 minutes, never written to the
+# database. Google is asked for "openid email" only, so no name comes from Google (asking for its "profile" scope is a question for Saif).
+NAME_HINT_SECONDS = 600
+_google_hints = {}   # user id -> (new, expires)
+
+
+def created_within(user_id, seconds):
+    """True when this account was made in the last `seconds` (oauth_login makes a new one at the moment Google sends the person back)."""
+    with _db() as c:
+        r = c.execute("SELECT created_at FROM users WHERE id=?", (user_id,)).fetchone()
+    return bool(r) and r["created_at"] >= int(time.time()) - seconds
+
+
+def remember_google(user_id, new):
+    now = time.time()
+    with _lock:
+        for k in [k for k, v in _google_hints.items() if v[1] < now]:
+            del _google_hints[k]
+        if len(_google_hints) < 5000:
+            _google_hints[user_id] = (bool(new), now + NAME_HINT_SECONDS)
+
+
+def google_hint(user_id):
+    """{"new"} from this account's Google sign-in in the last 10 minutes, or None."""
+    with _lock:
+        h = _google_hints.get(user_id)
+    return {"new": h[0]} if h and h[1] > time.time() else None
+# /* end sign-up v2 */ ------------------------------------------------------------------------------------------------------------

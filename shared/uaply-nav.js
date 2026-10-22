@@ -1782,6 +1782,8 @@ function apply(w,host){
   function renderAcct(v){
     var h='<h3>'+label("prof",v)+'</h3><p class="lead">'+(v==="plan"&&earlyAccess()?EARLY:leadOf(v))+'</p>';
     /* preview: the release build shows only the preview note; the sandbox keeps its simulated sign-in below it */
+    /* sign-up v2 (shared/uaply-signup.js): when that file is loaded and the server signs in by emailed code, its card replaces the signed-out Account screen and its two questions run here just after sign-up; it answers false to keep the card below. Without that file nothing changes */
+    acctSec.classList.remove("sgnOn");if(v==="account"&&SRV.up&&!AUI.reset&&!preview()&&w.__uaplySignCard){acctSec.innerHTML=h+(typeof shieldsLine==="function"?shieldsLine():"")+'<div id="sgnHost"></div><p class="note" id="aMsg" role="status"></p>';if(w.__uaplySignCard(d.getElementById("sgnHost"),SRV.user)!==false){acctSec.classList.add("sgnOn");paintHeader();return}}
     if(v==="account"){acctSec.innerHTML=h+shieldsLine()+readyHTML("account")+(preview()?previewHTML()+(REL?"":accountHTML()):accountHTML())+'<p class="note" id="aMsg" role="status"></p>';paintHeader();setTimeout(mountGoogle,0);return}
     if(v==="plan"&&preview()&&REL){
       h+=previewHTML();
@@ -2010,9 +2012,14 @@ function apply(w,host){
       if(real){if(HELP){SHIELD.cookie=true;renderAcct("account")}msg(GERR.failed)}   /* only after a real round trip: a bare ?signed_in= link claims nothing */
       return;
     }
+    if(w.__uaplySignReturn&&w.__uaplySignReturn(er,!!SRV.user,!!q.get("password_removed")))return;   /* sign-up v2: its card says it in its own place */
     msg(er?(GERR[er]||GERR.failed):(q.get("password_removed")?PW_GONE:"Signed in with Google."));
   }
   w.__uaplyAuth=function(){return {up:SRV.up,user:SRV.user}};
+  /* sign-up v2: what shared/uaply-signup.js may use from this screen (nothing reads it when that file is not loaded) */
+  w.__uaplyAuthApi={post:apiPost,msg:msg,srv:function(){return {up:SRV.up,user:SRV.user,google:!!SRV.google,hideGoogle:noGoogle(),redirect:!!SRV.googleRedirect,clientId:SRV.googleClientId||"",canEmail:!!SRV.canEmail,mailKnown:!!SRV.mailKnown,testInbox:SRV.testInbox||"",near:NEAR}},
+    signedIn:function(u){SRV.user=u;afterServerSignIn();if(typeof checkCookie==="function")checkCookie()},mountGoogle:mountGoogle,redraw:function(){if(!acctSec.hidden&&sub.prof==="account")renderAcct("account")},
+    acct:function(fn){fn(acct);saveA();A.renderAll()},askDevice:askDevice,cards:function(){cur="svc";go("svc")}};
   /* Apple (App Store guideline 4.8) requires Sign in with Apple wherever an iPhone app offers Google, so inside the iPhone app Google stays hidden until Apple sign-in exists */
   function iosShell(){try{var c=w.top.Capacitor;return !!(c&&c.getPlatform&&c.getPlatform()==="ios"&&!SRV.apple)}catch(e){return false}}
   /* Google refuses to sign anyone in inside an app's built-in web view (Android and iPhone alike: "Error 403: disallowed_useragent"),
@@ -2092,7 +2099,8 @@ function apply(w,host){
       '<div class="acts"><button type="button" class="btn" data-auth="sresetgo">Save new password</button><button type="button" class="btn ghost" data-auth="sresetno">Cancel</button></div></div>';
   }
   function changeHTML(){
-    if(!SRV.user||SRV.user.hasPassword===false)return '<p class="note" style="margin:0">You sign in with Google. To also sign in with a password, sign out and use Forgot password with this email.</p>';
+    /* sign-up v2: with shared/uaply-signup.js on a server that signs in by emailed code, it says how this person signs in; otherwise as before */
+    if(!SRV.user||SRV.user.hasPassword===false)return (w.__uaplyNoPwNote&&w.__uaplyNoPwNote(SRV.user))||'<p class="note" style="margin:0">You sign in with Google. To also sign in with a password, sign out and use Forgot password with this email.</p>';
     if(!AUI.chgOpen)return '<div class="acts"><button type="button" class="btn ghost" data-auth="schg">Change password</button></div>';
     return '<div class="field"><label for="sCur">Current password</label><input type="password" id="sCur" autocomplete="current-password" maxlength="128"></div>'+
       '<div class="field"><label for="sNew">New password</label><input type="password" id="sNew" autocomplete="new-password" maxlength="128"><small>At least 8 characters. Your other devices are signed out.</small></div>'+

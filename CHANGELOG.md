@@ -6,6 +6,40 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 
+### Sign-up, nothing hidden: no password, an emailed code, two questions (Mohammed's design, Oct 21)
+- **One card in the middle of the Account screen**, with the UAply mark directly above it and the two centered together on phones and
+  laptops. In Mohammed's order: Continue with Google, "or", Email, First name, Last name, the 18+ / Terms tick, Create my account, "Have an
+  account? Sign in". Google tapped before the tick: the box shakes (not with reduced motion), says "Tick the box first, then Continue with
+  Google." and scrolls into view. The email box offers "Did you mean gmail.com?" for a typo. No password, no privacy map.
+- **No password.** Create my account emails a 6-digit code (six boxes, paste, auto-advance, Resend after 30 seconds); nobody is signed in
+  until it is typed. Google skips the code for Gmail and Google-run addresses. Returning people: Google, or Email me a code, whose answer
+  never says whether an address has an account. Mohammed can flip this back to a password (today's password routes are untouched).
+- **After the account exists:** "Account created, {first}." (or "Account created." and "What should employers call you?" when the name was
+  lost to a refresh or typed on another device, and after Google), then "What kind of work are you after?" and "Where do you want to work?",
+  each with Back, Skip/Continue, Enter and Esc, beside a preview of what an employer sees. The preview counts the app's minimum to apply
+  (`READY_MIN`: name, email, a phone number or a resume). The end says "You're ready to swipe." only when that minimum is met; otherwise
+  "Almost ready" with Add a phone number / Add a resume, one tap from the field.
+- **Kept honestly:** the account (email, when the box was ticked) on the server; name, work picks and place on this device only, in the
+  app's own profile. A name saved for an earlier account on the same device is never reused. Work picks only sort jobs.
+- **Google is asked for `openid email` only**, as today (asking for the name is a question for Saif). The card says UAply keeps only the
+  email and the Google account number. A password nobody had proven, removed by a Google sign-in, is said on the card.
+- Server (sandbox only, `CODE_SIGNIN` in `serve.py`; `UAPLY_CODE_SIGNIN=0` turns it off on a sandbox, nothing turns it on elsewhere; a
+  public server with no email set up keeps today's card): `POST /api/auth/signup` with `"passwordless": true`, `POST /api/auth/code/send`,
+  `POST /api/auth/code/verify`, `codeSignin` in `/api/auth/providers`. On dev every one answers exactly as before. A code sign-in that
+  first proves an inbox shuts out a password nobody had proven and a Google login Google did not vouch for, and ends every session they
+  had, and says when it took Google off (`googleRemoved`; the card then stops offering Google to that person). Any account whose address
+  was never proven is finished only with the code typer's own 18+ tick (`needsAgree`), recorded as theirs. Limits: 3 code emails an hour
+  per address and per account (shared with Resend), 12 per connection, 6 a day per address; 15 wrong codes for one address in a day stop
+  code sign-in for it until the next day. The daily stats count a no-password sign-up when its code is typed.
+- **Sign out, then the next person:** the card starts empty (no email, no name, the box unticked). A redraw of the Account screen while
+  someone types (a late start-up answer on a slow connection) keeps them in the same box with the caret where it was. The last screen's
+  button says "Show me jobs" until a swipe right can apply, "Start swiping" once it can.
+- `shared/uaply-signup.js` (the "Sign-up, nothing hidden" experiment, on in the sandbox) and four guarded hooks in `shared/uaply-nav.js`
+  (`check.js` fails if one goes missing). The app's signed-in card says "You sign in with an emailed code or with Google" there.
+- Tests: `tools/test-signup-flow.py` (89 checks) and `tools/ui-signup.js` (58 checks in a browser at 1280x720 and 390x844, including
+  hostile text in the card's boxes, Sign out, and a redraw while typing). `tools/run-all-tests.sh` runs both, and runs the sandbox's `ui-inject.js` (unchanged) against a
+  second sandbox with the card off (18770).
+
 ### A swipe right only sends a complete application (the front end of the readiness rule)
 - **The minimum, in one place.** `READY_MIN` in `shared/uaply-nav.js`: a name, an email employers can reply to, and a phone number or a
   resume. The deck, the cards and every checklist read it. Below it, a swipe right (finger, Apply or the arrow key) opens **Finish your
