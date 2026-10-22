@@ -119,6 +119,8 @@ run "dev: hostile text in every form never runs, and the owner's inbox escapes i
 run "sandbox: the setup page's script runs, and Connect email switches between Brevo and Gmail" env PORT=18766 node tools/cdp.js tools/ui-setup.js
 run "dev on a big iPhone (440x956): every menu item tapped by touch, nothing covers a button, 7 kinds of real swipes" env W=440 H=956 PORT=18767 node tools/cdp.js tools/ui-phone.js
 run "dev on a small iPhone (375x667): the same" env W=375 H=667 PORT=18767 node tools/cdp.js tools/ui-phone.js
+run "sandbox on a turned short phone (667x375): the same, and the Help button never lies over the sign-up card" env LANDSCAPE=1 W=667 H=375 PORT=18766 node tools/cdp.js tools/ui-phone.js
+run "sandbox on a turned phone (844x390): the same" env LANDSCAPE=1 W=844 H=390 PORT=18766 node tools/cdp.js tools/ui-phone.js
 for sz in 390x844 375x667 440x956 1280x800; do
   run "dev at ${sz}: Pass, Undo and Apply fully visible above the bottom bar on first open, after Agree and after a swipe" env W="${sz%x*}" H="${sz#*x}" PORT=18767 node tools/cdp.js tools/ui-buttons-bar.js
   run "sandbox at ${sz}: the same" env W="${sz%x*}" H="${sz#*x}" PORT=18766 node tools/cdp.js tools/ui-buttons-bar.js

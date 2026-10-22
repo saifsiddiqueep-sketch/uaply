@@ -50,6 +50,9 @@ var CSS=`
  #uaNudge{top:62px;bottom:auto}
 }
 @media (max-width:520px){#uaChatBtn{padding:0 11px}body:not(.hire):has(>#uaChatBtn)>header.bar{padding-right:56px;column-gap:8px}}
+/* a short turned phone (667x375): the page itself scrolls a little, and a fixed button stayed put while the header row went up, so it lay
+   over the top of the card (the sign-up card's Last name box). There it scrolls with the header row it belongs to (October 22, 2026). */
+@media (max-height:500px) and (orientation:landscape){#uaChatBtn{position:absolute}}
 /* the account button shows the email from 481 px (below that only the initial, uaply-nav.js): there it gives up the Help button's room */
 @media (min-width:481px) and (max-width:520px){.hdrbtn{max-width:min(60vw,calc(100vw - 190px))}}
 @media (min-width:521px) and (max-width:700px){.hdrbtn{max-width:min(60vw,calc(100vw - 240px))}}

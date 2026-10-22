@@ -33,7 +33,7 @@ if (require.main === module) {
   const OUT = process.env.OUT || path.join(ROOT, "phone-walk", target + "-" + stamp);
   fs.mkdirSync(OUT, { recursive: true });
   const kids = [];
-  let url = "https://uaply.net/", port = 0, mailFile = "", dataDir = "";
+  let url = "https://uaply.net/", port = 0, mailFile = "", dataDir = "", mgPort = 0;
   const stopKids = () => { for (const k of kids) { try { k.kill(); } catch (e) {} } };
   process.on("exit", stopKids);
   const waitFor = (u, ms) => { const end = Date.now() + ms; while (Date.now() < end) { const r = spawnSync(process.execPath, ["-e", "fetch(" + JSON.stringify(u) + ").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]); if (r.status === 0) return true; spawnSync(process.execPath, ["-e", "setTimeout(()=>{},300)"]); } return false; };
@@ -43,7 +43,12 @@ if (require.main === module) {
     dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "uaply-phone-"));
     mailFile = path.join(dataDir, "mail.jsonl");
     kids.push(spawn("python", [path.join(ROOT, "tools", "fake-smtp.py"), String(mailPort), mailFile], { stdio: "ignore" }));
-    const cfg = { feeds: ["greenhouse", "lever", "ashby"], delivery: "test", owner_copy: "", google: {},
+    // the stand-in Google (tools/mock-google.py): the sign-up card's "Continue with Google" is walked too, and nothing talks to Google
+    mgPort = port + 200;
+    kids.push(spawn("python", [path.join(ROOT, "tools", "mock-google.py"), String(mgPort)], { stdio: "ignore" }));
+    const mg = "http://127.0.0.1:" + mgPort;
+    const cfg = { feeds: ["greenhouse", "lever", "ashby"], delivery: "test", owner_copy: "",
+      google: { client_id: "test.apps.googleusercontent.com", client_secret: "test-secret", auth_url: mg + "/auth", token_url: mg + "/token", certs_url: mg + "/certs" },
       smtp: { host: "127.0.0.1", port: mailPort, starttls: false, from_addr: "uaply@example.com" } };
     const env = Object.assign({}, process.env, { UAPLY_DATA_DIR: path.join(dataDir, "data"), UAPLY_CONFIG_FILE: "none", UAPLY_CONFIG_JSON: JSON.stringify(cfg) });
     delete env.UAPLY_PUBLIC_URL; delete env.HOST;
@@ -51,6 +56,7 @@ if (require.main === module) {
     kids.push(srv); process.env.WALK_SERVER_PID = String(srv.pid);
     if (!waitFor("http://127.0.0.1:" + port + "/healthz", 30000)) { console.log("FAIL the local " + target + " server did not start (see " + OUT + "/server.log)"); process.exit(1); }
     adb("reverse", "tcp:" + port, "tcp:" + port);
+    adb("reverse", "tcp:" + mgPort, "tcp:" + mgPort);          // the phone's Chrome opens the stand-in Google's page
     url = "http://localhost:" + port + "/";
   }
   // the DevTools forward may already be there (another tool on this computer uses the phone too): set it only if missing, and remove only
@@ -62,9 +68,10 @@ if (require.main === module) {
   adb("shell", "am", "start", "-n", "com.android.chrome/com.google.android.apps.chrome.Main", "-a", "android.intent.action.VIEW", "-d", url);
   spawnSync(process.execPath, ["-e", "setTimeout(()=>{},4000)"]);
   const env = Object.assign({}, process.env, { CDP_ATTACH: "127.0.0.1:9222", CDP_TAB: url.replace(/^https?:\/\//, "").replace(/\/$/, ""), CDP_OPEN: url,
-    CDP_LIMIT_MS: "1500000", WALK_TARGET: target, WALK_URL: url, WALK_OUT: OUT, WALK_SERIAL: serial, ADB, WALK_MAIL: mailFile, WALK_PORT: String(port) });
+    CDP_LIMIT_MS: "1500000", WALK_TARGET: target, WALK_URL: url, WALK_OUT: OUT, WALK_SERIAL: serial, ADB, WALK_MAIL: mailFile, WALK_PORT: String(port), WALK_MG: String(mgPort) });
   const r = spawnSync(process.execPath, [path.join(ROOT, "tools", "cdp.js"), __filename], { env, stdio: "inherit" });
   if (port) { try { adb("reverse", "--remove", "tcp:" + port); } catch (e) {} }
+  if (mgPort) { try { adb("reverse", "--remove", "tcp:" + mgPort); } catch (e) {} }
   if (!hadForward) { try { adb("forward", "--remove", "tcp:9222"); } catch (e) {} }
   stopKids();
   console.log("screenshots: " + OUT);
@@ -125,7 +132,7 @@ module.exports = async ({ ev, sleep, nav, send }) => {
     return list;
   };
   let turned = "";
-  const orient = async () => { const o = await ev("(screen.orientation&&screen.orientation.type||'')+' '+innerWidth+'x'+innerHeight"); if (turned && o.split(" ")[0] !== turned.split(" ")[0]) { log("the phone was turned: " + turned + " -> " + o + " (measuring the taps again)"); turned = o; await calibrate(); } turned = o; return /landscape/.test(o) ? "landscape" : "portrait"; };
+  const orient = async () => { const o = await ev("(screen.orientation&&screen.orientation.type||'')+' '+innerWidth+'x'+innerHeight"); if (turned && o !== turned) { log((o.split(" ")[0] !== turned.split(" ")[0] ? "the phone was turned: " : "the page's size changed (Chrome's address bar): ") + turned + " -> " + o + " (measuring the taps again)"); turned = o; await calibrate(); } turned = o; return /landscape/.test(o) ? "landscape" : "portrait"; };
   const step = async (name, label) => { await sleep(500); const o = await orient(); await shot(name + (o === "landscape" ? "-landscape" : "")); await fit((label || name) + (o === "landscape" ? " [landscape]" : "")); };
   // where a CSS point of the page is on the phone's screen: measured with one tap on a part of the page that does nothing (the header's
   // logo), because the address bar's height above the page differs between phones and changes when the bar hides
@@ -145,7 +152,9 @@ module.exports = async ({ ev, sleep, nav, send }) => {
   };
   const toScreen = (x, y) => [Math.round(left + x * dpr), Math.round(top + y * dpr)];
   // the middle of an element in the app's frame (or the page), scrolled into view first
-  const where = async (finder, inPage) => JSON.parse(await ev("(()=>{const f=" + F + ";const d=" + (inPage ? "document" : "f.contentDocument") + ";const e=(" + finder + ");if(!e)return 'null';e.scrollIntoView({block:'center'});const r=e.getBoundingClientRect(),o=" + (inPage ? "{left:0,top:0}" : "f.getBoundingClientRect()") + ";return JSON.stringify({x:o.left+r.left+r.width/2,y:o.top+r.top+r.height/2,w:r.width,h:r.height})})()"));
+  const where = async (finder, inPage) => JSON.parse(await ev("(()=>{const f=" + F + ";const d=" + (inPage ? "document" : "f.contentDocument") + ";const e=(" + finder + ");if(!e)return 'null';e.scrollIntoView({block:'center'});const r=e.getBoundingClientRect(),o=" + (inPage ? "{left:0,top:0}" : "f.getBoundingClientRect()") + ";const v=window.visualViewport||{offsetLeft:0,offsetTop:0};return JSON.stringify({x:o.left+r.left+r.width/2-v.offsetLeft,y:o.top+r.top+r.height/2-v.offsetTop,w:r.width,h:r.height})})()"));
+  // (the visual viewport's offset: with Android's keyboard open Chrome scrolls the visible part, and a tap measured without it landed
+  //  on the box above the one meant: the sign-up card's First name tap went to Email, October 22, 2026)
   const tap = async (finder, inPage) => { await orient(); let p = await where(finder, inPage); if (!p) return false; await sleep(250); p = await where(finder, inPage); const [x, y] = toScreen(p.x, p.y); wake(); adb("shell", "input", "tap", String(x), String(y)); await sleep(700); return true; };
   const swipe = async (finder, dx, dy, ms) => { await orient(); const p = await where(finder); if (!p) return false; await sleep(250); const [x, y] = toScreen(p.x, p.y);
     wake(); adb("shell", "input", "swipe", String(x), String(y), String(Math.round(x + dx * dpr)), String(Math.round(y + dy * dpr)), String(ms || 250)); await sleep(900); return true; };
@@ -219,20 +228,94 @@ module.exports = async ({ ev, sleep, nav, send }) => {
     if (!LIVE && process.env.WALK_MAIL) {
       const EMAIL = "uaplytechnologies+phone1@gmail.com", PW = "phone walk " + Math.random().toString(36).slice(2, 10);
       const set = (id, v) => q("const e=d.getElementById('" + id + "');if(!e)return '';e.value=" + JSON.stringify(v) + ";e.dispatchEvent(new Event('input',{bubbles:true}));return 'ok'");
-      const toSignup = await q("const b=" + byText("/^(Create an account|Sign up|Create account)/i") + ";if(b)b.click();return b?'ok':''");
-      await sleep(800);
-      if ((await set("sEmail", EMAIL)) && (await set("sPw", PW))) {
+      // the newest 6-digit code in the stand-in inbox that was not there before `seen`
+      const codeAfter = async (seen) => { for (let k = 0; k < 30; k++) { await sleep(500); try { const rows = fs.readFileSync(process.env.WALK_MAIL, "utf8").trim().split(/\n/).map((l) => JSON.parse(l));
+        if (rows.length > seen) { const m = rows.slice(seen).reverse().map((r) => JSON.stringify(r).match(/\b(\d{6})\b/)).find(Boolean); if (m) return m[1]; } } catch (e) {} } return ""; };
+      const inbox = () => { try { return fs.readFileSync(process.env.WALK_MAIL, "utf8").trim().split(/\n/).filter(Boolean).length; } catch (e) { return 0; } };
+      const card = () => q("return (d.getElementById('acctSec')||{innerText:''}).innerText");
+      // type with Android's keyboard: a real tap on the box, then adb's text (spaces as %s), the box must hold exactly that
+      const typeInto = async (finder, text, label) => { for (let a = 1; a <= 3; a++) {
+        await tap(finder); await sleep(600);
+        if ((await q("return d.activeElement===(" + finder + ")?'ok':''")) !== "ok") { log("sign-up: the tap on " + label + " did not focus it (try " + a + ")"); continue; }
+        await q("const e=(" + finder + ");e.select&&e.select();return 1"); wake(); adb("shell", "input", "text", text.replace(/ /g, "%s")); await sleep(600);
+        if ((await q("return (" + finder + ").value")) === text) return true; log("sign-up: " + label + " did not take the text (try " + a + ")"); }
+        fail("Sign up · could not type into " + label + " by touch in 3 tries"); return false; };
+      const blur = () => q("if(d.activeElement)d.activeElement.blur();return 1");
+      const typeCode = async (code, label) => { await tap("d.querySelector('.sg-code input')"); await sleep(600); wake(); adb("shell", "input", "text", code); await sleep(500);
+        await step(label + "-typed", label + ", typing the code (keyboard open)"); await blur(); await sleep(2200); };
+      if (await q("return d.querySelector('.sg-su')?'v2':''")) {
+        // ---- the sandbox's sign-up card (shared/uaply-signup.js): Continue with Google, Email, First name, Last name, the 18+ tick ----
+        const g = await q("const b=d.querySelector('[data-sg=google]');return b&&b.offsetParent?'shown':''");
+        if (g) log("sign-up card: Continue with Google is shown"); else fail("Sign up · the card shows no Continue with Google");
+        await step("signup-card", "Sign up, the card");
+        const ok = (await typeInto("d.querySelector('.sg-su [data-email] input')", EMAIL, "Email")) &&
+          (await typeInto("d.querySelector('.sg-su .sg-fn input')", "Sam", "First name")) && (await typeInto("d.querySelector('.sg-su .sg-ln input')", "Rivera", "Last name"));
+        await blur(); await sleep(700);
+        if (ok) {
+          await tap("d.querySelector('.sg-su .sg-ag')"); await sleep(400);
+          if ((await q("return d.querySelector('.sg-su .sg-ag').checked?'ok':''")) !== "ok") fail("Sign up · a tap on the 18+ box did not tick it");
+          await step("signup-filled", "Sign up, filled in");
+          const before = inbox();
+          await tap("d.querySelector('.sg-su [type=submit]')"); await sleep(2500);
+          if (!/Check your email/.test(await card())) fail("Sign up · Create my account did not go to the code step: " + (await card()).slice(0, 120).replace(/\s+/g, " "));
+          await step("signup-code", "Sign up, the code screen");
+          const code = await codeAfter(before);
+          if (!code) fail("Sign up · no code arrived in the stand-in inbox");
+          else {
+            await typeCode(code, "signup-code");
+            if (!/Account created/.test(await card())) fail("Sign up · the code did not make the account: " + (await card()).slice(0, 120).replace(/\s+/g, " "));
+            await step("signup-question-1", "Sign up, question 1 of 2");
+            await tap("d.querySelector('.sg-chip')"); await sleep(300); await tap("d.querySelector('.sg-next')"); await sleep(800);
+            await step("signup-question-2", "Sign up, question 2 of 2");
+            await tap("d.querySelector('.sg-next')"); await sleep(1000);
+            await step("signup-ready", "Sign up, ready (or almost ready)");
+            await tap("d.querySelector('.sg-next')"); await sleep(1200);          // Show me jobs: the questions are done
+            const me = await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>j.user?j.user.email:'')");
+            if (me === EMAIL) log("sign-up checked: the account exists and is signed in (" + EMAIL + "), by touch and a code from the stand-in inbox");
+            else fail("Sign up · after the code nobody is signed in (" + me + ")");
+            // ---- sign out, then back in with an emailed code ----
+            await menu("nb-prof", "account"); await sleep(800);
+            await tap("d.querySelector('[data-auth=sout]')"); await sleep(1800);
+            if (await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>j.user?'in':'')")) fail("Sign out · a tap on Sign out did not sign out");
+            await tap("d.querySelector('.sg-to-in')"); await sleep(700);
+            await step("signin-card", "Sign in, the card");
+            if (await typeInto("d.querySelector('#acctSec [data-email] input')", EMAIL, "Sign-in email")) {
+              await blur(); await sleep(600); const b2 = inbox();
+              await tap("d.querySelector('.sg-si [type=submit]')"); await sleep(2000);
+              const code2 = await codeAfter(b2);
+              if (!code2) fail("Sign in · no code arrived in the stand-in inbox");
+              else { await typeCode(code2, "signin-code"); if (/signed in/i.test(await card())) log("sign-in by code checked"); else fail("Sign in · the code did not sign in: " + (await card()).slice(0, 120).replace(/\s+/g, " ")); }
+              await step("signed-in", "Account, signed in again");
+            }
+            // ---- Continue with Google (the stand-in Google approves at once and sends the phone back) ----
+            if (process.env.WALK_MG && g) {
+              await menu("nb-prof", "account"); await sleep(800);
+              if (await q("return d.querySelector('[data-auth=sout]')?'in':''")) { await tap("d.querySelector('[data-auth=sout]')"); await sleep(1800); }
+              try { await fetch("http://127.0.0.1:" + process.env.WALK_MG + "/mock/next?email=" + encodeURIComponent(EMAIL) + "&sub=walk" + Date.now() + "&verified=1"); } catch (e) {}
+              await tap("d.querySelector('.sg-to-in')"); await sleep(600);
+              await tap("d.querySelector('[data-sg=google]')"); await sleep(7000);
+              await waitFor("return d.getElementById('bnav')?1:0", 20000); await calibrate(); await sleep(1500);
+              const g2 = await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>j.user?j.user.email:'')");
+              if (g2 === EMAIL) log("Continue with Google checked (stand-in Google): the same account, signed in");
+              else fail("Sign in · Continue with Google did not sign in (" + g2 + ")");
+              await step("google-back", "Back from Google");
+            }
+          }
+        }
+      } else if ((await q("const b=" + byText("/^(Create an account|Sign up|Create account)/i") + ";if(b)b.click();return b?'ok':''")) && (await sleep(800), (await set("sEmail", EMAIL)) && (await set("sPw", PW)))) {
+        // ---- the password card (dev and the live site) ----
         await set("sPw2", PW); await q("const c=d.getElementById('sAgree');if(c)c.checked=true;return 1");
         await step("signup-filled", "Sign up, filled in");
+        const before = inbox();
         await tap("d.querySelector('[data-auth=ssubmit]')"); await sleep(2500);
         await step("signup-code", "Sign up, the code screen");
-        let code = "";
-        for (let k = 0; k < 20 && !code; k++) { await sleep(500); try { const rows = fs.readFileSync(process.env.WALK_MAIL, "utf8").trim().split(/\n/).map((l) => JSON.parse(l)); const m = rows.reverse().map((r) => JSON.stringify(r).match(/\b(\d{6})\b/)).find(Boolean); if (m) code = m[1]; } catch (e) {} }
+        const code = await codeAfter(before);
         if (code) { await tap("d.getElementById('sCode')"); await sleep(600); wake(); adb("shell", "input", "text", code); await sleep(400);
-          await step("signup-code-typed", "Sign up, typing the code (keyboard open)"); await q("if(d.activeElement)d.activeElement.blur();return 1"); await sleep(500);
+          await step("signup-code-typed", "Sign up, typing the code (keyboard open)"); await blur(); await sleep(500);
           await tap(byText("/^(Verify|Confirm)/i")); await sleep(2000); await step("signed-in", "Account, signed in");
+          log("sign-up checked (password card)");
         } else fail("Sign up · no code arrived in the stand-in inbox");
-      } else log("sign-up form not found (" + toSignup + ")");
+      } else fail("Sign up · neither the sign-up card nor the password form was found on Account: sign-up was not checked");
     }
     await menu("nb-prof", "plan"); await sleep(800); await step("plan", "Plan & billing");
     await menu("nb-prof", "data"); await step("data", "Data & privacy");

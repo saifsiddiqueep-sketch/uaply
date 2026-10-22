@@ -293,6 +293,11 @@ html{-webkit-tap-highlight-color:transparent}a,button,input,select,textarea,summ
 @media (max-height:740px){
  .filters button,.banner button,#locAsk .acts .btn{position:relative}
  .filters button::after,.banner button::after,#locAsk .acts .btn::after{content:"";position:absolute;left:0;right:0;top:50%;height:46px;transform:translateY(-50%)}
+ /* with no "example profile" line above them (a person's own profile, after sign-up) the job type buttons are the first thing in the
+    scrolling area, which cuts off the target's top; the card below then took its bottom: the finger's target was 39 px (phone walk,
+    October 22, 2026). Above the card, and reaching further down, it is 44 px again */
+ .filters button{z-index:1}
+ .filters button::after{height:52px}
 }
 #fJt button{min-height:44px}
 .toast button{position:relative}
