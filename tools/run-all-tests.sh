@@ -115,6 +115,7 @@ mkdir -p "$TMP/tk"
 PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/tk" UAPLY_CONFIG_JSON='{"feeds":[],"smtp":{},"owner_copy":""}' start python serve.py 18846 sandbox --api)"
 wait_port 18846
 run "Job Tracker keeps every row: a reload 31 days later, 500 swipes, 1,000 passes and one more" env W=390 H=844 PORT=18846 node tools/cdp.js tools/ui-tracker-keep.js
+run "Job Tracker counts Sent and To finish, never a hand-off nobody sent as applied, and each count equals its rows" env W=390 H=844 PORT=18846 node tools/cdp.js tools/ui-dashboard-split.js
 
 step "Accounts, applying, reset and setup (back end)"
 run "sandbox reset/setup/accounts" python tools/test-reset.py 18766
