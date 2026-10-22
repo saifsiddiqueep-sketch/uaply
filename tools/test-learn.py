@@ -86,6 +86,16 @@ const out = JSON.parse(fs.readFileSync(0, "utf8")).map((q) => {
     case "line": return L.lineHTML(a[0]);
     case "replay": return replay(a[0], a[1]);
     case "assemble": return assemble();
+    case "coldStart": { /* a new person's first right swipes on jobs unlike the best match: where does the best match land, seed by seed */
+      const jobs = a[0], swiped = a[1], strong = a[2], seeds = a[3], now = a[4], ranks = [];
+      for (let sd = 1; sd <= seeds; sd++) {
+        const st = L.fresh(); st.seed = sd;
+        swiped.forEach((id, i) => L.swipe(st, jobs.find((j) => j.id === id), "applied", 0, false, now - (swiped.length - i) * 60000));
+        const items = jobs.filter((j) => swiped.indexOf(j.id) < 0).sort((x, y) => y.fit - x.fit).map((j) => ({ j: j, m: { pct: j.fit } }));
+        const r = L.order(items, st, now);
+        ranks.push(r.findIndex((x) => x.j.id === strong) + 1);
+      }
+      return ranks; }
     default: return "unknown " + q.fn;
   }
 });
@@ -362,6 +372,26 @@ for k, (name, likes) in enumerate(TASTES):
             wrong.append((r["id"], r["why"], yes, no))
     t("replay, person %d: the counts in every line match the swipe history" % (k + 1), not wrong, wrong[:3])
 t("replay: learning ranks liked jobs above passed ones better than the match score alone on at least 3 of 4 people (%d of 4)" % wins, wins >= 3)
+
+# ---------- a new person's first swipes never push the best match down (October 22) ----------
+# Five right swipes on jobs unlike the best match used to bury it: with only yeses, every attribute that some (not all) liked jobs shared
+# scored below this person's overall yes rate, and the card draw was wide, so a 95% match fell out of the top 10 on many draws.
+COLD = [dict(id=1, co="Strong Analytics", role="Data Analyst", mode="onsite", type="job", sal=[80000, 100000], yrs=2, loc="Philadelphia, PA",
+             skills=["SQL", "Python", "Tableau"], live=True, source="Strong Analytics careers page", fit=95)]
+ROLES = ["Software Engineer", "Product Designer", "Account Executive", "Nurse", "Mechanic", "Teacher", "Chef", "Marketing Manager"]
+for i in range(2, 41):
+    COLD.append(dict(id=i, co="Company %d" % i, role=ROLES[i % len(ROLES)] + " %d" % i, mode=["onsite", "hybrid", "remote"][i % 3],
+                     type="job", sal=[40000 + 2000 * i, 60000 + 2000 * i], yrs=i % 6, loc=["Philadelphia, PA", "Newark, NJ", "Remote (US)"][i % 3],
+                     skills=["Skill%d" % (i % 7), "Skill%d" % (i % 5)], live=True, source="Company %d careers page" % i, fit=90 - i))
+# five jobs unlike it (part-time, remote, other fields), each swiped right
+for i, jid in enumerate((41, 42, 43, 44, 45)):
+    COLD.append(dict(id=jid, co="Unrelated %d" % i, role=["Barista", "Dog Walker", "Delivery Driver", "Cashier", "Tutor"][i], mode="remote",
+                     type="job", sal=[25000, 30000], yrs=0, loc="Remote (US)", skills=["Coffee", "Driving", "Customer Service"][:1 + i % 3],
+                     live=True, source="Unrelated %d careers page" % i, fit=40))
+ranks = ask(("coldStart", COLD, [41, 42, 43, 44, 45], 1, 40, 1792600000000))[0]
+t("a 95%% match stays in the top 10 after a new person's first 5 right swipes on unrelated jobs (40 draws; worst rank %d)" % max(ranks),
+  max(ranks) <= 10, ranks)
+t("...and with so little to learn from, the deck stays in match order (the best match first on every draw)", all(r == 1 for r in ranks), ranks)
 
 # ---------- the sandbox page still assembles; dev does not get it ----------
 asm = ask(("assemble",))[0]
