@@ -72,7 +72,8 @@ def t(name, ok, extra=""):
 
 
 def skip(name, needs):
-    line("SKIP", name + " (needs " + needs + ")")
+    """A check that cannot run here, with its reason on the same line ("skipped: needs ..."), so a report can quote every skip."""
+    line("SKIP", name, "skipped: needs " + " ".join(str(needs).split()))
 
 
 def off(feature, name, needs):
