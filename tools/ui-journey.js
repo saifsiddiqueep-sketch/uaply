@@ -27,6 +27,9 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
 
   // ---- the person: ready to apply (name, email, phone), the agreement given, the notice "2 weeks" and no start date in Profile setup ----
   await nav(base); await sleep(3000);
+  // the test person signs up first (October 22, Saif: nobody reaches anything on the site without an account)
+  const su = await ev("fetch('/api/auth/signup',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'jo.tester." + Date.now() + "@example.com',password:'Journey-pw-99',first:'Jo',last:'Tester',agree:true,passwordless:false})}).then(r=>r.status)");
+  check("0. the test person signs up first (POST /api/auth/signup)", su === 200, su);
   await inApp("w.localStorage.setItem((w.__uaplyKey||'uaply')+'.consent',JSON.stringify({v:3,at:Date.now(),agent:true}));" +
     "const ak=(w.__uaplyKey||'uaply')+'.acct',a=JSON.parse(w.localStorage.getItem(ak)||'{}');a.phone='(215) 555-0100';a.notice='2 weeks';w.localStorage.setItem(ak,JSON.stringify(a));" +
     "const A=w.__uaply;Object.assign(A.S.profile,{name:'Jo Tester',email:'jo.tester@example.com',custom:true,title:'Data Analyst',years:1,skills:['Python'],loc:'Philadelphia, PA'});A.S.tips=false;A.save();return 1");

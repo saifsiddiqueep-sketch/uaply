@@ -166,8 +166,18 @@ run "Continue with Google on an iPhone (full-page sign-in), and hidden inside th
 mkdir -p "$TMP/sg"
 PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/sg" UAPLY_CONFIG_JSON='{"delivery":"test","smtp":{},"feeds":[],"owner_copy":"","google":{"client_id":"test.apps.googleusercontent.com","client_secret":"test-secret","auth_url":"http://127.0.0.1:8790/auth","token_url":"http://127.0.0.1:8790/token","certs_url":"http://127.0.0.1:8790/certs"}}' start python serve.py 18769 sandbox --api)"
 wait_port 18769
-run "sandbox sign-up card on a laptop (1280x720): Mohammed's order, Google above the fold, code, the questions, sign-in, Google, hostile text" env W=1280 H=720 PORT=18769 MOCK_GOOGLE_PORT=8790 node tools/cdp.js tools/ui-signup.js
-run "sandbox sign-up card on a phone (390x844): 16 px gutters and the same flow" env W=390 H=844 PORT=18769 MOCK_GOOGLE_PORT=8790 node tools/cdp.js tools/ui-signup.js
+run "sandbox sign-up card on a laptop (1280x720): the order, the password box, the code, the questions, sign-in by password and by code, Google, hostile text" env W=1280 H=720 PORT=18769 MOCK_GOOGLE_PORT=8790 CDP_LIMIT_MS=900000 node tools/cdp.js tools/ui-signup.js
+# the phone run gets a server of its own (each run makes several accounts, and this computer may make 10 an hour)
+mkdir -p "$TMP/sg2"
+PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/sg2" UAPLY_CONFIG_JSON='{"delivery":"test","smtp":{},"feeds":[],"owner_copy":"","google":{"client_id":"test.apps.googleusercontent.com","client_secret":"test-secret","auth_url":"http://127.0.0.1:8790/auth","token_url":"http://127.0.0.1:8790/token","certs_url":"http://127.0.0.1:8790/certs"}}' start python serve.py 18847 sandbox --api)"
+wait_port 18847
+run "sandbox sign-up card on a phone (390x844): 16 px gutters and the same flow" env W=390 H=844 PORT=18847 MOCK_GOOGLE_PORT=8790 CDP_LIMIT_MS=900000 node tools/cdp.js tools/ui-signup.js
+# the sign-in gate (October 22, Saif): signed out, only the card; nothing behind it by scrolling, keys, #hash or the app's own buttons
+mkdir -p "$TMP/gate"
+PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/gate" UAPLY_CONFIG_JSON='{"delivery":"test","smtp":{},"feeds":[],"owner_copy":""}' start python serve.py 18848 sandbox --api)"
+wait_port 18848
+run "the sign-in gate on a phone (390x844): only the card, its links open, sign-up to the questions, Sign out brings it back" env W=390 H=844 PORT=18848 node tools/cdp.js tools/ui-gate.js
+run "the sign-in gate on a laptop (1280x800): the same" env W=1280 H=800 PORT=18848 node tools/cdp.js tools/ui-gate.js
 
 step "Public server behind HTTPS (how a real host runs it)"
 PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/pub" HOST=0.0.0.0 OWNER_PASSWORD=ownerpw UAPLY_CONFIG_JSON='{}' start python serve.py 18772 dev --api)"

@@ -60,6 +60,12 @@ module.exports = async ({ ev, sleep, nav, send, logs, on }) => {
   await send("Storage.clearDataForOrigin", { origin: BASE, storageTypes: "all" });
   await send("Network.clearBrowserCookies");
   await nav(BASE + "/");
+  // the test person signs up first (October 22, Saif: nobody reaches anything on the site without an account); section 6 signs out and
+  // walks the sign-up card itself
+  const first = "walkfirst" + Date.now() + "@example.com";
+  const su = await ev("fetch('/api/auth/signup',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:" + JSON.stringify(first) + ",password:'Walk-first-pw9',first:'Walk',last:'First',agree:true,passwordless:false})}).then(r=>r.status)");
+  check("0. the test person signs up first (POST /api/auth/signup)", su === 200, su);
+  await nav(BASE + "/");
   const jobs = await waitFor("return d.querySelector('.card.top h2')&&d.querySelectorAll('.card').length", 60000);
   console.log("     size " + VW + "x" + VH + ": the app frame is " + (await q("return w.innerWidth+'x'+w.innerHeight")));
   if (!check("the deck shows job cards", !!jobs, "no card after 60 s (does the server have its job feeds on?)")) { console.log("\n" + pass + " / " + (pass + fail)); return; }
@@ -142,7 +148,9 @@ module.exports = async ({ ev, sleep, nav, send, logs, on }) => {
   check("5. the agreement shown again no longer says 'You only see this once'", !!again && !/You only see this once/.test(again), (again || "").slice(-120));
   await tap("d.getElementById('kcYes')");
 
-  // 6. Account: sign up, the line above "You are signed in", a failed sign-out, Sign in wording
+  // 6. Account: sign up, the line above "You are signed in", a failed sign-out, Sign in wording (the first account signs out for it)
+  await ev("fetch('/api/auth/logout',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:'{}'})");
+  await nav(BASE + "/"); await waitFor("return !!d.getElementById('bnav')&&!!d.getElementById('acctSec')", 15000); await sleep(800);
   await menu("nb-prof", "account");
   const email = "walk" + Date.now() + "@example.com", pw = "Walk-" + Math.random().toString(36).slice(2) + "-Pw9";
   await type("#sEmail", email); await type("#sPw", pw); await type("#sPw2", pw);

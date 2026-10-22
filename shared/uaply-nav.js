@@ -2092,6 +2092,7 @@ function apply(w,host){
     var e=signedWho();
     hb.innerHTML=e?'<span class="av" aria-hidden="true">'+E(e.charAt(0).toUpperCase())+'</span><span class="em">'+E(e)+'</span>':'Sign in';
     hb.setAttribute("aria-label",e?"Account: "+e:"Sign in or create an account");
+    if(w.__uaplyGateSync)w.__uaplyGateSync();   /* the sign-in gate (shared/uaply-signup.js): every change of who is signed in passes here */
   }
   hb.onclick=function(){sub.prof="account";cur="prof";go("prof")};
   function afterServerSignIn(){
@@ -2144,7 +2145,9 @@ function apply(w,host){
   /* sign-up v2: what shared/uaply-signup.js may use from this screen (nothing reads it when that file is not loaded) */
   w.__uaplyAuthApi={post:apiPost,msg:msg,srv:function(){return {up:SRV.up,user:SRV.user,google:!!SRV.google,hideGoogle:noGoogle(),redirect:!!SRV.googleRedirect,clientId:SRV.googleClientId||"",canEmail:!!SRV.canEmail,mailKnown:!!SRV.mailKnown,testInbox:SRV.testInbox||"",near:NEAR}},
     signedIn:function(u){SRV.user=u;afterServerSignIn();if(typeof checkCookie==="function")checkCookie()},mountGoogle:mountGoogle,redraw:function(){if(!acctSec.hidden&&sub.prof==="account")renderAcct("account")},
-    acct:function(fn){fn(acct);saveA();A.renderAll()},askDevice:askDevice,cards:function(){cur="svc";go("svc")}};
+    acct:function(fn){fn(acct);saveA();A.renderAll()},askDevice:askDevice,cards:function(){cur="svc";go("svc")},
+    /* the sign-in gate: the Account screen open (only once: an open one is left as it is, so nothing typed is redrawn away) */
+    account:function(){if(cur==="prof"&&sub.prof==="account"&&!acctSec.hidden&&!d.getElementById("pane-profile").hidden)return;sub.prof="account";cur="prof";go("prof")}};
   /* Apple (App Store guideline 4.8) requires Sign in with Apple wherever an iPhone app offers Google, so inside the iPhone app Google stays hidden until Apple sign-in exists */
   function iosShell(){try{var c=w.top.Capacitor;return !!(c&&c.getPlatform&&c.getPlatform()==="ios"&&!SRV.apple)}catch(e){return false}}
   /* Google refuses to sign anyone in inside an app's built-in web view (Android and iPhone alike: "Error 403: disallowed_useragent"),
@@ -2616,6 +2619,8 @@ function apply(w,host){
 
   /* routing */
   function go(k){
+    /* the sign-in gate (shared/uaply-signup.js): with no account signed in, every way of moving (a tab, a menu, a key) opens Account */
+    if(w.__uaplyGated&&w.__uaplyGated()){sub.prof="account";cur="prof";k="prof"}
     going=true;
     if(k==="svc"){A.setType(sub.svc);A.show("swipe");savePrefs()}
     else if(k==="dash"){A.show("apps");d.getElementById("pane-apps").hidden=true;renderTrack();tp.hidden=false}
@@ -2628,6 +2633,7 @@ function apply(w,host){
     going=false;refresh();main.scrollTop=0;
   }
   w.__uaplyOnShow=function(t){
+    if(t!=="profile"&&w.__uaplyGated&&w.__uaplyGated()){A.show("profile");return}   /* the sign-in gate: only Account behind the card */
     tp.hidden=true;
     /* leaving Profile setup with unsaved answers saves them quietly (if they are valid) instead of losing them */
     if(t!=="profile"&&wz.dirty&&!form.hidden&&form.classList.contains("wz")){w.__uaplyAutoSave=true;try{wzSave("quiet")}finally{w.__uaplyAutoSave=false;wz.dirty=false}}

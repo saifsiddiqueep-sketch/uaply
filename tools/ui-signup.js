@@ -1,5 +1,6 @@
-// Sign-up v2 in a real browser (the sandbox's "Sign-up, nothing hidden" card): layout, the typo fix, the tick box, sign-up with an emailed code,
-// the two questions (Enter, Esc, Skip/Continue), what is kept on the device, sign-in by code, and Continue with Google against the stand-in.
+// The sandbox's sign-up card in a real browser (October 22, 2026: Saif's gate, an account with a password): layout, the typo fix, the tick box,
+// the password box, sign-up then the emailed code that proves the inbox, the two questions (Enter, Esc, Skip/Continue), what is kept on the
+// device, sign-in with the password, Forgot password?, "Email me a code instead", and Continue with Google against the stand-in.
 // Also: a redraw of the Account screen while someone types (a late start-up answer) keeps them in the box with the caret where it was, and
 // after Sign out in the app the next person gets an empty card with the box unticked.
 //   W=1280 H=720 PORT=<sandbox port> MOCK_GOOGLE_PORT=8790 node tools/cdp.js tools/ui-signup.js      (W=390 H=844 for a phone)
@@ -43,19 +44,27 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   else check("laptop: the card is at most 440 px wide", L.c.w <= 440.5, JSON.stringify(L.c));
   check("no sideways scrolling", !L.hs);
   let t = await text();
-  check("the card reads in Mohammed's order: Google, or, Email, First name, Last name, the 18+ tick, Create my account, Sign in",
-    /Create your UAply account[\s\S]*Continue with Google[\s\S]*\bor\b[\s\S]*Email[\s\S]*First name[\s\S]*Last name[\s\S]*Kept on this device[\s\S]*18 or older[\s\S]*Create my account[\s\S]*Have an account\?[\s\S]*Sign in/.test(t) && !/18 or older[\s\S]*Continue with Google/.test(t), t.slice(0, 400));
+  check("the card reads in order: Create your UAply account, Google, or, Email, First name, Last name, Password (at least 8), the 18+ tick, Create my account, Sign in",
+    /Create your UAply account[\s\S]*Continue with Google[\s\S]*\bor\b[\s\S]*Email[\s\S]*First name[\s\S]*Last name[\s\S]*Kept on this device[\s\S]*Password[\s\S]*At least 8 characters[\s\S]*18 or older[\s\S]*Create my account[\s\S]*Have an account\?[\s\S]*Sign in/.test(t) && !/18 or older[\s\S]*Continue with Google/.test(t), t.slice(0, 500));
   const G = JSON.parse(await ev("(()=>{const d=" + F + ",y=(s)=>{const e=d.querySelector(s);return e?Math.round(e.getBoundingClientRect().bottom):-1};return JSON.stringify({g:y('[data-sg=google]'),tick:y('.sg-agree'),create:y('.sg-su [type=submit]')})})()"));
   console.log("  measured: Google bottom " + G.g + " px, tick bottom " + G.tick + " px, Create bottom " + G.create + " px, window " + L.vh + " px");
-  check("no password box anywhere on the card", !(await ev("!!" + F + ".querySelector('#acctSec input[type=password]')")));
+  check("one password box, for a new password, with its show/hide button", await ev("(()=>{const d=" + F + ",p=d.querySelectorAll('#acctSec input[type=password]');return p.length===1&&p[0].autocomplete==='new-password'&&!!d.querySelector('.sg-pw .sg-eye[aria-label=\"Show password\"]')})()"));
+  await typeIn(".sg-pw input", "secret12"); await click(".sg-pw .sg-eye"); await sleep(100);
+  check("Show password shows it as text, and the button says Hide password", await ev("(()=>{const d=" + F + ";return d.querySelector('.sg-pw input').type==='text'&&d.querySelector('.sg-pw .sg-eye').getAttribute('aria-label')==='Hide password'&&d.querySelector('.sg-pw .sg-eye').getAttribute('aria-pressed')==='true'})()"));
+  await click(".sg-pw .sg-eye"); await typeIn(".sg-pw input", ""); await sleep(100);
+  check("...and hides it again", await ev(F + ".querySelector('.sg-pw input').type==='password'"));
+  check("the show/hide button is a 44 px target", await ev("(()=>{const r=" + F + ".querySelector('.sg-pw .sg-eye').getBoundingClientRect();return r.width>=44&&r.height>=44})()"));
   check("no 'where your details go' map or live summary", !/Where your details go/i.test(t));
   check("every field has a label", await ev("[..." + F + ".querySelectorAll('.sg-card input:not([type=checkbox])')].every(i=>i.labels&&i.labels.length)"));
 
   // ---- validation ----
   await click(".sg-su [type=submit]"); await sleep(400);
   t = await text();
-  check("Create my account with nothing filled shows every problem at once", /Tick the box/.test(t) && /Enter your email/.test(t) && /Add your first name/.test(t) && /Add your last name/.test(t), t.slice(0, 600));
+  check("Create my account with nothing filled shows every problem at once", /Tick the box/.test(t) && /Enter your email/.test(t) && /Add your first name/.test(t) && /Add your last name/.test(t) && /Choose a password of at least 8 characters/.test(t), t.slice(0, 700));
   check("focus goes to the first problem in page order (the email box)", await ev(F + ".activeElement&&!!" + F + ".activeElement.closest('[data-email]')"));
+  await typeIn(".sg-pw input", "short"); await click(".sg-su [type=submit]"); await sleep(300);
+  check("a password under 8 characters says so at the box", /Use at least 8 characters/.test(await text()));
+  await typeIn(".sg-pw input", "");
   await typeIn("[data-email] input", "sam@gmial.com"); await sleep(800);
   check("a typo in the domain offers the fix", (await ev("(" + q(".sg-fix") + "||{}).textContent")) === "sam@gmail.com");
   await click(".sg-fix"); await sleep(200);
@@ -96,13 +105,16 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   // ---- sign up with an emailed code ----
   const email = "sg." + stamp + "@example.com";
   await ev("(()=>{const a=" + q(".sg-ag") + ";a.click()})()");
-  await typeIn("[data-email] input", email); await typeIn(".sg-fn input", "Sam"); await typeIn(".sg-ln input", "Rivera");
+  const PW = "Sam-" + stamp + "-pw9";
+  await typeIn("[data-email] input", email); await typeIn(".sg-fn input", "Sam"); await typeIn(".sg-ln input", "Rivera"); await typeIn(".sg-pw input", PW);
   await key(".sg-ln input", "Enter");     // a real Enter submits the form; dispatching keydown does not, so press the button like Enter would
   await click(".sg-su [type=submit]"); await sleep(1500);
   t = await text();
-  check("Create my account goes to the code step, no password asked", /Check your email/.test(t) && t.includes(email), t.slice(0, 300));
+  check("Create my account goes to the code step", /Check your email/.test(t) && t.includes(email), t.slice(0, 300));
   check("the sandbox says where the code is (test inbox)", /test inbox/.test(t));
-  check("nobody is signed in before the code is typed", (await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>j.user)")) === null);
+  const me0 = JSON.parse(await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>JSON.stringify(j.user))"));
+  check("the account exists with its password, not yet confirmed, and the card (the gate) stays until the code", me0 && me0.email === email && me0.emailVerified === false && me0.hasPassword === true &&
+    (await ev(F + ".body.classList.contains('sgGated')")), JSON.stringify(me0));
   check("six code boxes", (await ev(F + ".querySelectorAll('.sg-code input').length")) === 6);
   await typeCode("000000"); await sleep(1200);
   t = await text();
@@ -113,7 +125,7 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   t = await text();
   check("the right code: 'Account created, Sam.' and question 1 of 2", /Account created, Sam\./.test(t) && /1 of 2/i.test(t) && /What kind of work are you after\?/.test(t), t.slice(0, 300));
   const me = JSON.parse(await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>JSON.stringify(j.user))"));
-  check("the session is real and the email is verified", me && me.email === email && me.emailVerified === true && me.hasPassword === false, JSON.stringify(me));
+  check("the session is real, the email is verified and the account has its password", me && me.email === email && me.emailVerified === true && me.hasPassword === true, JSON.stringify(me));
   const pv = await ev(q(".sg-pv") + ".textContent");      // on a phone the preview is folded into one line that opens
   check("the preview already shows the name and the verified email", /Sam Rivera/.test(pv) && pv.includes(email) && /Your email is confirmed/.test(pv), pv.slice(0, 300));
   check("the preview counts the app's minimum to apply (2 of 3: a phone number or a resume still needed), nothing promised for later",
@@ -135,15 +147,14 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
     /Almost ready/.test(t) && /Before UAply can apply, add a phone number or a resume/.test(t) && /open their own site/.test(t) && !/only when a job needs/i.test(t) &&
     (await ev("!!" + q("[data-ready=phone]") + "&&!!" + q("[data-ready=resume]"))), t.slice(0, 300));
   await click(".sg-next"); await sleep(1200);
-  check("Start swiping goes to the cards", await ev("!" + F + ".getElementById('pane-swipe').hidden"));
+  check("Start swiping goes to the cards, and the gate is gone", (await ev("!" + F + ".getElementById('pane-swipe').hidden")) && !(await ev(F + ".body.classList.contains('sgGated')")));
   const P = JSON.parse(await ev("(()=>{const w=document.querySelector('iframe').contentWindow,k=w.__uaplyKey;const s=JSON.parse(w.localStorage.getItem(k)||'{}'),a=JSON.parse(w.localStorage.getItem(k+'.acct')||'{}');return JSON.stringify({p:s.profile||{},titleOnly:a.fTitleOnly})})()"));
   check("kept on this device: name, first pick as the target title, city, remote (and nothing hides the other roles)",
     P.p.name === "Sam Rivera" && P.p.title === "Barista" && P.p.loc === "Austin, TX" && P.p.custom === true && P.p.modes && P.p.modes.remote && P.p.modes.onsite && P.titleOnly === false, JSON.stringify(P));
   check("the example profile's skills were not copied into the new profile", Array.isArray(P.p.skills) && P.p.skills.length === 0);
   await openAccount();
   t = await text();
-  check("the app's signed-in card says how a code account signs in (no 'You sign in with Google', no 'Forgot password')",
-    /You sign in with an emailed code/.test(t) && !/You sign in with Google/.test(t) && !/Forgot password/.test(t), t.slice(0, 600));
+  check("the app's signed-in card is the app's own (Sign out, Change password)", /Sign out/.test(t) && /Change password/.test(t) && !/You sign in with an emailed code/.test(t), t.slice(0, 600));
   check("...and keeps the readiness checklist", /Not ready to apply yet|Ready to apply/.test(t));
 
   // ---- Sign out in the app (no reload): the next person on this device starts from an empty card ----
@@ -153,47 +164,52 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   check("Sign out in the app, then the card: no email, no name, the box unticked (the next person's tick is their own)",
     E.card && E.email === "" && E.first === "" && E.last === "" && E.ticked === false && E.me === null, JSON.stringify(E));
 
-  // ---- sign in again with a code ----
+  // ---- sign in again: the password, then Mohammed's emailed code ----
   await ev("fetch('/api/auth/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})");
   await load(); await openAccount();
   await click(".sg-to-in"); await sleep(300);
   t = await text();
-  check("Have an account? Sign in opens 'Welcome back' with Google, or, Email, Email me a code", /Welcome back[\s\S]*Continue with Google[\s\S]*Email[\s\S]*Email me a code[\s\S]*New here\?/.test(t), t.slice(0, 300));
+  check("Have an account? Sign in opens 'Welcome back': Email, Password, Sign in, Forgot password?, Email me a code instead, New here?",
+    /Welcome back[\s\S]*Email[\s\S]*Password[\s\S]*Sign in[\s\S]*Forgot password\?[\s\S]*Email me a code instead[\s\S]*New here\?/.test(t) && (await ev(F + ".querySelector('.sg-si input[type=password]').autocomplete==='current-password'")), t.slice(0, 400));
   await key("[data-email] input", "Escape"); await sleep(300);
   check("Esc on sign-in goes back to Create your account", /Create your UAply account/.test(await text()));
   await click(".sg-to-in"); await sleep(300);
+  await typeIn("[data-email] input", email); await typeIn(".sg-si .sg-pw input", "not the password"); await click(".sg-si [type=submit]"); await sleep(1500);
+  t = await text();
+  check("a wrong password says so at the password box, empties it, and nobody is signed in",
+    (await ev(F + ".querySelector('.sg-si .sg-pw').classList.contains('bad')")) && (await ev(F + ".querySelector('.sg-si .sg-pw input').value")) === "" &&
+    (await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>j.user)")) === null, t.slice(0, 300));
+  await click(".sg-forgot"); await sleep(1500);
+  check("Forgot password? sends the link to the address typed, without saying whether it has an account", /If .* has a UAply account, we sent it a link to choose a new password/.test(await text()));
+  await typeIn(".sg-si .sg-pw input", PW); await click(".sg-si [type=submit]"); await sleep(2000);
+  const me3 = JSON.parse(await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>JSON.stringify(j.user))"));
+  check("the right password signs in and the cards open (no gate)", me3 && me3.email === email && (await ev("!" + F + ".getElementById('pane-swipe').hidden")) && !(await ev(F + ".body.classList.contains('sgGated')")), JSON.stringify(me3));
+  await ev("fetch('/api/auth/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})");
+  await load(); await openAccount();
+  await click(".sg-to-in"); await sleep(300); await click(".sg-codeinst"); await sleep(300);
+  t = await text();
+  check("Email me a code instead: the same card asks for the email only", /We’ll email you a code/.test(t) && !(await ev("!!" + F + ".querySelector('.sg-si input[type=password]')")) && /Use your password instead/.test(t), t.slice(0, 300));
   await typeIn("[data-email] input", email); await click(".sg-si [type=submit]"); await sleep(1500);
   t = await text();
   check("Email me a code never says whether the address has an account", /If .* has a UAply account, we sent it a 6-digit code/.test(t), t.slice(0, 200));
-  await typeCode(await codeFromInbox()); await sleep(1800);
-  t = await text();
-  check("the code signs in: 'You're signed in, Sam.' (the name kept on this device)", /You’re signed in, Sam\./.test(t), t.slice(0, 200));
-  await click(".sg-start"); await sleep(800);
+  await typeCode(await codeFromInbox()); await sleep(2200);
+  const me4 = JSON.parse(await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>JSON.stringify(j.user))"));
+  check("the code signs in and the cards open", me4 && me4.email === email && (await ev("!" + F + ".getElementById('pane-swipe').hidden")), JSON.stringify(me4));
 
   // an address with no account gets the same answer, and its code cannot sign anyone in
   await ev("fetch('/api/auth/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})");
   const ghost = JSON.parse(await ev("fetch('/api/auth/code/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'nobody." + stamp + "@example.com'})}).then(r=>r.json()).then(j=>JSON.stringify(j))"));
   check("an address with no account gets the same answer", ghost.ok === true && Object.keys(ghost).length === 1, JSON.stringify(ghost));
 
-  // ---- a refresh before the code, then "Email me a code": the tick is asked again and so is the name; hostile text never runs ----
+  // ---- hostile text typed on the card never runs, on the card or in the questions' preview ----
   const HOST = "<img src=x onerror=\"top.__sgx=1\">", rm = "r." + stamp + "@example.com";
+  await ev("fetch('/api/auth/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})");
   await load(); await openAccount();
-  await typeIn("[data-email] input", rm); await typeIn(".sg-fn input", HOST); await typeIn(".sg-ln input", "<script>top.__sgx=2</script>");
+  await typeIn("[data-email] input", rm); await typeIn(".sg-fn input", HOST); await typeIn(".sg-ln input", "<script>top.__sgx=2</script>"); await typeIn(".sg-pw input", "Rowe-" + stamp + "-pw");
   await ev("(()=>{const a=" + q(".sg-ag") + ";a.click()})()");
   await click(".sg-su [type=submit]"); await sleep(1500);
   check("hostile text typed on the card: the code step, nothing ran", /Check your email/.test(await text()) && !(await ev("!!(window.__sgx||" + F + ".defaultView.__sgx)")));
-  await load(); await openAccount();
-  await click(".sg-to-in"); await sleep(300);
-  await typeIn("[data-email] input", rm); await click(".sg-si [type=submit]"); await sleep(1500);
-  await typeCode(await codeFromInbox()); await sleep(1500);
-  t = await text();
-  check("after a refresh, Email me a code on the brand-new account asks for the tick first (no session yet)",
-    /Tick the box/.test(t) && (await ev("!!" + q(".sg-cag .sg-ag"))) && (await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>j.user)")) === null, t.slice(0, 300));
-  await ev("(()=>{const a=" + q(".sg-cag .sg-ag") + ";a.click()})()"); await sleep(1800);
-  t = await text();
-  check("ticked: 'Account created.' (no stray comma) and the name is asked, since it was lost with the refresh",
-    /Account created\./.test(t) && !/Account created, \./.test(t) && /What should employers call you\?/.test(t) && (await ev(q(".sg-fn input") + ".value")) === "", t.slice(0, 300));
-  await typeIn(".sg-fn input", HOST); await typeIn(".sg-ln input", "Rowe"); await sleep(200);
+  await typeCode(await codeFromInbox()); await sleep(1800);
   await click(".sg-next"); await sleep(500);
   const pv2 = await ev(q(".sg-pv") + ".textContent");
   check("a hostile name shows as text in the preview and never runs", pv2.includes("<img src=x") && !(await ev("!!(window.__sgx||" + F + ".defaultView.__sgx)")) && !(await ev("!!" + F + ".querySelector('#acctSec img[src=x]')")), pv2.slice(0, 200));

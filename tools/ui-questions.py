@@ -79,8 +79,9 @@ try:
         env = dict(os.environ, PORT=str(PORT), IDS=os.path.join(TMP, "ids.json"), W=str(w), H=str(h))
         failed += subprocess.run(["node", os.path.join(HERE, "cdp.js"), os.path.join(HERE, "ui-questions.js")], cwd=ROOT, env=env).returncode != 0
     # the apply journey's fixes (October 22), on a fresh browser at phone size with touch
-    env = dict(os.environ, PORT=str(PORT), FEED_ID=str(FEED_ID), W="390", H="844")
-    failed += subprocess.run(["node", os.path.join(HERE, "cdp.js"), os.path.join(HERE, "ui-journey.js")], cwd=ROOT, env=env).returncode != 0
+    for w, h in (("390", "844"), ("1280", "800")):          # the journey at both sizes (October 22)
+        env = dict(os.environ, PORT=str(PORT), FEED_ID=str(FEED_ID), W=w, H=h)
+        failed += subprocess.run(["node", os.path.join(HERE, "cdp.js"), os.path.join(HERE, "ui-journey.js")], cwd=ROOT, env=env).returncode != 0
     code = 1 if failed else 0
 finally:
     for p in procs:
