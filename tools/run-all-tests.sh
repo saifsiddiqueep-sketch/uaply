@@ -143,6 +143,9 @@ done
 for sz in 390x844 1280x800; do
   run "sandbox at ${sz}: a student's target titles never empty a section (internships and co-ops never filtered by title; 'Showing all roles' with Filters)" env W="${sz%x*}" H="${sz#*x}" PORT=18766 node tools/cdp.js tools/ui-title-filter.js
 done
+for sz in 390x844 1280x720; do
+  run "sandbox at ${sz}: Share this job (the card's icon and nothing else changed, the ?job= link, the friend's landing, a job no longer listed, the Not sent yet row)" env W="${sz%x*}" H="${sz#*x}" PORT=18766 node tools/cdp.js tools/ui-share.js
+done
 PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/ph" UAPLY_PLANS_HIDDEN=1 UAPLY_CONFIG_JSON='{"feeds":[],"smtp":{},"owner_copy":""}' start python serve.py 18832 dev --api)"
 wait_port 18832
 run "a free-only launch (UAPLY_PLANS_HIDDEN=1): Plan & billing shows Free and coming soon, no Choose buttons; dev without it still offers them" env W=390 H=844 PORT=18832 SHOWN_PORT=18767 node tools/cdp.js tools/ui-plans-hidden.js
