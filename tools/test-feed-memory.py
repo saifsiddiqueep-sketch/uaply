@@ -183,8 +183,8 @@ def child(scenario, boards, data, mode):
     def fake_urlopen(req, timeout=None):
         url = req.full_url if hasattr(req, "full_url") else req
         reads[url] = reads.get(url, 0) + 1
-        one = re.search(r"boards-api\.greenhouse\.io/v1/boards/simplifymade/jobs/(\d+)$", url)
-        if one:                              # one posting a Simplify row links to, as Greenhouse's single-job answer gives it (about 10 KB)
+        one = re.search(r"boards-api\.greenhouse\.io/v1/boards/[^/]+/jobs/(\d+)$", url)
+        if one:                              # one Greenhouse posting with its description, as the single-posting answer gives it (about 10 KB)
             time.sleep(0.05)
             n = int(one.group(1))
             return io.BytesIO(json.dumps({"id": n, "title": TITLES[n % len(TITLES)], "company_name": "Company %d" % (n % 1000000),
@@ -217,8 +217,16 @@ def child(scenario, boards, data, mode):
             time.sleep(0.5)
         for v in visitors:
             v.join()
-        out = outs[0]
         answered = time.time() - t0
+        first = outs[0]
+        while True:                          # then every board, read behind the first answer (as the app asks again, see uaply-live.js)
+            with J._lock:
+                busy = bool(J._refreshing)
+            if not busy:
+                break
+            time.sleep(0.05)
+        out = J.get_jobs()
+        out["first_jobs"], out["first_pending"] = len(first["jobs"]), first.get("pending", 0)
     else:                                    # refresh: a saved copy two hours old (inside the day it may be used, past its 30 minutes)
         with open(os.path.join(data, "jobs-cache.json"), encoding="utf-8") as f:
             saved = json.load(f)
@@ -237,6 +245,7 @@ def child(scenario, boards, data, mode):
             time.sleep(0.05)
     took = time.time() - t0
     res = {"scenario": scenario, "jobs": len(out["jobs"]), "answered_s": round(answered, 2), "took_s": round(took, 1),
+           "first_jobs": out.get("first_jobs"), "first_pending": out.get("first_pending"),
            "sources_ok": sum(1 for v in out["sources"].values() if re.match(r"\d+ jobs", v)), "most_reads_of_one_board": max(reads.values() or [0]),
            "newer": {k: v for k, v in out["sources"].items() if k.startswith(("Simplify", "Himalayas", "Remote OK"))}}
     if mode == "trace":
@@ -287,7 +296,9 @@ def main():
         for scenario, r in results.items():
             print("  %-8s %s" % (scenario, json.dumps(r)))
         cold, ref = results.get("cold", {}), results.get("refresh", {})
-        t("cold: every board was read (%s of them with jobs, %s jobs)" % (cold.get("sources_ok"), cold.get("jobs")), (cold.get("sources_ok") or 0) >= 20)
+        t("cold: the first visitor is answered within 15 s (%s s: %s jobs, %s sources still loading) and never waits for every board" % (
+          cold.get("answered_s"), cold.get("first_jobs"), cold.get("first_pending")), (cold.get("answered_s") or 99) < 15)
+        t("cold: every board was read behind that answer (%s of them with jobs, %s jobs)" % (cold.get("sources_ok"), cold.get("jobs")), (cold.get("sources_ok") or 0) >= 20)
         newer = ref.get("newer") or {}          # read in the refresh, which waits for every board (on a cold start they may come after the first answer)
         t("the four newer sources were read too, each with jobs (%s)" % newer,
           len(newer) >= 4 and all(re.match(r"[1-9]\d* jobs", v) for v in newer.values()))
@@ -300,7 +311,7 @@ def main():
         # copy, so the refresh (which serves that copy) can show more jobs than the cold answer did, never fewer.
         t("refresh: the saved list answered at once (%s s, %s jobs; cold %s) while every board refreshed behind it (%s s)" % (
           ref.get("answered_s"), ref.get("jobs"), cold.get("jobs"), ref.get("took_s")),
-          (ref.get("answered_s") or 99) < 3 and (ref.get("jobs") or 0) >= (cold.get("jobs") or 1))
+          (ref.get("answered_s") or 99) < 3 and (ref.get("jobs") or 0) >= (cold.get("first_jobs") or 1))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     print(sum(R), "/", len(R))

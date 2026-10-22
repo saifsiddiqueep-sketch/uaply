@@ -1,0 +1,480 @@
+# Company names (or domains) for tools/find-boards.py --names. One per line; text after # is ignored.
+# Largest employers in Pennsylvania, New Jersey and Delaware (hospitals, universities, banks, retail, logistics, pharma); many use
+# Workday, iCIMS or Taleo, which UAply does not read: the tool only keeps those found on Greenhouse, Lever, Ashby, SmartRecruiters, Workable.
+# --- Pennsylvania ---
+Comcast
+Penn Medicine
+University of Pennsylvania
+Jefferson Health
+Temple University
+Drexel University
+Childrens Hospital of Philadelphia
+Main Line Health
+Penn State Health
+UPMC
+Highmark Health
+Geisinger
+WellSpan Health
+Lehigh Valley Health Network
+St Lukes University Health Network
+Allegheny Health Network
+Tower Health
+Crozer Health
+Aramark
+Vanguard
+Lincoln Financial
+Cencora
+AmerisourceBergen
+Five Below
+Urban Outfitters
+Burlington
+Rite Aid
+Wawa
+Sheetz
+Giant Eagle
+Hershey
+PPG
+PNC
+Dicks Sporting Goods
+American Eagle Outfitters
+Kraft Heinz
+Air Products
+Crown Holdings
+Day & Zimmermann
+Unisys
+Teleflex
+Universal Health Services
+Bentley Systems
+Vertex
+Qlik
+Ellucian
+Clarivate
+Susquehanna International Group
+Independence Blue Cross
+CSL Behring
+Spark Therapeutics
+Adaptimmune
+Century Therapeutics
+Iovance
+Krystal Biotech
+Duolingo
+Gopuff
+Perpay
+Guru
+dbt Labs
+Phenom
+Goldcast
+Lessen
+RevZilla
+Rhoads Industries
+Philadelphia Gas Works
+SEPTA
+Philadelphia Eagles
+Philadelphia 76ers
+Philadelphia Phillies
+Philadelphia Union
+Harris Blitzer Sports & Entertainment
+# --- New Jersey ---
+Johnson & Johnson
+Merck
+Bristol Myers Squibb
+Prudential
+Hackensack Meridian Health
+RWJBarnabas Health
+Atlantic Health
+Virtua Health
+Cooper University Health Care
+Valley Health System
+Rutgers University
+Princeton University
+Stevens Institute of Technology
+Campbell Soup
+Subaru of America
+Quest Diagnostics
+BD
+Becton Dickinson
+Zoetis
+ADP
+Cognizant
+Verisk
+Church & Dwight
+Bed Bath & Beyond
+Jet
+Audible
+Peapod
+Wakefern
+ShopRite
+Sealed Air
+Conduent
+Cross River Bank
+Lakeland Bank
+Provident Bank
+Valley National Bank
+Investors Bank
+Hartz Mountain
+Amneal
+Insmed
+PTC Therapeutics
+Legend Biotech
+Genmab
+Novo Nordisk
+Organon
+Celularity
+Ascendis Pharma
+Thorlabs
+LG Electronics
+Samsung Electronics America
+Panasonic North America
+BMW of North America
+Mercedes-Benz USA
+Jaguar Land Rover North America
+Goya Foods
+Mars Wrigley
+Unilever
+L'Oreal USA
+Coty
+Pearson
+Wiley
+Dow Jones
+Bloomberg
+FanDuel
+DraftKings
+NJ Transit
+New Jersey Innovation Authority
+# --- Delaware ---
+ChristianaCare
+Nemours
+Bayhealth
+Beebe Healthcare
+TidalHealth
+University of Delaware
+Delaware State University
+Incyte
+Chemours
+DuPont
+Corteva
+W L Gore
+Gore
+Sallie Mae
+Navient
+Barclays US
+Capital One
+The Bancorp
+WSFS Bank
+Best Egg
+Marlette Funding
+CSC Global
+Delmarva Power
+Chesapeake Utilities
+Dover Motor Speedway
+Prelude Therapeutics
+Adesis
+Bloom Energy
+# --- National employers known to post on these systems (Fortune 1000, Inc. 5000 and large private) ---
+Airbnb
+DoorDash
+Instacart
+Lyft
+Uber
+Pinterest
+Reddit
+Robinhood
+Coinbase
+Stripe
+Square
+Block
+Toast
+Gusto
+Rippling
+Brex
+Ramp
+Chime
+SoFi
+Affirm
+Marqeta
+Plaid
+Datadog
+Cloudflare
+MongoDB
+Elastic
+Twilio
+Okta
+Zscaler
+CrowdStrike
+Snowflake
+Databricks
+HashiCorp
+GitLab
+Asana
+Dropbox
+Box
+DocuSign
+HubSpot
+Zillow
+Redfin
+Compass
+Opendoor
+Carvana
+Vroom
+Wayfair
+Chewy
+Etsy
+Peloton
+Warby Parker
+Allbirds
+Glossier
+Sweetgreen
+Cava
+Chipotle
+Shake Shack
+Starbucks
+Dutch Bros
+Crumbl
+Insomnia Cookies
+Equinox
+Planet Fitness
+Orangetheory
+solidcore
+SoulCycle
+Barrys
+One Medical
+Oak Street Health
+Cityblock
+Aledade
+Oscar Health
+Clover Health
+Bright Health
+Devoted Health
+Alignment Healthcare
+Carbon Health
+Forward
+Tia
+Parsley Health
+Ro
+Hims & Hers
+Talkspace
+Headspace
+Lyra Health
+Spring Health
+Modern Health
+Two Chairs
+Charlie Health
+Thriveworks
+LifeStance Health
+Cerebral
+Brightline
+Strive Health
+Papa
+Honor
+Wonderschool
+KinderCare
+Bright Horizons
+Guild
+Coursera
+Chegg
+Quizlet
+Varsity Tutors
+Outschool
+2U
+Grand Canyon Education
+Flexport
+Convoy
+Samsara
+Motive
+Project44
+ShipBob
+Stord
+Veho
+Shipt
+Gopuff
+GoodRx
+Zocdoc
+Flatiron Health
+Tempus
+Komodo Health
+Veeva Systems
+Benchling
+Anduril
+SpaceX
+Rocket Lab
+Relativity Space
+Joby Aviation
+Archer Aviation
+Zipline
+Lucid Motors
+Rivian
+Nuro
+Waymo
+Aurora
+Zoox
+Tesla
+Northrop Grumman
+Lockheed Martin
+Boeing
+Palantir
+Scale AI
+OpenAI
+Anthropic
+Figma
+Notion
+Canva
+Discord
+Roblox
+Epic Games
+Riot Games
+Unity
+Spotify
+Netflix
+Hulu
+Peacock
+Live Nation
+Ticketmaster
+Eventbrite
+Yelp
+Thumbtack
+Angi
+TaskRabbit
+Rover
+Care.com
+Bark
+Upwork
+Fiverr
+Grubhub
+Postmates
+Shipt
+Imperfect Foods
+Misfits Market
+HelloFresh
+Blue Apron
+Factor
+Hungryroot
+Thrive Market
+Boxed
+Instawork
+Wonolo
+Shiftsmart
+Veryable
+Jobber
+ServiceTitan
+Housecall Pro
+Toast
+Olo
+Lightspeed
+Mindbody
+ClassPass
+Zenoti
+Vagaro
+Weave
+Podium
+Birdeye
+Yext
+Klaviyo
+Attentive
+Braze
+Iterable
+Sprout Social
+Hootsuite
+Later
+Canva
+Grammarly
+Duolingo
+Babbel
+Calm
+Noom
+WW International
+Whoop
+Oura
+Fitbit
+Garmin
+Sonos
+Bose
+Logitech
+iRobot
+Ring
+SimpliSafe
+ADT
+Vivint
+Brinks Home
+Sunrun
+Sunnova
+SunPower
+Tesla Energy
+Arcadia
+Octopus Energy
+Bloom Energy
+Plug Power
+ChargePoint
+EVgo
+Electrify America
+Hertz
+Avis Budget
+Enterprise
+Turo
+Getaround
+Zipcar
+Lime
+Bird
+Via
+Revel
+Uber Freight
+Convoy
+Transfix
+Loadsmart
+Echo Global Logistics
+Coyote Logistics
+GoTo Foods
+Inspire Brands
+Sonic
+Jersey Mikes
+Wingstop
+Raising Canes
+Chick-fil-A
+In-N-Out
+Panda Express
+Wegmans
+Trader Joes
+Aldi
+Lidl
+Costco
+Target
+Walmart
+Kroger
+Albertsons
+Publix
+H-E-B
+Meijer
+Hy-Vee
+Sephora
+Ulta Beauty
+Lululemon
+Nike
+Adidas
+Under Armour
+Patagonia
+REI
+Gap
+Old Navy
+J.Crew
+Madewell
+Abercrombie & Fitch
+Aritzia
+Everlane
+Reformation
+Skims
+Fabletics
+Savage X Fenty
+Mejuri
+Pandora
+Kendra Scott
+Bombas
+Brooklinen
+Parachute
+Casper
+Purple
+Tempur Sealy
+Lovesac
+Article
+Burrow
+Interior Define
+Joybird
+Floyd

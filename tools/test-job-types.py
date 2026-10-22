@@ -4,6 +4,7 @@ No network: every answer is made up here in the shape the real API gives.
   python tools/test-job-types.py"""
 import json
 import os
+import re
 import sys
 import tempfile
 import time
@@ -36,6 +37,9 @@ CALLS = []
 
 def fake_get(url, headers=None, as_text=False):
     CALLS.append(url)
+    one = re.match(r"(https://boards-api\.greenhouse\.io/v1/boards/[^/]+/jobs)/(\d+)$", url)
+    if one and one.group(1) in ANSWERS and isinstance(ANSWERS[one.group(1)], dict):    # Greenhouse's single-posting answer, from its list
+        return next((j for j in ANSWERS[one.group(1)].get("jobs", []) if str(j.get("id")) == one.group(2)), None) or ANSWERS.get(url)
     for prefix, ans in ANSWERS.items():
         if url.startswith(prefix):
             if isinstance(ans, Exception):

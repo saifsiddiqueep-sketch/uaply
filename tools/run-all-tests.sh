@@ -73,7 +73,11 @@ run "job feeds: USAJOBS, City of Philadelphia, keys, feeds_off, via credit" pyth
 run "swipe learning: the math, the worked example, the replay test" python tools/test-learn.py
 run "fill from your resume: six resumes, layouts, dates, refused files, the endpoint" python tools/test-resume.py 18798
 run "the server as Render runs it: start, stop mid-request, restart on the same disk" python tools/test-render.py 18782
-run "reading every job board stays far below the 512 MB plan, and a redeploy answers from the saved list at once" python tools/test-feed-memory.py
+run "reading every job board stays under 110 MB, the first visitor never waits for every board, a redeploy answers from the saved list at once" python tools/test-feed-memory.py
+run "job types per feed, the Job type filter, the Simplify / Pitt CSC lists" python tools/test-job-types.py 18840
+run "the whole US with PA, NJ, DE first: places, the city table, CareerOneStop, the distance filter" python tools/test-tristate.py 18842
+run "job quality: company names, education, graduate-only internships, part-time, slow feeds, the internship order" python tools/test-quality.py 18844
+run "many sources: job-boards.json, per-source health, switching a failing board off, spread refreshes, find-boards" python tools/test-sources-health.py
 run "backups: pack the data folder, restore it, refuse damaged ones, encrypt, upload to a private GitHub repository" python tools/test-backup.py 18806
 run "every path from swipe right to inbox, replayed in a browser" python tools/ui-apply-paths.py
 run "the swipe guarantee: resume to profile, then swipe right into Greenhouse, Lever, Ashby, SmartRecruiters, Workable, an email employer and a hand-off; a question box, a file it cannot ask, the weekly limit" python tools/test-swipe-e2e.py 18830

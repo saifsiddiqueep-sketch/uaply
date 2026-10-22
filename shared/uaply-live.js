@@ -79,6 +79,9 @@ function apply(w,host){
     try{w.__uaply.renderAll()}catch(e){}
   }
   say("Loading real postings…");
+  /* On a fresh start the server answers within seconds with the boards it has read so far and says how many are still loading
+     ("pending"): the app asks again a few times and adds what came in, so the first visitor never waits for every board. */
+  function loadJobs(round){
   return fetch("/api/jobs").then(function(r){
     /* a plain web host with no UAply server (a 404, or an HTML page): a preview. Show the example jobs and say so; a 5xx stays an outage */
     if(r.status===404||(r.ok&&/text\/html/i.test(r.headers.get("content-type")||""))){var pe=new Error("preview");pe.preview=true;throw pe}
@@ -94,9 +97,16 @@ function apply(w,host){
     writeCache(all,(w.__uaply&&w.__uaply.S&&w.__uaply.S.decisions)||null);
     var src=Object.keys(data.sources||{}).map(function(k){return k+": "+data.sources[k]}).join(" · ");
     say("Real postings: "+fresh.length+" loaded ("+added+" new). "+src);
-  }).catch(function(e){w.__uaplyLoadingJobs=false;
+    if(data.pending>0&&round<15){
+      setTimeout(function(){loadJobs(round+1)},round<3?5000:15000);
+      if(fresh.length<5){w.__uaplyLoadingJobs=true;try{w.__uaply.renderAll()}catch(x){}}   /* "Finding jobs for you…", not an empty deck */
+    }
+  }).catch(function(e){if(round>0)return;   /* a later round that fails changes nothing: the jobs already shown stay */
+    w.__uaplyLoadingJobs=false;
     if(e&&e.preview){w.__uaplyPreviewOn=true;w.__uaplyHideSamples=false;w.__uaplyJobsFailed=false;try{w.__uaply.renderAll()}catch(x){}say(w.__uaplyPreviewText||"Preview: example jobs only.");return}
     if(REL)w.__uaplyJobsFailed=true;if(REL){try{w.__uaply.renderAll()}catch(x){}}say(REL?"Could not load jobs ("+e.message+"). Check your connection and try again.":"Could not load real postings ("+e.message+"). Showing the example jobs.")});
+  }
+  return loadJobs(0);
 }
 
 /* ---------------- kit + submit ---------------- */

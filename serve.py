@@ -53,7 +53,7 @@ BIND = os.environ.get("HOST", "127.0.0.1")
 PUBLIC = BIND not in ("127.0.0.1", "localhost", "::1")
 # Owner-only pages (/outbox, /feedback) need this password when the server is public. Without it they are switched off.
 OWNER_PASSWORD = os.environ.get("OWNER_PASSWORD", "")
-OWNER_PAGES = ("/outbox", "/api/outbox", "/feedback", "/setup")
+OWNER_PAGES = ("/outbox", "/api/outbox", "/feedback", "/setup", "/api/feed-health")
 root = os.path.abspath(sys.argv[2])
 rest = sys.argv[3:]
 api = "--api" in rest
@@ -120,6 +120,7 @@ if api:
     chat_api.init(os.path.basename(root))
     billing_api.PUBLIC = PUBLIC                                     # Plan and billing: buy buttons on a public server only when Stripe keys are set
     uaply_api.hide_errors = jobs_api.hide_errors = PUBLIC       # a hosted server never shows visitors raw error text; the owner's own computer still does
+    jobs_api.link_check_on = PUBLIC          # a hosted server checks every source's apply links in the background (UAPLY_LINK_CHECK=0: off)
     uaply_api.PUBLIC = PUBLIC                                   # the live site never labels a real hand-off email [TEST]
     uaply_api.start_mail_worker()                               # sends receipts and copies held back by the daily email limit (mailer.py)
     # the job-list warm-up starts after the port is bound (at the end of this file), so the health check passes at once
@@ -671,7 +672,12 @@ class H(http.server.SimpleHTTPRequestHandler):
         if api:
             try:
                 if p == "/api/jobs":
-                    return self._send(200, jobs_api.get_json())
+                    # a few thousand jobs are megabytes of JSON: sent compressed to any browser that says it takes gzip (all of them do)
+                    if "gzip" in (self.headers.get("Accept-Encoding") or "").lower():
+                        return self._send(200, jobs_api.get_json(compressed=True), headers=[("Content-Encoding", "gzip"), ("Vary", "Accept-Encoding")])
+                    return self._send(200, jobs_api.get_json(), headers=[("Vary", "Accept-Encoding")])
+                if p == "/api/feed-health":                                 # owner only (OWNER_PAGES): every source's count, successes and failures
+                    return self._send(200, jobs_api.feed_health())
                 if p == "/api/apply/config":
                     cfg_out = uaply_api.public_config()
                     if not PUBLIC:                          # only a copy running on the owner's computer has a test inbox page to point to

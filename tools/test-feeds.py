@@ -239,7 +239,7 @@ lists = [u.split("?")[1] for u, _ in CALLS if "?" in u]
 t("pages are read 100 at a time by offset", lists, ["limit=100&offset=0", "limit=100&offset=100"])
 t("no more than 120 postings are kept, and no more than 120 descriptions read", (len(jobs), len([1 for u, _ in CALLS if "?" not in u])), (120, 120))
 J.SR_WHOLE = real_whole
-# a company that is not a public body (Equinox, Red Bull): US postings only, tri-state ones first, at most 40 descriptions, 14 + tri-state extras
+# a company that is not a public body (Equinox, Red Bull): US postings only, tri-state ones first, at most SR_BOARD_READ (24) descriptions, 14 + tri-state extras
 mixed = [dict(m, location=dict(m.get("location") or {}, country="de", region="BY", city="Munich")) if i % 3 == 0 else
          dict(m, location=dict(m.get("location") or {}, country="us", region="TX" if i % 3 == 1 else "NJ", city="Austin" if i % 3 == 1 else "Trenton"))
          for i, m in enumerate(many)]
@@ -250,9 +250,9 @@ J._cache.pop(("smartrecruiters", "GymCo", "GymCo"), None)
 jobs, status = J._fetch_source(("smartrecruiters", "GymCo", "GymCo"))
 read = [u.rsplit("/", 1)[1] for u, _ in CALLS if "?" not in u]
 by_id = {m["id"]: m for m in mixed}
-t("an employer's SmartRecruiters board: at most 40 descriptions read, none for a posting outside the US",
-  (len(read), sum(1 for i in read if by_id[i]["location"]["country"] != "us")), (40, 0))
-t("...New Jersey postings are read first", sum(1 for i in read if by_id[i]["location"]["region"] == "NJ"), 40)
+t("an employer's SmartRecruiters board: at most 24 descriptions read, none for a posting outside the US",
+  (len(read), sum(1 for i in read if by_id[i]["location"]["country"] != "us")), (J.SR_BOARD_READ, 0))
+t("...New Jersey postings are read first", sum(1 for i in read if by_id[i]["location"]["region"] == "NJ"), J.SR_BOARD_READ)
 t("...and it keeps 14 plus up to 10 tri-state extras, never a German one", (len(jobs) <= 24, any("Munich" in j["loc"] for j in jobs)), (True, False))
 many[:] = many_saved
 

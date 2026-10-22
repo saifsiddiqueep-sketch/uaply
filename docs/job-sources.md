@@ -21,6 +21,23 @@ once (the employer's own board wins), every job carries `jobType` (full-time, pa
   Camden NJ (25), each also for Pathways (students and recent graduates) and part-time schedules; CareerOneStop (the state job banks'
   jobs) around the same five cities; the City of Philadelphia; employers with PA, NJ and DE offices (`SOURCES` names each with its count).
 
+## Adding employer boards in bulk
+
+`tools/find-boards.py` finds employers' public boards on Greenhouse, Lever, Ashby, SmartRecruiters and Workable: from company names or
+domains (`--names tools/data/board-seeds.txt`, slugs tried on every system) and from every board the Simplify / Pitt CSC lists link to
+(`--simplify`). It checks each board live, counts its postings, US postings and PA / NJ / DE postings, and writes a review file
+(`tools/data/board-candidates.json`). Boards with at least 5 US postings that pass review go in `job-boards.json` (kind, token, name and
+the counts on the day they were checked); the app reads that file at start, after the hand-picked boards in `jobs_api.SOURCES`, and reads
+each of those boards every 2 hours (spread out). The owner page `/api/feed-health` (owner password) lists every source with its jobs,
+successes and failures; a source that fails 3 refreshes in a row is switched off for a day and then tried again by itself.
+
+How the reading scales to hundreds of boards: 12 reader threads (not one per board); a Greenhouse board's list is read without
+descriptions (about an eighth of the size) and only the postings that will be kept get their description read, once, and again only
+when the posting changes; employer SmartRecruiters boards read at most 24 descriptions a day; boards are read as they arrive (never
+whole); the list sent to the app is written straight into gzip and only the compressed copy is kept; past 300 MB of memory no new
+board read starts. On a fresh start the first visitor is answered within about 8 seconds with what is ready, and the app asks again
+until every board is in.
+
 ## Registry
 
 Risk: **Low** = a public body's or the source's own published API whose terms we follow; **Medium** = public data with no terms that

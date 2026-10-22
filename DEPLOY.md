@@ -41,6 +41,10 @@ simulated payments (paid plans appear only once live Stripe keys are set, sectio
    (25), each also for Pathways and part-time (15 searches, 120 requests a day). `careeronestop` (the National Labor Exchange, the PA, NJ
    and DE state job banks' jobs) needs `UAPLY_COS_USER_ID` and `UAPLY_COS_TOKEN` in Render, Environment; until then it shows "no key".
    How to request them and the text to paste: `docs/job-sources.md`, Keys. Employer boards keep up to 10 PA, NJ or DE roles beyond their 14.
+   **Many boards:** `job-boards.json` holds the employer boards found and checked with `tools/find-boards.py` (docs/job-sources.md).
+   `https://uaply.net/api/feed-health` (owner password) shows every source's jobs, successes and failures; a source that fails 3
+   refreshes in a row is switched off for a day by itself. After a deploy that changes the job rules, the first visitors get the boards
+   read so far within seconds and the app fills in the rest as they arrive.
 6. **Legal pages:** fill every yellow blank in `legal/` (company legal name, street address, contact and privacy email, launch date,
    DMCA agent, liability amount, governing state and county, how long records are kept, host, response time) and have a lawyer
    review them. They say "draft, not reviewed by a lawyer" until you do.

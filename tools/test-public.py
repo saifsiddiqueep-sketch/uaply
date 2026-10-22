@@ -60,7 +60,7 @@ t("a cross-site sign-up is refused", req("POST", "/api/auth/signup", {"email": "
                                          headers={"Origin": "https://evil.example"})[0], 403)
 t("a request with no Origin is refused", req("POST", "/api/auth/login", {"email": "a@b.co", "password": "x"}, origin=False)[0], 403)
 
-for path in ("/outbox", "/api/outbox", "/feedback", "/setup"):
+for path in ("/outbox", "/api/outbox", "/feedback", "/setup", "/api/feed-health"):
     t("%s needs the owner password" % path, req("GET", path)[0], 401)
     t("%s refuses a wrong password" % path, req("GET", path, headers=auth("nope"))[0], 401)
     t("%s opens with the owner password" % path, req("GET", path, headers=auth("ownerpw"))[0], 200)
@@ -143,6 +143,20 @@ t("/api/status apply: only a yes/no, the delivery mode and job counts per way of
   (["classes", "configured", "mode", "ok"], True, True, True, True, ["ats", "email", "handoff", "webhook"]))
 t("/api/status says what this server has on (public, owner pages on, email off)", (st.get("public"), st.get("ownerPages"), st.get("email")), (True, True, False))
 t("/api/status holds no secret or folder name", any(x in body.decode() for x in ("ownerpw", "uaply-", "/", "\\\\")), False)
+
+# the job list is sent gzip-compressed to a browser that takes it, plain otherwise; the owner's feed health lists every source
+import gzip  # noqa: E402
+s1, h1, b1 = req("GET", "/api/jobs", headers={"Accept-Encoding": "gzip, deflate, br"})
+s2, h2, b2 = req("GET", "/api/jobs")
+plain = json.loads(b2)
+t("/api/jobs: compressed for a browser that takes gzip, the same list as the plain answer",
+  (s1, h1.get("content-encoding"), json.loads(gzip.decompress(b1))["sources"] == plain["sources"] if h1.get("content-encoding") == "gzip" else None, s2, h2.get("content-encoding")),
+  (200, "gzip", True, 200, None))
+t("/api/jobs says how many sources are still loading (the app asks again while any are)", isinstance(plain.get("pending"), int), True)
+fh = json.loads(req("GET", "/api/feed-health", headers=auth("ownerpw"))[2])
+t("/api/feed-health (owner): every source with its count, successes, failures and whether it is switched off",
+  (fh.get("count", 0) > 50, sorted(fh["sources"][0]) if fh.get("sources") else None),
+  (True, ["applyPath", "error", "failures", "inARow", "jobs", "lastError", "lastOk", "links", "ms", "name", "off", "ok", "retry", "source", "status"]))
 
 print(sum(R), "/", len(R))
 sys.exit(0 if all(R) else 1)

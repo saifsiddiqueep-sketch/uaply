@@ -119,7 +119,7 @@ try:
     t("the whole-answer reader has the same deadline", (whole, time.time() - t0 < 3), ("timed out", True))
 finally:
     J.urllib.request.urlopen, J.FEED_DEADLINE = real_open, real_deadline
-t("the deadline is 90 s per feed, 20 s per network read", (J.FEED_DEADLINE, J.FEED_TIMEOUT), (90, 20))
+t("the deadline is 180 s per feed, 20 s per network read", (J.FEED_DEADLINE, J.FEED_TIMEOUT), (180, 20))
 
 
 # ---------------- places written without a comma (Lever boards) ----------------
@@ -127,7 +127,8 @@ for loc, us, tri in [("Abilene TX", True, False), ("Hoboken NJ", True, True), ("
                      ("Munich DE", False, True), ("Berlin DE", False, True), ("London UK", False, False), ("Mumbai IN", False, False),
                      ("Bangalore IN", False, False), ("Indianapolis IN", True, False), ("Denver CO", True, False), ("Bogota CO", False, False),
                      # "India" inside Indiana and "Mexico" inside New Mexico dropped US jobs before
-                     ("Indianapolis, IN", True, False), ("Fort Wayne, Indiana", True, False), ("Albuquerque, New Mexico", True, False), ("Mexico City, Mexico", False, False)]:
+                     ("Indianapolis, IN", True, False), ("Fort Wayne, Indiana", True, False), ("Albuquerque, New Mexico", True, False), ("Mexico City, Mexico", False, False),
+                     ("Remote - India", False, False), ("Hyderabad, India", False, False), ("Mumbai, MH, India", False, False)]:
     t("place %r: US %s, tri-state %s" % (loc, us, tri), (J._us_ok(loc, False), bool(J.LOCAL_RE.search(loc))), (us, tri))
 
 # ---------------- evergreen part-time postings on an employer's own board ----------------

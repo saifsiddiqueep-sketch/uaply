@@ -42,6 +42,8 @@ import hashlib
 import html
 import json
 import os
+import queue
+import zlib
 import re
 import sys
 import threading
@@ -212,6 +214,34 @@ SOURCES = [
     ("himalayas", "US-parttime", "Himalayas"),   # the same, part-time only (1,952)
     ("remoteok", "all", "Remote OK"),         # link back to the job on Remote OK and name Remote OK as the source
 ]
+BOARDS_FILE = os.path.join(ROOT, "job-boards.json")   # employer boards found and checked with tools/find-boards.py (see docs/job-sources.md)
+BOARD_KINDS = ("greenhouse", "lever", "ashby", "smartrecruiters", "workable")
+BOARD_TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$")    # a board's name in its system's address (Lever and Ashby allow dots: "thea.energy")
+
+
+def _file_boards():
+    """The verified employer boards in job-boards.json, as SOURCES entries, after the hand-picked ones (which keep their place and order)."""
+    try:
+        with open(BOARDS_FILE, encoding="utf-8") as f:
+            rows = json.load(f).get("boards") or []
+    except (OSError, ValueError):
+        return []
+    have = {(k, t.lower()) for k, t, _ in SOURCES}
+    out = []
+    for r in rows:
+        k, t, n = r.get("kind"), str(r.get("token") or ""), str(r.get("name") or "").strip()
+        if k in BOARD_KINDS and BOARD_TOKEN_RE.match(t) and ".." not in t and n and (k, t.lower()) not in have:
+            have.add((k, t.lower()))
+            out.append((k, t, n))
+    return out
+
+
+FILE_SOURCES = _file_boards()
+# the public lists (Simplify, Himalayas, Remote OK, CareerOneStop) stay last so the employer boards win the same-job rule
+_tail = next(i for i, s_ in enumerate(SOURCES) if s_[0] == "remotive")
+SOURCES = SOURCES[:_tail] + FILE_SOURCES + SOURCES[_tail:]
+FILE_TTL = 2 * 3600            # a board from job-boards.json is read every 2 hours (the hand-picked ones every 30 minutes)
+
 VIA = {"greenhouse": "%s on Greenhouse", "lever": "%s on Lever", "ashby": "%s on Ashby", "smartrecruiters": "%s on SmartRecruiters", "workable": "%s on Workable",
        "jobicy": "Jobicy", "muse": "The Muse", "usajobs": "USAJOBS", "remotive": "Remotive",
        "himalayas": "Himalayas", "remoteok": "Remote OK",
@@ -377,7 +407,7 @@ def _save_disk():
 
 
 MAX_FEED_BYTES = 40 * 1000 * 1000    # the largest board (Databricks) answered 9.9 MB on October 17, 2026; anything past this is refused, not parsed
-FEED_PARALLEL = 3                    # boards read and parsed at the same time. A board read whole cost about 4x its size while it was parsed (the
+FEED_PARALLEL = 8                    # boards read at the same time (3 until October 21, 2026, when boards were read whole). A board read whole cost about 4x its size while it was parsed (the
 #                                      bytes, the text, then Python's objects), and memory a process has used is mostly not given back: reading all of
 #                                      them at once took the live server (512 MB plan) from 45 MB to 275 MB, and to 491 MB when two rounds overlapped
 #                                      (Oct 17). Employer boards are now read as they arrive (_get_items), a posting at a time, so a board costs a few
@@ -385,11 +415,32 @@ FEED_PARALLEL = 3                    # boards read and parsed at the same time. 
 _feed_slots = threading.BoundedSemaphore(FEED_PARALLEL)
 
 
+HOST_PARALLEL = 6                    # requests to one feed's system at the same time, over all boards: with 12 boards at once each reading
+#                                      descriptions 3 or 4 at a time, SmartRecruiters reset connections and Greenhouse answers slowed to minutes
+_host_sems, _host_sems_lock = {}, threading.Lock()
+
+
+class _host_slot:
+    """Holds one of HOST_PARALLEL places for the address's host while a request (or a streamed answer) is in progress."""
+    def __init__(self, url):
+        host = urllib.parse.urlsplit(url).hostname or ""
+        with _host_sems_lock:
+            self.sem = _host_sems.setdefault(host, threading.BoundedSemaphore(HOST_PARALLEL))
+
+    def __enter__(self):
+        self.sem.acquire()
+        return self
+
+    def __exit__(self, *exc):
+        self.sem.release()
+        return False
+
+
 def _get(url, headers=None, as_text=False):
     """One feed answer, parsed as JSON (or the plain text with as_text=True), refused past MAX_FEED_BYTES."""
     req = urllib.request.Request(url, headers=dict({"User-Agent": UA, "Accept": "text/plain" if as_text else "application/json"}, **(headers or {})))
     started, parts, size = time.time(), [], 0
-    with urllib.request.urlopen(req, timeout=FEED_TIMEOUT) as r:
+    with _host_slot(url), urllib.request.urlopen(req, timeout=FEED_TIMEOUT) as r:
         while True:                                     # in parts, so a feed that trickles is stopped at FEED_DEADLINE
             part = r.read(STREAM_CHUNK)
             if not part:
@@ -410,7 +461,7 @@ def _get(url, headers=None, as_text=False):
 
 
 FEED_TIMEOUT = 20                     # seconds one network read may wait (connect, or the next part of the answer)
-FEED_DEADLINE = 90                    # seconds one feed answer may take in all (SpaceX's 32 MB board takes about 10): past that it is dropped,
+FEED_DEADLINE = 180                   # seconds one feed answer may take in all (SpaceX's 32 MB board takes about 10 alone, 90+ with 500 boards being read): past that it is dropped,
 #                                       its download slot goes to the next feed, the last good copy stays, and it is tried again 2 minutes later
 STREAM_CHUNK = 256 * 1024              # how much of a board's answer is read from the network at a time
 _DEC = json.JSONDecoder()
@@ -424,7 +475,7 @@ def _get_items(url, key=None):
     Carvana's 19 MB board cost about 75 MB that way. Past MAX_FEED_BYTES the answer is refused, as in _get."""
     req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "application/json"})
     started = time.time()
-    with urllib.request.urlopen(req, timeout=FEED_TIMEOUT) as r:
+    with _host_slot(url), urllib.request.urlopen(req, timeout=FEED_TIMEOUT) as r:
         dec = codecs.getincrementaldecoder("utf-8")("replace")
         st = {"buf": "", "pos": 0, "read": 0, "done": False}
 
@@ -635,12 +686,14 @@ def _iter_raw(kind, token, name):
     """The raw postings of one board, one at a time: dicts with id, title, company, loc, remote, text, url, salary_text. A generator, so a
     board's postings are worked through as they are read instead of all being held (each with up to 20,000 characters of text) first."""
     if kind == "greenhouse":
-        for j in _get_items("https://boards-api.greenhouse.io/v1/boards/%s/jobs?content=true" % token, "jobs"):
+        # The list without descriptions is about an eighth of the size (SpaceX: 2.6 MB instead of 32): a posting's description is read
+        # on its own (_gh_fill) only for the ones that will be kept, once, and again only when the posting's updated_at changes.
+        for j in _get_items("https://boards-api.greenhouse.io/v1/boards/%s/jobs" % token, "jobs"):
             yield dict(id=j["id"], title=j["title"], company=j.get("company_name") or name,
                        loc=(j.get("location") or {}).get("name", ""), remote=None,
-                       text=_text(j.get("content")), url=j["absolute_url"], salary_text="",
+                       text="", url=j["absolute_url"], salary_text="",
                        posted=_ts(j.get("first_published") or j.get("updated_at")), updated=_ts(j.get("updated_at")), emp=_gh_emp(j),
-                       fallback=_dept(j.get("departments")))     # a store or clinic role names no software skill: its department is what it is scored on
+                       lazy=(token, str(j["id"]), str(j.get("updated_at") or "")))
     elif kind == "lever":
         for j in _get_items("https://api.lever.co/v0/postings/%s?mode=json" % token):
             cat = j.get("categories") or {}
@@ -777,7 +830,7 @@ def _sr_detail(token, pid, released):
         d = _get("https://api.smartrecruiters.com/v1/companies/%s/postings/%s" % (urllib.parse.quote(token, safe=""), urllib.parse.quote(pid, safe="")))
         if isinstance(d, dict):                  # keep only what _smartrecruiters reads (120 full records stayed in memory all day before)
             secs = ((d.get("jobAd") or {}).get("sections")) or {}
-            d = {"jobAd": {"sections": {k: {"text": (secs.get(k) or {}).get("text") or ""} for k in ("jobDescription", "qualifications", "additionalInformation")}},
+            d = {"jobAd": {"sections": {k: {"text": ((secs.get(k) or {}).get("text") or "")[:SR_TEXT]} for k in ("jobDescription", "qualifications", "additionalInformation")}},
                  "compensation": d.get("compensation") or {}}
     except Exception:
         d = c["detail"] if c else None           # keep the last description if this read fails, and try again at the next hourly refresh
@@ -788,7 +841,8 @@ def _sr_detail(token, pid, released):
 
 
 SR_WHOLE = ("CityofPhiladelphia",)    # public bodies whose whole list is kept (up to KEEP); any other SmartRecruiters company is an employer board
-SR_BOARD_READ = 40                     # an employer board: at most this many US postings get their description read (once a day each)
+SR_TEXT = 2500                         # characters kept of each description section (skills, pay and the summary are read from the start)
+SR_BOARD_READ = 24                     # an employer board: at most this many US postings get their description read (once a day each): its 14 plus 10 tri-state
 
 
 def _smartrecruiters(token, name):
@@ -937,10 +991,13 @@ def _days(ms, now_ms):
     return max(0, int((now_ms - ms) // DAY_MS))
 
 
-def _with_age(j, now_ms):
+INTERNED = ("co", "loc", "mode", "type", "jobType", "edu", "source", "apply", "via", "credit")
+
+
+def _with_age(j, now_ms, drop=()):
     """A copy of a job with postedDays (whole days since it was posted) and, when the feed gives a later update, updatedDays. The cached
-    job itself is shared by every request, so it is never changed here."""
-    out = dict(j)
+    job itself is shared by every request, so it is never changed here. `drop`: fields left out of the copy."""
+    out = {k: v for k, v in j.items() if k not in drop} if drop else dict(j)
     if j.get("posted"):
         out["postedDays"] = _days(j["posted"], now_ms)
     if j.get("updated"):
@@ -1044,6 +1101,55 @@ def _edu(title, text, jtype="full-time"):
     by_title = next((lvl for lvl, rx in EDU_BY_TITLE if rx.search(title)), "High school")
     by_text = next((lvl for lvl, rx in EDU_TEXT if rx.search(text)), "High school")
     return max(by_title, by_text, key=lambda lvl: EDU_RANK[lvl])
+
+
+GH_WHOLE_MAX = 80               # a Greenhouse board listing at most this many postings is read whole (one answer) when descriptions are needed
+GH_DESC_READ = 3                 # descriptions of one Greenhouse board read at the same time (FEED_PARALLEL boards at once: up to 36 requests)
+LAZY_WAVES = 3                   # rounds of description reads for one board: places a posting could not fill go to the next ones
+_gh_seen = {}                    # (board, posting id) -> the updated_at its kept job was made from
+_gh_skip = {}                    # (board, posting id) -> the updated_at of a posting read and not kept (read again only when it changes)
+
+
+def _gh_fill(raws, prev, listed_n=0):
+    """For Greenhouse postings that will be kept: the job made last time when the posting has not changed since (same updated_at), else
+    the raw posting with its description, department and custom fields read from the single-posting address. Returns a list matching
+    raws: a kept job (dict with "co") to reuse as is, or a raw posting to normalize, or None when the posting could not be read."""
+    # a small board with several descriptions to read: one answer with every description costs less than a request per posting
+    need = [r for r in raws if not (prev.get(_jid("greenhouse", r["id"])) is not None and _gh_seen.get(r["lazy"][:2]) == r["lazy"][2])]
+    bulk = {}
+    if need and len(need) > 2 and listed_n <= GH_WHOLE_MAX:
+        try:
+            board = need[0]["lazy"][0]
+            for j in _get_items("https://boards-api.greenhouse.io/v1/boards/%s/jobs?content=true" % urllib.parse.quote(board, safe=""), "jobs"):
+                if str(j.get("id")) in {r["lazy"][1] for r in need}:
+                    bulk[str(j["id"])] = {"content": j.get("content"), "departments": j.get("departments"), "metadata": j.get("metadata")}
+        except Exception:
+            bulk = {}
+
+    def one(raw):
+        board, pid, upd = raw["lazy"]
+        old = prev.get(_jid("greenhouse", raw["id"]))
+        if old is not None and _gh_seen.get((board, pid)) == upd:
+            return old
+        j = bulk.get(pid)
+        if j is None:
+            try:
+                j = _get("https://boards-api.greenhouse.io/v1/boards/%s/jobs/%s" % (urllib.parse.quote(board, safe=""), urllib.parse.quote(pid, safe="")))
+            except Exception:
+                return old                       # keep the last good job if the description cannot be read this time
+        if not isinstance(j, dict):
+            return old
+        out = dict(raw, text=_text(j.get("content")), emp=_gh_emp(j) or raw.get("emp"), fallback=_dept(j.get("departments")))
+        out.pop("lazy", None)
+        out["_seen"] = (board, pid, upd)
+        return out
+    with ThreadPoolExecutor(max_workers=GH_DESC_READ) as ex:
+        return list(ex.map(one, raws))
+
+
+def _jid(kind, raw_id):
+    """A job's id in the app: the same number for the same posting every time (also when a list such as Simplify's points to it)."""
+    return 100000 + int(hashlib.sha1(("%s:%s" % (kind, raw_id)).encode()).hexdigest()[:6], 16)
 
 
 def _dept(departments):
@@ -1157,7 +1263,7 @@ def _normalize(raw, kind, name, board=None):
     edu = _edu(title, text, jtype)
     blurb = text[:170].rsplit(" ", 1)[0] + "…" if len(text) > 170 else text
     desc = _role_summary(text)                                                    # what the emails show about the job
-    jid = 100000 + int(hashlib.sha1(("%s:%s" % (kind, raw["id"])).encode()).hexdigest()[:6], 16)
+    jid = _jid(kind, raw["id"])
     company = _clean_company(raw["company"], name)
     src = name if kind in ("remotive", "jobicy", "muse", "usajobs", "himalayas", "remoteok", "careeronestop") else "%s's careers page" % company
     # Where this posting lives in the employer's own hiring system. It is only an address (not a credential): it is used when, and only when, the
@@ -1181,6 +1287,11 @@ def _normalize(raw, kind, name, board=None):
     out["credit"] = "via USAJOBS; apply on the official announcement" if kind == "usajobs" else "via " + out["via"]
     if (raw.get("announcement") or "").startswith("https://"):
         out["announcement"] = raw["announcement"]                 # USAJOBS: the official announcement, kept next to the apply link
+    # the same few strings repeat across thousands of jobs (a board's name, credit and places, the work style, type and level): one copy each
+    for k in INTERNED:
+        if isinstance(out.get(k), str):
+            out[k] = sys.intern(out[k])
+    out["skills"] = [sys.intern(x) if isinstance(x, str) else x for x in out.get("skills") or []]
     return out
 
 
@@ -1220,7 +1331,7 @@ def known_contact(job_id):
     return ""
 
 
-FIRST_WAIT = 90                  # seconds the very first request on an empty disk waits for a board (every later request waits for none)
+FIRST_WAIT = 8                   # seconds the very first request on an empty disk waits for a board (every later request waits for none)
 _failed = {}                     # source -> (when, status) of a read that failed with no copy to fall back on: not tried again for 2 minutes
 
 
@@ -1253,24 +1364,236 @@ def _refresh_in_background(src, done):
             _trim()
 
 
+FAIL_LIMIT = 3                   # refreshes in a row that may fail before a source is switched off
+OFF_FOR = 24 * 3600              # ...for this long; then it is tried again (a board that came back recovers by itself)
+_health = {}                     # source -> {"ok", "fail", "last_ok", "last_error", "error", "jobs", "ms", "off_until", "retry"}
+
+
+def _note_health(src, ok, jobs=0, error="", ms=0):
+    with _lock:
+        h = _health.setdefault(src, {"ok": 0, "fail": 0, "streak": 0, "last_ok": 0, "last_error": 0, "error": "", "jobs": 0, "ms": 0, "off_until": 0})
+        h["ms"] = ms
+        if ok:
+            h.update(ok=h["ok"] + 1, streak=0, last_ok=time.time(), jobs=jobs, off_until=0)
+            h.pop("retry", None)
+        else:
+            h.update(fail=h["fail"] + 1, streak=h["streak"] + 1, last_error=time.time(), error=error[:120])
+            if h["streak"] >= FAIL_LIMIT and not h["off_until"]:
+                h["off_until"] = time.time() + OFF_FOR
+                h["retry"] = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(h["off_until"]))
+                sys.stderr.write("[uaply] job feed %s switched off after %d failed refreshes (tried again %s)\n" % ("/".join(src), FAIL_LIMIT, h["retry"]))
+
+
+def _disabled(src):
+    h = _health.get(src)
+    if not h or not h.get("off_until"):
+        return False
+    if time.time() >= h["off_until"]:          # its day is over: one more try (a failure switches it off again at once)
+        h["off_until"], h["streak"] = 0, FAIL_LIMIT - 1
+        return False
+    return True
+
+
+LINK_SAMPLE = 20                 # links of one source checked per round
+LINK_FAIL_LIMIT = 0.10           # more than this share of a source's checked links dead (with at least 10 checked): the source is switched off
+LINK_EVERY = 24 * 3600           # each source's links are checked again after this long
+LINK_PAUSE = 60                  # seconds between two sources in the background check (gentle on employers' sites)
+LINK_UA = "Mozilla/5.0 (compatible; UAplyLinkCheck/1.0; +https://uaply.net)"
+link_check_on = False            # serve.py turns the background check on for a hosted server (UAPLY_LINK_CHECK=0 keeps it off)
+_links = {}                      # source -> {"at", "ok", "dead", "unknown", "dead_ids": set of job ids, "off": bool}
+_link_thread = []
+
+
+def _link_alive(url):
+    """True: the page answers (a person can open it); False: it is gone (404/410, or the board's own "no longer open" page); None:
+    cannot tell (blocked by a bot check, rate-limited, a time-out): never counted against a source."""
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": LINK_UA, "Accept": "text/html,*/*"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            final = r.geturl() or url
+            body = r.read(20000).decode("utf-8", "replace").lower()
+        if re.search(r"[?&]error=true\b", final) or "job not found" in body or "no longer accepting applications" in body or \
+                "this job is no longer available" in body or "the job you are looking for is no longer open" in body or "posting has been closed" in body:
+            return False                         # Greenhouse sends a closed posting to its board with ?error=true; others say so on the page
+        return True
+    except urllib.error.HTTPError as e:
+        return False if e.code in (404, 410) else None
+    except Exception:
+        return None
+
+
+ATS_POSTING = {"greenhouse": "https://boards-api.greenhouse.io/v1/boards/%s/jobs/%s", "lever": "https://api.lever.co/v0/postings/%s/%s",
+               "smartrecruiters": "https://api.smartrecruiters.com/v1/companies/%s/postings/%s"}
+
+
+def job_alive(j):
+    """Whether a job's apply page is still there. A posting on Greenhouse, Lever or SmartRecruiters is asked of the hiring system's own
+    public API (its job pages turn away anything that is not a browser, with a 403): found = alive, 404/410 = gone. Ashby and Workable
+    have no single-posting address: a posting on their boards is alive while the board lists it (it was read at most a few hours ago).
+    Any other page is opened (_link_alive)."""
+    a = j.get("ats") if isinstance(j.get("ats"), dict) else None
+    if a and a.get("kind") in ATS_POSTING and BOARD_TOKEN_RE.match(str(a.get("board") or "")):
+        pid = str(a["id"]) if a.get("kind") != "smartrecruiters" else str(j.get("url", "")).rstrip("/").rsplit("/", 1)[-1]
+        try:
+            _get(ATS_POSTING[a["kind"]] % (urllib.parse.quote(a["board"], safe=""), urllib.parse.quote(pid, safe="")))
+            return True
+        except urllib.error.HTTPError as e:
+            return False if e.code in (404, 410) else None
+        except Exception:
+            return None
+    if a and a.get("kind") in ("ashby", "workable"):
+        return True
+    return _link_alive(str(j.get("url") or ""))
+
+
+def check_links(src, sample=LINK_SAMPLE):
+    """Opens up to `sample` of a source's kept jobs' apply links (the ones not checked yet first), records which are dead, hides those jobs,
+    and switches the source off when more than LINK_FAIL_LIMIT of its checked links are dead. Returns the source's link record."""
+    with _lock:
+        c = _cache.get(src)
+        jobs = list(c["jobs"]) if c else []
+        rec = _links.setdefault(src, {"at": 0, "ok": 0, "dead": 0, "unknown": 0, "dead_ids": set(), "checked_ids": set(), "off": False})
+    fresh = [j for j in jobs if j["id"] not in rec["checked_ids"]] or jobs
+    picks = [j for j in fresh if str(j.get("url") or "").startswith("https://")][:sample]
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        results = list(ex.map(job_alive, picks))
+    with _lock:
+        for j, alive in zip(picks, results):
+            rec["checked_ids"].add(j["id"])
+            if alive is True:
+                rec["ok"] += 1
+                rec["dead_ids"].discard(j["id"])
+            elif alive is False:
+                rec["dead"] += 1
+                rec["dead_ids"].add(j["id"])
+            else:
+                rec["unknown"] += 1
+        rec["at"] = time.time()
+        live_ids = {j["id"] for j in jobs}
+        rec["checked_ids"] &= live_ids             # jobs no longer listed are forgotten
+        rec["dead_ids"] &= live_ids
+        counted = rec["ok"] + rec["dead"]
+        rec["off"] = counted >= 10 and rec["dead"] / counted > LINK_FAIL_LIMIT
+        _version[0] += 1
+    if rec["off"]:
+        h = _health.setdefault(src, {"ok": 0, "fail": 0, "streak": 0, "last_ok": 0, "last_error": 0, "error": "", "jobs": 0, "ms": 0, "off_until": 0})
+        h["off_until"] = time.time() + OFF_FOR
+        h["retry"] = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(h["off_until"]))
+        h["error"] = "%d of %d apply links checked were dead (over %d%%)" % (rec["dead"], counted, int(LINK_FAIL_LIMIT * 100))
+        sys.stderr.write("[uaply] job feed %s switched off: %s\n" % ("/".join(src), h["error"]))
+    return rec
+
+
+def _link_loop():
+    """The background check (hosted server only): the source checked longest ago, one at a time, LINK_PAUSE apart."""
+    while True:
+        time.sleep(LINK_PAUSE)
+        try:
+            with _lock:
+                due = [s_ for s_ in _cache if time.time() - _links.get(s_, {}).get("at", 0) > LINK_EVERY and _cache[s_]["jobs"]]
+            if due:
+                check_links(min(due, key=lambda s_: _links.get(s_, {}).get("at", 0)))
+        except Exception as e:
+            sys.stderr.write("[uaply] link check: %s: %s\n" % (type(e).__name__, str(e)[:200]))
+
+
+def _start_link_check():
+    if link_check_on and not _link_thread and os.environ.get("UAPLY_LINK_CHECK", "1") != "0":
+        th = threading.Thread(target=_link_loop, daemon=True)
+        _link_thread.append(th)
+        th.start()
+
+
+def feed_health():
+    """Owner-only health of every source (/api/feed-health): jobs kept, successes, failures, the last success and error, the time the last
+    read took, and whether it is switched off. Only counts and the source's own name, never a key or an address."""
+    out = []
+    with _lock:
+        for src in SOURCES:
+            h = dict(_health.get(src) or {})
+            c = _cache.get(src)
+            out.append({"source": "/".join(src[:2]), "name": src[2], "jobs": len(c["jobs"]) if c else 0, "status": c["status"] if c else "",
+                        "ok": h.get("ok", 0), "failures": h.get("fail", 0), "inARow": h.get("streak", 0), "lastOk": int(h.get("last_ok", 0)),
+                        "lastError": int(h.get("last_error", 0)), "error": h.get("error", ""), "ms": h.get("ms", 0),
+                        "off": bool(h.get("off_until")) and time.time() < h["off_until"], "retry": h.get("retry", ""),
+                        "applyPath": "hand-off (the employer's own page)" if src[0] != "partner" else "partner",
+                        "links": {"checked": (_links.get(src) or {}).get("ok", 0) + (_links.get(src) or {}).get("dead", 0),
+                                  "dead": (_links.get(src) or {}).get("dead", 0), "unknown": (_links.get(src) or {}).get("unknown", 0),
+                                  "lastChecked": int((_links.get(src) or {}).get("at", 0))}})
+    return {"sources": out, "count": len(out), "off": [x["source"] for x in out if x["off"]], "jobs": sum(x["jobs"] for x in out),
+            "memoryMB": _rss_mb()}
+
+
+MEM_SOFT_CAP_MB = 300            # Render Starter has 512 MB: past this, no new board read starts until memory is back under it
+
+
+def _rss_mb():
+    """This process's resident memory in MB on Linux (the host), or None where it cannot be read."""
+    try:
+        with open("/proc/self/status") as f:
+            return int(re.search(r"VmRSS:\s+(\d+)", f.read()).group(1)) // 1024
+    except (OSError, AttributeError, ValueError):
+        return None
+
+
 def _start_refresh(src):
     """Read one board in a background thread unless it is already being read. Call with _lock held. Returns the event set when it is done.
     Every read of a board goes through here, so a board is never read twice at once (on October 17 every visitor who arrived during the first
     fill read the missing boards again, alongside the warm-up)."""
     ev = _refreshing.get(src)
     if ev is None:
+        rss = _rss_mb()
+        if rss is not None and rss > MEM_SOFT_CAP_MB and _cache.get(src):      # a board with a copy waits for memory to come back down
+            done = threading.Event()
+            done.set()
+            return done
         ev = _refreshing[src] = threading.Event()
-        threading.Thread(target=_refresh_in_background, args=(src, ev), daemon=True).start()
+        # queued for FEED_PARALLEL reader threads, in the order asked (SOURCES order on a fresh start): with 500 sources a thread
+        # each, all waiting for a slot, cost about 30 MB of thread stacks
+        while len(_readers) < FEED_PARALLEL:
+            th = threading.Thread(target=_reader, daemon=True)
+            _readers.append(th)
+            th.start()
+        _to_read.put((src, ev))
     return ev
+
+
+_to_read = queue.Queue()         # (source, event) waiting to be read
+_readers = []                    # the reader threads (started on first use, FEED_PARALLEL of them)
+
+
+def _reader():
+    while True:
+        src, ev = _to_read.get()
+        try:
+            _refresh_in_background(src, ev)
+        except Exception as e:                   # never lose a reader thread
+            log_line = "[uaply] job feed reader: %s: %s\n" % (type(e).__name__, _scrub(str(e))[:200])
+            sys.stderr.write(log_line)
+
+
+FILE_SET = set(FILE_SOURCES)
+
+
+def _ttl(src):
+    """How old a board's copy may get before it is read again: its kind's TTL (2 hours for a job-boards.json board), moved by up to
+    a quarter either way by a hash of its name, so a few hundred boards do not all come due in the same minute."""
+    base = FILE_TTL if src in FILE_SET else TTL.get(src[0], DEFAULT_TTL)
+    h = int(hashlib.sha1("|".join(src).encode()).hexdigest()[:4], 16) / 65535.0
+    return base * (0.75 + 0.5 * h)
 
 
 def _load_source(src):
     """Serve what is cached right away, even if stale, and refresh it in the background. Never makes a visitor wait for a board while the
     saved list has anything to show (a board that is new, or failed last time, shows up at the next request). Only on an empty disk (the
     very first start) does the first request wait for the boards, as there is nothing else to show."""
-    ttl = TTL.get(src[0], DEFAULT_TTL)
+    ttl = _ttl(src)
     if _no_key(src[0]):
         return _fetch_source(src)                # no key: skipped right away, never served from an older copy
+    if _disabled(src):
+        with _lock:
+            c = _cache.get(src)
+        return (c["jobs"] if c else []), "off: failed %d refreshes in a row; tried again %s" % (FAIL_LIMIT, _health[src].get("retry", ""))
     with _lock:
         c = _cache.get(src)
         if c:
@@ -1446,7 +1769,8 @@ def _no_key(kind, keys=None):
 
 def _fetch_source(src):
     kind, token, name = src
-    ttl = TTL.get(kind, DEFAULT_TTL)
+    ttl = _ttl(src)
+    started = time.time()
     if _no_key(kind):
         with _lock:
             _cache.pop(src, None)               # a key that was removed stops the source at once (no copy is served from before)
@@ -1455,11 +1779,18 @@ def _fetch_source(src):
         student, other, local, old = [], [], [], 0
         now_ms = time.time() * 1000
         keep = KEEP.get(kind) if (kind != "smartrecruiters" or token in SR_WHOLE) else None   # a whole public list, or None for an employer board
+        lazy, listed = [], set()
         with _feed_slots:                        # at most FEED_PARALLEL boards downloaded and parsed at once (memory, see FEED_PARALLEL)
             for raw in _iter_raw(kind, token, name):
                 if kind not in AGE_EXEMPT and _too_old(raw, now_ms) and not (kind in EVERGREEN_KINDS and _job_type(raw) in EVERGREEN_TYPES):
                     # (before the caps, so a stale posting never takes a fresh one's place)
                     old += 1
+                    continue
+                if raw.get("lazy"):                  # Greenhouse: pick the postings to keep from the list, read their descriptions after
+                    listed.add(raw["lazy"][1])
+                    if not _us_ok(raw["loc"], bool(re.search(r"\bremote\b", raw["loc"], re.I))) or _gh_skip.get(raw["lazy"][:2]) == raw["lazy"][2]:
+                        continue                     # not a US job, or read before and not kept (no skill to score it on) and unchanged since
+                    lazy.append(raw)                 # every eligible posting, in board order (small: no description yet)
                     continue
                 # only the first STUDENT_PER_SOURCE student roles and PER_SOURCE others can be kept below, so a posting past those is not worked
                 # through at all (a big board lists hundreds; reading every one cost about 35 CPU seconds, a minute or more on a small host)
@@ -1476,6 +1807,50 @@ def _fetch_source(src):
                 j = _normalize(raw, kind, name, token)
                 if j:
                     (student if j["type"] in ("internship", "coop", "parttime") else other).append(j)
+            if lazy:
+                # in waves: as many postings as there are places left (by the type the list shows), their descriptions read, then
+                # another wave only for places a posting could not fill (nothing to score it on) - no spare description is read
+                prev = {j["id"]: j for j in (_cache.get(src) or {}).get("jobs", [])}
+                # the same split the board's jobs get below: student roles first, the rest of the 14 (at least 6) for other jobs
+                n_st = min(STUDENT_PER_SOURCE, sum(1 for r in lazy if _type(r) != "job"))
+                n_ot = max(OTHER_PER_SOURCE, PER_SOURCE - n_st)
+                for _wave in range(LAZY_WAVES):
+                    room = {"other": n_ot - len(other), "student": STUDENT_PER_SOURCE - len(student), "local": LOCAL_PER_SOURCE - len(local)}
+                    batch, rest = [], []
+                    for raw in lazy:                 # a posting not taken this wave stays for the next one
+                        b = "other" if _type(raw) == "job" else "student"
+                        if room[b] > 0:
+                            room[b] -= 1
+                            batch.append(raw)
+                        elif room["local"] > 0 and LOCAL_RE.search(raw["loc"] or ""):
+                            room["local"] -= 1
+                            batch.append(raw)
+                        else:
+                            rest.append(raw)
+                    lazy = rest
+                    if not batch:
+                        break
+                    for raw, f in zip(batch, _gh_fill(batch, prev, len(listed))):
+                        if f is None:
+                            continue
+                        if "role" in f:              # the job made last time, unchanged
+                            j = f
+                        else:
+                            j = _normalize(f, kind, name, token)
+                            seen = f.get("_seen")
+                            if seen:
+                                (_gh_seen if j else _gh_skip)[seen[:2]] = seen[2]
+                        if not j:
+                            continue
+                        bucket, cap = (other, PER_SOURCE) if j["type"] == "job" else (student, STUDENT_PER_SOURCE)
+                        if len(bucket) < cap:
+                            bucket.append(j)
+                        elif len(local) < LOCAL_PER_SOURCE and LOCAL_RE.search(j["loc"]):
+                            local.append(j)
+                with _lock:                          # forget postings no longer on the board
+                    for m in (_gh_seen, _gh_skip):
+                        for key in [k for k in m if k[0] == token and k[1] not in listed]:
+                            del m[key]
         # keep the student-type roles first (a board can list hundreds of senior roles ahead of its internships)
         if keep:
             jobs = (student + other)[:keep]
@@ -1494,13 +1869,17 @@ def _fetch_source(src):
             why = "the feed refused the key (HTTP %d); check it on the setup page" % e.code
         status = "error: %s" % why[:80]
         sys.stderr.write("[uaply] job feed %s failed: %s\n" % ("/".join(src), why[:200]))      # the reason is kept in the server's own log
+        _note_health(src, False, error=why, ms=int((time.time() - started) * 1000))
+        _version[0] += 1
         with _lock:
             if c:
                 c["at"] = time.time() - ttl + 120   # retry in two minutes
             else:
                 _failed[src] = (time.time(), status)   # nothing to fall back on: say so, and try again in two minutes (not at every request)
         return jobs, status
+    _note_health(src, True, jobs=len(jobs), ms=int((time.time() - started) * 1000))
     with _lock:
+        _version[0] += 1
         _cache[src] = {"at": time.time(), "jobs": jobs, "status": status}
         _failed.pop(src, None)
         _disk["dirty"] = True
@@ -1720,6 +2099,22 @@ _LOAD_SOURCE = _load_source
 
 
 def get_jobs():
+    """The job list as one dict (see the module notes): each job a copy with postedDays (and updatedDays), a feed job without its email
+    description, a connected employer's posting marked as applied to directly."""
+    picked, meta, now_ms, conns = _collect()
+    jobs = [_out_job(j, now_ms, conns, feed) for j, feed in picked]
+    return dict(meta, jobs=jobs)
+
+
+def _out_job(j, now_ms, conns, feed):
+    out = _with_age(j, now_ms, drop=("desc",) if feed else ())
+    if conns and _connected(out, conns):        # marked on the copy, so the shared cache stays as fetched
+        out.update(apply="direct", instant=True)
+    return out
+
+
+def _collect():
+    """The jobs to show, as (cached job, is it a feed job) in order, without copying any, plus the list's other fields."""
     _load_disk()
     allowed = feeds_allowed()
     sources = [s for s in SOURCES if s[0] in allowed]
@@ -1727,6 +2122,7 @@ def get_jobs():
     # (about 30 MB of the 135 MB peak, October 21, 2026). The boards themselves are read in the background (_start_refresh).
     if _load_source is _LOAD_SOURCE:                 # (a test that stands in its own _load_source reads nothing)
         _start_missing(sources)
+        _start_link_check()
     results = [_load_source(src) for src in sources]
     _disk["filled"] = True
     jobs, seen, same, summary = [], set(), {}, {}            # same: a job's _same_job_key -> the source that listed it first
@@ -1735,15 +2131,16 @@ def get_jobs():
     for pj in partner_jobs():
         seen.add(pj["id"])
         same[_same_job_key(pj)] = "partner"  # a feed's copy of a partner's posting is dropped below: the partner's own one can really be applied to
-        jobs.append(_with_age({k: v for k, v in pj.items() if k != "contact"} if pj.get("emp") else pj, now_ms))    # an employer's account email stays on this server
+        jobs.append(({k: v for k, v in pj.items() if k != "contact"} if pj.get("emp") else pj, False))    # an employer's account email stays on this server
     summary["Partner employers"] = "%d jobs" % len(jobs)
     # Feeds in SOURCES order, so when two feeds carry the same job the employer's own board (listed first) is the copy that is kept.
     # Only copies from two different feeds are merged: one employer listing a title twice in one place (the City's two "Technical Support
     # Specialist" postings are for different departments) keeps both, as they can be two openings.
     for src, (js, status) in zip(sources, results):
         summary[src[2] + ("/" + src[1] if src[0] in MULTI else "")] = "unavailable right now" if hide_errors and status.startswith("error") else status
+        dead = (_links.get(src) or {}).get("dead_ids") or ()
         for j in js:
-            if j["id"] in seen:
+            if j["id"] in seen or j["id"] in dead:      # a job whose apply link was found dead is not shown (check_links)
                 continue
             if src[0] not in AGE_EXEMPT and _too_old(j, now_ms) and not (src[0] in EVERGREEN_KINDS and j.get("jobType") in EVERGREEN_TYPES):
                 # (a saved copy can be up to a day old: one that turned 60 days since goes now)
@@ -1755,15 +2152,44 @@ def get_jobs():
                 continue
             seen.add(j["id"])
             same.setdefault(key, src)
-            jobs.append(_with_age(j, now_ms))
+            # a feed job's 650-character description is only for the emails (the server reads it from its own copy, job_info): it was
+            # half of the list's size, so the app is sent the card's blurb only (see _out_job)
+            jobs.append((j, True))
     if not sources:
         summary["Third-party feeds"] = "off (not verified as permitted)"
     conns = ats_connections()
-    if conns:           # a posting whose employer connected is marked here, on a copy, so the shared cache stays as fetched
-        jobs = [dict(j, apply="direct", instant=True) if _connected(j, conns) else j for j in jobs]
     _save_disk()
-    return {"fetched_at": int(time.time()), "sources": summary, "jobs": jobs, "merged": merged, "aged_out": aged}
+    pending = sum(1 for v in summary.values() if v == "loading")
+    return jobs, {"fetched_at": int(time.time()), "sources": summary, "merged": merged, "aged_out": aged, "pending": pending}, now_ms, conns
 
 
-def get_json():
-    return json.dumps(get_jobs()).encode("utf-8")
+JSON_MEMO_S = 20                 # seconds the encoded job list is reused while nothing changed (a few thousand jobs are megabytes to encode)
+_json_memo = {"key": None, "at": 0.0, "gz": b"", "pending": 0}
+_json_lock = threading.Lock()
+_version = [0]                   # raised whenever a source's copy or status changes
+
+
+def get_json(compressed=False):
+    """The job list as JSON bytes (gzip-compressed with compressed=True), encoded once and reused for up to JSON_MEMO_S seconds while no
+    source, partner posting or connected hiring system changed: every visitor's request used to build and encode the whole list again."""
+    import gzip
+    pj = partner_jobs()
+    key = (_version[0], tuple((j.get("id"), j.get("closed"), j.get("posted"), j.get("role")) for j in pj), tuple(sorted(ats_connections())), hide_errors)
+    with _json_lock:
+        m = _json_memo
+        age = time.time() - m["at"]
+        # while sources are still loading (a fresh start) the list changes all the time: it is rebuilt at most every 3 seconds, however many
+        # visitors' apps ask again meanwhile; once everything is in, it is reused until something changes (or JSON_MEMO_S passes)
+        reuse = bool(m["gz"]) and ((m.get("pending") and age <= 3) or (not m.get("pending") and m["key"] == key and age <= JSON_MEMO_S))
+        if not reuse:
+            # written one job at a time straight into the compressor: no copy of the whole list, no megabytes of text at once (at 7,000
+            # jobs the copies and the text were about 30 MB on top of the jobs themselves); only the compressed list is kept
+            picked, meta, now_ms, conns = _collect()
+            z = zlib.compressobj(5, zlib.DEFLATED, 31)          # 31: a gzip stream
+            parts = [z.compress(json.dumps(meta)[:-1].encode("utf-8") + b', "jobs": [')]
+            for i, (j, feed) in enumerate(picked):
+                parts.append(z.compress((b"," if i else b"") + json.dumps(_out_job(j, now_ms, conns, feed)).encode("utf-8")))
+            parts.append(z.compress(b"]}") + z.flush())
+            m.update(key=(_version[0],) + key[1:], at=time.time(), gz=b"".join(parts), pending=meta.get("pending", 0))
+            del parts, picked
+        return m["gz"] if compressed else gzip.decompress(m["gz"])
