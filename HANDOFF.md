@@ -27,7 +27,7 @@ work of each release is in `CHANGELOG.md`. The live record of tasks is the Trell
 |---|---|---|---|
 | Live site | `dev` | https://uaply.net through Cloudflare (CNAMEs `@` and `www` to `uaply.onrender.com`, **Proxied**, SSL/TLS **Full (strict)**) → Render service `uaply` (`srv-db9i3i6q1p3s738b5b4g`, workspace `tea-db9duku1egvs73et93k0`, Starter, Virginia, https://uaply.onrender.com) | Runs **rc.13** (`e6aced4`, PR #45). `/api/status`: persistent disk, email (Brevo) on, Google sign-in on, payments on in Stripe **test** mode, AI answers off, owner pages on. Health check `/healthz`. |
 | Sandbox | `sandbox` | the owner's computer only (`python serve.py 8766 sandbox --api`); no sandbox service on Render | Everything past rc.13: the next release candidate (below). |
-| Hosted previews | | retired October 21 | The repository is private, so GitHub Pages cannot publish; run sandbox and dev locally instead. `.github/workflows/check.yml` ("Check the code") is the workflow that matters. |
+| Hosted previews | `sandbox`, `dev` | https://saifsiddiqueep-sketch.github.io/uaply/sandbox.html and /dev.html (GitHub Pages); second copy: https://uaply-sandbox-preview.onrender.com/sandbox.html | Back on October 22 while the repository is public until launch: `.github/workflows/pages.yml` builds them with `node share/build-share.js --full` on each push. Static copies with example jobs and no server; they say so (preview wording). |
 | Owner's computer | all | 8765 prod (`main`), 8766 sandbox, 8767 dev (`start-uaply.bat`) | The full suite (`bash tools/run-all-tests.sh`) and the Galaxy phone walk (`node tools/phone-walk.js`) run here. |
 
 Render's Environment for `uaply` (names only; the values are the owner's): `OWNER_PASSWORD`, `UAPLY_CONFIG_JSON` (Brevo SMTP, Google
