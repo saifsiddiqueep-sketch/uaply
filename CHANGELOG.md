@@ -6,6 +6,24 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 
+### A swipe right only sends a complete application (the front end of the readiness rule)
+- **The minimum, in one place.** `READY_MIN` in `shared/uaply-nav.js`: a name, an email employers can reply to, and a phone number or a
+  resume. The deck, the cards and every checklist read it. Below it, a swipe right (finger, Apply or the arrow key) opens **Finish your
+  profile first** with exactly what is missing, sends nothing, and the card stays on top.
+- **A checklist** on Account and at the bottom of the last setup step: name, email, phone, resume, work authorization, education, city,
+  earliest start. Each missing item is one tap from its field (the setup step opens with the field focused).
+- **Ready or not, on each card.** A connected employer's form is read ahead through the new `POST /api/apply/plan` (the same reading a
+  swipe right does, nothing recorded or sent), kept per posting until the profile or a saved answer changes: **Ready to apply** or **N
+  answers needed** (also Sign in to apply, Finish on their site). Email employers and hand-offs say **Ready**.
+- **At the swipe** the question box asks only what is missing; answered, it sends. Left for later (or a resume file to add), the job waits
+  in Job Tracker as **Not sent yet** with **Answer now** (it used to go back to the deck).
+- **Learning:** each question an employer's form asked is counted by its key and kind (no answer, no person), in the instance's own
+  `question-stats.json`; `/api/status` shows the counts to the owner only.
+- Tests: `tools/test-swipe-e2e.py` runs `tools/ui-swipe-ready.js` (every apply path with no phone, no resume, no work authorization, below
+  the minimum, and an employer's own question on four systems) and `tools/ui-ready-walk.js` (a half-finished student at 390 x 844 and
+  1280 x 800, by finger). The stand-in Greenhouse now checks every form's required questions and every stand-in records what it refused
+  (`/__rejected`, which must stay empty). Server-side refusal of incomplete applications is UAP-10.
+
 ### Taps and focus: no blue tap box, a keyboard ring that matches the app
 - On Android, tapping "Try again" on the starting-up screen painted Chrome's default light-blue rectangle over the round button (the
   owner saw it on a Galaxy A17). One rule, `shared/uaply-focus.css`, now goes word for word into every page UAply serves (the app,

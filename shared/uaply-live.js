@@ -112,6 +112,8 @@ function apply(w,host){
 /* ---------------- kit + submit ---------------- */
 function kitPatch(s){
   if(s.indexOf("__uaplyOnDecision")>-1)return s;
+  s=once(s,'var card=$("deck").querySelector(".card.top");if(!card)return;\n  busy=true;',
+    'var card=$("deck").querySelector(".card.top");if(!card)return;\n  if(dir==="applied"&&window.__uaplyReadyGate&&window.__uaplyReadyGate(JOB_BY_ID[+card.getAttribute("data-id")])){card.style.transition="";clearCardStyle(card);return}\n  busy=true;');
   s=once(s,"S.history.push(id);S.tips=false;save();busy=false;renderAll();",
     "S.history.push(id);S.tips=false;save();busy=false;renderAll();if(window.__uaplyOnDecision)window.__uaplyOnDecision(dir,job,m,S.profile,undo,S,save);");
   /* Undo (the button or Z) on an application that already went out: say so, because undo only takes it off the list */
@@ -602,6 +604,8 @@ function kitApply(w,host){
     function undoThis(){revert()}
     function savedToast(){toast("Saved "+job.co+" to Applied · "+m.pct+"% match","Undo",undoThis,9000)}
     function mark(status,to){var dec=S&&S.decisions&&S.decisions[job.id];if(dec){dec.sent={at:Date.now(),to:to||"",status:status};if(save)save();if(w.__uaplyTrack)w.__uaplyTrack()}}   /* the Applied list, if it is open, shows the new state at once */
+    var rdy=w.__uaplyReadiness?w.__uaplyReadiness():null;
+    if(rdy&&!rdy.min&&!retry){revert();if(w.__uaplyFinishProfile)w.__uaplyFinishProfile(job);return}
     if(!(p.name&&EMAIL.test(p.email||"")&&(!live||p.custom))){
       revert();toast("Add your name and email in Profile setup, under About you, so employers can reply. "+job.co+" is back in your deck.","Open Profile",function(){openProfile("about")},9000);return;
     }
@@ -637,9 +641,12 @@ function kitApply(w,host){
           var qs=Array.isArray(j.questions)?j.questions:[];
           if(retry||!qs.length){mark("needs_answers");return}      /* asked when the person taps Answer now in Applied */
           /* marked before the box opens: if the person leaves it open, goes to Applied or closes the app, the job says "Not sent yet",
-             never a plain "Applied" for an application nothing was sent for. Sending replaces the mark; Not now takes the swipe back */
+             never a plain "Applied" for an application nothing was sent for. Sending replaces the mark; Not now leaves it waiting with Answer now */
           mark("needs_answers");
-          askSheet(job,qs,j.filled||0,j.total||0,deliver,function(){revert();toast("Not sent. "+job.co+" is back in your deck.")});
+          askSheet(job,qs,j.filled||0,j.total||0,deliver,function(){
+            if(!(S&&S.decisions&&S.decisions[job.id]))return;
+            mark("needs_answers");toast("Not sent yet: "+job.co+" waits in Job Tracker. Tap Answer now there when you're ready.","","",9000);
+          });
           return;
         }
         if(j.status==="duplicate"){             /* sent before (then undone, or from another device): show what happened that time */
@@ -678,6 +685,72 @@ function kitApply(w,host){
     }
     timer=setInterval(tick,1000);tick();
   }
+
+
+  /* ---------- ready or not, on each card, before the swipe (the owner's rule, October 21) ----------
+     A job whose employer connected its hiring system: the posting's own form is read ahead (POST /api/apply/plan: the same reading a swipe
+     right does, nothing recorded or sent), kept per posting until the profile or a saved answer changes, and the card says "Ready to apply"
+     or "N answers needed". An employer who takes email, and every hand-off: "Ready" once the profile has READY_MIN. Below it, every card
+     says "Finish your profile", and a swipe right opens "Finish your profile first" instead of applying (__uaplyReadyGate). */
+  var RDY={},RDYQ={};
+  function rdyApplies(job){return !!(job&&w.__uaplySubmitOn&&w.__uaplyMode&&!(w.__uaplyPreview&&w.__uaplyPreview())&&(job.live||w.__uaplyMode==="test"))}
+  function rdyConnected(job){return !!(job.live&&job.instant&&!job.contact&&!job.webhook)}
+  function rdyPayload(job){
+    var p=(w.__uaply&&w.__uaply.S.profile)||{},res=w.__uaplyResume?w.__uaplyResume():null;
+    return {plan_only:true,match:0,job:{id:job.id,co:job.co,role:job.role,url:job.url||"https://example.com/example-listing",source:job.source,loc:job.loc,contact:job.contact||"",mode:job.mode,type:job.type||"job",sal:job.sal,blurb:job.blurb},
+      profile:{name:p.name,email:p.email,title:p.title,years:p.years,skills:p.skills,loc:p.loc,edu:p.edu,ext:(w.__uaplyApplyExt?w.__uaplyApplyExt():(p.ext||{}))},
+      resume:res&&res.name?{name:res.name,present:true}:null,answers:savedAnswers()};
+  }
+  function rdySig(pl){var s=JSON.stringify([pl.profile,pl.resume,pl.answers,(w.__uaplyAuth&&w.__uaplyAuth()||{}).user||null]),h=0;for(var i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return String(h)}
+  function rdyFromPlan(r){
+    var j=r.j||{};
+    if(r.ok&&j.status==="ready")return {k:"ok",t:"Ready to apply"};
+    if(r.ok&&j.status==="needs_answers"){var n=(j.questions||[]).length;return {k:"need",t:n===1?"1 answer needed":n+" answers needed",n:n}}
+    if(r.ok&&j.status==="handoff")return {k:"ext",t:"Finish on their site"};
+    if(j.code==="signin")return {k:"need",t:"Sign in to apply"};
+    if(j.code==="verify")return {k:"need",t:"Verify your email to apply"};
+    return null;                                             /* already applied, or the form could not be read: no promise either way */
+  }
+  /* the card's state now (null: nothing to show yet); a connected employer's form is read once per posting and profile */
+  function rdyState(job,then){
+    var r=w.__uaplyReadiness?w.__uaplyReadiness():{min:true};
+    if(!r.min)return {k:"need",t:"Finish your profile"};
+    if(!rdyConnected(job))return {k:"ok",t:"Ready"};
+    var pl=rdyPayload(job),sig=rdySig(pl),c=RDY[job.id];
+    if(c&&c.sig===sig)return c.st;
+    if(RDYQ[job.id]!==sig){
+      RDYQ[job.id]=sig;
+      post("/api/apply/plan",pl).then(function(res){RDY[job.id]={sig:sig,st:rdyFromPlan(res)};delete RDYQ[job.id];rdyPaint();if(then)then()},
+        function(){delete RDYQ[job.id];if(then)then()});
+    }
+    return undefined;                                        /* asked; the card is painted again when the answer arrives */
+  }
+  function rdyPaint(){
+    var deck=d.getElementById("deck"),A=w.__uaply;if(!deck||!A)return;
+    [].slice.call(deck.querySelectorAll(".card")).forEach(function(card){
+      var id=+card.getAttribute("data-id"),job=null;for(var i=0;i<A.JOBS.length;i++)if(A.JOBS[i].id===id){job=A.JOBS[i];break}
+      var st=job&&rdyApplies(job)?rdyState(job):null,el=card.querySelector(".facts .rdy");
+      if(!st){if(el&&st===null)el.remove();return}
+      if(!el){var f=card.querySelector(".facts");if(!f)return;el=d.createElement("span");f.appendChild(el)}
+      var cls="rdy "+st.k;if(el.className!==cls)el.className=cls;if(el.textContent!==st.t)el.textContent=st.t;
+    });
+  }
+  (function(){var deck=d.getElementById("deck");if(deck&&w.MutationObserver){var busyP=false;new w.MutationObserver(function(){if(busyP)return;busyP=true;w.setTimeout(function(){busyP=false;rdyPaint()},0)}).observe(deck,{childList:true,subtree:true})}})();
+  /* for the browser tests: the state a card for this job shows once its plan is in */
+  w.__uaplyReadyOf=function(id){
+    var A=w.__uaply,job=null;for(var i=0;i<A.JOBS.length;i++)if(A.JOBS[i].id===id){job=A.JOBS[i];break}
+    if(!job||!rdyApplies(job))return Promise.resolve(null);
+    return new Promise(function(done){var st=rdyState(job,function(){var s2=rdyState(job);done(s2===undefined?null:s2)});if(st!==undefined)done(st)});
+  };
+  /* a swipe right below READY_MIN, wherever it comes from (a finger, Apply, the arrow key): nothing happens to the card, and the box says
+     what is missing (called by prod's decide(), patched in kitPatch, before the card moves) */
+  w.__uaplyReadyGate=function(job){
+    if(!job||!rdyApplies(job))return false;
+    var r=w.__uaplyReadiness?w.__uaplyReadiness():null;
+    if(!r||r.min)return false;
+    if(w.__uaplyFinishProfile)w.__uaplyFinishProfile(job);
+    return true;
+  };
 
   w.__uaplyOnApplied=sheet;   /* tells the live patch the apply assistant is on */
   w.__uaplyOnDecision=function(dir,job,m,p,undo,S,save){

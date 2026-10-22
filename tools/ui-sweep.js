@@ -40,6 +40,8 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
   const setVal = (id, v) => ev("(()=>{const e=" + F + ".getElementById('" + id + "');if(!e)return false;e.value=" + JSON.stringify(v) + ";e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));return true})()");
   check("profile name field", await setVal("pName", "Test User"));
   check("profile email field", await setVal("pEmail", "sweep.tester@example.com"));
+  // a phone number too: a swipe right needs a name, an email and a phone number or a resume before it can apply (October 21)
+  check("profile phone field", await setVal((await ev("!!" + F + ".getElementById('px-phone')")) ? "px-phone" : "pPhone", "+1 215 555 0100"));
   await setVal("pSkills", "Python, SQL, Git");
   await ev("(()=>{const f=" + F + ".getElementById('wzNext');f.click();return true})()");
   await sleep(800);

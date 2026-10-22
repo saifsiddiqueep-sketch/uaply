@@ -76,7 +76,8 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   const swipe = (id) => q("const A=w.__uaply,job=A.JOBS.find(j=>j.id===" + id + ");if(!job)return 'no job';const m=A.evaluate(job,A.S.profile);" +
     "A.S.decisions[job.id]={s:'applied',at:Date.now(),pct:m.pct,as:A.S.profile.name,title:A.S.profile.title};A.S.history.push(job.id);A.save();A.renderAll();" +
     "w.__uaplyOnDecision('applied',job,m,A.S.profile,function(){},A.S,A.save);return 'ok'");
-  const status = (id) => waitFor("const x=w.__uaply.S.decisions[" + id + "];return x&&x.sent&&x.sent.status&&x.sent.status!=='pending'?x.sent.status:''", 15000);
+  // a final status: "needs_answers" is marked while the question box is open, so it is not the end of a send
+  const status = (id) => waitFor("const x=w.__uaply.S.decisions[" + id + "];return x&&x.sent&&x.sent.status&&x.sent.status!=='pending'&&x.sent.status!=='needs_answers'?x.sent.status:''", 15000);
   const toastText = () => q("const t=d.getElementById('kitToast');return t?t.innerText.replace(/\\s+/g,' '):''");
   const openApplied = async () => { await q("d.getElementById('nb-dash').click();return 1"); await sleep(300); await q("[...d.querySelectorAll('.nitem')].find(b=>b.getAttribute('data-v')==='applied').click();return 1"); await sleep(800); };
   const rowOf = async (id) => { await openApplied(); return JSON.parse(await q("const r=[...d.querySelectorAll('#pane-track .row')].find(r=>r.querySelector('[data-id=\"" + id + "\"]'));if(!r)return 'null';return JSON.stringify({chip:(r.querySelector('.stchip')||{}).textContent||'',links:[...r.querySelectorAll('.joblinks .linkbtn')].map(x=>x.innerText.trim()),text:r.innerText.replace(/\\s+/g,' ')})") || "null"); };

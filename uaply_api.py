@@ -167,6 +167,7 @@ def init(instance):
     mailer.init(DATA)                                      # mail held for later (quota, a mail service that is down) is kept per instance
     APPS.clear()
     DECISIONS.clear()
+    _QSTATS.update(loaded=False, data=None)               # read again from this instance's own folder
     _load()
 
 
@@ -286,8 +287,8 @@ def _application_text(c, job, note=""):
     return body + _detail_text(c, note)
 
 
-def _validate(p):
-    if p.get("consent") is not True:
+def _validate(p, plan_only=False):
+    if p.get("consent") is not True and not plan_only:
         return "Consent is required to send an application."
     job, prof = p.get("job"), p.get("profile")
     if not isinstance(job, dict) or not isinstance(prof, dict):
@@ -308,6 +309,68 @@ def _validate(p):
     if note is not None and (not isinstance(note, str) or len(note) > 4000):
         return "The note must be at most 4000 characters."
     return None
+
+
+_QSTATS = {"loaded": False, "data": None}
+_QSTATS_LOCK = threading.Lock()
+
+
+def _qstats_load():
+    if not _QSTATS["loaded"]:
+        try:
+            with open(os.path.join(DATA, "question-stats.json"), encoding="utf-8") as f:
+                d = json.load(f)
+            _QSTATS["data"] = d if isinstance(d, dict) and isinstance(d.get("questions"), dict) else None
+        except Exception:
+            _QSTATS["data"] = None
+        _QSTATS["loaded"] = True
+    if _QSTATS["data"] is None:
+        _QSTATS["data"] = {"since": int(time.time()), "asked": 0, "kinds": {}, "questions": {}}
+    return _QSTATS["data"]
+
+
+def note_questions(missing, system, job_id=0):
+    """Remember which questions employers' forms asked that the profile could not answer: the question's key (the employer's own wording,
+    lower case, the company's name taken out), its kind and the hiring system, with a count. No answer, no person, no company. Profile setup
+    can grow to cover the most-asked ones (owner-only in /api/status)."""
+    try:
+        with _QSTATS_LOCK:
+            d = _qstats_load()
+            for m in missing[:20]:
+                key = _s(m.get("key"), 160)
+                kind = _s(m.get("kind"), 20) or "text"
+                if not key:
+                    continue
+                d["asked"] = int(d.get("asked") or 0) + 1
+                d["kinds"][kind] = int(d["kinds"].get(kind) or 0) + 1
+                q = d["questions"].get(key) or {"kind": kind, "n": 0, "systems": {}, "jobs": []}
+                q["n"] = int(q.get("n") or 0) + 1                  # times asked (the same person asked again counts again)
+                q["kind"] = kind
+                jobs = q.get("jobs") if isinstance(q.get("jobs"), list) else []
+                if job_id and job_id not in jobs:
+                    jobs = (jobs + [job_id])[-200:]                 # the postings that asked it (UAply's own job numbers, nothing about a person)
+                q["jobs"] = jobs
+                q["systems"][system] = int(q["systems"].get(system) or 0) + 1
+                d["questions"][key] = q
+            if len(d["questions"]) > 400:                   # keep the most asked
+                for k in sorted(d["questions"], key=lambda k: d["questions"][k]["n"])[:len(d["questions"]) - 400]:
+                    d["questions"].pop(k, None)
+            os.makedirs(DATA, exist_ok=True)
+            tmp = os.path.join(DATA, "question-stats.json.tmp")
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(d, f)
+            os.replace(tmp, os.path.join(DATA, "question-stats.json"))
+    except Exception as e:                                  # never let counting break a swipe
+        sys.stderr.write("[uaply] question stats not saved: %s\n" % type(e).__name__)
+
+
+def question_stats(top=25):
+    """For the owner: how many questions were asked, by kind, and the most-asked ones."""
+    with _QSTATS_LOCK:
+        d = _qstats_load()
+        qs = sorted(d["questions"].items(), key=lambda kv: -kv[1]["n"])[:top]
+        return {"since": d.get("since"), "asked": d.get("asked", 0), "kinds": dict(d["kinds"]),
+                "top": [{"key": k, "kind": v["kind"], "n": v["n"], "postings": len(v.get("jobs") or []), "systems": dict(v["systems"])} for k, v in qs]}
 
 
 def _simulated_recipient(co):
@@ -756,7 +819,10 @@ def email_events(body, authorization):
 def submit(p, user=None, site=""):
     """Returns (http_status, dict). `user` is the signed-in account ({id, email}) or None. `site` is the address the person is using
     (for the link in their receipt)."""
-    err = _validate(p)
+    # plan_only (POST /api/apply/plan): read the posting's own form the way a swipe right does and say what it would ask, without recording
+    # or sending anything. The card shows "Ready to apply" or "N answers needed" from it, before the swipe (uaply-live.js, readiness).
+    plan_only = p.get("plan_only") is True
+    err = _validate(p, plan_only)
     if err:
         return 400, {"error": err}
     cfg = config()
@@ -786,7 +852,13 @@ def submit(p, user=None, site=""):
     cand["skills"] = [_s(x, 40) for x in (skills if isinstance(skills, list) else [])[:30] if isinstance(x, str)]
     cand["ext"] = _ext(prof.get("ext"))
     try:
-        resume_meta, resume_bytes = _resume(p.get("resume"))
+        rz = p.get("resume")
+        if plan_only and isinstance(rz, dict) and rz.get("present") is True:
+            # a plan only needs to know there is a resume (the file itself stays on the device until a real swipe sends it)
+            resume_meta = {"name": re.sub(r"[^\w. -]", "_", _s(rz.get("name"), 120)).strip() or "resume.pdf", "size": 0, "type": "application/octet-stream"}
+            resume_bytes = b"(the resume this person has; a plan does not carry it)"
+        else:
+            resume_meta, resume_bytes = _resume(rz)
     except (ValueError, TypeError):
         return 400, {"error": "Your resume file could not be used. Replace it in Profile setup, under Background and links, with a PDF, Word or text file under 1 MB."}
     if resume_meta:
@@ -828,7 +900,7 @@ def submit(p, user=None, site=""):
             return 403, {"error": "Verify your email first (Profile, Account) so the employer can trust your address.", "code": "verify"}
         if cand["email"] != user["email"].lower():
             return 400, {"error": "Use your account email in Profile setup, under About you, so the employer replies to an address you verified."}
-        if p.get("confirm_real") is not True:
+        if p.get("confirm_real") is not True and not plan_only:
             return 400, {"error": "Live sending needs the user to review and press Send."}
 
     # Autofill: read the job's real application form (Greenhouse publishes it) and answer it from the profile and saved answers.
@@ -849,14 +921,24 @@ def submit(p, user=None, site=""):
         # connected (never in test mode, which must not use an employer's key). A question the app cannot ask (a file other than the resume, a
         # type UAply cannot fill) is not asked: the send then reports it and the person finishes on the employer's page.
         plan = ats_api.plan(ats["kind"], ats["id"], ats["key"], cand, job, note, resume_meta if resume_bytes else None, answers, ats.get("board") or "")
-    if plan and any(m.get("kind") == "other" for m in plan["missing"]):
+    cannot = bool(plan and any(m.get("kind") == "other" for m in plan["missing"]))
+    if cannot:
         # a required question the app cannot ask on screen (a file other than the resume, a field type UAply does not know): nothing is
         # asked, the send reports it, and the person finishes on the employer's page (for every hiring system)
         plan = dict(plan, missing=[])
         preview = False                                    # the sandbox's simulated send would claim a form that cannot be finished here
     if plan and plan["missing"] and (preview or (policy == "direct" and ats)):
         pub = autofill.public_plan(plan)
+        if not plan_only:
+            note_questions(pub["missing"], (ats or gh or {}).get("kind") or "greenhouse", job["id"])
         return 200, {"status": "needs_answers", "mode": mode, "questions": pub["missing"], "filled": pub["filled"], "total": pub["total"]}
+    if plan_only:
+        # what the swipe would do now: send (ready), finish on the employer's page (handoff: an employer who did not connect, or a required
+        # question UAply cannot ask on screen). "known" says whether the posting's own form was read.
+        out = {"status": "handoff" if (cannot and ats) or (policy != "direct" and not preview) else "ready", "mode": mode, "known": bool(plan)}
+        if plan:
+            out.update(filled=plan["filled"], total=plan["total"])
+        return 200, out
     summary = ({"filled": plan["filled"], "total": plan["total"],
                 "items": [{"q": i["q"][:160], "a": i["a"][:200]} for i in plan["items"] if i["a"] and not i.get("skip")][:40]} if plan else None)
     if cand["ext"]["salary"] and not (plan and plan.get("salary_sent")):

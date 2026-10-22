@@ -156,6 +156,16 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
 
   // swiping right on a real job: consent once, then the hand-off to the employer's own page, and it appears under Applied
   await pick("nb-svc", "Internships"); await sleep(800);
+  // first with the example profile: the release build never applies with it; "Finish your profile first" says what is missing, the card stays
+  const top0 = await ev("(()=>{const c=" + F + ".querySelector('.card.top');return c?+c.getAttribute('data-id'):0})()");
+  await ev(F + ".getElementById('btnYes').click()"); await sleep(1200);
+  const fin = await ev("(()=>{const b=" + F + ".getElementById('rdyBox');return b?b.innerText.split(/\\s+/).join(' '):''})()");
+  check("a swipe right with the example profile opens Finish your profile first, and the card stays", /^Finish your profile first/.test(fin) &&
+    (await ev("(()=>{const c=" + F + ".querySelector('.card.top');return c?+c.getAttribute('data-id'):0})()")) === top0, fin.slice(0, 120));
+  await ev("(()=>{const b=" + F + ".getElementById('rdyNo');if(b)b.click()})()"); await sleep(300);
+  // then with the least a swipe needs: a name, an email and a phone number
+  await ev("(()=>{const A=document.querySelector('iframe').contentWindow.__uaply;Object.assign(A.S.profile,{name:'Release Tester',email:'release.tester@example.com',custom:true});A.S.profile.ext=Object.assign({},A.S.profile.ext,{phone:'+1 215 555 0100'});A.save();A.renderAll()})()");
+  await sleep(600);
   await ev(F + ".getElementById('btnYes').click()"); await sleep(1200);
   check("no agreement box at the first swipe right (it was answered at first open)", !(await ev("!!" + F + ".getElementById('kcYes')")));
   await ev("(()=>{const m=" + F + ".getElementById('kcYes');if(m)m.click()})()"); await sleep(2200);

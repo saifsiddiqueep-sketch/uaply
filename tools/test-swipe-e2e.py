@@ -15,6 +15,13 @@ with the emailed code, a Word resume read into the profile, one swipe right per 
   limit        with payments on, an account that used its 50 free applications this week is refused with the plain sentence, nothing is
                sent, and /api/billing/status shows the week used up
   status       /api/status reports the apply engine healthy, with jobs of each configured apply class
+  readiness    (tools/ui-swipe-ready.js) the same paths with a half-finished profile: below the minimum, no phone, no resume, no work
+               authorization, and an employer's own question: a swipe right ends only the way the employer's form calls for (Finish your
+               profile first, the question box with only what is missing, Not sent yet, sent, or the hand-off); the card said so before the
+               swipe; no hiring system ever refused an application (an incomplete one never got that far); the question types asked are
+               counted for the owner in /api/status, with no answer and no person in them
+  walk         (tools/ui-ready-walk.js, at 390x844 and 1280x800) a student with a half-finished profile swipes right with a finger, sees
+               exactly what is missing, adds it in one tap, answers the employer's one question, and the application is sent
 The per-system request rules live in tools/mock-ats.py and tools/test-ats-flow.py (42 checks, in-process); this run is the whole journey."""
 import base64
 import hashlib
@@ -73,6 +80,52 @@ EMPLOYERS = [
     {"name": "Handoff Co", "consent": CONSENT, "url": "https://boards.greenhouse.io/handoffco/jobs/77",
      "jobs": [{"role": "Growth Marketer", "skills": ["HubSpot"], "loc": "Remote (US)"}]},
 ]
+# the readiness jobs: each apply path once per half-finished profile (distinct roles, so no swipe is a duplicate of another), and an
+# employer's own question on four hiring systems. [path, employer, ats job id or None]
+STATES = ["below-min", "no-phone", "no-resume", "no-auth"]
+RPATHS = [("gh", "Acme Robotics", "1001"), ("ghphone", "Acme Robotics", "1010"), ("ghauth", "Acme Robotics", "1002"), ("lever", "Acme Lever", "posting-uuid-9"),
+          ("ashby", "Acme Ashby", "11111111-1111-4111-8111-111111111111"), ("sr", "City of Philadelphia", "aaaaaaaa-0000-4000-8000-000000000001"),
+          ("wk", "Acme Works", "WK00000001"), ("mail", "Mail Co", None), ("handoff", "Handoff Co", None)]
+QPATHS = [("ghq", "Acme Robotics", "1003"), ("ashbyq", "Acme Ashby", "33333333-3333-4333-8333-333333333333"),
+          ("srq", "City of Philadelphia", "aaaaaaaa-0000-4000-8000-000000000003"), ("wkq", "Acme Works", "WK00000003")]
+WALK = {"390": ("Acme Robotics", "Campus Ambassador (walk 390)", "1002"), "1280": ("Acme Robotics", "Campus Ambassador (walk 1280)", "1002")}
+READY = {"jobs": {}, "expect": {}, "asks": {}, "cards": {}}
+by_name = {e["name"]: e for e in EMPLOYERS}
+
+
+def add_job(co, role, ats_id):
+    j = {"role": role, "skills": ["Canva", "HubSpot"], "loc": "Remote (US)"}
+    if ats_id:
+        j["ats_job_id"] = ats_id
+    by_name[co]["jobs"].append(j)
+    return jid(co, role)
+
+
+for st in STATES:
+    for path, co, ats_id in RPATHS:
+        key = st + "|" + path
+        READY["jobs"][key] = add_job(co, "Readiness %s %s" % (path, st), ats_id)
+        # what the employer's form calls for, from the stand-in forms (tools/mock-ats.py): not from what the app happens to do
+        want = "handoff" if path == "handoff" else "sent"
+        if st == "below-min":
+            want = "profile"                                    # nothing has the minimum: no path may apply
+        elif st == "no-phone" and path == "ghphone":
+            want = "ask"                                        # Greenhouse 1010 requires a phone number
+            READY["asks"][key] = "phone"
+        elif st == "no-resume" and path in ("gh", "ghphone", "ghauth", "ashby"):
+            want = "ask-file"                                   # these forms require a resume (file or text) and the profile has neither
+        elif st == "no-auth" and path == "ghauth":
+            want = "ask"                                        # Greenhouse 1002 asks "Are you legally authorized to work in the United States?"
+            READY["asks"][key] = "authorized"
+        READY["expect"][key] = want
+        READY["cards"][key] = {"profile": "^Finish your profile$", "ask": "^1 answer needed$", "ask-file": "^1 answer needed$",
+                               "handoff": "^Ready$", "sent": "^Ready" + ("$" if path == "mail" else " to apply$")}[want]
+for path, co, ats_id in QPATHS:
+    key = "question|" + path
+    READY["jobs"][key] = add_job(co, "Readiness %s question" % path, ats_id)
+    READY["expect"][key], READY["asks"][key], READY["cards"][key] = "ask", "favorite color", "^1 answer needed$"
+WALK_IDS = {k: add_job(v[0], v[1], v[2]) for k, v in WALK.items()}
+ATS_JOBS = sum(len(e["jobs"]) for e in EMPLOYERS if e.get("ats"))
 JOBS = {"gh": jid("Acme Robotics", "Marketing Coordinator"), "question": jid("Acme Robotics", "Brand Storyteller"), "file": jid("Acme Robotics", "Portfolio Designer"),
         "lever": jid("Acme Lever", "Social Media Coordinator"), "ashby": jid("Acme Ashby", "Content Marketing Intern"),
         "sr": jid("City of Philadelphia", "Communications Assistant"), "wk": jid("Acme Works", "Marketing Assistant"),
@@ -139,8 +192,8 @@ try:
     st = get(APP, "/api/status").get("apply") or {}
     t("status", "/api/status says the apply engine is healthy (its records folder is writable) in live delivery", st.get("ok") is True and st.get("mode") == "live", st)
     cl, cf = st.get("classes") or {}, st.get("configured") or {}
-    t("status", "...with jobs for each configured way of applying: hiring systems 7, email 1, hand-off 1",
-      (cl.get("ats"), cl.get("email"), cl.get("handoff"), cf.get("ats"), cf.get("email")) == (7, 1, 1, True, True), st)
+    t("status", "...with jobs for each configured way of applying: hiring systems %d, email %d, hand-off %d" % (ATS_JOBS, len(by_name["Mail Co"]["jobs"]), len(by_name["Handoff Co"]["jobs"])),
+      (cl.get("ats"), cl.get("email"), cl.get("handoff"), cf.get("ats"), cf.get("email")) == (ATS_JOBS, len(by_name["Mail Co"]["jobs"]), len(by_name["Handoff Co"]["jobs"]), True, True), st)
 
     # ---------- the person, in Chrome ----------
     env = dict(os.environ, PORT=str(APP), SMTP_FILE=MAIL, E2E_JOBS=json.dumps(JOBS), RESUME=RESUME, MOCK_PORT=str(MOCK), W="390", H="844", CDP_LIMIT_MS="480000")
@@ -156,6 +209,7 @@ try:
         elif line.startswith(("TEST SCRIPT FAILED", "CONSOLE ISSUES")) or "EXC" in line:
             print(line)
     t("browser", "the browser half ran to its end", bool(summary) and out.returncode in (0, 1), (out.stdout[-400:] + out.stderr[-400:]))
+    env = dict(env, E2E_PASSWORD=summary.get("password", ""))
 
     # ---------- what each employer really received ----------
     got = get(MOCK, "/__received")
@@ -215,6 +269,64 @@ try:
     t("email", "the hiring systems got exactly the 6 applications the person made (5 swipes + 1 after the answer), nothing twice or extra",
       len([g for g in got]) == 6, [(g.get("system"), g.get("job") or g.get("posting")) for g in got])
 
+    # ---------- readiness: every path with a half-finished profile (tools/ui-swipe-ready.js) ----------
+    def browser(script, extra, tag, limit=900):
+        env2 = dict(env, CDP_LIMIT_MS=str(limit * 1000), **extra)
+        o = subprocess.run(["node", os.path.join(HERE, "cdp.js"), os.path.join(HERE, script)], cwd=ROOT, env=env2, capture_output=True, text=True, encoding="utf-8", timeout=limit + 60)
+        res = {}
+        for line in o.stdout.splitlines():
+            if line.startswith(tag + " "):
+                res = json.loads(line[len(tag) + 1:])
+            elif line.startswith(("PASS ", "FAIL ")):
+                path = line.split("[", 1)[1].split("]", 1)[0] if "[" in line else "browser"
+                COUNT.setdefault(path, [0, 0])[0 if line.startswith("PASS") else 1] += 1
+                print(line)
+            elif line.startswith(("TEST SCRIPT FAILED", "CONSOLE ISSUES", "     ")) or "EXC" in line:
+                print(line)
+        t("browser", script + " ran to its end", bool(res), (o.stdout[-400:] + o.stderr[-400:]))
+        return res
+
+    before_ready = len(get(MOCK, "/__received"))
+    ready = browser("ui-swipe-ready.js", {"E2E_READY": json.dumps(READY)}, "E2E-READY")
+    got2 = get(MOCK, "/__received")[before_ready:]
+    outs = ready.get("outcomes") or {}
+    sent_into = [k for k, v in outs.items() if v.get("got", "").endswith("sent") and k.split("|")[1] not in ("mail", "handoff")]
+    t("readiness", "the hiring systems received exactly the %d applications that were sent, and nothing else" % len(sent_into), len(got2) == len(sent_into),
+      (len(got2), sorted(sent_into)))
+    rej = get(MOCK, "/__rejected")
+    t("readiness", "no hiring system refused anything: an incomplete application never reached an employer", rej == [], rej[:3])
+    k = "no-phone|ghphone"
+    gp = [g for g in got2 if g.get("system") == "greenhouse" and g.get("job") == "1010"]
+    t("readiness", "Greenhouse's required phone arrived: the number typed in the question box once (no phone in the profile), the profile's otherwise",
+      sorted((g["fields"].get("phone") or "").replace("-", "") for g in gp) == sorted(["6175550199"] + ["6175550110"] * (len(gp) - 1)) and len(gp) >= 1,
+      [g["fields"].get("phone") for g in gp])
+    ga = [g for g in got2 if g.get("system") == "greenhouse" and g.get("job") == "1002"]
+    t("readiness", "Greenhouse's work-authorization questions arrived answered (authorized: Yes, sponsorship: No)",
+      len(ga) >= 1 and all(g["fields"].get("question_101") == "1" and g["fields"].get("question_102") == "0" for g in ga), [(g["fields"].get("question_101"), g["fields"].get("question_102")) for g in ga])
+    gq = [g for g in got2 if "Blue, it is calm." in json.dumps(g)]
+    t("readiness", "each employer's own question arrived answered, once per hiring system (Greenhouse, Ashby, SmartRecruiters, Workable)",
+      sorted(g["system"] for g in gq) == ["ashby", "greenhouse", "smartrecruiters", "workable"], sorted(g["system"] for g in gq))
+    t("readiness", "nothing the readiness swipes sent carries a voluntary answer", all(no_eeo(g) for g in got2), "")
+    mails_ready = [m for m in mails() if "hr@mailco.example" in [x.lower() for x in (m.get("to") or [])]]
+    t("readiness", "the email employer got one message per readiness swipe that was sent (no-phone, no-resume, no-auth), none below the minimum",
+      len(mails_ready) == 1 + sum(1 for k2, v in outs.items() if k2.endswith("|mail") and v.get("got") == "sent"), len(mails_ready))
+    qs = get(APP, "/api/status").get("questions") or {}
+    keys = [q2.get("key") for q2 in qs.get("top") or []]
+    t("readiness", "the owner's /api/status counts the question types asked (the employers' own question, phone, work authorization), by kind",
+      qs.get("asked", 0) >= 4 and any("favorite color" in (k3 or "") for k3 in keys) and isinstance(qs.get("kinds"), dict) and qs["kinds"], qs)
+    t("readiness", "...with no answer, name or email in them", not any(x in json.dumps(qs) for x in ("Blue, it is calm", "elena", "Elena", "617-555")), json.dumps(qs)[:200])
+
+    # ---------- the walk: a student with a half-finished profile, at phone and laptop size ----------
+    for size, (wd, ht) in (("390", (390, 844)), ("1280", (1280, 800))):
+        n0 = len(get(MOCK, "/__received"))
+        walk = browser("ui-ready-walk.js", {"W": str(wd), "H": str(ht), "WALK_JOB": str(WALK_IDS[size]), "WALK_EMAIL": "student.walk%s@example.com" % size,
+                                            "SHOTS": os.environ.get("E2E_SHOTS", "")}, "E2E-WALK", 480)
+        new = get(MOCK, "/__received")[n0:]
+        t("walk-" + size, "the walk's one application reached Greenhouse complete: the phone and the resume file added on the way, work authorization answered in the box",
+          len(new) == 1 and new[0].get("job") == "1002" and (new[0]["fields"].get("phone") or "").replace("-", "").endswith("2155550142") and new[0]["fields"].get("question_101") == "1"
+          and "sam-rivera-resume.docx" in json.dumps(new[0].get("files") or {}),
+          [(g.get("job"), g["fields"].get("phone"), g["fields"].get("question_101"), list(g.get("files") or {})) for g in new])
+
     # ---------- the weekly limit: payments on, 50 applications already this week ----------
     app.terminate()
     app.wait(10)
@@ -247,7 +359,9 @@ try:
     app = server(cfg2)
     call("/api/auth/login", {"email": "elena.rossi@example.com", "password": summary["password"]})
     s, b = call("/api/billing/status")
-    t("limit", "Plan and billing shows the week used up on Free: 57 of 50 (the 50 above plus the 7 sent in this run)", (s, b.get("used"), b.get("cap"), b.get("plan")) == (200, 57, 50, "free"), b)
+    sent_run = 7 + len(sent_into) + sum(1 for k2, v in outs.items() if k2.endswith("|mail") and v.get("got") == "sent")
+    t("limit", "Plan and billing shows the week used up on Free: %d of 50 (the 50 above plus the %d sent in this run)" % (50 + sent_run, sent_run),
+      (s, b.get("used"), b.get("cap"), b.get("plan")) == (200, 50 + sent_run, 50, "free"), b)
     before = len(get(MOCK, "/__received"))
     payload = {"consent": True, "confirm_real": True, "match": 80, "note": "", "job": {"id": JOBS["lever"], "co": "Acme Lever", "role": "Social Media Coordinator",
                "url": "https://jobs.lever.co/acme"}, "profile": {"name": "Elena Rossi", "email": "elena.rossi@example.com", "title": "Marketing Coordinator", "years": 1,
