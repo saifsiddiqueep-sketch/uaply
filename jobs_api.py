@@ -36,6 +36,7 @@ get_jobs() returns {"fetched_at", "sources", "jobs", "merged", "aged_out"} where
 (with postedDays, and updatedDays where the feed gives an update date). Postings older than MAX_AGE_DAYS are left out, and the same
 job from two feeds is shown once ("merged" counts the copies left out).
 """
+import base64
 import codecs
 import datetime
 import hashlib
@@ -65,7 +66,8 @@ TTL = {"remotive": 6 * 3600,          # Remotive allows roughly 4 requests a day
        "simplify": 6 * 3600,          # the Simplify / Pitt CSC lists change daily; each listed posting is checked on its own board at most once a day
        "himalayas": 3 * 3600,         # no key: one public allowance shared with every caller, so a few pages every three hours
        "remoteok": 6 * 3600,          # one request for the whole list
-       "careeronestop": 3 * 3600}     # 16 searches every three hours
+       "careeronestop": 3 * 3600,     # 16 searches every three hours
+       "careerpage": 6 * 3600}        # an employer's careers site: its sitemap every 6 hours, a page again only when its lastmod changes
 PER_SOURCE = 14
 STUDENT_PER_SOURCE = 10          # internships, co-ops and part-time roles are kept first so the student tabs are not empty
 OTHER_PER_SOURCE = 6
@@ -91,7 +93,7 @@ AGE_EXEMPT = ("usajobs",)
 # An hourly part-time or seasonal posting on the employer's own board is usually evergreen: one posting per store or studio, open all
 # year (Insomnia Cookies: 852 of 1,063 part-time postings older than 60 days; solidcore coaches: years). Still listed on the employer's
 # own board means still hiring, so those are not aged out there. An aggregator's copy still is.
-EVERGREEN_KINDS = ("greenhouse", "lever", "ashby", "workable", "smartrecruiters")
+EVERGREEN_KINDS = ("greenhouse", "lever", "ashby", "workable", "smartrecruiters", "careerpage")
 EVERGREEN_TYPES = ("part-time", "temporary")
 
 # (kind, board token, display name). Boards are the employer's own public careers feed.
@@ -215,7 +217,7 @@ SOURCES = [
     ("remoteok", "all", "Remote OK"),         # link back to the job on Remote OK and name Remote OK as the source
 ]
 BOARDS_FILE = os.path.join(ROOT, "job-boards.json")   # employer boards found and checked with tools/find-boards.py (see docs/job-sources.md)
-BOARD_KINDS = ("greenhouse", "lever", "ashby", "smartrecruiters", "workable")
+BOARD_KINDS = ("greenhouse", "lever", "ashby", "smartrecruiters", "workable")       # plus "careerpage": an employer's own careers site (see _career_pages)
 BOARD_TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$")    # a board's name in its system's address (Lever and Ashby allow dots: "thea.energy")
 
 
@@ -230,10 +232,31 @@ def _file_boards():
     out = []
     for r in rows:
         k, t, n = r.get("kind"), str(r.get("token") or ""), str(r.get("name") or "").strip()
-        if k in BOARD_KINDS and BOARD_TOKEN_RE.match(t) and ".." not in t and n and (k, t.lower()) not in have:
-            have.add((k, t.lower()))
-            out.append((k, t, n))
+        if k == "careerpage":                        # an employer's own careers site: its sitemap must be a plain public https address
+            sm = str(r.get("sitemap") or "")
+            if not (BOARD_TOKEN_RE.match(t) and n and _public_https(sm)) or (k, t.lower()) in have:
+                continue
+            CAREER_PAGES[t] = sm
+        elif not (k in BOARD_KINDS and BOARD_TOKEN_RE.match(t) and ".." not in t and n and (k, t.lower()) not in have):
+            continue
+        have.add((k, t.lower()))
+        out.append((k, t, n))
     return out
+
+
+CAREER_PAGES = {}                # careerpage token -> the sitemap of the employer's careers site (from job-boards.json)
+
+
+def _public_https(url):
+    """An https address on a named public host (no IP address, no localhost, no port, no user:password): the only kind a careers-site
+    sitemap, or a page it lists, may make this server fetch."""
+    try:
+        u = urllib.parse.urlsplit(url)
+    except ValueError:
+        return False
+    host = (u.hostname or "").lower()
+    return (u.scheme == "https" and bool(host) and "." in host and not u.port and not u.username and not re.match(r"^[\d.]+$|^\[", host)
+            and not host.endswith((".local", ".internal", ".localhost", "localhost")))
 
 
 FILE_SOURCES = _file_boards()
@@ -246,7 +269,8 @@ VIA = {"greenhouse": "%s on Greenhouse", "lever": "%s on Lever", "ashby": "%s on
        "jobicy": "Jobicy", "muse": "The Muse", "usajobs": "USAJOBS", "remotive": "Remotive",
        "himalayas": "Himalayas", "remoteok": "Remote OK",
        # the CareerOneStop license: every page showing its data credits both the U.S. Department of Labor (ETA) and Minnesota DEED
-       "careeronestop": "CareerOneStop (U.S. Department of Labor ETA and Minnesota DEED)"}       # the short credit line each source's jobs carry (Simplify rows: see _normalize)
+       "careeronestop": "CareerOneStop (U.S. Department of Labor ETA and Minnesota DEED)",
+       "careerpage": "%s careers site"}       # the short credit line each source's jobs carry (Simplify rows: see _normalize)
 MULTI = ("jobicy", "muse", "usajobs", "simplify", "careeronestop", "himalayas")
 HIMALAYAS_TYPES = {"intern": "Intern", "parttime": "Part Time"}       # the employment_type filter of Himalayas' search         # several feeds share one display name
 # The two USAJOBS searches (documented at developer.usajobs.gov/api-reference/get-api-search; several values are joined with ';')
@@ -340,7 +364,7 @@ _disk = {"loaded": False, "dirty": False, "filled": False}   # filled: a saved l
 _load_lock = threading.Lock()
 hide_errors = False                # serve.py sets this on a hosted server: the public job list then says "unavailable right now" instead of a raw network error
 DISK_MAX_AGE = 24 * 3600          # never trust a saved copy older than a day
-CACHE_VERSION = 11              # raise this whenever the rules for keeping or classifying postings change: older saved copies are then ignored
+CACHE_VERSION = 12              # raise this whenever the rules for keeping or classifying postings change: older saved copies are then ignored
 
 
 def _cache_file():
@@ -356,6 +380,63 @@ def _load_disk():
             _disk["loaded"] = True
 
 
+class _Packed:
+    """A source's kept jobs as compressed JSON (about a sixth of the memory of the dicts: descriptions, blurbs and all) plus their ids,
+    so a lookup by id knows which source to unpack. At 7,000 jobs the dicts were about 25 MB; packed they are about 4."""
+    __slots__ = ("z", "n", "ids")
+
+    def __init__(self, jobs=None, z=None):
+        if z is None:
+            z = zlib.compress(json.dumps(jobs or [], separators=(",", ":")).encode("utf-8"), 6)
+        self.z = z
+        if jobs is None:
+            jobs = self.jobs()
+        self.n = len(jobs)
+        self.ids = frozenset(j.get("id") for j in jobs if isinstance(j, dict))
+
+    def jobs(self):
+        return json.loads(zlib.decompress(self.z))
+
+
+class _Entry(dict):
+    """A cache entry: {"at", "status", "packed": _Packed}. Reading entry["jobs"] (or .get("jobs")) unpacks a fresh list each time, so
+    every caller written for plain lists keeps working; a test may still store a plain {"jobs": [...]}."""
+    def __missing__(self, key):
+        if key == "jobs" and "packed" in self:
+            return self["packed"].jobs()
+        raise KeyError(key)
+
+    def get(self, key, default=None):
+        if key == "jobs" and not dict.__contains__(self, "jobs") and "packed" in self:
+            return self["packed"].jobs()
+        return dict.get(self, key, default)
+
+
+def _entry(at, jobs, status):
+    return _Entry(at=at, status=status, packed=_Packed(jobs))
+
+
+def _count(c):
+    """How many jobs a cache entry holds, without unpacking it."""
+    return c["packed"].n if "packed" in c else len(c.get("jobs") or [])
+
+
+def _has(c, job_id):
+    return job_id in c["packed"].ids if "packed" in c else any(j.get("id") == job_id for j in c.get("jobs") or [])
+
+
+def _find_job(job_id):
+    """The cached feed job with this id, unpacking only the source that holds it (or None)."""
+    with _lock:
+        entries = list(_cache.values())
+    for c in entries:
+        if _has(c, job_id):
+            for j in c["jobs"]:
+                if j.get("id") == job_id:
+                    return j
+    return None
+
+
 def _read_disk():
     try:
         with open(_cache_file(), encoding="utf-8") as f:
@@ -366,8 +447,15 @@ def _read_disk():
         with _lock:
             for key, v in saved.items():
                 kind, token, name = key.split("|", 2)
-                if isinstance(v, dict) and isinstance(v.get("jobs"), list) and now - float(v.get("at", 0)) < DISK_MAX_AGE:
-                    _cache.setdefault((kind, token, name), {"at": float(v["at"]), "jobs": v["jobs"], "status": str(v.get("status", ""))})
+                if not isinstance(v, dict) or now - float(v.get("at", 0)) >= DISK_MAX_AGE:
+                    continue
+                if isinstance(v.get("z"), str):          # saved packed (base64 of the compressed list): kept packed
+                    packed = _Packed(z=base64.b64decode(v["z"]))
+                elif isinstance(v.get("jobs"), list):    # an older plain save
+                    packed = _Packed(v["jobs"])
+                else:
+                    continue
+                _cache.setdefault((kind, token, name), _Entry(at=float(v["at"]), status=str(v.get("status", "")), packed=packed))
             if _cache:
                 _disk["filled"] = True
     except Exception:
@@ -386,7 +474,9 @@ def _save_disk():
             with _lock:
                 if not _disk["dirty"]:
                     return
-                snap = {"|".join(k): {"at": v["at"], "jobs": v["jobs"], "status": v["status"]} for k, v in _cache.items()}
+                # packed sources are written packed (no unpacking, no copy of every job); a plain test entry is written as it is
+                snap = {"|".join(k): ({"at": v["at"], "status": v["status"], "z": base64.b64encode(v["packed"].z).decode("ascii")} if "packed" in v
+                                      else {"at": v["at"], "jobs": v.get("jobs") or [], "status": v["status"]}) for k, v in _cache.items()}
                 snap["_version"] = CACHE_VERSION
                 _disk["dirty"] = False
             path = _cache_file()
@@ -417,6 +507,8 @@ _feed_slots = threading.BoundedSemaphore(FEED_PARALLEL)
 
 HOST_PARALLEL = 6                    # requests to one feed's system at the same time, over all boards: with 12 boards at once each reading
 #                                      descriptions 3 or 4 at a time, SmartRecruiters reset connections and Greenhouse answers slowed to minutes
+HOST_PARALLEL_BY = {"boards-api.greenhouse.io": 10, "api.lever.co": 8, "api.ashbyhq.com": 8,   # systems served from a CDN take a few more
+                    "www.workable.com": 2, "apply.workable.com": 2}                               # Workable answers 429 quickly
 _host_sems, _host_sems_lock = {}, threading.Lock()
 
 
@@ -425,7 +517,7 @@ class _host_slot:
     def __init__(self, url):
         host = urllib.parse.urlsplit(url).hostname or ""
         with _host_sems_lock:
-            self.sem = _host_sems.setdefault(host, threading.BoundedSemaphore(HOST_PARALLEL))
+            self.sem = _host_sems.setdefault(host, threading.BoundedSemaphore(HOST_PARALLEL_BY.get(host, HOST_PARALLEL)))
 
     def __enter__(self):
         self.sem.acquire()
@@ -802,6 +894,8 @@ def _iter_raw(kind, token, name):
                        posted=_ts(j.get("date")), fallback=next((t for t in (j.get("tags") or []) if isinstance(t, str)), None))
     elif kind == "simplify":
         yield from _simplify(token, name)
+    elif kind == "careerpage":
+        yield from _career_pages(token, name)
     elif kind == "careeronestop":
         yield from _careeronestop(token)
     elif kind == "usajobs":
@@ -824,7 +918,7 @@ def _sr_detail(token, pid, released):
     with _lock:
         c = _sr_desc.get(key)
     if c and c["released"] == released and time.time() - c["at"] < SR_DESC_TTL:
-        return c["detail"]
+        return _unz(c["detail"])
     at = time.time()
     try:
         d = _get("https://api.smartrecruiters.com/v1/companies/%s/postings/%s" % (urllib.parse.quote(token, safe=""), urllib.parse.quote(pid, safe="")))
@@ -833,11 +927,19 @@ def _sr_detail(token, pid, released):
             d = {"jobAd": {"sections": {k: {"text": ((secs.get(k) or {}).get("text") or "")[:SR_TEXT]} for k in ("jobDescription", "qualifications", "additionalInformation")}},
                  "compensation": d.get("compensation") or {}}
     except Exception:
-        d = c["detail"] if c else None           # keep the last description if this read fails, and try again at the next hourly refresh
+        d = _unz(c["detail"]) if c else None     # keep the last description if this read fails, and try again at the next hourly refresh
         at = time.time() - SR_DESC_TTL + TTL["smartrecruiters"] - 60
     with _lock:
-        _sr_desc[key] = {"at": at, "released": released, "detail": d}
+        _sr_desc[key] = {"at": at, "released": released, "detail": _z(d)}     # held compressed: thousands of descriptions a day
     return d
+
+
+def _z(obj):
+    return zlib.compress(json.dumps(obj, separators=(",", ":")).encode("utf-8"), 6) if obj is not None else None
+
+
+def _unz(blob):
+    return json.loads(zlib.decompress(blob)) if blob is not None else None
 
 
 SR_WHOLE = ("CityofPhiladelphia",)    # public bodies whose whole list is kept (up to KEEP); any other SmartRecruiters company is an employer board
@@ -855,7 +957,11 @@ def _smartrecruiters(token, name):
     base = "https://api.smartrecruiters.com/v1/companies/%s/postings" % urllib.parse.quote(token, safe="")
     items, offset = [], 0
     while len(items) < cap:
-        page = _get("%s?limit=100&offset=%d" % (base, offset))
+        # an employer board: one page of its US postings only (SmartRecruiters filters by country), not every country's first 120
+        page = _get("%s?limit=100&offset=%d" % (base, offset) + ("" if whole else "&country=us"))
+        if not whole:
+            items += page.get("content") or []
+            break
         got = page.get("content") or []
         items += got
         offset += len(got)
@@ -947,6 +1053,169 @@ def _usajobs(token):
                         force_type="internship" if intern else None,
                         emp=(sched + " " + " ".join(s.get("Name", "") for s in d.get("PositionOfferingType") or [] if isinstance(s, dict) and s.get("Name") == "Temporary")).strip()))
     return out
+
+
+# ---------- employers' own careers sites: the sitemap, then each job page's JobPosting structured data ----------
+CP_UA = "UAplyBot/1.0 (+https://uaply.net; job search app; reads public JobPosting data)"
+CP_PAGES = 40                    # job pages read per site per refresh (newest first; a page read before is read again only when its lastmod changes)
+CP_MIN_DELAY = 2.0               # seconds between two requests to one careers site (more when its robots.txt asks for a crawl delay)
+CP_TEXT = 4000                   # characters of a page's description kept
+HUMAN_CHECK_RE = re.compile(r"g-recaptcha|h-captcha|hcaptcha|cf-challenge|challenge-platform|cf_chl_|verify you are (?:a )?human|are you a robot|"
+                            r"access denied|attention required", re.I)
+_robots = {}                     # host -> (when read, RobotFileParser or None when robots.txt could not be read)
+_cp_pages = {}                   # (site token, page address) -> (lastmod, compressed raw posting, or None when the page held no posting)
+_cp_next = {}                    # host -> the earliest time the next request may go
+
+
+def _robots_for(host):
+    """The site's robots.txt rules (read once a day). None when robots.txt cannot be read: the site is then not read at all."""
+    import urllib.robotparser
+    got = _robots.get(host)
+    if got and time.time() - got[0] < 24 * 3600:
+        return got[1]
+    rp = urllib.robotparser.RobotFileParser()
+    try:
+        rp.parse(_cp_fetch("https://%s/robots.txt" % host, robots_ok=True).splitlines())
+    except urllib.error.HTTPError as e:
+        rp = rp if e.code in (404, 410) else None   # no robots.txt (404): everything allowed, as the robots convention says
+        if rp is not None:
+            rp.parse([])
+    except Exception:
+        rp = None
+    _robots[host] = (time.time(), rp)
+    return rp
+
+
+def _cp_fetch(url, robots_ok=False):
+    """One page of a careers site: only a public https address, only what its robots.txt allows this bot, never sooner than the site's
+    crawl delay after the last request to it. Returns the text; raises on an error or a human check."""
+    if not _public_https(url):
+        raise ValueError("not a public https address")
+    host = urllib.parse.urlsplit(url).hostname.lower()
+    if not robots_ok:
+        rp = _robots_for(host)
+        if rp is None or not rp.can_fetch(CP_UA, url):
+            raise PermissionError("robots.txt does not allow it")
+        delay = max(CP_MIN_DELAY, float(rp.crawl_delay(CP_UA) or 0))
+    else:
+        delay = CP_MIN_DELAY
+    with _lock:
+        wait = _cp_next.get(host, 0) - time.time()
+        _cp_next[host] = max(time.time(), _cp_next.get(host, 0)) + delay
+    if wait > 0:
+        time.sleep(min(wait, 60))
+    text = _get(url, {"User-Agent": CP_UA, "Accept": "text/html,application/xml;q=0.9,*/*;q=0.8"}, as_text=True)
+    if HUMAN_CHECK_RE.search(text[:20000]):
+        raise PermissionError("the page shows a human check")          # never answered: the site is marked as needing a person
+    return text
+
+
+def _ld_postings(html_text):
+    """Every schema.org JobPosting in a page's JSON-LD blocks (a single object, a list, or an @graph)."""
+    out = []
+    for block in re.findall(r"<script[^>]*type=[\"']application/ld\+json[\"'][^>]*>(.*?)</script>", html_text, re.S | re.I):
+        try:
+            data = json.loads(html.unescape(block.strip()) if block.strip().startswith("&") else block.strip())
+        except ValueError:
+            continue
+        stack = [data]
+        while stack:
+            x = stack.pop()
+            if isinstance(x, list):
+                stack.extend(x)
+            elif isinstance(x, dict):
+                t = x.get("@type")
+                if t == "JobPosting" or (isinstance(t, list) and "JobPosting" in t):
+                    out.append(x)
+                stack.extend(v for k, v in x.items() if k == "@graph")
+    return out
+
+
+def _ld_raw(p, page_url, name):
+    """A raw posting from one JobPosting, or None (no title, or valid only until a date already past)."""
+    title = _text(p.get("title") or "").strip()
+    if not title:
+        return None
+    if _ts(p.get("validThrough")) and _ts(p.get("validThrough")) < time.time() * 1000:
+        return None
+    org = p.get("hiringOrganization") or {}
+    company = (org.get("name") if isinstance(org, dict) else str(org)) or name
+    locs = p.get("jobLocation") or []
+    locs = locs if isinstance(locs, list) else [locs]
+    places, country = [], ""
+    for L in locs:
+        a = (L or {}).get("address") if isinstance(L, dict) else None
+        if isinstance(a, dict):
+            c = a.get("addressCountry")
+            country = country or (c.get("name") if isinstance(c, dict) else str(c or ""))
+            places.append(", ".join(x for x in (a.get("addressLocality"), a.get("addressRegion")) if isinstance(x, str) and x))
+    remote = str(p.get("jobLocationType") or "").upper() == "TELECOMMUTE"
+    sal = None
+    bs = p.get("baseSalary") if isinstance(p.get("baseSalary"), dict) else {}
+    v = bs.get("value") if isinstance(bs.get("value"), dict) else {}
+    try:
+        lo, hi = float(v.get("minValue")), float(v.get("maxValue"))
+        if bs.get("currency") == "USD" and str(v.get("unitText") or "").upper() == "YEAR" and 20000 <= lo < hi <= 600000:
+            sal = [int(lo), int(hi)]
+    except (TypeError, ValueError):
+        pass
+    clean = re.sub(r"([?&])in_iframe=1&?", r"\1", page_url).rstrip("?&")
+    return dict(id=clean, title=title, company=str(company).strip(), loc="; ".join(x for x in places if x) or ("Remote" if remote else ""),
+                remote=True if remote else None, text=_text(p.get("description") or "")[:CP_TEXT], url=clean, salary_text="", sal=sal,
+                posted=_ts(p.get("datePosted")), emp=p.get("employmentType"), country=country or "us",
+                # a clinical or store role often names no skill UAply scores on: its category (or the employer's industry) stands in
+                fallback=str(p.get("occupationalCategory") or p.get("industry") or "").strip()[:60] or "General")
+
+
+def _career_pages(token, name):
+    """One employer's careers site: its sitemap (job pages and their lastmod), then the newest CP_PAGES job pages from the last 60 days,
+    each page's JobPosting data read once and again only when its lastmod changes. Only pages on the sitemap's own host are read."""
+    sm = CAREER_PAGES.get(token)
+    if not sm:
+        raise ValueError("no sitemap for this site")
+    host = urllib.parse.urlsplit(sm).hostname.lower()
+    xml = _cp_fetch(sm)
+    now = time.time() * 1000
+    pages = []
+    for block in re.findall(r"<url>(.*?)</url>", xml, re.S):
+        loc = re.search(r"<loc>\s*(.*?)\s*</loc>", block, re.S)
+        mod = re.search(r"<lastmod>\s*(.*?)\s*</lastmod>", block, re.S)
+        if not loc:
+            continue
+        u = html.unescape(loc.group(1))
+        lm = mod.group(1) if mod else ""
+        ph = (urllib.parse.urlsplit(u).hostname or "").lower()
+        # pages on the sitemap's own site: the same host, or another host of the same domain (an iCIMS site moves its pages from
+        # careers-x.icims.com to externalcareers-x.icims.com); each page host's own robots.txt is read before any page of it
+        if not (ph == host or ph.endswith("." + ".".join(host.split(".")[-2:]))) or not _public_https(u) or not re.search(r"/jobs?/|/job/|/careers?/|/position", u, re.I):
+            continue
+        if lm and now - _ts(lm) > MAX_AGE_DAYS * DAY_MS:
+            continue
+        pages.append((_ts(lm), lm, u))
+    pages.sort(reverse=True)
+    for _, lm, u in pages[:CP_PAGES]:
+        got = _cp_pages.get((token, u))
+        if got and got[0] == lm and lm:
+            raw = _unz(got[1])
+        else:
+            try:
+                ps = _ld_postings(_cp_fetch(u))
+            except PermissionError:                       # robots.txt says no, or a human check: left alone until the page changes
+                with _lock:
+                    _cp_pages[(token, u)] = (lm, None)
+                continue
+            except Exception:
+                continue
+            raw = _ld_raw(ps[0], u, name) if ps else None
+            with _lock:
+                _cp_pages[(token, u)] = (lm, _z(raw))
+        if raw:
+            # the sitemap's lastmod is the page's last change: an evergreen hospital posting keeps its first datePosted for months
+            yield dict(raw, posted=raw.get("posted") or _ts(lm), updated=max(_ts(lm), raw.get("updated") or 0))
+    with _lock:                                           # forget pages the sitemap no longer lists
+        listed = {u for _, _, u in pages[:CP_PAGES]}
+        for key in [k for k in _cp_pages if k[0] == token and k[1] not in listed]:
+            del _cp_pages[key]
 
 
 def _careeronestop(token):
@@ -1266,6 +1535,8 @@ def _normalize(raw, kind, name, board=None):
     jid = _jid(kind, raw["id"])
     company = _clean_company(raw["company"], name)
     src = name if kind in ("remotive", "jobicy", "muse", "usajobs", "himalayas", "remoteok", "careeronestop") else "%s's careers page" % company
+    if kind == "careerpage":
+        name = company                                    # credited as "<the employer> careers site"
     # Where this posting lives in the employer's own hiring system. It is only an address (not a credential): it is used when, and only when, the
     # employer has connected with their own key (see ats_connections); otherwise it is never used and apply stays "link".
     # Ashby: the job board's own posting id is the jobPostingId its API takes. SmartRecruiters: the posting's uuid (see _smartrecruiters).
@@ -1310,12 +1581,7 @@ def job_info(job_id):
     for j in partner_jobs():
         if j["id"] == job_id:
             return j
-    with _lock:
-        for c in _cache.values():
-            for j in c["jobs"]:
-                if j["id"] == job_id:
-                    return j
-    return None
+    return _find_job(job_id)
 
 
 def known_contact(job_id):
@@ -1323,12 +1589,8 @@ def known_contact(job_id):
     for j in partner_jobs():
         if j["id"] == job_id:
             return j.get("contact", "") or ""
-    with _lock:
-        for c in _cache.values():
-            for j in c["jobs"]:
-                if j["id"] == job_id:
-                    return j.get("contact", "") or ""
-    return ""
+    j = _find_job(job_id)
+    return (j.get("contact", "") or "") if j else ""
 
 
 FIRST_WAIT = 8                   # seconds the very first request on an empty disk waits for a board (every later request waits for none)
@@ -1490,7 +1752,7 @@ def _link_loop():
         time.sleep(LINK_PAUSE)
         try:
             with _lock:
-                due = [s_ for s_ in _cache if time.time() - _links.get(s_, {}).get("at", 0) > LINK_EVERY and _cache[s_]["jobs"]]
+                due = [s_ for s_ in _cache if time.time() - _links.get(s_, {}).get("at", 0) > LINK_EVERY and _count(_cache[s_])]
             if due:
                 check_links(min(due, key=lambda s_: _links.get(s_, {}).get("at", 0)))
         except Exception as e:
@@ -1512,11 +1774,11 @@ def feed_health():
         for src in SOURCES:
             h = dict(_health.get(src) or {})
             c = _cache.get(src)
-            out.append({"source": "/".join(src[:2]), "name": src[2], "jobs": len(c["jobs"]) if c else 0, "status": c["status"] if c else "",
+            out.append({"source": "/".join(src[:2]), "name": src[2], "jobs": _count(c) if c else 0, "status": c["status"] if c else "",
                         "ok": h.get("ok", 0), "failures": h.get("fail", 0), "inARow": h.get("streak", 0), "lastOk": int(h.get("last_ok", 0)),
                         "lastError": int(h.get("last_error", 0)), "error": h.get("error", ""), "ms": h.get("ms", 0),
                         "off": bool(h.get("off_until")) and time.time() < h["off_until"], "retry": h.get("retry", ""),
-                        "applyPath": "hand-off (the employer's own page)" if src[0] != "partner" else "partner",
+                        "applyPath": ("assisted hand-off (the employer's own careers site)" if src[0] == "careerpage" else "hand-off (the employer's own page)"),
                         "links": {"checked": (_links.get(src) or {}).get("ok", 0) + (_links.get(src) or {}).get("dead", 0),
                                   "dead": (_links.get(src) or {}).get("dead", 0), "unknown": (_links.get(src) or {}).get("unknown", 0),
                                   "lastChecked": int((_links.get(src) or {}).get("at", 0))}})
@@ -1878,9 +2140,10 @@ def _fetch_source(src):
                 _failed[src] = (time.time(), status)   # nothing to fall back on: say so, and try again in two minutes (not at every request)
         return jobs, status
     _note_health(src, True, jobs=len(jobs), ms=int((time.time() - started) * 1000))
+    packed = _entry(time.time(), jobs, status)       # kept packed; the list itself is only returned to the caller
     with _lock:
         _version[0] += 1
-        _cache[src] = {"at": time.time(), "jobs": jobs, "status": status}
+        _cache[src] = packed
         _failed.pop(src, None)
         _disk["dirty"] = True
     return jobs, status
@@ -2064,12 +2327,10 @@ def job_policy(job_id):
         if j["id"] == job_id:
             return j["apply"]
     conns = ats_connections()
-    with _lock:
-        for c in _cache.values():
-            for j in c["jobs"]:
-                if j["id"] == job_id:
-                    # a real posting whose employer connected their hiring system with their own key can be applied to instantly
-                    return "direct" if _connected(j, conns) else "link"
+    j = _find_job(job_id)
+    if j:
+        # a real posting whose employer connected their hiring system with their own key can be applied to instantly
+        return "direct" if _connected(j, conns) else "link"
     return "unknown"
 
 
@@ -2087,11 +2348,9 @@ def known_ats(job_id):
     if a:
         return dict(a)
     conns = ats_connections()
-    with _lock:
-        for c in _cache.values():
-            for j in c["jobs"]:
-                if j["id"] == job_id and _connected(j, conns):
-                    return {"kind": j["ats"]["kind"], "board": j["ats"]["board"], "id": j["ats"]["id"], "key": conns[(j["ats"]["kind"], j["ats"]["board"])]}
+    j = _find_job(job_id)
+    if j and _connected(j, conns):
+        return {"kind": j["ats"]["kind"], "board": j["ats"]["board"], "id": j["ats"]["id"], "key": conns[(j["ats"]["kind"], j["ats"]["board"])]}
     return None
 
 
@@ -2101,9 +2360,23 @@ _LOAD_SOURCE = _load_source
 def get_jobs():
     """The job list as one dict (see the module notes): each job a copy with postedDays (and updatedDays), a feed job without its email
     description, a connected employer's posting marked as applied to directly."""
-    picked, meta, now_ms, conns = _collect()
-    jobs = [_out_job(j, now_ms, conns, feed) for j, feed in picked]
+    meta, conns, now_ms = {}, ats_connections(), time.time() * 1000
+    jobs = [_out_job(j, now_ms, conns, feed) for j, feed in _collect(meta, now_ms)]
     return dict(meta, jobs=jobs)
+
+
+def apply_classes():
+    """How many listed jobs take each way of applying (for /api/status), counted one job at a time (no copy of the list)."""
+    meta, conns, now_ms = {}, ats_connections(), time.time() * 1000
+    c = {"ats": 0, "email": 0, "webhook": 0, "handoff": 0}
+    for j, feed in _collect(meta, now_ms):
+        o = _out_job(j, now_ms, conns, feed)
+        inst = bool(o.get("instant"))
+        c["ats"] += inst and not o.get("contact") and not o.get("webhook")
+        c["email"] += inst and bool(o.get("contact"))
+        c["webhook"] += inst and bool(o.get("webhook"))
+        c["handoff"] += not inst
+    return c
 
 
 def _out_job(j, now_ms, conns, feed):
@@ -2113,8 +2386,9 @@ def _out_job(j, now_ms, conns, feed):
     return out
 
 
-def _collect():
-    """The jobs to show, as (cached job, is it a feed job) in order, without copying any, plus the list's other fields."""
+def _collect(meta, now_ms):
+    """The jobs to show, yielded one at a time as (job, is it a feed job) in order, one source unpacked at a time (never the whole list
+    at once); the list's other fields (sources, merged, aged_out, pending, fetched_at) are put in `meta` once every source is through."""
     _load_disk()
     allowed = feeds_allowed()
     sources = [s for s in SOURCES if s[0] in allowed]
@@ -2123,20 +2397,19 @@ def _collect():
     if _load_source is _LOAD_SOURCE:                 # (a test that stands in its own _load_source reads nothing)
         _start_missing(sources)
         _start_link_check()
-    results = [_load_source(src) for src in sources]
-    _disk["filled"] = True
-    jobs, seen, same, summary = [], set(), {}, {}            # same: a job's _same_job_key -> the source that listed it first
-    now_ms = time.time() * 1000
+    seen, same, summary = set(), {}, {}            # same: a job's _same_job_key -> the source that listed it first
     merged = aged = 0
-    for pj in partner_jobs():
+    partners = partner_jobs()
+    for pj in partners:
         seen.add(pj["id"])
         same[_same_job_key(pj)] = "partner"  # a feed's copy of a partner's posting is dropped below: the partner's own one can really be applied to
-        jobs.append(({k: v for k, v in pj.items() if k != "contact"} if pj.get("emp") else pj, False))    # an employer's account email stays on this server
-    summary["Partner employers"] = "%d jobs" % len(jobs)
+        yield ({k: v for k, v in pj.items() if k != "contact"} if pj.get("emp") else pj, False)    # an employer's account email stays on this server
+    summary["Partner employers"] = "%d jobs" % len(partners)
     # Feeds in SOURCES order, so when two feeds carry the same job the employer's own board (listed first) is the copy that is kept.
     # Only copies from two different feeds are merged: one employer listing a title twice in one place (the City's two "Technical Support
     # Specialist" postings are for different departments) keeps both, as they can be two openings.
-    for src, (js, status) in zip(sources, results):
+    for src in sources:
+        js, status = _load_source(src)               # one source unpacked at a time
         summary[src[2] + ("/" + src[1] if src[0] in MULTI else "")] = "unavailable right now" if hide_errors and status.startswith("error") else status
         dead = (_links.get(src) or {}).get("dead_ids") or ()
         for j in js:
@@ -2154,13 +2427,14 @@ def _collect():
             same.setdefault(key, src)
             # a feed job's 650-character description is only for the emails (the server reads it from its own copy, job_info): it was
             # half of the list's size, so the app is sent the card's blurb only (see _out_job)
-            jobs.append((j, True))
+            yield (j, True)
+        del js
+    _disk["filled"] = True
     if not sources:
         summary["Third-party feeds"] = "off (not verified as permitted)"
-    conns = ats_connections()
     _save_disk()
     pending = sum(1 for v in summary.values() if v == "loading")
-    return jobs, {"fetched_at": int(time.time()), "sources": summary, "merged": merged, "aged_out": aged, "pending": pending}, now_ms, conns
+    meta.update({"fetched_at": int(time.time()), "sources": summary, "merged": merged, "aged_out": aged, "pending": pending})
 
 
 JSON_MEMO_S = 20                 # seconds the encoded job list is reused while nothing changed (a few thousand jobs are megabytes to encode)
@@ -2184,12 +2458,12 @@ def get_json(compressed=False):
         if not reuse:
             # written one job at a time straight into the compressor: no copy of the whole list, no megabytes of text at once (at 7,000
             # jobs the copies and the text were about 30 MB on top of the jobs themselves); only the compressed list is kept
-            picked, meta, now_ms, conns = _collect()
+            meta, conns, now_ms = {}, ats_connections(), time.time() * 1000
             z = zlib.compressobj(5, zlib.DEFLATED, 31)          # 31: a gzip stream
-            parts = [z.compress(json.dumps(meta)[:-1].encode("utf-8") + b', "jobs": [')]
-            for i, (j, feed) in enumerate(picked):
+            parts = [z.compress(b'{"jobs": [')]
+            for i, (j, feed) in enumerate(_collect(meta, now_ms)):
                 parts.append(z.compress((b"," if i else b"") + json.dumps(_out_job(j, now_ms, conns, feed)).encode("utf-8")))
-            parts.append(z.compress(b"]}") + z.flush())
+            parts.append(z.compress(b"], " + json.dumps(meta)[1:].encode("utf-8")) + z.flush())     # the list's other fields after the jobs
             m.update(key=(_version[0],) + key[1:], at=time.time(), gz=b"".join(parts), pending=meta.get("pending", 0))
-            del parts, picked
+            del parts
         return m["gz"] if compressed else gzip.decompress(m["gz"])

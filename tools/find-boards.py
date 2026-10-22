@@ -20,6 +20,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import urllib.robotparser
 from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -46,7 +47,7 @@ def _wait_turn(host):
     with _host_lock:
         now = time.time()
         at = max(now, _host_next.get(host, 0.0))
-        _host_next[host] = at + PER_HOST_GAP
+        _host_next[host] = at + (1.5 if "workable" in host else PER_HOST_GAP)      # Workable answers 429 at a few requests a second
     if at > now:
         time.sleep(at - now)
 
@@ -102,6 +103,28 @@ def count(kind, token):
         share = total / max(1, len(jobs))                   # the first page of 100 stands for the whole list
         name = next(((j.get("company") or {}).get("name") for j in jobs if (j.get("company") or {}).get("name")), "")
         return total, int(len(us) * share), int(len(tri) * share), n, name
+    elif kind == "icims":
+        # an employer's iCIMS careers site: its robots.txt must allow the sitemap; counted are its job pages changed in the last 60 days
+        host = "careers-%s.icims.com" % token.lower()
+        sm = "https://%s/sitemap.xml" % host
+        try:
+            robots = get_text("https://%s/robots.txt" % host)
+        except urllib.error.HTTPError as e:
+            if e.code in (404, 410):
+                robots = ""
+            else:
+                raise
+        rp = urllib.robotparser.RobotFileParser()
+        rp.parse(robots.splitlines())
+        if not rp.can_fetch(J.CP_UA, sm) or J.HUMAN_CHECK_RE.search(robots):
+            return None
+        xml, sm = get_text(sm, final=True)                # the address it ends at after redirects (careers-x -> externalcareers-x)
+        now = time.time() * 1000
+        recent = [m for m in re.findall(r"<url>(.*?)</url>", xml, re.S) if "/jobs/" in m and
+                  (not re.search(r"<lastmod>(.*?)</lastmod>", m) or now - J._ts(re.search(r"<lastmod>(.*?)</lastmod>", m).group(1)) < 60 * 86400000)]
+        if not recent:
+            return None
+        return len(recent), len(recent), 0, len(xml), "", sm
     elif kind == "workable":
         d, n = get_json("https://www.workable.com/api/accounts/%s" % q)
         jobs = d.get("jobs") or []
@@ -113,6 +136,15 @@ def count(kind, token):
         return None
     us = [l for l in locs if J._us_ok(l, bool(re.search(r"remote", l, re.I)))]
     return len(jobs), len(us), sum(1 for l in us if TRI_RE.search(l)), n, name
+
+
+def get_text(url, final=False):
+    host = urllib.parse.urlsplit(url).hostname or ""
+    _wait_turn(host)
+    req = urllib.request.Request(url, headers={"User-Agent": J.CP_UA, "Accept": "text/html,application/xml,*/*"})
+    with urllib.request.urlopen(req, timeout=25) as r:
+        text = r.read(J.MAX_FEED_BYTES).decode("utf-8", "replace")
+        return (text, r.geturl()) if final else text
 
 
 def slugs(name):
@@ -222,11 +254,17 @@ def add_reviewed(review_files, min_us, boards_file, limit=None):
                 break
             key = (c["kind"], c["token"].lower())
             name = J._clean_company(c.get("name") or c.get("for") or c["token"], c["token"])
+            if c["kind"] == "careerpage" and ("careerpage-name", name.lower()) in have:
+                continue                                 # two slugs for one employer's site (careers-northside / careers-northsidehospital)
+            if c["kind"] == "careerpage":
+                have.add(("careerpage-name", name.lower()))
             if key in have or c.get("us", 0) < min_us or STAFFING_RE.search(name) or not TOKEN_RE.match(c["token"]):
                 continue
             have.add(key)
-            rows.append({"kind": c["kind"], "token": c["token"], "name": name, "total": c.get("total"), "us": c.get("us"), "tri": c.get("tri"),
-                         "checked": checked})
+            row = {"kind": c["kind"], "token": c["token"], "name": name, "total": c.get("total"), "us": c.get("us"), "tri": c.get("tri"), "checked": checked}
+            if c.get("sitemap"):
+                row["sitemap"] = c["sitemap"]           # a careers site: read from its sitemap and the job pages' JobPosting data
+            rows.append(row)
             added += 1
     rows.sort(key=lambda r: (-(r.get("tri") or 0), -(r.get("us") or 0), r["name"].lower()))   # read in this order on a fresh start: tri-state first
     data["note"] = ("Employer boards found and checked live with tools/find-boards.py (counts on the day checked). Read by jobs_api.py after "
@@ -247,6 +285,8 @@ def main():
     ap.add_argument("--out", default=os.path.join(HERE, "data", "board-candidates.json"))
     ap.add_argument("--min-us", type=int, default=5)
     ap.add_argument("--workers", type=int, default=8)
+    ap.add_argument("--resume", default=os.path.join(HERE, "data", "board-probed.json"),
+                    help="file of (system, board) pairs already probed: those probed in the last 30 days are skipped ('' to probe all)")
     a = ap.parse_args()
     if a.add:
         n = add_reviewed(a.add, a.min_us, J.BOARDS_FILE, a.limit)
@@ -262,9 +302,20 @@ def main():
             probes.setdefault(k, v)
     for n in names:
         for s in slugs(n):
-            for kind in ("greenhouse", "lever", "ashby", "smartrecruiters", "workable"):
+            for kind in ("greenhouse", "lever", "ashby", "smartrecruiters", "workable") + (("icims",) if "-" not in s else ()):
                 probes.setdefault((kind, s.lower()), n)
     known = {(k, t.lower()) for k, t, _ in J.SOURCES}
+    done = {}
+    if a.resume:
+        try:
+            with open(a.resume, encoding="utf-8") as f:
+                done = json.load(f)
+        except (OSError, ValueError):
+            done = {}
+        cutoff = time.time() - 30 * 86400
+        before = len(probes)
+        probes = {k: v for k, v in probes.items() if done.get("%s|%s" % k, 0) < cutoff}
+        print("resuming: %d of %d pairs were probed in the last 30 days and are skipped" % (before - len(probes), before), flush=True)
     print("probing %d (system, board) pairs for %d names%s" % (len(probes), len(names), " and the Simplify lists" if a.simplify else ""), flush=True)
 
     def one(item):
@@ -277,13 +328,22 @@ def main():
             return {"kind": kind, "token": token, "for": company, "error": str(e)[:80]}
         if not c:
             return None
-        total, us, tri, size, name = c
-        return {"kind": kind, "token": token, "for": company, "name": J._clean_company(name, company) or company, "total": total, "us": us,
-                "tri": tri, "bytes": size, "known": (kind, token.lower()) in known}
+        total, us, tri, size, name = c[:5]
+        row = {"kind": kind, "token": token, "for": company, "name": J._clean_company(name, company) or company, "total": total, "us": us,
+               "tri": tri, "bytes": size, "known": (kind, token.lower()) in known}
+        if kind == "icims":                              # added as an employer's careers site, read from its sitemap and pages
+            row.update(kind="careerpage", sitemap=c[5], known=("careerpage", token.lower()) in known)
+        return row
 
     t0 = time.time()
     with ThreadPoolExecutor(max_workers=a.workers) as ex:
         rows = [r for r in ex.map(one, probes.items()) if r]
+    if a.resume:
+        now = time.time()
+        failed = {(r["kind"] if r["kind"] != "careerpage" else "icims", r["token"]) for r in rows if "error" in r}
+        done.update({"%s|%s" % k: now for k in probes if k not in failed})        # an error (429, time-out) is tried again next run
+        with open(a.resume, "w", encoding="utf-8", newline="\n") as f:
+            json.dump(done, f)
     found = [r for r in rows if "error" not in r]
     keep = sorted([r for r in found if r["us"] >= a.min_us], key=lambda r: (-r["tri"], -r["us"]))
     os.makedirs(os.path.dirname(a.out), exist_ok=True)

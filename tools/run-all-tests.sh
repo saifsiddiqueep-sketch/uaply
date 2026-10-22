@@ -78,6 +78,7 @@ run "job types per feed, the Job type filter, the Simplify / Pitt CSC lists" pyt
 run "the whole US with PA, NJ, DE first: places, the city table, CareerOneStop, the distance filter" python tools/test-tristate.py 18842
 run "job quality: company names, education, graduate-only internships, part-time, slow feeds, the internship order" python tools/test-quality.py 18844
 run "many sources: job-boards.json, per-source health, switching a failing board off, spread refreshes, find-boards" python tools/test-sources-health.py
+run "employers' careers sites: sitemap, JobPosting data, robots.txt, human checks, the packed cache and saved list" python tools/test-career-pages.py
 run "backups: pack the data folder, restore it, refuse damaged ones, encrypt, upload to a private GitHub repository" python tools/test-backup.py 18806
 run "every path from swipe right to inbox, replayed in a browser" python tools/ui-apply-paths.py
 run "the swipe guarantee: resume to profile, then swipe right into Greenhouse, Lever, Ashby, SmartRecruiters, Workable, an email employer and a hand-off; a question box, a file it cannot ask, the weekly limit" python tools/test-swipe-e2e.py 18830

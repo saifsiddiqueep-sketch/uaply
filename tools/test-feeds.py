@@ -225,8 +225,9 @@ many = [dict(base[i % len(base)], id=str(900000000000 + i)) for i in range(150)]
 def paged(url, headers=None):
     CALLS.append((url, {}))
     if "?" in url:
-        off = int(url.split("offset=")[1])
-        return {"offset": off, "limit": 100, "totalFound": 150, "content": many[off:off + 100]}
+        off = int(url.split("offset=")[1].split("&")[0])
+        rows = [m for m in many if ((m.get("location") or {}).get("country") or "us") == "us"] if "country=us" in url else many   # the API's own filter
+        return {"offset": off, "limit": 100, "totalFound": len(rows), "content": rows[off:off + 100]}
     raise OSError("no description")
 
 
@@ -253,6 +254,8 @@ by_id = {m["id"]: m for m in mixed}
 t("an employer's SmartRecruiters board: at most 24 descriptions read, none for a posting outside the US",
   (len(read), sum(1 for i in read if by_id[i]["location"]["country"] != "us")), (J.SR_BOARD_READ, 0))
 t("...New Jersey postings are read first", sum(1 for i in read if by_id[i]["location"]["region"] == "NJ"), J.SR_BOARD_READ)
+t("...with one request for its US postings only (country=us); the City's whole list is read without it",
+  [u.split("?")[1] for u, _ in CALLS if "?" in u], ["limit=100&offset=0&country=us"])
 t("...and it keeps 14 plus up to 10 tri-state extras, never a German one", (len(jobs) <= 24, any("Munich" in j["loc"] for j in jobs)), (True, False))
 many[:] = many_saved
 

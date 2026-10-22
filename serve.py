@@ -1027,12 +1027,8 @@ def apply_facts():
     try:
         folder = uaply_api.DATA
         writable = bool(folder) and os.path.isdir(folder) and os.access(folder, os.W_OK)
-        jobs = jobs_api.get_jobs()["jobs"]
         partners = jobs_api.partner_jobs()
-        classes = {"ats": sum(1 for j in jobs if j.get("instant") and not j.get("contact") and not j.get("webhook")),
-                   "email": sum(1 for j in jobs if j.get("instant") and j.get("contact")),
-                   "webhook": sum(1 for j in jobs if j.get("instant") and j.get("webhook")),
-                   "handoff": sum(1 for j in jobs if not j.get("instant"))}
+        classes = jobs_api.apply_classes()          # counted one job at a time (the whole list was copied here once a minute)
         configured = {"ats": bool(jobs_api.ats_connections() or jobs_api._ats_jobs), "email": any(j.get("contact") for j in partners),
                       "webhook": any(j.get("webhook") for j in partners), "handoff": True}
         v = {"ok": writable, "mode": uaply_api.config().get("delivery"), "classes": classes, "configured": configured}

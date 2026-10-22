@@ -1,0 +1,536 @@
+# Seeds for tools/find-boards.py --names, by state and by industry (round 2, October 2026). One company per line; # starts a comment.
+# Each state's large employers (hospital systems, universities, retailers, banks, logistics, utilities) and well-known local companies.
+# Many use Workday, Taleo or their own sites; the tool keeps only those found on Greenhouse, Lever, Ashby, SmartRecruiters, Workable or
+# an iCIMS careers site with a public sitemap.
+# --- Alabama ---
+UAB Medicine
+Huntsville Hospital
+Regions Financial
+Shipt
+Adtran
+Altec
+Encompass Health
+Southern Research
+# --- Alaska ---
+Providence Alaska
+GCI
+Alaska Airlines
+Alaska Native Tribal Health Consortium
+Doyon
+# --- Arizona ---
+Banner Health
+HonorHealth
+GoDaddy
+Carvana
+Axon
+Offerpad
+Republic Services
+Phoenix Childrens
+Arizona State University
+Isagenix
+# --- Arkansas ---
+Arkansas Childrens
+Baptist Health Arkansas
+J.B. Hunt
+Tyson Foods
+Dillards
+Acxiom
+# --- California ---
+Kaiser Permanente
+Sutter Health
+Cedars-Sinai
+Stanford Health Care
+UCSF Health
+In-N-Out Burger
+Ross Stores
+Williams-Sonoma
+Gap
+Levi Strauss
+Clorox
+Chevron
+Instacart
+DoorDash
+Airbnb
+Lyft
+# --- Colorado ---
+UCHealth
+Intermountain Health
+Guild Education
+Ibotta
+Gusto
+Vail Resorts
+Western Union
+Ball Corporation
+DaVita
+# --- Connecticut ---
+Yale New Haven Health
+Hartford HealthCare
+Travelers
+Cigna
+Synchrony
+Stanley Black & Decker
+Priceline
+Charter Communications
+# --- Delaware ---
+ChristianaCare
+Nemours
+Bayhealth
+Incyte
+Chemours
+Best Egg
+# --- District of Columbia ---
+MedStar Health
+Childrens National
+Georgetown University
+George Washington University
+Washington Metropolitan Area Transit Authority
+Danaher
+# --- Florida ---
+AdventHealth
+Orlando Health
+Baptist Health South Florida
+Publix
+Chewy
+Jabil
+Raymond James
+Darden
+NextEra Energy
+Lennar
+# --- Georgia ---
+Emory Healthcare
+Piedmont Healthcare
+Northside Hospital
+Home Depot
+Delta Air Lines
+UPS
+Chick-fil-A
+NCR
+Calendly
+Salesloft
+Greenlight
+# --- Hawaii ---
+Queens Health System
+Hawaii Pacific Health
+Hawaiian Electric
+Hawaiian Airlines
+# --- Idaho ---
+St Lukes Health System
+Micron
+Albertsons
+Boise State University
+# --- Illinois ---
+Northwestern Medicine
+Advocate Health
+Rush University Medical Center
+Grubhub
+Groupon
+Sprout Social
+Relativity
+Morningstar
+Allstate
+Walgreens
+McDonalds
+# --- Indiana ---
+IU Health
+Community Health Network
+Eli Lilly
+Cummins
+Elevance Health
+Salesforce Indianapolis
+# --- Iowa ---
+UnityPoint Health
+Principal Financial
+Hy-Vee
+John Deere
+Casey's
+# --- Kansas ---
+University of Kansas Health System
+Garmin
+Spirit AeroSystems
+Evergy
+# --- Kentucky ---
+Norton Healthcare
+Baptist Health Kentucky
+Humana
+Yum Brands
+Papa Johns
+Brown-Forman
+# --- Louisiana ---
+Ochsner Health
+LCMC Health
+Entergy
+Lamar Advertising
+# --- Maine ---
+MaineHealth
+Northern Light Health
+IDEXX
+L.L.Bean
+WEX
+# --- Maryland ---
+Johns Hopkins Medicine
+University of Maryland Medical System
+Marriott
+Under Armour
+T. Rowe Price
+McCormick
+# --- Massachusetts ---
+Mass General Brigham
+Beth Israel Lahey Health
+HubSpot
+Toast
+Wayfair
+DraftKings
+Klaviyo
+Moderna
+Vertex Pharmaceuticals
+# --- Michigan ---
+Corewell Health
+Henry Ford Health
+Trinity Health
+Rocket Companies
+Stryker
+Meijer
+Domino's
+# --- Minnesota ---
+Allina Health
+Fairview Health Services
+Mayo Clinic
+Target
+Best Buy
+General Mills
+3M
+UnitedHealth Group
+# --- Mississippi ---
+University of Mississippi Medical Center
+Baptist Memorial Health Care
+C Spire
+Sanderson Farms
+# --- Missouri ---
+BJC HealthCare
+SSM Health
+Mercy
+Edward Jones
+Centene
+Emerson
+Hallmark
+# --- Montana ---
+Billings Clinic
+Logan Health
+Montana State University
+# --- Nebraska ---
+Nebraska Medicine
+CHI Health
+Union Pacific
+Mutual of Omaha
+Hudl
+# --- Nevada ---
+Renown Health
+Intermountain Nevada
+Caesars Entertainment
+MGM Resorts
+Boyd Gaming
+Switch
+# --- New Hampshire ---
+Dartmouth Health
+Elliot Health System
+Timberland
+# --- New Jersey ---
+Hackensack Meridian Health
+RWJBarnabas Health
+Virtua Health
+Cooper University Health Care
+Prudential
+Johnson & Johnson
+Cross River Bank
+# --- New Mexico ---
+Presbyterian Healthcare Services
+UNM Health
+Sandia National Laboratories
+Los Alamos National Laboratory
+# --- New York ---
+Northwell Health
+NYU Langone Health
+Mount Sinai
+NewYork-Presbyterian
+Peloton
+Etsy
+Squarespace
+Datadog
+MongoDB
+Ramp
+# --- North Carolina ---
+Atrium Health
+Novant Health
+Duke Health
+UNC Health
+Bank of America
+Lowes
+Red Hat
+Epic Games
+# --- North Dakota ---
+Sanford Health
+Essentia Health
+Bobcat Company
+# --- Ohio ---
+Cleveland Clinic
+OhioHealth
+Nationwide
+Progressive
+Kroger
+Procter & Gamble
+Root Insurance
+# --- Oklahoma ---
+INTEGRIS Health
+Saint Francis Health System
+Devon Energy
+Paycom
+# --- Oregon ---
+Providence
+Legacy Health
+OHSU
+Nike
+Columbia Sportswear
+# --- Pennsylvania ---
+UPMC
+Penn Medicine
+Jefferson Health
+Geisinger
+Comcast
+Gopuff
+Duolingo
+# --- Rhode Island ---
+Lifespan
+Brown University Health
+CVS Health
+Citizens Bank
+Hasbro
+# --- South Carolina ---
+Prisma Health
+MUSC Health
+BMW Manufacturing
+Blackbaud
+# --- South Dakota ---
+Sanford Health
+Avera Health
+# --- Tennessee ---
+Vanderbilt University Medical Center
+HCA Healthcare
+FedEx
+AutoZone
+Dollar General
+# --- Texas ---
+Houston Methodist
+Baylor Scott & White
+Memorial Hermann
+Texas Childrens
+H-E-B
+Dell
+Whole Foods
+Indeed
+Bumble
+# --- Utah ---
+Intermountain Health
+University of Utah Health
+Qualtrics
+Pluralsight
+Lucid
+Podium
+Weave
+Divvy
+# --- Vermont ---
+University of Vermont Health Network
+Ben & Jerrys
+# --- Virginia ---
+Inova
+Sentara Health
+Capital One
+Booz Allen Hamilton
+Dollar Tree
+# --- Washington ---
+Providence Swedish
+MultiCare
+Microsoft
+Amazon
+Costco
+Zillow
+Expedia
+# --- West Virginia ---
+WVU Medicine
+CAMC Health System
+# --- Wisconsin ---
+Advocate Aurora Health
+Froedtert
+Epic Systems
+Northwestern Mutual
+American Family Insurance
+Kohler
+# --- Wyoming ---
+Wyoming Medical Center
+Cheyenne Regional Medical Center
+University of Wyoming
+# ===== By industry =====
+# --- Dental ---
+Aspen Dental
+Heartland Dental
+Pacific Dental Services
+Smile Brands
+Western Dental
+Dental Care Alliance
+Mortenson Dental Partners
+Tend
+Benevis
+Great Expressions Dental Centers
+Coast Dental
+Affordable Care
+Sonrava Health
+42 North Dental
+Dentalcorp
+Henry Schein
+Patterson Dental
+SmileDirectClub
+Candid
+Byte
+# --- Real estate ---
+Compass
+eXp Realty
+Keller Williams
+Redfin
+Opendoor
+Offerpad
+Pacaso
+Roofstock
+Belong
+Arrived
+Fundrise
+Juniper Square
+Entrata
+AppFolio
+Bilt Rewards
+Greystar
+Invitation Homes
+Sonder
+Zumper
+Mynd
+# --- Legal ---
+Clio
+Ironclad
+EvenUp
+Filevine
+LegalZoom
+Rocket Lawyer
+Axiom
+Lawhive
+Everlaw
+DISCO
+# --- Medical groups and clinics ---
+Kindbody
+Included Health
+Omada Health
+Virta Health
+Sword Health
+Devoted Health
+Privia Health
+Signify Health
+CareBridge
+VillageMD
+ChenMed
+Iora Health
+LifeStance Health
+Headway
+Alma
+Rula
+Grow Therapy
+SonderMind
+Spring Health
+Lyra Health
+Brightline
+# --- Education ---
+KIPP
+Success Academy
+Uncommon Schools
+IDEA Public Schools
+Achievement First
+Mastery Charter Schools
+Teach For America
+City Year
+Noble Schools
+Khan Academy
+Coursera
+Outschool
+Varsity Tutors
+# --- Construction and trades ---
+Sunrun
+ServiceTitan
+Bolt
+Cuentas
+Frontdoor
+Mosaic
+Sunnova
+Palmetto
+# --- Manufacturing ---
+Divergent
+Machina Labs
+Formlabs
+Saronic
+Hadrian
+Archer Aviation
+Joby Aviation
+Zipline
+Firefly Aerospace
+# --- Logistics ---
+Arrive Logistics
+Loadsmart
+Transfix
+ShipBob
+Stord
+Odeko
+Veho
+# --- Retail and hospitality ---
+Cava
+Dutch Bros
+Blue Bottle Coffee
+Joe and the Juice
+Erewhon
+Untuckit
+Faherty
+Vuori
+Alo Yoga
+Skims
+Bonobos
+Kendra Scott
+Lovesac
+Sonder
+Mint House
+# --- Sports and recreation ---
+Barrys
+SoulCycle
+Orangetheory Fitness
+Tonal
+Whoop
+Strava
+AllTrails
+Fanatics
+DraftKings
+Topgolf
+# --- Nonprofit ---
+Year Up
+Wikimedia Foundation
+Code for America
+charity water
+Feeding America
+# --- Accounting and finance ---
+Pilot
+Bench
+Carta
+Mercury
+# --- Media ---
+Vox Media
+BuzzFeed
+Axios
+Politico
+Audacy
+Morning Brew
+Substack
+Patreon
+Twitch
+Roku
