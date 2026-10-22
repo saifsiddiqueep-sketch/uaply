@@ -49,6 +49,8 @@ public class AssistActivity extends AppCompatActivity {
     private final Handler tick = new Handler(Looper.getMainLooper());
     private String lastReport = null;
     private boolean finished = false;
+    private boolean scanMode = false;   // the bridge's first pass: read the form behind a cover, return its questions
+    private long scanDeadline = 0;
     private ValueCallback<Uri[]> pendingChooser = null;
     private WebChromeClient.FileChooserParams pendingParams = null;
 
@@ -58,6 +60,8 @@ public class AssistActivity extends AppCompatActivity {
         super.onCreate(saved);
         String url = getIntent().getStringExtra("url");
         String co = getIntent().getStringExtra("co");
+        scanMode = getIntent().getBooleanExtra("scan", false);
+        scanDeadline = System.currentTimeMillis() + 25000;   // a form that never appears: the app opens it as it is
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -68,7 +72,7 @@ public class AssistActivity extends AppCompatActivity {
         int pad = (int) (12 * getResources().getDisplayMetrics().density);
         bar.setPadding(pad, pad / 2, pad / 2, pad / 2);
         TextView title = new TextView(this);
-        title.setText(co == null || co.isEmpty() ? "Applying on the employer's page" : "Applying at " + co);
+        title.setText(scanMode ? "Reading " + (co == null || co.isEmpty() ? "the employer" : co) + "'s form..." : co == null || co.isEmpty() ? "Applying on the employer's page" : "Applying at " + co);
         title.setTextColor(Color.WHITE);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         title.setTextSize(16);
@@ -105,7 +109,19 @@ public class AssistActivity extends AppCompatActivity {
                 return true;
             }
         });
-        root.addView(web, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        android.widget.FrameLayout stack = new android.widget.FrameLayout(this);
+        stack.addView(web, new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        if (scanMode) {   // the page lays out underneath (the scan needs real sizes) while the person sees this
+            TextView cover = new TextView(this);
+            cover.setText("Reading the application form so UAply can ask you anything your profile does not answer...");
+            cover.setGravity(Gravity.CENTER);
+            cover.setTextSize(16);
+            cover.setPadding(pad * 2, pad * 2, pad * 2, pad * 2);
+            cover.setBackgroundColor(Color.WHITE);
+            cover.setTextColor(Color.parseColor("#2A1218"));
+            stack.addView(cover, new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        }
+        root.addView(stack, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
         setContentView(root);
         web.loadUrl(url);
         tick.postDelayed(this::poll, 1500);
@@ -121,7 +137,7 @@ public class AssistActivity extends AppCompatActivity {
     private void poll() {
         if (finished || web == null) return;
         String ask = "(function(){if(!window.UAplyAssist)return 'none';var n=document.querySelectorAll('input:not([type=hidden]),textarea,select').length;"
-            + "return JSON.stringify({c:UAplyAssist.confirmed(),n:n,ran:window.__uaplyAssistRan===location.href,rep:window.__uaplyRep||null,url:location.href})})()";
+            + "return JSON.stringify({c:UAplyAssist.confirmed(),n:n,ran:window.__uaplyAssistRan===location.href,rep:window.__uaplyRep||null,scan:window.__uaplyScan||null,url:location.href})})()";
         web.evaluateJavascript(ask, v -> {
             try {
                 if (v == null || v.equals("null") || v.equals("\"none\"")) { inject(); return; }
@@ -133,12 +149,39 @@ public class AssistActivity extends AppCompatActivity {
                     tick.postDelayed(() -> { finished = false; done(true, at); }, 2500);
                     return;
                 }
+                if (scanMode) {   // the bridge: read the form once, hand its questions back, change nothing
+                    if (!o.isNull("scan")) { finishScan(o.optString("scan")); return; }
+                    if (System.currentTimeMillis() > scanDeadline) { finishScan("{\"questions\":[]}"); return; }
+                    if (!o.optBoolean("ran") && o.optInt("n") > 3) scan();
+                    return;
+                }
                 if (!o.optBoolean("ran") && o.optInt("n") > 3) fill();
             } catch (Exception ignored) {
             } finally {
                 if (!finished) tick.postDelayed(this::poll, 1500);
             }
         });
+    }
+
+    /** the bridge's first pass: UAplyAssist.scan lists what the profile cannot answer (with each question's kind and choices) */
+    private void scan() {
+        String js = "(function(P,J){window.__uaplyAssistRan=location.href;window.__uaplyScan=null;"
+            + "UAplyAssist.scan(P,{job:J}).then(function(r){window.__uaplyScan=JSON.stringify({questions:r.questions||[],seen:r.seen,filled:r.filled})})"
+            + ".catch(function(){window.__uaplyScan=JSON.stringify({questions:[]})})"
+            + "})(" + AssistPlugin.profileJson + "," + AssistPlugin.jobJson + ")";
+        web.evaluateJavascript(js, null);
+    }
+
+    private void finishScan(String json) {
+        if (finished) return;
+        finished = true;
+        tick.removeCallbacksAndMessages(null);
+        Intent r = new Intent();
+        r.putExtra("confirmed", false);
+        r.putExtra("scan", json == null ? "{\"questions\":[]}" : json);
+        setResult(RESULT_OK, r);
+        if (web != null) { web.stopLoading(); web.destroy(); web = null; }
+        finish();
     }
 
     /** fills the form once at this address; the profile is a call argument, not a page global, and is dropped after */

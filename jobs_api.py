@@ -33,11 +33,13 @@ LEGAL STATUS OF EACH SOURCE (checked October 2026; this is not legal advice, hav
   emailed to anyone (the recruiter address is dropped); swiping right only opens the employer's own page.
 
 get_jobs() returns {"fetched_at", "sources", "jobs", "merged", "aged_out"} where each job already matches the shape the app expects
-(with postedDays, and updatedDays where the feed gives an update date). Postings older than MAX_AGE_DAYS are left out, and the same
-job from two feeds is shown once ("merged" counts the copies left out).
+(with postedDays, and updatedDays where the feed gives an update date, and "route": "Ready" when UAply sends the application itself,
+"Ready, one tap" where the employer's page is likely to ask for a human check, "Ready" otherwise; see human-checks.json). Postings older
+than MAX_AGE_DAYS are left out, and the same job from two feeds is shown once ("merged" counts the copies left out).
 """
 import base64
 import codecs
+import collections
 import datetime
 import hashlib
 import html
@@ -263,6 +265,56 @@ FILE_SOURCES = _file_boards()
 # the public lists (Simplify, Himalayas, Remote OK, CareerOneStop) stay last so the employer boards win the same-job rule
 _tail = next(i for i, s_ in enumerate(SOURCES) if s_[0] == "remotive")
 SOURCES = SOURCES[:_tail] + FILE_SOURCES + SOURCES[_tail:]
+# ---------- human checks on the application pages (tools/scan-human-checks.py writes human-checks.json) ----------
+# For each source: whether a sample of its application pages showed a human check (a captcha, or a challenge page) - none, sometimes,
+# always, or unknown - the kind of page (html-form, js-app, redirect to another system, sign-in) and the day it was sampled. A job is never
+# dropped for a check: its route label says "Ready, one tap" (the person sends it with one tap in the employer's page, where a check is
+# theirs to answer) instead of "Ready".
+HUMAN_CHECKS_FILE = os.environ.get("UAPLY_HUMAN_CHECKS_FILE") or os.path.join(ROOT, "human-checks.json")
+ROUTE_READY, ROUTE_ONE_TAP = "Ready", "Ready, one tap"
+LIKELY_SHARE = 0.8               # a hiring system whose sampled boards had a check this often: its boards not yet sampled are labelled one tap
+_hc = {"sources": {}, "systems": {}, "sampled": "", "share": {}, "jobs": 0}
+
+
+def load_human_checks(path=None):
+    """Read the scan's results (a missing or broken file: nothing known, every route "Ready"). Kept small: a tuple per source."""
+    src, systems, top = {}, {}, {}
+    try:
+        with open(path or HUMAN_CHECKS_FILE, encoding="utf-8") as f:
+            top = json.load(f)
+        for k, v in (top.get("sources") or {}).items():
+            hc = v.get("humanCheck") if v.get("humanCheck") in ("none", "sometimes", "always") else "unknown"
+            src[str(k)] = (hc, str(v.get("formKind") or "unknown"), str(v.get("sampled") or ""), int(v.get("pages") or 0),
+                           int(v.get("withCheck") or 0), ",".join(sorted(v.get("kinds") or {})))
+        for k, v in (top.get("systems") or {}).items():
+            seen = sum(int(v.get(b) or 0) for b in ("none", "sometimes", "always"))
+            systems[str(k)] = {"sources": int(v.get("sources") or 0), "none": int(v.get("none") or 0), "sometimes": int(v.get("sometimes") or 0),
+                               "always": int(v.get("always") or 0), "unknown": int(v.get("unknown") or 0),
+                               "likely": seen >= 3 and (int(v.get("sometimes") or 0) + int(v.get("always") or 0)) >= LIKELY_SHARE * seen}
+    except (OSError, ValueError, TypeError, AttributeError):
+        src, systems, top = {}, {}, {}
+    _hc.update(sources=src, systems=systems, sampled=str(top.get("sampled") or ""), share=dict(top.get("share") or {}),
+               jobs=int(top.get("jobs") or 0))
+    return _hc
+
+
+def _human(src):
+    """The scan's tuple for a source: its own (kind/token), else its feed's (a feed that mixes employers is sampled as one), else None."""
+    return _hc["sources"].get("%s/%s" % (src[0], src[1])) or _hc["sources"].get(src[0])
+
+
+def route_label(src):
+    """The route label of a source's jobs: "Ready, one tap" where a human check is likely on the employer's page, else "Ready"."""
+    h = _human(src)
+    if h and h[0] in ("sometimes", "always"):
+        return ROUTE_ONE_TAP
+    if (not h or h[0] == "unknown") and (_hc["systems"].get(src[0]) or {}).get("likely"):
+        return ROUTE_ONE_TAP                     # not sampled yet (a new board), on a system where checks are the rule
+    return ROUTE_READY
+
+
+load_human_checks()
+
 FILE_TTL = 2 * 3600            # a board from job-boards.json is read every 2 hours (the hand-picked ones every 30 minutes)
 
 VIA = {"greenhouse": "%s on Greenhouse", "lever": "%s on Lever", "ashby": "%s on Ashby", "smartrecruiters": "%s on SmartRecruiters", "workable": "%s on Workable",
@@ -334,6 +386,124 @@ US_CITIES = ("San Francisco|New York|Seattle|Austin|Boston|Chicago|Denver|Los An
              "King of Prussia|Conshohocken|Trenton|Princeton|Camden|Cherry Hill|Jersey City|Hoboken|Newark|Wilmington|Dover|Baltimore|"
              "Washington,? D\\.?C|Miami|Dallas|Houston|San Antonio|Phoenix|San Diego|San Jose|Las Vegas|Nashville|Charlotte|Raleigh|Orlando|Tampa|Detroit|"
              "Columbus|Cleveland|Cincinnati|Indianapolis|Minneapolis|St\\.? Louis|Kansas City|Salt Lake City|Sacramento|New Orleans|Silicon Valley|Bay Area")
+STATE_CODE = dict(zip((n.lower() for n in STATE_NAMES.split("|")), STATES))      # "new jersey" -> "NJ"
+assert len(STATE_CODE) == len(STATES) == 51
+
+# ---------- where a job is: its place's point, for "near you" and the distance filter ----------
+# us-places.tsv.gz (tools/make-us-places.py, from the Census Gazetteer): about 50,000 US places, read on first use and kept as one string
+# with an index of line starts (about 1.5 MB), looked up by binary search. A job gets "geo": [lat, lng] when its place names a US city,
+# town, borough, CDP or township with its state ("Cherry Hill, NJ", "El Segundo, California, United States", "Abilene TX",
+# "US-PA-Philadelphia"), else its ZIP code's first three digits; a remote job, and a place with no state, get none (the app's own city
+# list still tries those). On October 21, 2026 the app's 90-city list placed 6,824 of 12,570 on-site jobs.
+PLACES_FILE = os.path.join(ROOT, "us-places.tsv.gz")
+ZIP3_FILE = os.path.join(ROOT, "autofill_zip3.json")
+_places = {}
+
+
+def place_key(name, st):
+    """A place's lookup key: "<state>|<name>" in lower case without punctuation, Saint, Fort and Mount as st, ft and mt."""
+    n = re.sub(r"[.'\u2019`]", "", str(name or "").lower().replace("&", " and "))
+    n = re.sub(r"[^a-z0-9]+", " ", n).strip()
+    n = re.sub(r"\bsaint\b", "st", re.sub(r"\bfort\b", "ft", re.sub(r"\bmount\b", "mt", n)))
+    return "%s|%s" % (str(st or "").lower(), n) if n and st else ""
+
+
+def _places_table():
+    if "text" not in _places:
+        import array
+        import gzip
+        try:
+            with gzip.open(PLACES_FILE, "rt", encoding="utf-8") as f:
+                text = f.read()
+        except OSError:
+            text = ""
+        off = array.array("I", [0])
+        i = text.find("\n")
+        while i >= 0 and i + 1 < len(text):
+            off.append(i + 1)
+            i = text.find("\n", i + 1)
+        try:
+            with open(ZIP3_FILE, encoding="utf-8") as f:
+                zip3 = {k: tuple(v) for k, v in (json.load(f).get("zip3") or {}).items()}
+        except (OSError, ValueError, AttributeError):
+            zip3 = {}
+        _places.update(text=text, off=off if text else array.array("I"), zip3=zip3)
+    return _places
+
+
+def _place_point(key):
+    t = _places_table()
+    text, off = t["text"], t["off"]
+    lo, hi = 0, len(off)
+    while lo < hi:
+        mid = (lo + hi) // 2
+        s = off[mid]
+        e = text.find("\t", s)
+        k = text[s:e]
+        if k < key:
+            lo = mid + 1
+        elif k > key:
+            hi = mid
+        else:
+            lat, lng = text[e + 1:text.find("\n", e)].split("\t")
+            return [float(lat), float(lng)]
+    return None
+
+
+_ST_WORD = r"(?:%s|%s)" % ("|".join(STATES), STATE_NAMES)
+_PLACE_RES = [re.compile(r"^(?:US|USA)[- ,]+(%s)[- ,]+([A-Za-z][A-Za-z .'-]+)$" % "|".join(STATES)),           # US-PA-Philadelphia
+              re.compile(r"^([A-Za-z][A-Za-z .'-]*?)\s*,\s*(%s)\b" % _ST_WORD, re.I),                       # Cherry Hill, NJ (19103)
+              re.compile(r"^([A-Za-z][A-Za-z .'-]*?)\s+(%s)$" % "|".join(STATES))]                            # Abilene TX
+
+
+# a big city named without its state ("San Francisco", "New York City", "HQ: Chicago"): its state
+BIG_CITIES = {"new york": "NY", "new york city": "NY", "nyc": "NY", "manhattan": "NY", "brooklyn": "NY", "san francisco": "CA", "los angeles": "CA",
+              "chicago": "IL", "austin": "TX", "boston": "MA", "seattle": "WA", "san jose": "CA", "houston": "TX", "atlanta": "GA", "dallas": "TX",
+              "denver": "CO", "philadelphia": "PA", "pittsburgh": "PA", "miami": "FL", "indianapolis": "IN", "phoenix": "AZ", "san diego": "CA",
+              "detroit": "MI", "minneapolis": "MN", "nashville": "TN", "charlotte": "NC", "raleigh": "NC", "baltimore": "MD", "portland": "OR",
+              "salt lake city": "UT", "las vegas": "NV", "columbus": "OH", "cleveland": "OH", "cincinnati": "OH", "st louis": "MO",
+              "kansas city": "MO", "new orleans": "LA", "orlando": "FL", "tampa": "FL", "sacramento": "CA", "oakland": "CA", "palo alto": "CA",
+              "mountain view": "CA", "sunnyvale": "CA", "menlo park": "CA", "santa monica": "CA", "irvine": "CA", "washington": "DC",
+              "washington dc": "DC", "san antonio": "TX", "fort worth": "TX", "jersey city": "NJ", "hoboken": "NJ", "princeton": "NJ",
+              "boulder": "CO", "cambridge": "MA", "bay area": "CA", "san francisco bay area": "CA", "sf bay area": "CA", "silicon valley": "CA"}
+_BIG_AS = {"bay area": "san francisco", "san francisco bay area": "san francisco", "sf bay area": "san francisco", "silicon valley": "san jose",
+           "new york city": "new york", "nyc": "new york", "manhattan": "new york", "washington dc": "washington"}
+
+
+def job_geo(loc, remote=False):
+    """[lat, lng] of a job's place (two decimals, about a kilometre), or None. See PLACES_FILE."""
+    if remote or not loc:
+        return None
+    for part in re.split(r"\s*(?:;|\||/| or |\n)\s*", str(loc))[:4]:
+        part = re.sub(r"\bD\.\s?C\.?", "DC", part.strip())
+        part = re.sub(r"^(?:(?:United States|USA|US)\s*[-:,]\s*|HQ\s*:\s*|.*?,\s*(?=New York City\b))", "", part)     # "USA - Corona, CA"
+        part = re.sub(r"\s+(?:Office|HQ|Headquarters|-\s*Greater Area)$", "", part.strip(), flags=re.I)
+        part = re.sub(r"(?:,?\s*(?:United States(?: of America)?|USA|US))+$", "", part.strip()).strip(" ,-")
+        big = re.sub(r"[^a-z ]", "", part.lower()).strip()
+        big = re.sub(r",?\s*(?:ny|new york|ca|california)$", "", big).strip() if big.startswith(("new york city", "bay area", "san francisco bay area")) else big
+        if big in BIG_CITIES:
+            pt = _place_point(place_key(_BIG_AS.get(big, big), BIG_CITIES[big]))
+            if pt:
+                return pt
+        m = re.match(r"^(%s)-([A-Za-z][A-Za-z .'-]+)" % "|".join(STATES), part)                 # "PA-Philadelphia, UNAVAILABLE"
+        if m:
+            part = "%s, %s" % (m.group(2), m.group(1))
+        for i, rx in enumerate(_PLACE_RES):
+            m = rx.search(part)
+            if not m:
+                continue
+            st, city = (m.group(1), m.group(2)) if i == 0 else (m.group(2), m.group(1))
+            st = st.upper() if len(st) == 2 else STATE_CODE.get(st.lower(), "")
+            pt = _place_point(place_key(city, st)) if st else None
+            if pt:
+                return pt
+        z = re.search(r"\b(\d{3})\d{2}(?:-\d{4})?\b", part)
+        if z and z.group(1) in _places_table()["zip3"]:
+            lat, lng = _places_table()["zip3"][z.group(1)]
+            return [round(lat, 2), round(lng, 2)]
+    return None
+
+
 # bare state names count too ("New Jersey", "Remote - Delaware"), except Georgia, which is also a country
 US_STATE_WORDS = "|".join(n for n in STATE_NAMES.split("|") if n != "Georgia")
 US_RE = re.compile(r"United States|\bUSA\b|\bU\.S\.|\bUS\b|, (?:%s)\b|, (?:%s)\b|\b(?:%s)\b|\b(?:%s)\b|[a-z] (?:%s)$" % (
@@ -364,7 +534,7 @@ _disk = {"loaded": False, "dirty": False, "filled": False}   # filled: a saved l
 _load_lock = threading.Lock()
 hide_errors = False                # serve.py sets this on a hosted server: the public job list then says "unavailable right now" instead of a raw network error
 DISK_MAX_AGE = 24 * 3600          # never trust a saved copy older than a day
-CACHE_VERSION = 12              # raise this whenever the rules for keeping or classifying postings change: older saved copies are then ignored
+CACHE_VERSION = 13              # raise this whenever the rules for keeping or classifying postings change: older saved copies are then ignored
 
 
 def _cache_file():
@@ -909,28 +1079,43 @@ def _fetch_raw(kind, token, name):
     return list(_iter_raw(kind, token, name))
 
 
-_sr_desc = {}            # (company, posting id) -> {"at", "released", "detail"}: each description is read once a day at most
+_sr_desc = {}            # (company, posting id) -> (when its description was read, its releasedDate): each is read once a day at most
+_REUSE = object()        # "the job the last read made from this posting still stands" (see _prev_jobs)
 
 
-def _sr_detail(token, pid, released):
-    """One posting's full record (description, pay), from the cache when it is fresh and the posting was not re-released."""
+def _prev_jobs(src):
+    """The jobs a source's last read made, by id (unpacked from its packed copy): an unchanged SmartRecruiters posting or careers-site
+    page is made into the same job again without reading it again. Holding each description for that cost 10 MB at 20,000 jobs
+    (October 22, 2026); the jobs are already held, packed."""
+    with _lock:
+        c = _cache.get(src)
+    try:
+        return {j["id"]: j for j in c["jobs"]} if c else {}
+    except (KeyError, TypeError, ValueError):
+        return {}
+
+
+def _sr_detail(token, pid, released, reusable=False):
+    """One posting's full record (description, pay), or _REUSE when the posting was read in the last SR_DESC_TTL, was not re-released
+    and its job from that read is at hand (`reusable`)."""
     key = (token, pid)
     with _lock:
         c = _sr_desc.get(key)
-    if c and c["released"] == released and time.time() - c["at"] < SR_DESC_TTL:
-        return _unz(c["detail"])
+    if reusable and c and c[1] == released and time.time() - c[0] < SR_DESC_TTL:
+        return _REUSE
     at = time.time()
     try:
         d = _get("https://api.smartrecruiters.com/v1/companies/%s/postings/%s" % (urllib.parse.quote(token, safe=""), urllib.parse.quote(pid, safe="")))
         if isinstance(d, dict):                  # keep only what _smartrecruiters reads (120 full records stayed in memory all day before)
             secs = ((d.get("jobAd") or {}).get("sections")) or {}
-            d = {"jobAd": {"sections": {k: {"text": ((secs.get(k) or {}).get("text") or "")[:SR_TEXT]} for k in ("jobDescription", "qualifications", "additionalInformation")}},
+            # as plain text (the markup was about 40% of what was held: 184 boards x 24 descriptions, October 21)
+            d = {"jobAd": {"sections": {k: {"text": _text((secs.get(k) or {}).get("text") or "")[:SR_TEXT]} for k in ("jobDescription", "qualifications", "additionalInformation")}},
                  "compensation": d.get("compensation") or {}}
     except Exception:
-        d = _unz(c["detail"]) if c else None     # keep the last description if this read fails, and try again at the next hourly refresh
+        d = _REUSE if reusable else None         # keep the last job if this read fails, and try again at the next hourly refresh
         at = time.time() - SR_DESC_TTL + TTL["smartrecruiters"] - 60
     with _lock:
-        _sr_desc[key] = {"at": at, "released": released, "detail": _z(d)}     # held compressed: thousands of descriptions a day
+        _sr_desc[key] = (at, released)
     return d
 
 
@@ -973,10 +1158,13 @@ def _smartrecruiters(token, name):
         items.sort(key=lambda p: ((p.get("location") or {}).get("region") or "").upper() not in ("PA", "NJ", "DE"))
         items = items[:SR_BOARD_READ]
     items = items[:cap]
+    prev = _prev_jobs(("smartrecruiters", token, name))
     with ThreadPoolExecutor(max_workers=4) as ex:                # four at a time: gentle on their API, and quick enough
-        details = list(ex.map(lambda p: _sr_detail(token, str(p["id"]), p.get("releasedDate") or ""), items))
+        details = list(ex.map(lambda p: _sr_detail(token, str(p["id"]), p.get("releasedDate") or "",
+                                                   _jid("smartrecruiters", p["id"]) in prev), items))
     out = []
     for p, d in zip(items, details):
+        again = prev.get(_jid("smartrecruiters", p["id"])) if d is _REUSE else None
         d = d if isinstance(d, dict) else {}
         L = p.get("location") or {}
         city, region = (L.get("city") or "").strip(), (L.get("region") or "").strip()
@@ -1000,6 +1188,8 @@ def _smartrecruiters(token, name):
                         text=_text(text) or (p.get("name") or ""), url="https://jobs.smartrecruiters.com/%s/%s" % (token, p["id"]),
                         salary_text="", sal=sal, posted=_ts(p.get("releasedDate")), fallback=fallback, force_type=force, emp=kind_label,
                         ats_id=str(p.get("uuid") or "")))     # the Application API addresses a posting by its uuid, not by its number
+        if again:
+            out[-1]["_prev"] = again                              # unchanged since the last read: the same job again
     return [r for r in out if r["title"]]
 
 
@@ -1058,37 +1248,168 @@ def _usajobs(token):
 # ---------- employers' own careers sites: the sitemap, then each job page's JobPosting structured data ----------
 CP_UA = "UAplyBot/1.0 (+https://uaply.net; job search app; reads public JobPosting data)"
 CP_PAGES = 40                    # job pages read per site per refresh (newest first; a page read before is read again only when its lastmod changes)
+CP_FIRST = 14                    # ...on a site's first read (the first fill of a few hundred sites, 2 s apart per site, must stay short)
+CP_WINDOW = 300                  # how far down the newest pages a site's co-ops, internships and tri-state pages are looked for
+CP_STUDENT_URL = re.compile(r"co-?op|intern(?:ship)?s?\b|summer[-_ ]20\d\d", re.I)
+CP_LOCAL_URL = re.compile(r"(?:^|[/_-])(?:PA|NJ|DE)(?:[/_-]|$)|(?i:pennsylvania|new-jersey|delaware|philadelphia|pittsburgh|camden)")
+CP_NOMOD_TTL = 2 * 86400         # a page its sitemap gives no lastmod for (Workday) is read again after this long
+CP_PARALLEL = 20                 # careers sites read at the same time, on their own threads: they wait out crawl delays, so on the
+                                 # FEED_PARALLEL board readers 12 sites took 1,008 of the 4,500 reader-seconds of the first fill (October 21)
 CP_MIN_DELAY = 2.0               # seconds between two requests to one careers site (more when its robots.txt asks for a crawl delay)
 CP_TEXT = 4000                   # characters of a page's description kept
-HUMAN_CHECK_RE = re.compile(r"g-recaptcha|h-captcha|hcaptcha|cf-challenge|challenge-platform|cf_chl_|verify you are (?:a )?human|are you a robot|"
+# a page that shows a check (a captcha, a challenge page). Cloudflare's quiet /cdn-cgi/challenge-platform/scripts/ tag on ordinary pages is
+# not one (the human-check scan found it on most SmartRecruiters, Lever and Workable pages); its challenge pages load challenge-platform/h/
+HUMAN_CHECK_RE = re.compile(r"g-recaptcha|h-captcha|hcaptcha|cf-challenge|challenge-platform/h/|cf_chl_|verify you are (?:a )?human|are you a robot|"
                             r"access denied|attention required", re.I)
 _robots = {}                     # host -> (when read, RobotFileParser or None when robots.txt could not be read)
-_cp_pages = {}                   # (site token, page address) -> (lastmod, compressed raw posting, or None when the page held no posting)
+_cp_pages = {}                   # (site token, page address) -> (lastmod, whether it held a posting, when read)
 _cp_next = {}                    # host -> the earliest time the next request may go
+
+
+class RobotsTxt:
+    """robots.txt read as RFC 9309 says, with the calls of urllib.robotparser.RobotFileParser (parse, can_fetch, crawl_delay). The group
+    named for the bot (its name before the "/", e.g. UAplyBot) is used, else the * group; the longest rule that matches the path and query
+    wins, Allow on a tie; * matches any characters and a final $ ends the path. urllib.robotparser matches neither * nor $ and takes the
+    first rule in the file, so "Disallow: /jobs/*login" (iCIMS) was not honoured by it."""
+
+    def __init__(self):
+        self.allow_all = self.disallow_all = False
+        self.groups = []                      # [(agents, [(allow, pattern, regex)], crawl delay or None)]
+
+    def parse(self, lines):
+        cur, in_agents = None, False
+        for raw in lines:
+            line = raw.split("#", 1)[0].strip()
+            if ":" not in line:
+                continue
+            k, v = (x.strip() for x in line.split(":", 1))
+            k = k.lower()
+            if k == "user-agent":
+                if cur is None or not in_agents:
+                    cur = ([], [], [None])
+                    self.groups.append(cur)
+                cur[0].append(v.lower())
+                in_agents = True
+            elif k in ("allow", "disallow") and cur is not None:
+                in_agents = False
+                if v:                         # an empty Disallow disallows nothing
+                    end = v.endswith("$")
+                    body = v[:-1] if end else v
+                    rx = re.compile(".*".join(re.escape(x) for x in body.split("*")) + ("$" if end else ""))
+                    cur[1].append((k == "allow", v, rx))
+            elif k == "crawl-delay" and cur is not None:
+                in_agents = False
+                try:
+                    cur[2][0] = float(v)
+                except ValueError:
+                    pass
+
+    def _group(self, agent):
+        name = (agent or "").split("/")[0].lower()
+        mine = [g for g in self.groups if any(a != "*" and a and a in name for a in g[0])]
+        return mine or [g for g in self.groups if "*" in g[0]]
+
+    def can_fetch(self, agent, url):
+        if self.disallow_all:
+            return False
+        if self.allow_all:
+            return True
+        p = urllib.parse.urlsplit(url)
+        path = (p.path or "/") + ("?" + p.query if p.query else "")
+        if path == "/robots.txt":
+            return True
+        best = None                           # (length of the rule, allow)
+        for g in self._group(agent):
+            for allow, pat, rx in g[1]:
+                if rx.match(path) and (best is None or len(pat) > best[0] or (len(pat) == best[0] and allow)):
+                    best = (len(pat), allow)
+        return True if best is None else best[1]
+
+    def crawl_delay(self, agent):
+        for g in self._group(agent):
+            if g[2][0] is not None:
+                return g[2][0]
+        return None
 
 
 def _robots_for(host):
     """The site's robots.txt rules (read once a day). None when robots.txt cannot be read: the site is then not read at all."""
-    import urllib.robotparser
     got = _robots.get(host)
     if got and time.time() - got[0] < 24 * 3600:
         return got[1]
-    rp = urllib.robotparser.RobotFileParser()
+    rp, soon = RobotsTxt(), False
     try:
         rp.parse(_cp_fetch("https://%s/robots.txt" % host, robots_ok=True).splitlines())
     except urllib.error.HTTPError as e:
         rp = rp if e.code in (404, 410) else None   # no robots.txt (404): everything allowed, as the robots convention says
+        soon = e.code == 429 or e.code >= 500       # busy or broken for now: asked again in ROBOTS_RETRY, not after a day
         if rp is not None:
             rp.parse([])
     except Exception:
-        rp = None
-    _robots[host] = (time.time(), rp)
+        rp, soon = None, True                       # a time-out or a dropped connection (on October 21, 31 sites lost a day to one)
+    _robots[host] = (time.time() - (24 * 3600 - ROBOTS_RETRY if soon else 0), rp)
     return rp
+
+
+ROBOTS_RETRY = 10 * 60           # seconds before a robots.txt that could not be read for a passing reason is asked for again
 
 
 def _cp_fetch(url, robots_ok=False):
     """One page of a careers site: only a public https address, only what its robots.txt allows this bot, never sooner than the site's
     crawl delay after the last request to it. Returns the text; raises on an error or a human check."""
+    _cp_turn(url, robots_ok)
+    text = _get(url, {"User-Agent": CP_UA, "Accept": "text/html,application/xml;q=0.9,*/*;q=0.8"}, as_text=True)
+    if HUMAN_CHECK_RE.search(text[:20000]):
+        raise PermissionError("the page shows a human check")          # never answered: the site is marked as needing a person
+    return text
+
+
+def _cp_blocks(url, tag="url"):
+    """A careers site's sitemap read as it arrives, as _cp_fetch reads a page (robots.txt, crawl delay, human check): the inside of each
+    <url>...</url> block, one at a time. A big site's sitemap is megabytes (on October 21, twenty sites starting at once held 25 MB of
+    sitemaps whole); this holds one part of it."""
+    _cp_turn(url)
+    buf, checked = "", False
+    dec = codecs.getincrementaldecoder("utf-8")("replace")
+    close, rx = "</%s>" % tag, re.compile(r"<%s>(.*?)</%s>" % (tag, tag), re.S)
+    for part in _get_parts(url, {"User-Agent": CP_UA, "Accept": "application/xml,text/xml;q=0.9,*/*;q=0.8"}):
+        buf += dec.decode(part)
+        if not checked and (len(buf) >= 20000 or close in buf):
+            if HUMAN_CHECK_RE.search(buf[:20000]):
+                raise PermissionError("the page shows a human check")
+            checked = True
+        end = buf.rfind(close)
+        if end >= 0:
+            cut = end + len(close)
+            for b in rx.findall(buf, 0, cut):
+                yield b
+            buf = buf[cut:]
+    buf += dec.decode(b"", final=True)
+    if not checked and HUMAN_CHECK_RE.search(buf[:20000]):
+        raise PermissionError("the page shows a human check")
+    for b in rx.findall(buf):
+        yield b
+
+
+def _get_parts(url, headers):
+    """An answer's bytes as they arrive (STREAM_CHUNK at a time), refused past MAX_FEED_BYTES or FEED_DEADLINE."""
+    req = urllib.request.Request(url, headers=headers)
+    started, size = time.time(), 0
+    with _host_slot(url), urllib.request.urlopen(req, timeout=FEED_TIMEOUT) as r:
+        while True:
+            part = r.read(STREAM_CHUNK)
+            if not part:
+                return
+            size += len(part)
+            if size > MAX_FEED_BYTES:
+                raise ValueError("the answer is larger than %d MB" % (MAX_FEED_BYTES // 1000000))
+            if time.time() - started > FEED_DEADLINE:
+                raise TimeoutError("the answer took longer than %d s; tried again at the next refresh" % FEED_DEADLINE)
+            yield part
+
+
+def _cp_turn(url, robots_ok=False):
+    """Before any request to a careers site: a public https address, robots.txt allows it, and the site's crawl delay has passed."""
     if not _public_https(url):
         raise ValueError("not a public https address")
     host = urllib.parse.urlsplit(url).hostname.lower()
@@ -1104,10 +1425,6 @@ def _cp_fetch(url, robots_ok=False):
         _cp_next[host] = max(time.time(), _cp_next.get(host, 0)) + delay
     if wait > 0:
         time.sleep(min(wait, 60))
-    text = _get(url, {"User-Agent": CP_UA, "Accept": "text/html,application/xml;q=0.9,*/*;q=0.8"}, as_text=True)
-    if HUMAN_CHECK_RE.search(text[:20000]):
-        raise PermissionError("the page shows a human check")          # never answered: the site is marked as needing a person
-    return text
 
 
 def _ld_postings(html_text):
@@ -1131,6 +1448,35 @@ def _ld_postings(html_text):
     return out
 
 
+_STATE_BY_NAME = {n.lower(): n for n in STATE_NAMES.split("|")}
+_CITY_ST_RE = re.compile(r"\b([A-Z][a-z]+(?:[ .'-][A-Z][a-z]+){0,3}), (%s)\b" % "|".join(STATES))
+
+
+def _wd_place(page_url, text):
+    """A Workday posting's place: its address names a building ("Christiana Main Building"), so the place is read from the page's own
+    address (/job/Newark-DE/..., /job/US-PA-Philadelphia/..., /job/Elkton-Maryland/...), else the first "City, ST" of its description.
+    None when neither says."""
+    m = re.search(r"/job/([^/]+)/", page_url)
+    seg = urllib.parse.unquote(m.group(1)) if m else ""
+    w = [x for x in re.split(r"[-_ ]+", seg) if x]
+    if w and w[0].lower() == "remote" or (len(w) <= 2 and "remote" in (x.lower() for x in w)):
+        return "Remote"
+    if len(w) >= 3 and w[0].upper() in ("US", "USA") and w[1].upper() in STATES:
+        return "%s, %s" % (" ".join(w[2:]), w[1].upper())
+    if len(w) >= 2 and w[-1] in STATES:
+        return "%s, %s" % (" ".join(w[:-1]), w[-1])
+    for k in (3, 2, 1):
+        if len(w) > k and " ".join(w[-k:]).lower() in _STATE_BY_NAME:
+            return "%s, %s" % (" ".join(w[:-k]), _STATE_BY_NAME[" ".join(w[-k:]).lower()])
+    c = _CITY_ST_RE.search(text[:1500])
+    return "%s, %s" % (c.group(1), c.group(2)) if c else None
+
+
+def _cp_clean(page_url):
+    """A careers-site page's address as the job keeps it (iCIMS' in_iframe=1 taken off)."""
+    return re.sub(r"([?&])in_iframe=1&?", r"\1", page_url).rstrip("?&")
+
+
 def _ld_raw(p, page_url, name):
     """A raw posting from one JobPosting, or None (no title, or valid only until a date already past)."""
     title = _text(p.get("title") or "").strip()
@@ -1140,6 +1486,8 @@ def _ld_raw(p, page_url, name):
         return None
     org = p.get("hiringOrganization") or {}
     company = (org.get("name") if isinstance(org, dict) else str(org)) or name
+    if (urllib.parse.urlsplit(page_url).hostname or "").lower().endswith(".myworkdayjobs.com") and name:
+        company = name               # Workday names the legal entity with its code ("1215 Campbell Soup Supply Co. LLC"): the site's own name
     locs = p.get("jobLocation") or []
     locs = locs if isinstance(locs, list) else [locs]
     places, country = [], ""
@@ -1150,6 +1498,12 @@ def _ld_raw(p, page_url, name):
             country = country or (c.get("name") if isinstance(c, dict) else str(c or ""))
             places.append(", ".join(x for x in (a.get("addressLocality"), a.get("addressRegion")) if isinstance(x, str) and x))
     remote = str(p.get("jobLocationType") or "").upper() == "TELECOMMUTE"
+    if (urllib.parse.urlsplit(page_url).hostname or "").lower().endswith(".myworkdayjobs.com"):
+        # Workday marks every posting TELECOMMUTE (a hospital's night-shift nurse too) and its address names a building
+        wp = _wd_place(page_url, _text(p.get("description") or ""))
+        remote = wp == "Remote" or bool(re.search(r"\bremote\b", title, re.I))
+        if wp:
+            places = [wp]
     sal = None
     bs = p.get("baseSalary") if isinstance(p.get("baseSalary"), dict) else {}
     v = bs.get("value") if isinstance(bs.get("value"), dict) else {}
@@ -1159,7 +1513,7 @@ def _ld_raw(p, page_url, name):
             sal = [int(lo), int(hi)]
     except (TypeError, ValueError):
         pass
-    clean = re.sub(r"([?&])in_iframe=1&?", r"\1", page_url).rstrip("?&")
+    clean = _cp_clean(page_url)
     return dict(id=clean, title=title, company=str(company).strip(), loc="; ".join(x for x in places if x) or ("Remote" if remote else ""),
                 remote=True if remote else None, text=_text(p.get("description") or "")[:CP_TEXT], url=clean, salary_text="", sal=sal,
                 posted=_ts(p.get("datePosted")), emp=p.get("employmentType"), country=country or "us",
@@ -1174,10 +1528,9 @@ def _career_pages(token, name):
     if not sm:
         raise ValueError("no sitemap for this site")
     host = urllib.parse.urlsplit(sm).hostname.lower()
-    xml = _cp_fetch(sm)
     now = time.time() * 1000
     pages = []
-    for block in re.findall(r"<url>(.*?)</url>", xml, re.S):
+    for block in _cp_blocks(sm):
         loc = re.search(r"<loc>\s*(.*?)\s*</loc>", block, re.S)
         mod = re.search(r"<lastmod>\s*(.*?)\s*</lastmod>", block, re.S)
         if not loc:
@@ -1192,28 +1545,40 @@ def _career_pages(token, name):
         if lm and now - _ts(lm) > MAX_AGE_DAYS * DAY_MS:
             continue
         pages.append((_ts(lm), lm, u))
-    pages.sort(reverse=True)
-    for _, lm, u in pages[:CP_PAGES]:
+    pages.sort(key=lambda x: x[0], reverse=True)        # stable: a sitemap with no lastmod (Workday) keeps its own order, newest first
+    # then, of the newest CP_WINDOW, co-ops and internships first and Pennsylvania / New Jersey / Delaware ones next, as the page's own
+    # address says (/job/Philadelphia-PA/Engineering-Co-op_R123): the few pages a site's first read takes are the ones UAply needs most
+    pages[:CP_WINDOW] = sorted(pages[:CP_WINDOW], key=lambda x: (not CP_STUDENT_URL.search(x[2]), not CP_LOCAL_URL.search(x[2])))
+    first = not any(k[0] == token for k in list(_cp_pages))
+    pages = pages[:CP_FIRST if first else CP_PAGES]
+    prev = _prev_jobs(("careerpage", token, name))
+    for _, lm, u in pages:
         got = _cp_pages.get((token, u))
-        if got and got[0] == lm and lm:
-            raw = _unz(got[1])
-        else:
-            try:
-                ps = _ld_postings(_cp_fetch(u))
-            except PermissionError:                       # robots.txt says no, or a human check: left alone until the page changes
-                with _lock:
-                    _cp_pages[(token, u)] = (lm, None)
-                continue
-            except Exception:
-                continue
-            raw = _ld_raw(ps[0], u, name) if ps else None
+        fresh = got and got[0] == lm and (lm or time.time() - got[2] < CP_NOMOD_TTL)
+        again = prev.get(_jid("careerpage", _cp_clean(u))) if fresh and got[1] else None
+        if fresh and not got[1]:
+            continue                                      # held no posting (or robots.txt / a human check): left alone until it changes
+        if again:
+            yield {"_prev": again, "id": _cp_clean(u), "title": again["role"], "loc": again["loc"], "posted": again.get("posted"),
+                   "updated": again.get("updated"), "url": again["url"], "text": ""}
+            continue
+        try:
+            ps = _ld_postings(_cp_fetch(u))
+        except PermissionError:                       # robots.txt says no, or a human check: left alone until the page changes
             with _lock:
-                _cp_pages[(token, u)] = (lm, _z(raw))
+                _cp_pages[(token, u)] = (lm, None, time.time())
+            continue
+        except Exception:
+            continue
+        raw = _ld_raw(ps[0], u, name) if ps else None
+        us = bool(raw) and str(raw.get("country") or "us").strip().lower() in ("us", "usa", "united states", "united states of america")
+        with _lock:                                   # the job made from it is in the source's packed copy (see _prev_jobs); a posting
+            _cp_pages[(token, u)] = (lm, us, time.time())     # outside the US is not read again until its page changes
         if raw:
             # the sitemap's lastmod is the page's last change: an evergreen hospital posting keeps its first datePosted for months
             yield dict(raw, posted=raw.get("posted") or _ts(lm), updated=max(_ts(lm), raw.get("updated") or 0))
     with _lock:                                           # forget pages the sitemap no longer lists
-        listed = {u for _, _, u in pages[:CP_PAGES]}
+        listed = {u for _, _, u in pages}
         for key in [k for k in _cp_pages if k[0] == token and k[1] not in listed]:
             del _cp_pages[key]
 
@@ -1470,6 +1835,8 @@ def _part_time_text(text):
 def _job_type(raw):
     """One of JOB_TYPES for a raw posting: a type the feed forced (USAJOBS Pathways, The Muse's Internship level), then the feed's own
     field, then the title, then "part-time" near the start of the text, then the list's own kind (an internship list), else full-time."""
+    if raw.get("_prev"):
+        return raw["_prev"].get("jobType") or "full-time"
     forced = FORCE_TO_JOBTYPE.get(raw.get("force_type") or "")
     if forced:
         return forced
@@ -1495,6 +1862,8 @@ def _type(raw):
 
 
 def _normalize(raw, kind, name, board=None):
+    if raw.get("_prev"):
+        return raw["_prev"]                             # an unchanged posting: the job its last read made (see _prev_jobs)
     list_credit = raw.get("list_credit")
     if list_credit:                                     # a Simplify / Pitt CSC row: it is the employer's own posting, read from its own board
         kind, board, name = raw["ats_kind"], raw["board"], raw["company"]
@@ -1549,6 +1918,9 @@ def _normalize(raw, kind, name, board=None):
                posted=_ts(raw.get("posted")), perks=_perks(text), comm=bool(COMM_RE.search(text)))
     if jtype in ("internship", "co-op") and _grad_only(title, text):
         out["gradOnly"] = True                                    # the Internship and Co-op stacks show undergraduate roles first
+    pt = job_geo(loc, mode == "remote")
+    if pt:
+        out["geo"] = pt                                           # where it is, for "near you" (see PLACES_FILE)
     # dates in epoch ms whatever the caller gave (_ts: seconds are converted): a date in seconds reads as January 1970, and the 60-day rule
     # (MAX_AGE_DAYS) would drop the posting without a word
     if _ts(raw.get("updated")) > out["posted"]:
@@ -1779,11 +2151,19 @@ def feed_health():
                         "lastError": int(h.get("last_error", 0)), "error": h.get("error", ""), "ms": h.get("ms", 0),
                         "off": bool(h.get("off_until")) and time.time() < h["off_until"], "retry": h.get("retry", ""),
                         "applyPath": ("assisted hand-off (the employer's own careers site)" if src[0] == "careerpage" else "hand-off (the employer's own page)"),
+                        "humanCheck": (_human(src) or ("unknown",))[0], "formKind": (_human(src) or ("", "unknown"))[1],
+                        "checkSampled": (_human(src) or ("", "", ""))[2], "checkPages": (_human(src) or (0, 0, 0, 0))[3],
+                        "withCheck": (_human(src) or (0, 0, 0, 0, 0))[4], "checkKinds": (_human(src) or ("",) * 6)[5],
+                        "route": route_label(src),
                         "links": {"checked": (_links.get(src) or {}).get("ok", 0) + (_links.get(src) or {}).get("dead", 0),
                                   "dead": (_links.get(src) or {}).get("dead", 0), "unknown": (_links.get(src) or {}).get("unknown", 0),
                                   "lastChecked": int((_links.get(src) or {}).get("at", 0))}})
     return {"sources": out, "count": len(out), "off": [x["source"] for x in out if x["off"]], "jobs": sum(x["jobs"] for x in out),
-            "memoryMB": _rss_mb()}
+            "memoryMB": _rss_mb(),
+            "humanChecks": {"sampled": _hc["sampled"], "jobsSampled": _hc["jobs"], "share": dict(_hc["share"]),
+                            "systems": {k: dict(v) for k, v in _hc["systems"].items()},
+                            "sources": collections.Counter(x["humanCheck"] for x in out),
+                            "oneTap": sum(1 for x in out if x["route"] == ROUTE_ONE_TAP)}}
 
 
 MEM_SOFT_CAP_MB = 300            # Render Starter has 512 MB: past this, no new board read starts until memory is back under it
@@ -1812,21 +2192,26 @@ def _start_refresh(src):
         ev = _refreshing[src] = threading.Event()
         # queued for FEED_PARALLEL reader threads, in the order asked (SOURCES order on a fresh start): with 500 sources a thread
         # each, all waiting for a slot, cost about 30 MB of thread stacks
-        while len(_readers) < FEED_PARALLEL:
-            th = threading.Thread(target=_reader, daemon=True)
-            _readers.append(th)
+        slow = src[0] == "careerpage"
+        pool, q, size = (_slow_readers, _to_read_slow, CP_PARALLEL) if slow else (_readers, _to_read, FEED_PARALLEL)
+        while len(pool) < size:
+            th = threading.Thread(target=_reader, args=(q,), daemon=True)
+            pool.append(th)
             th.start()
-        _to_read.put((src, ev))
+        q.put((src, ev))
     return ev
 
 
 _to_read = queue.Queue()         # (source, event) waiting to be read
 _readers = []                    # the reader threads (started on first use, FEED_PARALLEL of them)
+_to_read_slow = queue.Queue()    # the same for careers sites (CP_PARALLEL threads of their own)
+_cp_slots = threading.BoundedSemaphore(CP_PARALLEL)
+_slow_readers = []
 
 
-def _reader():
+def _reader(q=_to_read):
     while True:
-        src, ev = _to_read.get()
+        src, ev = q.get()
         try:
             _refresh_in_background(src, ev)
         except Exception as e:                   # never lose a reader thread
@@ -1884,8 +2269,13 @@ def _start_missing(sources):
     if _disk["filled"]:
         return
     keys = feed_keys()                     # read before the lock: it reads and parses the settings file
+    by_kind = {}
+    for src in sources:                    # each kind keeps its own order (tri-state boards first)
+        by_kind.setdefault(src[0], []).append(src)
+    lanes = list(by_kind.values())
+    order = [lane[i] for i in range(max((len(x) for x in lanes), default=0)) for lane in lanes if i < len(lane)]
     with _lock:
-        for src in sources:
+        for src in order:
             if not _no_key(src[0], keys) and src not in _cache and not (src in _failed and time.time() - _failed[src][0] < 120):
                 _start_refresh(src)
 
@@ -2042,7 +2432,9 @@ def _fetch_source(src):
         now_ms = time.time() * 1000
         keep = KEEP.get(kind) if (kind != "smartrecruiters" or token in SR_WHOLE) else None   # a whole public list, or None for an employer board
         lazy, listed = [], set()
-        with _feed_slots:                        # at most FEED_PARALLEL boards downloaded and parsed at once (memory, see FEED_PARALLEL)
+        # at most FEED_PARALLEL boards downloaded and parsed at once (memory, see FEED_PARALLEL); careers sites have places of their own:
+        # holding a board's place through 2-second crawl delays, 16 of them kept the boards waiting (14 boards in the first 70 s)
+        with (_cp_slots if kind == "careerpage" else _feed_slots):
             for raw in _iter_raw(kind, token, name):
                 if kind not in AGE_EXEMPT and _too_old(raw, now_ms) and not (kind in EVERGREEN_KINDS and _job_type(raw) in EVERGREEN_TYPES):
                     # (before the caps, so a stale posting never takes a fresh one's place)
@@ -2380,9 +2772,12 @@ def apply_classes():
 
 
 def _out_job(j, now_ms, conns, feed):
+    """`feed`: False for a partner employer's job, else its feed's route label (or True)."""
     out = _with_age(j, now_ms, drop=("desc",) if feed else ())
     if conns and _connected(out, conns):        # marked on the copy, so the shared cache stays as fetched
         out.update(apply="direct", instant=True)
+    # sent in UAply (a connected system, or an email to the employer): "Ready"; a hand-off: its source's label
+    out["route"] = ROUTE_READY if out.get("instant") or not isinstance(feed, str) else feed
     return out
 
 
@@ -2412,6 +2807,7 @@ def _collect(meta, now_ms):
         js, status = _load_source(src)               # one source unpacked at a time
         summary[src[2] + ("/" + src[1] if src[0] in MULTI else "")] = "unavailable right now" if hide_errors and status.startswith("error") else status
         dead = (_links.get(src) or {}).get("dead_ids") or ()
+        route = route_label(src)                     # yielded in place of True: a feed job, and the label of its route
         for j in js:
             if j["id"] in seen or j["id"] in dead:      # a job whose apply link was found dead is not shown (check_links)
                 continue
@@ -2427,7 +2823,7 @@ def _collect(meta, now_ms):
             same.setdefault(key, src)
             # a feed job's 650-character description is only for the emails (the server reads it from its own copy, job_info): it was
             # half of the list's size, so the app is sent the card's blurb only (see _out_job)
-            yield (j, True)
+            yield (j, route)
         del js
     _disk["filled"] = True
     if not sources:

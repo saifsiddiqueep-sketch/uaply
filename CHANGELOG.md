@@ -6,6 +6,22 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 
+### Assisted apply: questions first, then the form (fill 95-98% on the Galaxy, nothing required left but agreements)
+- **The bridge.** Before the employer's form opens, the phone app reads it (`UAplyAssist.scan`, which changes nothing) and UAply asks
+  what the profile cannot answer in its own question box ("Continue to {company}'s form"); required questions must be answered,
+  optional ones may be skipped; the answers are kept like every question-box answer. Then the form opens filled with them.
+  `AssistActivity` scan mode (behind a cover), `AssistPlugin` returns the questions, `askSheet` takes optional questions and new words.
+- **The synonym map** in `shared/uaply-assist.js`: preferred names, "first and last name", phone digits and country-code lists,
+  date pickers and typed dates in the field's own pattern, graduation month and year apart, degree names (Bachelor's, BA, BS), notice
+  periods, current role (its end date is not asked), 18 or older (from the first-swipe agreement), "without sponsorship", yes/no
+  choices read by meaning, How did you hear: UAply or Other then UAply. Privacy, consent and certification questions in any form
+  (lists, radios, Yes/No buttons), pronoun "Custom" boxes and age ranges are never filled or asked.
+- **Measured on the same 80 postings** (`python tools/assist-measure.py --phone <serial>`, one command): fill Greenhouse 65% to 96%,
+  Lever 64% to 98%, Ashby 60% to 95%, Workable 50% to 96%; required left at the form, median, 0 on all four (only agreements remain).
+  With only the required questions answered: 89%, 92%, 72%, 85%. docs/assisted-apply.md has the table.
+- Tests: `tools/test-assist.js` 213 checks (every new mapping and the bridge on a mock form per system), `tools/ui-assist-tracker.js`
+  26 (the bridge in Job Tracker: asks, blocks a blank required answer, skips answered ones, Not now opens nothing, keeps a cover letter to its employer).
+
 ### Sign-up, nothing hidden: no password, an emailed code, two questions (Mohammed's design, Oct 21)
 - **One card in the middle of the Account screen**, with the UAply mark directly above it and the two centered together on phones and
   laptops. In Mohammed's order: Continue with Google, "or", Email, First name, Last name, the 18+ / Terms tick, Create my account, "Have an

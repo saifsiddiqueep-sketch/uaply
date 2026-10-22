@@ -28,7 +28,7 @@ def git(*a):
 
 
 files = [f for f in git("ls-files", "--cached", "--others", "--exclude-standard").split("\n") if f and os.path.isfile(f)]
-BINARY = (".png", ".jpg", ".jpeg", ".webp", ".ico", ".pdf", ".jar", ".gif", ".ttf", ".woff", ".woff2", ".docx")
+BINARY = (".png", ".jpg", ".jpeg", ".webp", ".ico", ".pdf", ".jar", ".gif", ".ttf", ".woff", ".woff2", ".docx", ".gz")
 
 
 def bump(k):
@@ -99,6 +99,8 @@ for f in files:
             err(f, "empty file")
         if ext == ".png" and not raw.startswith(b"\x89PNG\r\n\x1a\n"):
             err(f, "not a valid PNG")
+        if ext == ".gz" and not raw.startswith(b"\x1f\x8b"):
+            err(f, "not a valid gzip file")
         if len(raw) > 5_000_000:
             warn(f, "large file (%.1f MB)" % (len(raw) / 1e6))
         continue

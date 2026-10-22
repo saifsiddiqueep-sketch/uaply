@@ -45,6 +45,7 @@ public class AssistPlugin extends Plugin {
         Intent i = new Intent(getContext(), AssistActivity.class);
         i.putExtra("url", url);
         i.putExtra("co", job == null ? "" : job.getString("co", ""));
+        i.putExtra("scan", Boolean.TRUE.equals(call.getBoolean("scan", false)));   // the bridge: read the form, change nothing, return its questions
         startActivityForResult(call, i, "assistDone");
     }
 
@@ -56,7 +57,16 @@ public class AssistPlugin extends Plugin {
         ret.put("confirmed", data != null && data.getBooleanExtra("confirmed", false));
         ret.put("url", data == null ? "" : data.getStringExtra("url"));
         ret.put("report", data == null ? null : data.getStringExtra("report"));
-        engine = ""; profileJson = "{}";   // the profile and resume do not stay in memory after the page closes
+        String scan = data == null ? null : data.getStringExtra("scan");
+        if (scan != null) {   // {questions:[{q,key,kind,opts,required}], seen, filled} from UAplyAssist.scan
+            try {
+                JSObject sc = new JSObject(scan);
+                ret.put("questions", sc.has("questions") ? sc.getJSONArray("questions") : new com.getcapacitor.JSArray());
+                ret.put("seen", sc.optInt("seen"));
+                ret.put("filled", sc.optInt("filled"));
+            } catch (Exception e) { ret.put("questions", new com.getcapacitor.JSArray()); }
+        }
+        if (scan == null) { engine = ""; profileJson = "{}"; }   // the profile and resume do not stay in memory after the form closes
         call.resolve(ret);
     }
 }
