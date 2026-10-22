@@ -1,6 +1,6 @@
 # Employer outreach: the email, the one-page kit, and who to ask first
 
-October 22, 2026. For the owner. Nothing here has been sent to anyone. The one-page kit below is also rendered as
+October 22, 2026; checked against the connector code (`ats_api.py`) on October 23. For the owner. Nothing here has been sent to anyone. The one-page kit below is also rendered as
 [connect-kit.pdf](connect-kit.pdf) by `node tools/cdp.js tools/render-connect-kit.js` (it must stay one page; the tool checks that), and
 the employer list at the end is written by `python tools/employer-targets.py --write`.
 
@@ -40,8 +40,8 @@ site, one employer at a time. Attach connect-kit.pdf.
 
 **What changes when you connect.** People find your jobs in UAply (from your own public job board) and choose to apply. Without a
 connection, UAply sends them to your careers page to finish. With one, their application arrives in your system as a new candidate on
-that job: name, email, phone, city, links, school and degree, the resume as a file, and answers to your screening questions where their
-profile has them. If your form asks something their profile cannot answer, UAply asks them first; if it still cannot be answered, nothing
+that job: name, email, phone and the resume as a file, and, where your system's application takes them, city, links, school and degree
+and the answers to your screening questions their profile has (Lever's API takes no screening answers). If your form asks something their profile cannot answer, UAply asks them first; if it still cannot be answered, nothing
 is sent and they finish on your page.
 
 **Ten minutes, three steps.** (1) Reply to our email to agree to the one-page consent letter (2 minutes). (2) Create the key below (5
@@ -50,7 +50,7 @@ email. We connect it and test it the same day; you can revoke it at any time.
 
 | You use | Where you create the key | Give it only these rights | Also tell us |
 |---|---|---|---|
-| **Greenhouse** | Configure, Dev Center, API Credential Management: new credential, type **Job Board API** | Job Board API (submits applications to your published jobs) | Your board name (after `boards.greenhouse.io/`) |
+| **Greenhouse** | Configure, Dev Center, API Credential Management: new credential, type **Job Board API** | Job Board API (submits applications to your published jobs) | Your board name (after `job-boards.greenhouse.io/`) |
 | **Lever** | Settings, Integrations and API, API Credentials: **Generate new key** under Postings API (a Super Admin) | Postings API | Your site name (after `jobs.lever.co/`) |
 | **Ashby** | Admin, Integrations, API Keys: create a key | **Candidates write** and **Jobs read** only | Your board name (after `jobs.ashbyhq.com/`) |
 | **SmartRecruiters** | Settings, Administration, Apps & Integrations, Credentials: **New Credential, API Key** (an Administrator) | An API key (SmartRecruiters has no narrower kind); UAply uses only its Application API calls | Your company identifier (after `jobs.smartrecruiters.com/`) |

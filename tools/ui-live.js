@@ -78,7 +78,7 @@ async function main(api) {
     await send("Network.clearBrowserCookies");
     await send("Storage.clearDataForOrigin", { origin: BASE, storageTypes: "all" });
     await nav(BASE + "/");
-    await waitFor(() => has("#nb-prof"), 15000);
+    await waitFor(() => has("#nb-prof"), 60000);         // patient: a cold server can take a while to answer the first page
     await sleep(1500);
   };
   const agree = async () => {
@@ -103,6 +103,14 @@ async function main(api) {
   }
   console.log("UAply browser check of " + BASE + (SHIELDS ? " (shields mode)" : "") + " at " + new Date().toISOString().slice(0, 19).replace("T", " ") + " UTC");
   await send("Network.enable");
+  // one timed health probe first, so a slow (cold) server is named here instead of looking like a fault of the site further down
+  {
+    const t0 = Date.now();
+    let hs = "no answer";
+    try { const r = await fetch(BASE + "/healthz", { signal: AbortSignal.timeout(60000) }); hs = "HTTP " + r.status; } catch (e) { hs = "no answer (" + (e.name || "error") + ")"; }
+    const secs = (Date.now() - t0) / 1000;
+    info("healthz: " + hs + " in " + secs.toFixed(2) + " s" + (secs > 2 ? " (a slow server: the waits below are patient, up to 60 s for the first job card)" : ""));
+  }
   await nav(BASE + "/healthz");
   // what the server says is on (/api/status, or the older endpoints the app itself reads)
   let st = await json("/api/status");
@@ -139,8 +147,11 @@ async function main(api) {
     const tipsShown = await ev("(()=>{const t=" + F + ".getElementById('tips');return !!(t&&t.offsetParent)})()");
     await click("#tipsClose"); await sleep(400);
     check(tag + "the tips line shows and Got it closes it", tipsShown && !(await ev("(()=>{const t=" + F + ".getElementById('tips');return !!(t&&t.offsetParent)})()")), "shown " + tipsShown);
-    // 3. a swipe (left: Pass, which sends nothing to anyone)
-    const top1 = await ev("(()=>{const c=" + F + ".querySelector('.card.top h2');return c?c.textContent.trim():''})()");
+    // 3. a swipe (left: Pass, which sends nothing to anyone). The first job card is waited for patiently: a cold server can take many
+    // seconds to send the job list (the October 22 dry run: healthz 6 s, no card yet after the old short wait, 6 of 31 checks failed)
+    const cardAt = Date.now();
+    const top1 = await waitFor(() => ev("(()=>{const c=" + F + ".querySelector('.card.top h2');return c?c.textContent.trim():''})()"), 60000);
+    info(tag + "the first job card was there after " + ((Date.now() - cardAt) / 1000).toFixed(1) + " s" + (top1 ? "" : " (none within 60 s)"));
     check(tag + "the deck shows a real job card", !!top1, "no card");
     await click("#btnNo"); await sleep(1200);
     const top2 = await ev("(()=>{const c=" + F + ".querySelector('.card.top h2');return c?c.textContent.trim():''})()");
