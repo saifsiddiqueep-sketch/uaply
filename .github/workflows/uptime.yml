@@ -1,0 +1,51 @@
+name: Uptime of uaply.net
+
+# The outside uptime check (docs/uptime.md). Render restarts a stuck server, but nothing outside Render watched https://uaply.net, and the
+# phone apps load that site, so a website outage is also an app outage. This asks /healthz, the home page and /readyz from GitHub's own
+# machines; when they fail twice in a row (two tries 2 minutes apart) it opens one issue, "uaply.net is down", and GitHub emails the
+# founders. While the site stays down the issue is edited quietly (no email every check); when it answers again the issue closes with a
+# note (one more email).
+#
+# How often: every 10 minutes (at 7, 17, 27, 37, 47 and 57 past the hour, not on the hour, when GitHub's schedules are busiest). The
+# repository is public today, and GitHub's standard machines are free with no minute limit for public repositories, so this costs
+# nothing. The outage issue is public too, like everything in a public repository.
+# If the repository is ever made private, its free minutes are limited (2,000 a month on the Free plan) and every 10 minutes would use
+# about 4,300: set the repository variable UPTIME_HOURLY to "on" (Settings, Secrets and variables, Actions, Variables) and only the
+# 7-past line runs. To silence the check: UPTIME_PAUSED = "on", or "Disable workflow" on this workflow's page in the Actions tab.
+#
+# GitHub runs scheduled workflows only from the default branch (main), so main needs this file, tools/uptime-check.py, and (for the daily
+# snapshot) health-snapshot.yml and tools/live-check.py. GitHub may start a scheduled run a few minutes late, and switches schedules off
+# in a public repository after 60 days with no activity (the Actions tab then offers "Enable workflow").
+on:
+  schedule:
+    - cron: "7 * * * *"                  # the hourly check: runs even when UPTIME_HOURLY is "on"
+    - cron: "17,27,37,47,57 * * * *"     # the in-between checks: skipped only when UPTIME_HOURLY is "on"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+jobs:
+  check:
+    if: >-
+      vars.UPTIME_PAUSED != 'on' && (github.event_name != 'schedule' || github.event.schedule == '7 * * * *'
+      || vars.UPTIME_HOURLY != 'on')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools/uptime-check.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false     # the check gets the token through env below; no git command needs it
+      # Python 3 is already on GitHub's Ubuntu machines; the check uses its standard library only
+      - name: Ask uaply.net (and keep the issue "uaply.net is down")
+        run: python3 tools/uptime-check.py --base https://uaply.net --confirm-after 120 --issue
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPTIME_NOTIFY: ${{ vars.UPTIME_NOTIFY || '@saifsiddiqueep-sketch @mrhphiladelphia-code' }}
