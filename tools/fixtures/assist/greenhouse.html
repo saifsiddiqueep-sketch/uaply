@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mock Greenhouse application</title>
+<!-- Greenhouse's hosted form (job-boards.greenhouse.io, Remix and React Select), as measured October 21, 2026: label[for] on every field,
+     yes/no and country as React Select lists, the city as a place search, an invisible reCAPTCHA (its badge), Submit application. -->
+<style>body{font:16px system-ui;margin:16px}.field{margin:14px 0}label{display:block;font-weight:700}input,select,textarea{width:100%;font:inherit}.req{color:#c00}.select__control{border:1px solid #888;min-height:36px;display:flex;gap:6px}.select__menu{border:1px solid #888}.select__option{padding:6px}.grecaptcha-badge{position:fixed;right:0;bottom:80px;width:70px;height:60px;overflow:hidden}</style>
+</head><body>
+<h1>Data Analyst at Example Co</h1>
+<form id="application-form">
+  <div class="field"><label for="first_name">First Name<span class="req">*</span></label><input id="first_name" name="first_name" aria-required="true"></div>
+  <div class="field"><label for="last_name">Last Name<span class="req">*</span></label><input id="last_name" name="last_name" aria-required="true"></div>
+  <div class="field"><label for="email">Email<span class="req">*</span></label><input id="email" name="email" type="email" aria-required="true"></div>
+  <div id="slot-country"></div>
+  <div class="field"><label for="phone">Phone<span class="req">*</span></label><input id="phone" name="phone" type="tel" aria-required="true"></div>
+  <div id="slot-city"></div>
+  <div class="field"><label for="resume">Resume/CV<span class="req">*</span></label><input id="resume" name="resume" type="file" aria-required="true"></div>
+  <div class="field"><label for="question_1">LinkedIn Profile</label><input id="question_1" name="question_1"></div>
+  <div class="field"><label for="question_2">Website</label><input id="question_2" name="question_2"></div>
+  <div class="field"><label for="question_3">How did you hear about this job?</label><input id="question_3" name="question_3"></div>
+  <div id="slot-auth"></div>
+  <div id="slot-spon"></div>
+  <div class="field"><label for="question_6">Why do you want to join Example Co?<span class="req">*</span></label><textarea id="question_6" name="question_6" aria-required="true"></textarea></div>
+  <div class="field"><label for="question_7">If yes, please list the name of the employee who referred you.</label><input id="question_7" name="question_7"></div>
+  <h2>Voluntary Self-Identification</h2>
+  <div id="slot-gender"></div>
+  <div id="slot-hisp"></div>
+  <div id="slot-vet"></div>
+  <div id="slot-dis"></div>
+  <div class="field"><label><input type="checkbox" id="gdpr" name="gdpr" required> I consent to Example Co processing my data as described in its privacy notice.</label></div>
+  <button type="submit" data-submit>Submit application</button>
+</form>
+<div class="grecaptcha-badge" data-check data-style="bottomright"><iframe title="reCAPTCHA" src="about:blank" width="256" height="60"></iframe></div>
+<script src="mock.js"></script>
+<script>
+  function put(slot, el) { document.getElementById(slot).replaceWith(el); }
+  put("slot-country", mockCombo("country", "Country", ["Canada", "United Kingdom", "United States", "United States Minor Outlying Islands"], true));
+  put("slot-city", mockCombo("candidate-location", "Location (City)", ["Philadelphia, Pennsylvania, United States", "Philadelphia, Mississippi, United States", "Phoenix, Arizona, United States"], true, true));
+  put("slot-auth", mockCombo("question_4", "Are you legally authorized to work in the United States?", ["Yes", "No"], true));
+  put("slot-spon", mockCombo("question_5", "Will you now or in the future require visa sponsorship?", ["Yes", "No"], true));
+  put("slot-gender", mockCombo("gender", "Gender", ["Male", "Female", "Decline To Self Identify"], false));
+  put("slot-hisp", mockCombo("hispanic_ethnicity", "Are you Hispanic/Latino?", ["Yes", "No", "Decline To Self Identify"], false));
+  put("slot-vet", mockCombo("veteran_status", "Veteran Status", ["I am not a protected veteran", "I identify as one or more of the classifications of protected veteran", "I don't wish to answer"], false));
+  put("slot-dis", mockCombo("disability_status", "Disability Status", ["Yes, I have a disability, or have had one in the past", "No, I do not have a disability and have not had one in the past", "I do not want to answer"], false));
+  mockSubmit(document.getElementById("application-form"), "Thank you for applying to Example Co!");
+</script>
+</body></html>

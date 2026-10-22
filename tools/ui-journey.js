@@ -27,7 +27,7 @@ module.exports = async ({ ev, sleep, nav, send }) => {
 
   // ---- the person: ready to apply (name, email, phone), the agreement given, the notice "2 weeks" and no start date in Profile setup ----
   await nav(base); await sleep(3000);
-  await inApp("w.localStorage.setItem((w.__uaplyKey||'uaply')+'.consent',JSON.stringify({v:2,at:Date.now()}));" +
+  await inApp("w.localStorage.setItem((w.__uaplyKey||'uaply')+'.consent',JSON.stringify({v:3,at:Date.now(),agent:true}));" +
     "const ak=(w.__uaplyKey||'uaply')+'.acct',a=JSON.parse(w.localStorage.getItem(ak)||'{}');a.phone='(215) 555-0100';a.notice='2 weeks';w.localStorage.setItem(ak,JSON.stringify(a));" +
     "const A=w.__uaply;Object.assign(A.S.profile,{name:'Jo Tester',email:'jo.tester@example.com',custom:true,title:'Data Analyst',years:1,skills:['Python'],loc:'Philadelphia, PA'});A.S.tips=false;A.save();return 1");
   await nav(base); await sleep(4500);

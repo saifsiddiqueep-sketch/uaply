@@ -6,6 +6,21 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 
+### Assisted apply in the phone app: UAply fills the employer's form, the person taps Submit
+- **Finish applying on their site**, in the UAply phone app, opens the employer's own page inside the app (`AssistPlugin`,
+  `AssistActivity` in `mobile/android`), fills it from the profile with `shared/uaply-assist.js` (served at `/uaply-assist.js`), attaches
+  the resume file, scrolls to Submit and says **Review and tap Submit**. Voluntary self-identification, consent boxes, follow-ups and
+  human checks are left to the person. The page's own resume box offers **Use my UAply resume** first. On the website nothing changes.
+- **Sent only on the employer's confirmation page:** the Job Tracker row becomes **Sent** ("Sent on {company}'s own page: their
+  confirmation page appeared") only then; closed earlier, it stays **Finish on their site**.
+- **The per-system switch** `shared/assist-systems.json` (served at `/assist-systems.json`): "assisted" for every system. "automatic"
+  takes the attorney's approval and a measured human-check share of 0, and the page is checked again before any submit.
+- **First-swipe agreement, version 3:** adds "You authorize UAply to complete and submit job applications on your behalf using the
+  information you provide." (recorded with the time); the Terms draft is in LEGAL-REVIEW.md section 11.
+- **Measured** on the owner's Galaxy, 20 real postings per system, nothing submitted: see `docs/assisted-apply.md`.
+- Tests: `tools/test-assist.js` (mock form per system in `tools/fixtures/assist/`), `tools/ui-assist-tracker.js` (Job Tracker with a
+  stand-in plugin), `tools/assist-measure.js` (real postings, every application-carrying request refused).
+
 ### Apply journey fixes (50 real swipes on the Galaxy A17 and a laptop, October 22)
 - **The card tells the truth before the swipe.** Where the server previews forms in test mode (the sandbox), a swipe right on any Greenhouse
   posting reads its form and asks its questions; the card now asks the server for that same plan (POST /api/apply/plan) and says

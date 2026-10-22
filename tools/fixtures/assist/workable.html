@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mock Workable application</title>
+<!-- Workable's hosted form (apply.workable.com/<account>/j/<code>/apply/), as measured October 21, 2026: inputs named by aria-labelledby,
+     the address already filled by the page from the visitor's network location, Yes/No as fieldset[role=radiogroup] with hidden radios
+     inside [role=radio] wrappers, a hidden copy of a list's value (aria-hidden, tabindex -1), Cloudflare Turnstile (invisible). -->
+<style>body{font:16px system-ui;margin:16px}.q{margin:14px 0}.lab{display:block;font-weight:700}input,textarea{width:100%;font:inherit}[role=radio]{display:inline-block;padding:6px 12px;border:1px solid #888}[aria-checked=true]{background:#333;color:#fff}[role=radio] input{position:absolute;opacity:0;width:1px}</style>
+</head><body>
+<h1>Lab Technician at Example Co</h1>
+<form id="form">
+  <div class="q"><span class="lab" id="firstname_label"><strong>*</strong> First name</span><input id="firstname" name="firstname" aria-labelledby="firstname_label" required></div>
+  <div class="q"><span class="lab" id="lastname_label"><strong>*</strong> Last name</span><input id="lastname" name="lastname" aria-labelledby="lastname_label" required></div>
+  <div class="q"><span class="lab" id="email_label"><strong>*</strong> Email</span><input id="email" name="email" type="email" aria-labelledby="email_label" required></div>
+  <div class="q"><span class="lab" id="phone_label">Phone</span><input id="phone" name="phone" type="tel" aria-labelledby="phone_label"></div>
+  <div class="q"><span class="lab" id="address_label"><strong>*</strong> Address</span><input id="address" name="address" aria-labelledby="address_label" required value="New Castle, United States of America"></div>
+  <input id="postcode" name="postcode" aria-hidden="true" tabindex="-1" value="">
+  <div class="q"><span class="lab" id="resume_label"><strong>*</strong> Resume</span><input id="resume" name="resume" type="file" data-ui="resume" aria-labelledby="resume_label" required></div>
+  <div class="q"><span class="lab" id="summary_label">Summary (Optional)</span><textarea id="summary" name="summary" aria-labelledby="summary_label"></textarea></div>
+  <div class="q"><span class="lab" id="CA_1_label"><strong>*</strong> Are you eligible to work in the country you are applying?</span>
+    <fieldset role="radiogroup" data-ui="CA_1" aria-labelledby="CA_1_label">
+      <div role="radio" aria-checked="false" aria-labelledby="CA_1_label r1"><label><input type="radio" name="CA_1" value="true" tabindex="-1" aria-hidden="true" required><span id="r1">YES</span></label></div>
+      <div role="radio" aria-checked="false" aria-labelledby="CA_1_label r2"><label><input type="radio" name="CA_1" value="false" tabindex="-1" aria-hidden="true"><span id="r2">NO</span></label></div>
+    </fieldset></div>
+  <div class="q"><span class="lab" id="CA_2_label"><strong>*</strong> Are you currently, or have you in the past been employed by Example Co?</span>
+    <fieldset role="radiogroup" data-ui="CA_2" aria-labelledby="CA_2_label">
+      <div role="radio" aria-checked="false"><label><input type="radio" name="CA_2" value="true" tabindex="-1" aria-hidden="true" required><span>YES</span></label></div>
+      <div role="radio" aria-checked="false"><label><input type="radio" name="CA_2" value="false" tabindex="-1" aria-hidden="true"><span>NO</span></label></div>
+    </fieldset></div>
+  <div class="q"><span class="lab" id="CA_3_label"><strong>*</strong> Do you currently have any relatives or friends employed by Example Co?</span>
+    <fieldset role="radiogroup" data-ui="CA_3" aria-labelledby="CA_3_label">
+      <div role="radio" aria-checked="false"><label><input type="radio" name="CA_3" value="true" tabindex="-1" aria-hidden="true" required><span>YES</span></label></div>
+      <div role="radio" aria-checked="false"><label><input type="radio" name="CA_3" value="false" tabindex="-1" aria-hidden="true"><span>NO</span></label></div>
+    </fieldset></div>
+  <div class="q"><span class="lab" id="CA_4_label"><strong>*</strong> Are you able to work for any US employer without company sponsorship?</span>
+    <fieldset role="radiogroup" data-ui="CA_4" aria-labelledby="CA_4_label">
+      <div role="radio" aria-checked="false"><label><input type="radio" name="CA_4" value="true" tabindex="-1" aria-hidden="true" required><span>YES</span></label></div>
+      <div role="radio" aria-checked="false"><label><input type="radio" name="CA_4" value="false" tabindex="-1" aria-hidden="true"><span>NO</span></label></div>
+    </fieldset></div>
+  <div class="q"><label><input type="checkbox" name="gdpr" required> I have read, understand and accept the content of the Privacy Notice</label></div>
+  <div class="cf-turnstile" data-check data-sitekey="0x0000000000000000000000"><iframe title="Widget containing a Cloudflare security challenge" src="about:blank" width="0" height="0"></iframe></div>
+  <button type="submit" data-submit>Submit application</button>
+</form>
+<script src="mock.js"></script>
+<script>
+  document.querySelectorAll("[role=radiogroup]").forEach(function (g) {
+    g.addEventListener("change", function () { g.querySelectorAll("[role=radio]").forEach(function (w) { w.setAttribute("aria-checked", w.querySelector("input").checked ? "true" : "false"); }); });
+  });
+  mockSubmit(document.getElementById("form"), "Your application was submitted successfully. Thank you for applying!");
+</script>
+</body></html>

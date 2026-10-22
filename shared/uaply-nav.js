@@ -509,6 +509,7 @@ function apply(w,host){
     /* what really happened to the application: never "sent" unless the server said so */
     function sentLine(o){
       var x=o.x.sent,e=A.esc;if(!x)return "";
+      if(x.status==="sent"&&x.via==="assist")return '<small class="sent ok">Sent on '+e(o.j.co)+'\'s own page: their confirmation page appeared</small>';
       if(x.status==="sent")return '<small class="sent ok">Application sent to '+e(x.to||o.j.co)+'</small>';
       if(x.status==="delivered_test")return '<small class="sent ok">Sent to '+e((x.to||"the test inbox").replace(/ \(simulated\)$/,""))+' (test, nothing reached '+e(o.j.co)+')</small>';
       if(x.status==="handoff")return '<small class="sent todo">Not sent yet: '+e(o.j.co)+' takes applications on its own site.</small>';
@@ -582,8 +583,31 @@ function apply(w,host){
     return rows.filter(function(r){return typeof r[1]==="string"&&r[1].trim()}).map(function(r){return r[0]+": "+r[1].trim()}).join("\n");
   }
   w.__uaplyPrefillText=prefillText;   /* for the browser test */
+  /* assisted apply in the phone app (docs/assisted-apply.md): the employer's own page opens in the app, UAply fills it from the profile and
+     attaches the resume, and the person reviews it and taps Submit there. UAply never presses Submit and never touches a human check, unless
+     shared/assist-systems.json (the owner's lawyer sets it) allows a system and the page shows no check. The Job Tracker says Sent only when
+     the employer's confirmation page appeared; anything else stays "Finish on their site". */
+  function atsOf(u){var h="";try{h=new w.URL(u).hostname.toLowerCase()}catch(e){}
+    return /(^|\.)greenhouse\.io$/.test(h)?"greenhouse":/(^|\.)lever\.co$/.test(h)?"lever":/(^|\.)ashbyhq\.com$/.test(h)?"ashby":/(^|\.)smartrecruiters\.com$/.test(h)?"smartrecruiters":/(^|\.)workable\.com$/.test(h)?"workable":"other"}
+  function assistMode(cfg,sys){var s=cfg&&cfg.systems&&cfg.systems[sys];return s&&s.mode==="automatic"&&s.counsel_approved===true&&s.human_check_share===0?"automatic":"assisted"}
+  w.__uaplyAssistMode=assistMode;w.__uaplyAtsOf=atsOf;   /* for the browser test */
+  var assistBusy=false;
+  function assistedApply(j,AP){
+    var prof=w.__uaplyAssistProfile&&w.__uaplyAssistProfile();if(!prof||assistBusy)return false;
+    assistBusy=true;var sys=atsOf(j.url);
+    Promise.all([w.fetch("/uaply-assist.js").then(function(r){if(!r.ok)throw 0;return r.text()}),w.fetch("/assist-systems.json").then(function(r){return r.ok?r.json():{}}).catch(function(){return {}})]).then(function(r){
+      return AP.open({url:handoffURL(j.url),engine:r[0],profile:prof,job:{co:j.co,role:j.role},system:sys,mode:assistMode(r[1],sys)});
+    }).then(function(res){
+      assistBusy=false;var x=A.S.decisions[j.id];
+      if(res&&res.confirmed===true&&x){x.sent={at:Date.now(),to:j.co,status:"sent",via:"assist",page:String(res.url||"").slice(0,300)};A.save();A.renderAll();renderTrack();
+        if(w.__uaplyKitToast)w.__uaplyKitToast("Sent: "+j.co+" showed its confirmation page.","","",5000)}
+      else if(w.__uaplyKitToast)w.__uaplyKitToast("Not sent yet. Tap Finish applying when you are ready.","","",5000);
+    },function(){assistBusy=false;if(w.__uaplyOpen)w.__uaplyOpen(handoffURL(j.url))});   /* the app could not open it: the employer's page as before */
+    return true;
+  }
   function finishOnSite(id){
     var j=A.JOBS.filter(function(x){return x.id===id})[0];if(!j||!j.url||!/^https:\/\//.test(j.url))return;
+    var AP=plug("UAplyAssist");if(AP&&assistedApply(j,AP))return;
     var t=prefillText();
     if(t){try{var c=w.navigator.clipboard;if(c&&c.writeText)c.writeText(t).then(function(){if(w.__uaplyKitToast)w.__uaplyKitToast("Profile copied, paste it into their form","","",5000)},function(){})}catch(e){}}   /* blocked: say nothing */
     if(w.__uaplyOpen)w.__uaplyOpen(handoffURL(j.url));
@@ -1722,6 +1746,25 @@ function apply(w,host){
   /* what the application sends besides the profile: the details saved in Profile setup, Background and links (phone, LinkedIn, portfolio, About you, resume link) win over the optional profile form */
   w.__uaplyApplyExt=function(){var x=Object.assign({},XV());var ph=phoneOf(),li=linkOf("linkedin"),pf=linkOf("portfolio"),su=summaryOf(),rs=resumeLinkOf();if(ph)x.phone=ph;if(!x.start&&acct.notice)x.notice=acct.notice;if(li)x.linkedin=li;if(pf)x.portfolio=pf;if(su)x.summary=su;if(rs)x.resume=rs;var ad=acct.addr||{};if(ad.zip)x.zip=ad.zip;if(A.S.profile&&A.S.profile.reloc&&x.relocate!=="no")x.relocate="yes";if(ad.state)x.state=ad.state;x.ack=x.ack==="yes";return x};
   w.__uaplyResume=function(){return acct.resumeData&&DATA_URL.test(acct.resumeData)?{name:acct.resumeName,size:acct.resumeSize,data:acct.resumeData}:null};   /* the file uploaded in Profile setup, Background and links */
+  /* assisted apply (phone app, docs/assisted-apply.md): the profile shared/uaply-assist.js fills an employer's form with. Only what the
+     person saved in UAply; never the voluntary self-identification answers (acct.eeo holds them next to work authorization, and only
+     authorization and sponsorship are read from it), never pronouns. The example profile is never used. */
+  w.__uaplyAssistProfile=function(){
+    var p=A.S.profile||{},x=XV(),ad=acct.addr||{};if(!p.custom)return null;
+    var nm=String(p.name||"").trim().split(/\s+/),loc=String(p.loc||"").split(",").map(function(s){return s.trim()});
+    var au=x.auth||"",sp=x.sponsor||"",ea=String(authOf()),es=String(sponsorOf());
+    var res=w.__uaplyResume(),m=res&&/^data:([^;]+);base64,(.*)$/.exec(res.data);
+    var ans={};try{ans=JSON.parse(w.localStorage.getItem((w.__uaplyKey||"uaply")+".answers"))||{}}catch(e){ans={}}
+    return {first:nm[0]||"",last:nm.slice(1).join(" "),name:p.name||"",email:p.email||"",phone:phoneOf(),linkedin:linkOf("linkedin"),website:linkOf("portfolio"),
+      city:loc[0]||"",state:ad.state||loc[1]||"",zip:ad.zip||"",street:ad.street?ad.street+(ad.unit?" "+ad.unit:""):"",country:x.country||"US",
+      company:x.job_end?"":(x.employer||""),title:x.job_end?"":(x.job_title||""),jobStart:x.job_start||"",jobEnd:x.job_end||"",
+      school:x.school||"",degree:p.edu||"",major:x.major||"",grad:x.grad||"",gpa:x.gpa||"",
+      auth:au==="citizen"||au==="authorized"||/citizen|authorized to work/i.test(ea)&&!/not/i.test(ea)?"yes":au==="none"||/not currently/i.test(ea)?"no":"",
+      sponsor:sp==="yes"||/^yes/i.test(es)?"yes":sp==="no"||/^no/i.test(es)?"no":"",
+      start:x.start||acct.notice||"",relocate:x.relocate||"",office:x.office||"",former:x.former||"",govt:x.govt||"",phd:x.phd||"",salary:x.salary||"",
+      summary:summaryOf(),headline:x.headline||"",why:x.why||"",heard:"Job board",answers:ans&&typeof ans==="object"?ans:{},
+      resume:m?{name:res.name||"resume.pdf",type:m[1],b64:m[2]}:null};
+  };
   w.__uaplyMessage=function(job,m,p){
     var skills=(m.matched||[]).slice(0,3),name=p.name||"[Your name]",sumv=summaryOf();
     var fit=skills.length?"My experience with "+skills.join(", ")+" lines up with what the role asks for":"My background lines up well with what the role asks for";

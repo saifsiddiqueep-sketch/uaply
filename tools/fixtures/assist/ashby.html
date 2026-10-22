@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mock Ashby application</title>
+<!-- Ashby's hosted form (jobs.ashbyhq.com/<org>/<id>/application), as measured October 21, 2026: label[for] fields with _systemfield_ names,
+     the location as a list that searches as you type, Yes/No as two buttons in the question block, EEO as checkboxes named by the
+     answer ("Male"), a privacy acknowledgement box, no human check of any kind, Submit Application. -->
+<style>body{font:16px system-ui;margin:16px}._fieldEntry{margin:14px 0}._label{display:block;font-weight:700}input,textarea{width:100%;font:inherit}input[type=checkbox]{width:auto}[aria-pressed=true]{background:#333;color:#fff}[role=listbox]{border:1px solid #888}</style>
+</head><body>
+<h1>Support Specialist at Example Co</h1>
+<form id="form">
+  <div class="_fieldEntry"><label class="_label" for="_systemfield_name">Name<span>*</span></label><input id="_systemfield_name" name="_systemfield_name" required></div>
+  <div class="_fieldEntry"><label class="_label" for="_systemfield_email">Email<span>*</span></label><input id="_systemfield_email" name="_systemfield_email" type="email" required></div>
+  <div class="_fieldEntry"><label class="_label" for="_systemfield_phone">Phone Number</label><input id="_systemfield_phone" name="_systemfield_phone" type="tel"></div>
+  <div class="_fieldEntry"><label class="_label" for="_systemfield_resume">Resume<span>*</span></label><input id="_systemfield_resume" name="_systemfield_resume" type="file" required></div>
+  <div class="_fieldEntry" id="locEntry"><label class="_label" for="loc">Location</label><input id="loc" role="combobox" aria-autocomplete="list" aria-expanded="false" autocomplete="off"><div id="locList" role="listbox" hidden></div></div>
+  <div class="_fieldEntry"><label class="_label" for="li">LinkedIn Profile</label><input id="li" name="li"></div>
+  <div class="_fieldEntry"><label class="_label">Are you legally authorized to work in the United States?</label><div class="_yesno"><button type="button" aria-pressed="false">Yes</button><button type="button" aria-pressed="false">No</button></div></div>
+  <div class="_fieldEntry"><label class="_label">Will you now or in the future require visa sponsorship?</label><div class="_yesno"><button type="button" aria-pressed="false">Yes</button><button type="button" aria-pressed="false">No</button></div></div>
+  <div class="_fieldEntry"><label class="_label" for="why">Why Example Co?</label><textarea id="why" name="why"></textarea></div>
+  <div class="_fieldEntry"><label class="_label" for="tell">Tell us about a project you are proud of<span>*</span></label><textarea id="tell" name="tell" required></textarea></div>
+  <fieldset class="_fieldEntry"><legend class="_label">GenderInput gender</legend>
+    <label><input type="checkbox" name="gender_m"> Male</label><label><input type="checkbox" name="gender_f"> Female</label><label><input type="checkbox" name="gender_d"> Decline to self-identify</label></fieldset>
+  <div class="_fieldEntry"><label><input type="checkbox" name="ack" required> I acknowledge that I have read Example Co's Applicant Privacy Notice</label></div>
+  <button type="submit" data-submit>Submit Application</button>
+</form>
+<script src="mock.js"></script>
+<script>
+  document.querySelectorAll("._yesno").forEach(function (row) {
+    row.addEventListener("click", function (e) { var b = e.target.closest("button"); if (!b) return; row.querySelectorAll("button").forEach(function (x) { x.setAttribute("aria-pressed", x === b ? "true" : "false"); }); });
+  });
+  var loc = document.getElementById("loc"), list = document.getElementById("locList");
+  loc.addEventListener("input", function () {
+    var q = loc.value.toLowerCase(); if (q.length < 2) { list.hidden = true; return; }
+    setTimeout(function () {
+      list.innerHTML = ["Philadelphia, PA, United States", "Phoenix, AZ, United States"].filter(function (x) { return x.toLowerCase().indexOf(q) === 0; }).map(function (x) { return '<div role="option">' + x + '</div>'; }).join("");
+      list.hidden = false; loc.setAttribute("aria-expanded", "true");
+    }, 300);
+  });
+  list.addEventListener("click", function (e) { var o = e.target.closest("[role=option]"); if (!o) return; loc.value = o.textContent; list.hidden = true; loc.setAttribute("aria-expanded", "false"); });
+  mockSubmit(document.getElementById("form"), "Thanks for applying! Your application has been submitted.");
+</script>
+</body></html>

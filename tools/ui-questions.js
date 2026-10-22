@@ -49,7 +49,7 @@ module.exports = async ({ ev, sleep, nav, send, shot }) => {
   // ---- the person: a profile with name and email only, the first-application agreement given --------------------------------------------
   await nav(base); await sleep(3000);
   const email = "q" + W + "@example.com";
-  await ev("(()=>{const w=" + FW + ";w.localStorage.setItem((w.__uaplyKey||'uaply')+'.consent',JSON.stringify({v:2,at:Date.now()}));const A=w.__uaply;Object.assign(A.S.profile,{name:'Sam Rivera',email:'" + email + "',custom:true,title:'Data Analyst',years:1,skills:['Python','SQL']});A.save()})()");
+  await ev("(()=>{const w=" + FW + ";w.localStorage.setItem((w.__uaplyKey||'uaply')+'.consent',JSON.stringify({v:3,at:Date.now(),agent:true}));const A=w.__uaply;Object.assign(A.S.profile,{name:'Sam Rivera',email:'" + email + "',custom:true,title:'Data Analyst',years:1,skills:['Python','SQL']});A.save()})()");
   await nav(base); await sleep(4500);
   await ev("(()=>{const w=" + FW + ";w.__uaplyResume=function(){return {name:'Sam Rivera Resume.pdf',size:40,data:'data:application/pdf;base64,'+btoa('%PDF-1.4 Sam Rivera resume for tests %%EOF')}}})()");
   check("app loaded", await ev("!!(" + FW + ".__uaply&&" + FW + ".__uaplyOnDecision)"));

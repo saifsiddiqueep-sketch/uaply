@@ -104,6 +104,9 @@ if api:
                      ("/uaply-chat.js", "shared/uaply-chat.js"), ("/uaply-employers.js", "shared/uaply-employers.js"),
                      ("/uaply-learn.js", "shared/uaply-learn.js"), ("/uaply-resume.js", "shared/uaply-resume.js"),
                      ("/help/articles.json", "help/articles.json"),
+                     # assisted apply in the phone app: the autofill it puts into an employer's page, and the per-system switch
+                     # (assisted or automatic) the owner's lawyer sets (docs/assisted-apply.md)
+                     ("/uaply-assist.js", "shared/uaply-assist.js"), ("/assist-systems.json", "shared/assist-systems.json"),
                      ("/prod-index.html", "prod/index.html"),
                      # the installable website (Android "Install app", the Play Store app): its manifest, icons, service worker and the
                      # screen that worker shows when a page cannot load. The worker sits at the site root so it covers every page.

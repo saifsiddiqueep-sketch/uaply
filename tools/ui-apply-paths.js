@@ -22,7 +22,7 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
       check("signed in as ui@example.com", r === 200, "HTTP " + r);
     } else await ev("fetch('/api/auth/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.status)");
     // the profile a person fills in, and the first-application agreement already given
-    await ev("(()=>{const w=" + FW + ";w.localStorage.setItem((w.__uaplyKey||'uaply')+'.consent',JSON.stringify({v:2,at:Date.now()}));const A=w.__uaply;Object.assign(A.S.profile,{name:'Sam Rivera',email:'" + (addr || "ui@example.com") + "',custom:true,title:'Data Analyst',years:1,skills:['Python','SQL']});A.save()})()");
+    await ev("(()=>{const w=" + FW + ";w.localStorage.setItem((w.__uaplyKey||'uaply')+'.consent',JSON.stringify({v:3,at:Date.now(),agent:true}));const A=w.__uaply;Object.assign(A.S.profile,{name:'Sam Rivera',email:'" + (addr || "ui@example.com") + "',custom:true,title:'Data Analyst',years:1,skills:['Python','SQL']});A.save()})()");
     await nav(base); await sleep(4500);
     // the resume file uploaded in Profile setup (a tiny real PDF)
     await ev("(()=>{const w=" + FW + ";w.__uaplyResume=function(){return {name:'Sam Rivera Resume.pdf',size:40,data:'data:application/pdf;base64,'+btoa('%PDF-1.4 Sam Rivera resume for tests %%EOF')}}})()");
