@@ -18,8 +18,9 @@ table{width:100%;border-collapse:collapse;font-size:14.5px;margin:10px 0}
 th,td{text-align:left;vertical-align:top;border-bottom:1px solid var(--line);padding:8px 8px 8px 0}
 th{color:var(--muted);font-weight:600}
 .box{border:1px solid var(--line);border-radius:14px;padding:4px 16px 12px;margin:16px 0;background:var(--bg)}
-nav.docs{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:14px;margin:0 0 20px}
-nav.docs a.home{font-weight:700;flex-basis:100%}   /* the way back to the app, on its own line above the other legal pages */
+nav.docs{display:flex;flex-wrap:wrap;gap:0 14px;font-size:14px;margin:0 0 12px}
+nav.docs a{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px}   /* a finger-sized target (the phone walk measured 22 px) */
+nav.docs a.home{font-weight:700;flex-basis:100%;justify-content:flex-start}   /* the way back to the app, on its own line above the other legal pages */
 footer{max-width:46rem;margin:18px auto 0;color:var(--muted);font-size:13px;text-align:center}
 @media (max-width:520px){main{padding:20px 16px}h1{font-size:25px}}
 /* taps and focus: the same rule as every UAply page (shared/uaply-focus.css) */

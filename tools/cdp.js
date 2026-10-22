@@ -47,6 +47,26 @@ const TEST = require(path.resolve(process.argv[2]));
 const LIMIT = Number(process.env.CDP_LIMIT_MS || TEST.limitMs || 540000);
 setTimeout(() => { console.log("TEST SCRIPT FAILED: no result after " + Math.round(LIMIT / 1000) + " s (the page or Chrome stopped responding)"); process.exit(1); }, LIMIT).unref();
 
+// CDP_ATTACH=127.0.0.1:9222: drive a Chrome that is already running instead of starting one, for example a real phone's Chrome reached
+// with `adb forward tcp:9222 localabstract:chrome_devtools_remote` (tools/phone-walk.js). The test then runs in the tab whose address
+// contains CDP_TAB (opened there when no tab has it), nothing is emulated (the phone is the real size) and the tab is left open at the end.
+const ATTACH = process.env.CDP_ATTACH || "";
+async function attach() {
+  const base = "http://" + ATTACH, want = process.env.CDP_TAB || "";
+  let tabs = [];
+  try { tabs = await (await fetch(base + "/json")).json(); } catch (e) { console.log("TEST SCRIPT FAILED: no Chrome answers at " + base + " (" + e.message + ")"); process.exit(1); }
+  let tab = tabs.find((t) => t.type === "page" && want && t.url.includes(want));
+  if (!tab && want) tab = await (await fetch(base + "/json/new?" + (process.env.CDP_OPEN || "about:blank"), { method: "PUT" })).json();
+  if (!tab) tab = tabs.find((t) => t.type === "page");
+  if (!tab) { console.log("TEST SCRIPT FAILED: no tab to drive at " + base); process.exit(1); }
+  const ws = new WebSocket(tab.webSocketDebuggerUrl);
+  const opened = await new Promise((r) => { ws.onopen = () => r(true); ws.onerror = () => r(false); setTimeout(() => r(false), 15000); });
+  if (!opened) { console.log("TEST SCRIPT FAILED: the tab at " + base + " would not accept a connection (is DevTools open on it elsewhere?)"); process.exit(1); }
+  // a phone's tab can go away under the test (Chrome sent to the background, the tab closed): say so instead of stopping silently
+  ws.addEventListener("close", () => { if (global.__cdpDone) return; console.log("TEST SCRIPT FAILED: the connection to the tab closed (Chrome left the screen or the tab was closed)"); process.exit(1); });
+  return { proc: null, profile: null, ws };
+}
+
 // start headless Chrome and connect; if it does not answer (a busy computer, a port already taken), try a fresh one, up to 3 times
 async function launch() {
   for (let attempt = 1; attempt <= 3; attempt++) {
@@ -75,7 +95,7 @@ async function launch() {
 }
 
 (async () => {
-  const { proc, profile, ws } = await launch();
+  const { proc, profile, ws } = ATTACH ? await attach() : await launch();
   let id = 0;
   const pending = {};
   const logs = [];
@@ -98,7 +118,7 @@ async function launch() {
   });
   await send("Runtime.enable");
   await send("Page.enable");
-  if (process.env.W && Number(process.env.W) < 700) {          // phone sizes: real device emulation (a headless window cannot go below ~500px)
+  if (!ATTACH && process.env.W && Number(process.env.W) < 700) {          // phone sizes: real device emulation (a headless window cannot go below ~500px)
     await send("Emulation.setDeviceMetricsOverride", { width: Number(process.env.W), height: Number(process.env.H || 844), deviceScaleFactor: 3, mobile: true });
     await send("Emulation.setTouchEmulationEnabled", { enabled: true });
   }
@@ -113,7 +133,7 @@ async function launch() {
   try { await TEST({ ev, sleep, nav, shot, logs, send, on }); }
   catch (e) { console.log("TEST SCRIPT FAILED:", e.message); }
   console.log("CONSOLE ISSUES:", logs.length ? "\n" + logs.join("\n") : "none");
-  ws.close(); proc.kill();
-  try { fs.rmSync(profile, { recursive: true, force: true }); } catch (e) {}
+  global.__cdpDone = true; ws.close(); if (proc) proc.kill();
+  if (profile) try { fs.rmSync(profile, { recursive: true, force: true }); } catch (e) {}
   process.exit(failed || process.exitCode ? 1 : 0);      // a FAIL line, a crashed test script or exitCode set by the test makes the whole run fail
 })();
