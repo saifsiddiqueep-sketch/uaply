@@ -1,4 +1,10 @@
 # Render Blueprint: deploys UAply sandbox and dev as two web services from this repository.
+# What runs today (October 22, 2026): ONE service, "uaply" (srv-db9i3i6q1p3s738b5b4g, branch dev, Starter, Virginia, 1 GB disk at /var/data),
+# made by hand in the dashboard on October 17, not from this file, so editing this file changes nothing there: its settings live in the
+# dashboard (DEPLOY.md, "Running the live site"). There is no sandbox service on Render; the sandbox runs on the owner's computer. This file
+# is the reference for a fresh setup and what tools/test-render.py checks (the start command, the disk, the health check, no secrets).
+# The repository is private: Render reads it only through its GitHub app (DEPLOY.md, Auto-deploy). The address is https://uaply.net
+# through Cloudflare (CNAMEs proxied, SSL/TLS Full (strict)); the server trusts CF-Connecting-IP only from Cloudflare's published ranges.
 # In Render: New > Blueprint, pick this repository, then fill in the secret values it asks for.
 # Values marked sync: false are secrets: you type them into Render's dashboard; they are never stored in the repository.
 # Render asks for them only when the Blueprint is first created; later syncs ignore them (change them under the service's Environment).
@@ -34,16 +40,20 @@ services:
         sync: false
       - key: UAPLY_CONFIG_JSON        # optional: the rest of uaply-config.json as one line of JSON (smtp, public_url, google, delivery); see DEPLOY.md
         sync: false
-      # UAPLY_PUBLIC_URL (add it in the dashboard, Environment, when uaply.net is live): https://uaply.net. It wins over public_url above,
-      # sends pages on www.uaply.net and uaply.onrender.com to it with a 301 (never /api/ or /healthz, so webhooks and Google keep working),
-      # except the home page there, which says "UAply has moved" and offers a backup first when the browser holds UAply data,
-      # and adds the canonical link, /sitemap.xml and the Sitemap line in robots.txt. Leave it unset on the sandbox. DEPLOY.md, section 1.
+      - key: UAPLY_PUBLIC_URL         # https://uaply.net (set on the live service as its own variable since October 21). It wins over
+                                      # public_url in UAPLY_CONFIG_JSON, sends pages on www.uaply.net and the onrender.com address to it
+                                      # with a 301 (never /api/ or /healthz, so webhooks, Google and the health check keep working), except
+                                      # the home page there, which says "UAply has moved" and offers a backup first when the browser holds
+                                      # UAply data, and adds the canonical link, /sitemap.xml and the Sitemap line in robots.txt. Never on a
+                                      # sandbox. DEPLOY.md, section 1.
+        sync: false
       # UAPLY_PLANS_HIDDEN=1 (optional): a free-only launch. Plan and billing shows only Free and "Plus and Pro are coming soon"; checkout is refused.
       # UAPLY_ASSETLINKS_SHA256 (dev only, once the Play app exists): the two SHA-256 fingerprints from Play Console, App signing (app signing key
       # and upload key), comma-separated. /.well-known/assetlinks.json then links the Play app com.uaply.app to the site (mobile/twa/README.md).
-      - key: UAPLY_USAJOBS_KEY        # the free USAJOBS key (wins over feed_keys.usajobs); usajobs must also be in UAPLY_FEEDS or feeds
+      - key: UAPLY_USAJOBS_KEY        # the free USAJOBS key (wins over feed_keys.usajobs), set on the live service since October 21;
+                                      # usajobs must also be in UAPLY_FEEDS (the live service's own list is on its Environment page)
         sync: false
-      - key: UAPLY_USAJOBS_EMAIL      # the address the USAJOBS key was requested with (uaplytechnologies@gmail.com)
+      - key: UAPLY_USAJOBS_EMAIL      # the address the USAJOBS key was requested with (uaplytechnologies@gmail.com); set since October 21
         sync: false
       - key: UAPLY_COS_USER_ID        # CareerOneStop / NLx Jobs API user id (docs/job-sources.md); with UAPLY_COS_TOKEN, and careeronestop in UAPLY_FEEDS
         sync: false
@@ -64,7 +74,7 @@ services:
       sizeGB: 1
 
   - type: web
-    name: uaply-sandbox
+    name: uaply-sandbox                # not created on Render (the sandbox runs on the owner's computer); kept for a fresh two-service setup
     runtime: python
     branch: sandbox
     plan: starter

@@ -65,6 +65,8 @@ simulated payments (paid plans appear only once live Stripe keys are set, sectio
 
 ## 1. Website (Render)
 1. Push this repository to GitHub (the `sandbox` and `dev` branches). Render reads `render.yaml` from the branch you pick for the Blueprint.
+   The repository is private (since October 21; its GitHub Pages previews stopped then), so Render can read it only through its GitHub
+   app: install it for this repository first ("Auto-deploy" below, step 1).
 2. At render.com: sign up, then **New > Blueprint** and pick this repository. It reads `render.yaml` and creates
    `uaply-dev` and `uaply-sandbox` in Virginia (US East), each on the **Starter** plan (0.5 CPU, 512 MB; Render now also calls it `0.5c-512mb`)
    with a 1 GB disk at `/var/data` for accounts, sessions, applications, feedback and the saved job list. The free plan cannot be used: it has
@@ -112,12 +114,16 @@ simulated payments (paid plans appear only once live Stripe keys are set, sectio
    `commit: <7 letters>`, the commit Render deployed. On the very first start (an empty disk) the job list takes about a minute to fill (the
    server reads every employer's board once); after that it is saved on the disk and every restart or redeploy shows the saved jobs at once
    while the boards refresh behind them (`tools/test-render.py` proves it answers in under 3 seconds even when the network hangs).
-6. Your address (Cloudflare): in Render, uaply-dev, Settings, Custom Domains, add `uaply.net` (Render adds `www` and redirects it). In Cloudflare,
-   DNS: delete any AAAA record for `uaply.net`, add CNAME `@` and CNAME `www`, both to `uaply-dev.onrender.com` with Proxy status **DNS only**,
-   and set SSL/TLS to **Full**. Back in Render press Verify; https://uaply.net works once the certificate shows as issued. Leave the MX and TXT
-   (email) records alone. Add `https://uaply.net` to the Google client ID's Authorized JavaScript origins. If you ever switch the CNAMEs to
-   **Proxied** (orange cloud), SSL/TLS must be **Full (strict)**: plain Full accepts any certificate between Cloudflare and Render, and
-   Flexible sends the traffic to Render unencrypted and loops on Render's own https redirect.
+6. Your address (Cloudflare), as the live site runs today: in Render, the service, Settings, Custom Domains, add `uaply.net` (Render adds
+   `www` and redirects it). In Cloudflare, DNS: delete any AAAA record for `uaply.net`, add CNAME `@` and CNAME `www`, both to the service's
+   `onrender.com` address (the live one: `uaply.onrender.com`). Set them **DNS only** (grey cloud) first, press Verify in Render and wait
+   until the certificate shows as issued; then switch both to **Proxied** (orange cloud) and set SSL/TLS to **Full (strict)**. Full
+   (strict) makes Cloudflare check Render's certificate; plain Full accepts any certificate between the two, and Flexible sends the traffic
+   to Render unencrypted and loops on Render's own https redirect. Render renews its certificate through the proxied records by itself.
+   Leave the MX and TXT (email) records alone. Add `https://uaply.net` to the Google client ID's Authorized JavaScript origins, and set
+   `UAPLY_PUBLIC_URL` (step 3). Behind the proxy every visit arrives from a Cloudflare address: the server takes the visitor's address from
+   `CF-Connecting-IP`, but only when the hop before it is one of Cloudflare's published ranges (read at start and every 24 hours;
+   `UAPLY_CF_RANGES=0` keeps the built-in copy), so a header someone sends straight to `uaply.onrender.com` is ignored.
 
 How deploys behave: every push to `dev` (or `sandbox`) redeploys that service, once auto-deploy works (it did not on October 17: see
 "Auto-deploy" below). Because it has a disk, Render stops the old copy before starting the new one (Render offers no zero-downtime deploy for a
@@ -133,9 +139,11 @@ dashboard; no code changes. `python tools/test-render.py` starts the server the 
 
 Before real users: fill the blanks in `legal/`, and keep `delivery` in test mode until partner employers have agreed.
 
-### Running the live site: health check, auto-deploy, backups, logs, capacity
-The live service is `uaply` (`srv-db9i3i6q1p3s738b5b4g`, https://uaply.onrender.com). It was made by hand, not from this Blueprint, so
-`render.yaml` does not change it: each setting below is typed into the dashboard once.
+### Running the live site: health check, auto-deploy, backups, rollback, self-check, logs, capacity
+The live service is `uaply` (`srv-db9i3i6q1p3s738b5b4g`, https://uaply.onrender.com, reached as https://uaply.net through Cloudflare). It
+was made by hand, not from this Blueprint, so `render.yaml` does not change it: each setting below is typed into the dashboard once. Its
+Environment today (names only): `OWNER_PASSWORD`, `UAPLY_CONFIG_JSON`, `UAPLY_PUBLIC_URL`, `UAPLY_USAJOBS_KEY`, `UAPLY_USAJOBS_EMAIL`,
+`UAPLY_DATA_DIR=/var/data`, `MALLOC_ARENA_MAX`, `UAPLY_FEEDS` and the Stripe test keys. Launch day, step by step: `docs/runbook-launch.md`.
 
 **Health check (dashboard only).** uaply → **Settings** → **Health Checks** → **Edit** → Health Check Path `/healthz` → **Save Changes**.
 Without it Render only checks that the port accepts a connection, so a server that is stuck would stay "live". With it Render asks every few
@@ -146,8 +154,9 @@ disk, no job boards), answers in milliseconds, works with HEAD too, and says 503
 **Environment (dashboard only).** uaply → **Environment** → **Add Environment Variable**: `MALLOC_ARENA_MAX` = `2` → **Save, rebuild, and
 deploy**. It keeps memory down while the job boards are read (see Capacity). `render.yaml` has it for services made from the Blueprint.
 
-**Auto-deploy.** The service says Auto-Deploy "On Commit", yet on October 17 every deploy was started by hand or through the API: a push to
-`dev` never started one. The service was created from the repository's address, and Render hears about pushes only through its GitHub app.
+**Auto-deploy.** The service says Auto-Deploy "On Commit", yet since October 17 every deploy has been started by hand or through the API: a
+push to `dev` never started one. Until the steps below are done, after each merge into `dev` press uaply → **Manual Deploy** → **Deploy latest
+commit** (or use the Render connector's trigger deploy). The service was created from the repository's address, and Render hears about pushes only through its GitHub app.
 To fix it, once:
 1. GitHub: open https://github.com/apps/render/installations/new, pick the account `saifsiddiqueep-sketch`, and under **Repository access**
    choose **Only select repositories** with `uaply` ticked (or All repositories) → **Install** (or **Save** if it is already installed). To check
@@ -184,6 +193,23 @@ To restore: put the file on the disk (wormhole the other way), `python tools/bac
 against the manifest first and saves the current state as a backup before changing anything), then at once uaply → **Manual Deploy** →
 **Restart service** so the server reads the restored files. The backups hold password hashes, email addresses and applications: never a public
 place, a chat or this repository (`tools/audit-files.py` refuses a committed one). `python tools/test-backup.py` tests all of it.
+
+**Rolling back (one command).** To put an earlier release back, deploy its commit. With a Render API key (your picture → Account
+Settings → API Keys; type it into that one terminal window only, never a file or a chat), in PowerShell:
+`Invoke-RestMethod -Method Post -Uri https://api.render.com/v1/services/srv-db9i3i6q1p3s738b5b4g/deploys -Headers @{Authorization = "Bearer $env:RENDER_API_KEY"} -ContentType "application/json" -Body '{"commitId": "<the full commit id>"}'`
+(`git rev-parse "v1.0.0-rc.13^{commit}"` gives the id: rc.13 is `e6aced4d950d7b83f5c1c803462205c32e55b227`). Without a key: uaply →
+**Events** → that release's deploy → **Rollback**. Then `python tools/live-check.py --base https://uaply.net --expect all --commit <7
+letters>`. A deploy of a chosen commit leaves auto-deploy as it was, so the next merge into `dev` deploys `dev` again: fix forward on
+`sandbox` and release that. The disk is not touched; restoring data is "Backups" above. The full launch-day version, with when to roll
+back, is `docs/runbook-launch.md` section 9.
+
+**The owner's self-check.** `/api/status` answers everyone with yes/no facts; for the owner (open `/setup` first with the owner
+password, then `/api/status` in the same browser, or `curl.exe -u owner https://uaply.net/api/status`, which asks for the password) it
+also carries `selfCheck`: when a job board was last read successfully (`feeds.lastOk`, `minutesAgo`; null since this copy started),
+when an email last went out (`email.lastSent`, kept on the disk across restarts), the data disk's `freeMB`, `totalMB` and
+`usedPercent`, and `warnings` in plain words (no good board read in 2 hours, under 100 MB free, a data folder that is not a persistent
+disk) with `ok: true` when there are none. The outside uptime check (`docs/uptime.md`) only knows whether the site answers; this says
+whether it is working. `python tools/test-self-check.py` tests it.
 
 **Logs (uaply → Logs).** Search box: plain text, `*` wildcards or `/regex/`; time range at the top right (Live tail to watch). What to search:
 - `[uaply] dev on`: the start-up line (what is switched on, the disk, the commit). `stopping` / `stopped`: a deploy's stop.

@@ -41,7 +41,7 @@ Serves ROOT; each urlpath=file alias maps one URL to a file outside ROOT (e.g. /
   GET  /.well-known/assetlinks.json   the Play Store app's link to this site, from UAPLY_ASSETLINKS_SHA256 (404 when unset; HEAD too)
   GET  /uaply.webmanifest, /uaply-sw.js, /uaply-offline.html, /uaply-icon-*.png   the installable website (shared/)
 Accounts use an HttpOnly session cookie. When a signed-in user swipes right, a receipt goes to their email."""
-import sys, os, re, json, http.server, base64, hmac, threading, time, signal, random, urllib.parse
+import sys, os, re, json, http.server, base64, hmac, threading, time, signal, random, shutil, urllib.parse
 import ui_rules
 
 LEGAL_NAME = re.compile(r"^[A-Za-z0-9_-]+\.(html|css|png)$")       # the files in legal/: terms.html, style.css, favicon-32.png ...
@@ -957,8 +957,8 @@ class H(http.server.SimpleHTTPRequestHandler):
                     return self._send(200, uaply_api.outbox_html(), "text/html; charset=utf-8")
                 if p == "/api/status":
                     facts = status_facts()
-                    if self._owner_ok():          # the owner (this computer, or OWNER_PASSWORD): which questions employers asked, by kind
-                        facts = dict(facts, questions=uaply_api.question_stats())
+                    if self._owner_ok():          # the owner (this computer, or OWNER_PASSWORD): which questions employers asked, by kind,
+                        facts = dict(facts, questions=uaply_api.question_stats(), selfCheck=self_check())   # and the self-check
                     return self._send(200, facts)
                 if p == "/api/auth/me":
                     me = auth_api.user_for(self._token())
@@ -1345,6 +1345,40 @@ def status_facts():
             "apply": apply_facts()}
 
 
+FEEDS_STALE_MINUTES = 120         # job boards are read every 30 minutes (the slowest every 6 hours): two hours with no good read is a problem
+try:                              # the data disk is 1 GB; below this, sign-ups and applications may soon fail to be written
+    DISK_LOW_MB = max(1, int(os.environ.get("UAPLY_DISK_LOW_MB") or 100))
+except ValueError:
+    DISK_LOW_MB = 100
+
+
+def self_check():
+    """The owner's self-check in /api/status (owner only: this computer, or OWNER_PASSWORD), next to the outside uptime check
+    (docs/uptime.md), which only knows whether the site answers: when a job board was last read successfully, when an email last went
+    out, and how much room the data disk has left. Times are Unix seconds and minutes ago; null means not since this copy started (job
+    boards) or never (email). warnings lists, in plain words, what needs a look; ok is true when it is empty."""
+    now = time.time()
+    ago = lambda t: int((now - t) // 60) if t else None
+    feed_at, mail_at = jobs_api.last_feed_ok(), uaply_api.mailer.last_sent()
+    feeds_on = bool(jobs_api.feeds_allowed())
+    try:
+        du = shutil.disk_usage(DATA_DIR)
+        disk = {"freeMB": du.free // 1048576, "totalMB": du.total // 1048576, "usedPercent": round(100.0 * du.used / du.total, 1) if du.total else None}
+    except OSError:
+        disk = {"freeMB": None, "totalMB": None, "usedPercent": None}
+    warnings = []
+    if feeds_on and (now - feed_at) / 60 > FEEDS_STALE_MINUTES and time.time() - STARTED > FEEDS_STALE_MINUTES * 60:
+        warnings.append("No job board was read successfully in the last %d hours." % (FEEDS_STALE_MINUTES // 60))
+    if disk["freeMB"] is not None and disk["freeMB"] < DISK_LOW_MB:
+        warnings.append("Less than %d MB free on the data disk." % DISK_LOW_MB)
+    if PERSISTENT is False:
+        warnings.append("The data folder is not on a persistent disk: accounts are lost at the next deploy.")
+    return {"ok": not warnings, "warnings": warnings,
+            "feeds": {"on": feeds_on, "lastOk": int(feed_at) or None, "minutesAgo": ago(feed_at)},
+            "email": {"on": bool(uaply_api.mail_ready()), "lastSent": int(mail_at) or None, "minutesAgo": ago(mail_at)},
+            "disk": dict(disk, persistent=PERSISTENT), "upMinutes": int((now - STARTED) // 60)}
+
+
 _apply_memo = {"at": 0, "v": None}
 
 
@@ -1372,6 +1406,7 @@ def apply_facts():
 # The commit this copy runs: Render sets RENDER_GIT_COMMIT (the full id) for every deploy. Only its first 7 hex digits are shown (public
 # anyway on GitHub); tools/live-check.py compares them with the branch on GitHub, so a deploy that never happened is caught. None elsewhere.
 COMMIT = (lambda c: c[:7] if re.fullmatch(r"[0-9a-f]{7,40}", c) else None)((os.environ.get("RENDER_GIT_COMMIT") or "").strip().lower())
+STARTED = time.time()             # when this copy started (the self-check's "since this copy started")
 
 
 class Server(http.server.ThreadingHTTPServer):

@@ -6,6 +6,18 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 
+### Launch day: the runbook, the owner's self-check, and the hosting docs as they are today (October 22)
+- **The owner's self-check** in `/api/status` (owner only: this computer, or the owner password): when a job board was last read
+  successfully, when an email last went out (kept on the disk in `mail-count.json`), the data disk's free and total room, and plain
+  warnings (no good board read in 2 hours, under 100 MB free, a data folder that is not a persistent disk). Next to the outside uptime
+  check (`docs/uptime.md`), which only knows whether the site answers. `tools/test-self-check.py` (18 checks), in the runner and CI.
+- **`docs/runbook-launch.md`**: Saturday's exact sequence: a backup, the release PR and tag, the deploy and its start-up line,
+  `live-check.py --expect all`, `ui-live.js`, the Galaxy phone walk, a real sign-up with a real code, a real Google sign-in, what to watch
+  every 2 hours, and the one-command rollback to rc.13 (`e6aced4`) through Render's API (or two clicks in Events).
+- **HANDOFF.md, DEPLOY.md and render.yaml** say what runs today: one hand-made Render service `uaply` behind Cloudflare (proxied, SSL/TLS
+  Full (strict), `CF-Connecting-IP` trusted only from Cloudflare's ranges), a private repository with no GitHub Pages, `UAPLY_PUBLIC_URL`
+  and the USAJOBS key as their own variables, manual deploys until the Render GitHub app is linked, rollback and the self-check.
+
 ### Release review fixes (Reviewer 2, October 22): what an employer's page can get, the site's hour of codes, busy hiring systems
 - **Assisted apply hands a page nothing it does not ask for.** Only the hiring systems' own hosts (`hosts` in
   `shared/assist-systems.json`) and this job's own page are ever filled; on a redirect, a tapped link, a look-alike host or http,
