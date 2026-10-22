@@ -391,7 +391,7 @@ function apply(w,host){
 
   function count(k,v){
     var n=0;
-    if(k==="prof"||v==="overview"||k==="svc")return "";   /* never how many jobs a section holds (Jobs menu); Dashboard keeps the person's own counts */
+    if(k==="prof"||v==="overview"||k==="svc")return "";   /* never how many jobs a section holds (Jobs menu); Job Tracker keeps the person's own counts */
     A.JOBS.forEach(function(j){
       if(w.__uaplyHideSamples&&!j.live)return;
       if(w.__uaplyHide&&w.__uaplyHide(j))return;
