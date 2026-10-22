@@ -17,17 +17,26 @@ or its hiring system put in the way.
    with: the employer's page (with UAply's source tag), the assist script `shared/uaply-assist.js` as text (served at
    `/uaply-assist.js`, so the app always runs what the site serves), the profile from `__uaplyAssistProfile()`, the job's company and
    role, the hiring system, and the mode from `shared/assist-systems.json` (served at `/assist-systems.json`).
-3. `mobile/android/.../AssistActivity.java` opens the page in a WebView under a bar "Applying at {company}" with **Close**. Every
-   1.5 s it asks the page: is this the confirmation page? is there a form not yet filled at this address? It fills each form once.
-4. The script fills what the profile answers, attaches the resume file, skips voluntary questions, leaves consent boxes and
+3. **The bridge (October 22): questions first, form second.** The app first opens the form behind a cover ("Reading the application
+   form...") and runs `UAplyAssist.scan`, which changes nothing (lists are opened to read their choices and closed again) and returns
+   every question the profile cannot answer, with its kind (text, long text, number, date, month, list, tick-all) and its choices.
+   UAply asks them in its own question box, "N questions from {company}": the required ones must be answered, the optional ones
+   (marked "(optional)") may be left blank; "Continue to {company}'s form" goes on, "Not now" stops there. The answers are kept like
+   every question-box answer (Profile setup, "Answers you gave employers"), so the next employer asking the same words gets them. An answer written for one employer (a cover letter, "why us", anything naming that company) is not reused for another:
+   the bridge asks it again there.
+   Voluntary self-identification, age, consent and certification questions and file uploads are never asked there.
+4. `mobile/android/.../AssistActivity.java` then opens the form in a WebView under a bar "Applying at {company}" with **Close**.
+   Every 1.5 s it asks the page: is this the confirmation page? is there a form not yet filled at this address? It fills each form once,
+   from the profile and the answers just given.
+5. The script fills what the profile answers, attaches the resume file, skips voluntary questions, leaves consent boxes and
    follow-ups ("If yes, ...") for the person, scrolls to Submit, outlines it, and shows **"Filled from your UAply profile. Answer
    the N questions left, review it, then tap Submit."**
-5. If the person taps the page's own resume box, Android's file chooser is replaced by a choice: **Use my UAply resume** (a copy
+6. If the person taps the page's own resume box, Android's file chooser is replaced by a choice: **Use my UAply resume** (a copy
    written to the app's cache, handed over through the app's FileProvider and deleted when the page closes) or **Choose another
    file**.
-6. The person taps Submit on the employer's page. If a human check appears (reCAPTCHA, hCaptcha, Turnstile), the person answers
+7. The person taps Submit on the employer's page. If a human check appears (reCAPTCHA, hCaptcha, Turnstile), the person answers
    it; UAply never touches it.
-7. When the employer's confirmation page appears (`UAplyAssist.confirmed()`: thank-you wording or a /confirmation-style address,
+8. When the employer's confirmation page appears (`UAplyAssist.confirmed()`: thank-you wording or a /confirmation-style address,
    and the form gone), the page stays on screen 2.5 s, the app closes it and the Job Tracker row becomes **Sent**, with "Sent on
    {company}'s own page: their confirmation page appeared". Closed without that page: the row stays **Finish on their site** and
    the person sees "Not sent yet".
@@ -39,10 +48,45 @@ What the profile carries (`__uaplyAssistProfile`): name, email, phone, LinkedIn,
 current employer and title (only while the job has no end date), its start and end month, school, degree, major, graduation,
 GPA, work authorization and sponsorship (yes or no), earliest start, relocation, on-site, "have you worked here before",
 government official, PhD, salary (used only where a form requires it), About you, headline, "why us" (the person's own words,
-with {company} and {role} filled in), the answers saved in UAply's question box, and the resume file. Never the voluntary
+with {company} and {role} filled in), 18 or older (yes: the person confirmed it in the first-swipe agreement), how they heard
+("UAply"), the answers saved in UAply's question box, and the resume file.
+
+**How a field is matched (the synonym map in `shared/uaply-assist.js`, October 22).** Each field's words (label, aria, question
+block, placeholder, name) go through one ordered list of rules, with guards for questions that only share a word ("Why do you want
+to work at X" is not "have you worked at X"; "Name pronunciation", "Portfolio password", "When did you graduate from high school",
+"relatives employed by X", "without sponsorship" read the other way round). Name: whole, first, last, preferred, "first and last".
+Phone: as written, digits only for a 10-digit box, and a phone country-code list (+1 United States). Address: street, whole home
+address, city alone, "City, State and ZIP", state, ZIP, country. Links: LinkedIn, GitHub (only a github.com address), website and
+portfolio. Education: school, degree (Bachelor matches "Bachelor's Degree", "BA", "BS"...), major, GPA, graduation as a date
+picker (2026-05-01), a typed date in the field's own pattern (05/2026, 05/01/2026) or month and year apart. Work: current employer,
+title and their start and end month and year. Yes/no pairs: authorization, sponsorship (also "I will not require sponsorship", read as
+a no), "without sponsorship", 18 or older (never 21), relocation, on-site, worked here before, government official, PhD. Earliest
+start into a notice-period list (Immediately, 2 weeks, 1 month). How did you hear: "UAply" if offered, else "Other" and "UAply" in
+its "please specify" box, else a job-board choice. Lists, radios and Yes/No buttons are matched by their option's normalized words.
+Pronouns and voluntary fields (and an "age range") are always skipped. Never the voluntary
 answers (gender, race, ethnicity, veteran, disability) and never pronouns. The example profile is never used.
 
 ## 2. Per-system table
+
+### Before and after the bridge (October 22, the same 80 postings, the Galaxy, nothing submitted)
+
+| System | Fill, before (Oct 21, profile only) | Fill, after: profile + the person's bridge answers | after, if the person answers only the required ones | after, profile alone | Asked in the bridge (median, required / optional) | Required left at the form, median before → after | Required left after, all of it |
+|---|---|---|---|---|---|---|---|
+| Greenhouse | 65% | **96%** | 89% | 66% | 2.5 / 0.5 | 4 → **0** | at most 2 per form, all agreements (privacy statement, consent, code of conduct) |
+| Lever | 64% | **98%** | 92% | 69% | 1.5 / 1 | 1.5 → **0** | at most 1, a consent-to-texts question |
+| Ashby | 60% | **95%** | 72% | 61% | 0 / 3 | 0.5 → **0** | none (19 forms; one posting had closed) |
+| Workable | 50% | **96%** | 85% | 57% | 4 / 2 | 5 → **0** | at most 1, "confirm everything is true" |
+| SmartRecruiters | not measurable (bot page) | | | | | | |
+
+How to read it: "after" is what the person finds when the form opens, once they answered what UAply's question box asked (the test
+person answers every question, required and optional; the bridge marks the optional ones and lets them be skipped). Most of the gain
+is the bridge: the profile alone fills about the same share as before (the new mappings add 1 to 7 points), because what was left
+was the employer's own questions (essays, "how many years", referrals, cover letters, follow-ups), which no profile holds. Ashby's
+optional questions (cover letter, X, GitHub, referral) are why its required-only figure is lower. What is still required at the form
+is only what UAply must never answer: privacy, consent and certification questions. Command: `python tools/assist-measure.py --phone
+<serial> --urls <saved list> --bridge all`; 296 requests that could have carried an application or a file were refused.
+
+### Before (October 21, the profile alone)
 
 Measured on the owner's Galaxy (SM-S176V, Chrome 138, its own tab through `adb forward tcp:20571`), 20 real postings per system,
 same test person (Sam Rivera, a made-up profile and a test resume), **nothing submitted** (section 4). "Fill rate" = fields the
@@ -100,8 +144,13 @@ if that changes without the test changing too. Unknown systems (Workday, iCIMS, 
 
 ## 4. How it was measured (and why nothing was sent)
 
-- `tools/assist-measure.js` drives one Chrome tab (headless on the laptop, or the phone's Chrome through `CDP_ATTACH`), opens each
-  posting's form, injects the script and fills it with the test person.
+- One command reruns it: `python tools/assist-measure.py --phone <adb serial>` (or without `--phone`, headless Chrome here, which
+  Greenhouse refuses). It takes 20 postings per system from the systems' own public job lists (the same employers each time; `--urls`
+  reuses a saved list), opens this run's own Chrome tab on the phone through its own `adb forward` port, runs
+  `tools/assist-measure.js`, closes that tab, removes that forward, and prints the table below (`--bridge required|all|off`).
+- `tools/assist-measure.js` drives that one tab, opens each posting's form, injects the script, runs the bridge (scan, then a test
+  person's plain answers: "N/A", "3", "60000", a short sentence, the first sensible choice, "No" to relatives and referrals) and fills
+  it.
 - Every request that could carry an application is refused by the browser before it leaves: any POST/PUT/PATCH whose address or
   body mentions submit, upload, draft, attachment or apply, any multipart upload, and any body holding the test person's details.
   The final phone run refused 301 such requests (Greenhouse's resume uploads to its storage, Lever's `parseResume`, Workable's form
@@ -167,8 +216,8 @@ never filling voluntary questions, and saying Sent only on the employer's confir
 
 Done: the script (`shared/uaply-assist.js`); the switch file and its rule; the app side in Job Tracker; the Android plugin and screen
 (`AssistPlugin.java`, `AssistActivity.java`, registered in `MainActivity`, declared in the manifest); consent version 3; mock forms
-for all five systems (`tools/fixtures/assist/`) and tests (`tools/test-assist.js`, 139 checks; `tools/ui-assist-tracker.js`,
-19 checks); the measurement (`tools/assist-measure.js`).
+for all five systems (`tools/fixtures/assist/`, every mapping and the bridge on each) and tests (`tools/test-assist.js`, 213 checks;
+`tools/ui-assist-tracker.js`, 26 checks, the bridge in Job Tracker); the measurement in one command (`tools/assist-measure.py`).
 
 Not done, and why:
 - **The UAply app itself was not built or installed on the Galaxy.** Building needs Google's Android SDK, whose license only the

@@ -9,6 +9,8 @@
 <form id="application-form">
   <div class="field"><label for="first_name">First Name<span class="req">*</span></label><input id="first_name" name="first_name" aria-required="true"></div>
   <div class="field"><label for="last_name">Last Name<span class="req">*</span></label><input id="last_name" name="last_name" aria-required="true"></div>
+  <div class="field"><label for="preferred_name">Preferred Name</label><input id="preferred_name" name="preferred_name"></div>
+  <div class="field"><label for="phone_cc">Phone country code</label><select id="phone_cc" name="phone_cc"><option value="">Select...</option><option value="44">+44 United Kingdom</option><option value="1">+1 United States</option></select></div>
   <div class="field"><label for="email">Email<span class="req">*</span></label><input id="email" name="email" type="email" aria-required="true"></div>
   <div id="slot-country"></div>
   <div class="field"><label for="phone">Phone<span class="req">*</span></label><input id="phone" name="phone" type="tel" aria-required="true"></div>
@@ -21,6 +23,19 @@
   <div id="slot-spon"></div>
   <div class="field"><label for="question_6">Why do you want to join Example Co?<span class="req">*</span></label><textarea id="question_6" name="question_6" aria-required="true"></textarea></div>
   <div class="field"><label for="question_7">If yes, please list the name of the employee who referred you.</label><input id="question_7" name="question_7"></div>
+  <div class="field"><label for="question_8">Describe a project you led<span class="req">*</span></label><textarea id="question_8" name="question_8" aria-required="true"></textarea></div>
+  <div class="field"><label for="question_9">Do you consent to receive text messages about your application?</label><select id="question_9" name="question_9"><option value="">Select...</option><option value="1">Yes</option><option value="0">No</option></select></div>
+  <div class="field"><label for="question_10">What is your age range?</label><select id="question_10" name="question_10"><option value="">Select...</option><option>18-24</option><option>25-34</option></select></div>
+  <fieldset class="field"><legend>Employment</legend>
+    <div class="field"><label for="company-name-0">Company name<span class="req">*</span></label><input id="company-name-0" aria-required="true"></div>
+    <div class="field"><label for="title-0">Title<span class="req">*</span></label><input id="title-0" aria-required="true"></div>
+    <div class="field"><label for="start-month-0">Start date month<span class="req">*</span></label><select id="start-month-0" aria-required="true"><option value="">Select...</option><option>May</option><option>June</option><option>July</option></select></div>
+    <div class="field"><label for="start-year-0">Start date year<span class="req">*</span></label><input id="start-year-0" type="number" aria-required="true"></div>
+    <div class="field"><label for="end-month-0">End date month<span class="req">*</span></label><select id="end-month-0" aria-required="true"><option value="">Select...</option><option>May</option><option>June</option></select></div>
+    <div class="field"><label for="end-year-0">End date year<span class="req">*</span></label><input id="end-year-0" type="number" aria-required="true"></div>
+    <div class="field"><label><input type="checkbox" id="current-role-0"> Current role</label></div>
+  </fieldset>
+  <div class="field"><label for="question_11">Privacy Statement<span class="req">*</span></label><select id="question_11" aria-required="true"><option value="">Select...</option><option value="1">I acknowledge</option></select></div>
   <h2>Voluntary Self-Identification</h2>
   <div id="slot-gender"></div>
   <div id="slot-hisp"></div>

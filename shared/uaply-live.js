@@ -486,7 +486,9 @@ function kitApply(w,host){
   /* a phone or tablet (no mouse to hover with, a finger to point with) */
   function touchFirst(){try{return !!(w.matchMedia&&w.matchMedia("(hover: none) and (pointer: coarse)").matches)}catch(e){return false}}
   /* the questions on an employer's form that the profile could not answer: asked once, then the application goes */
-  function askSheet(job,qs,filled,total,go,cancel){
+  /* how (assisted apply's bridge, shared/uaply-nav.js): {lead, yes} replace the words about sending, and a question with optional:true
+     may be left blank */
+  function askSheet(job,qs,filled,total,go,cancel,how){
     var old=d.getElementById("kitAsk");if(old)old.remove();
     kaStyle();
     var o=d.createElement("div");o.id="kitAsk";
@@ -494,10 +496,10 @@ function kitApply(w,host){
     var hasFile=qs.some(function(q){return q.kind==="file"});
     var h='<form role="dialog" aria-modal="true" aria-labelledby="kaH" novalidate style="background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:20px 20px 0;max-width:520px;width:100%;max-height:100%;overflow:auto;overscroll-behavior:contain;box-sizing:border-box;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:14px;font-size:14px;min-width:0">'+
       '<h2 id="kaH" tabindex="-1" style="margin:0;font:800 20px var(--display);outline:none">'+(qs.length===1?'One question':qs.length+' questions')+' from '+esc(job.co)+'</h2>'+
-      '<p style="margin:0;color:var(--muted)">UAply filled in '+filled+' of '+total+' answers on '+esc(job.co)+'\'s application. '+(hasFile?'It also needs a resume file. Answer what you can (it is saved), then upload your resume in Profile setup, under Background and links, and swipe right again.':'Answer '+(qs.length===1?'this':'these')+' and UAply sends it. Your answers are saved, so the next employer that asks the same thing gets them automatically. You can change them in Profile setup, under Eligibility and extras.')+'</p>';
-    qs.forEach(function(q,i){h+=fieldHtml(q,"kaQ"+i,"")});
+      '<p style="margin:0;color:var(--muted)">'+(how&&how.lead?esc(how.lead):'UAply filled in '+filled+' of '+total+' answers on '+esc(job.co)+'\'s application. '+(hasFile?'It also needs a resume file. Answer what you can (it is saved), then upload your resume in Profile setup, under Background and links, and swipe right again.':'Answer '+(qs.length===1?'this':'these')+' and UAply sends it. Your answers are saved, so the next employer that asks the same thing gets them automatically. You can change them in Profile setup, under Eligibility and extras.'))+'</p>';
+    qs.forEach(function(q,i){h+=fieldHtml(q.optional?Object.assign({},q,{q:q.q+" (optional)"}):q,"kaQ"+i,"")});
     h+='<p id="kaMsg" role="alert" style="margin:0;font-size:13px;color:var(--no);min-height:1.2em"></p>'+
-      '<div id="kaBtns" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;position:sticky;bottom:0;margin:0 -20px;padding:12px 20px 20px;background:var(--surface);border-top:1px solid var(--line)"><button type="button" class="btn ghost" id="kaNo">Not now</button><button type="submit" class="btn" id="kaYes">'+(hasFile?'Open Profile':'Send application')+'</button></div></form>';
+      '<div id="kaBtns" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;position:sticky;bottom:0;margin:0 -20px;padding:12px 20px 20px;background:var(--surface);border-top:1px solid var(--line)"><button type="button" class="btn ghost" id="kaNo">Not now</button><button type="submit" class="btn" id="kaYes">'+(hasFile?'Open Profile':how&&how.yes?esc(how.yes):'Send application')+'</button></div></form>';
     o.innerHTML=h;d.body.appendChild(o);
     var boxes=[].slice.call(o.querySelectorAll(".kaF"));
     boxes.forEach(function(b,i){wireField(b,qs[i])});
@@ -525,7 +527,7 @@ function kitApply(w,host){
         var q=qs[i];if(q.kind==="file")return;
         var v=fieldVal(b,q);
         if(v&&typeof v==="object"){if(!blank){blank=b;why=v.bad}v=""}
-        else if(!v&&!blank)blank=b;
+        else if(!v&&!blank&&!q.optional)blank=b;
         add[q.key]=v;meta[q.key]=metaOf(q,job.co);
       });
       if(hasFile){keepAnswers(add,meta);o.remove();cancel();openProfile("back");return}   /* keep whatever was answered: only the resume is left next time */
@@ -539,6 +541,7 @@ function kitApply(w,host){
     d.getElementById("kaNo").onclick=function(){o.remove();cancel()};
     o.addEventListener("keydown",function(e){if(e.key==="Escape"){o.remove();cancel()}});
   }
+  w.__uaplyAskSheet=askSheet;   /* assisted apply asks the questions the employer's form has and the profile cannot answer, before the form opens */
 
   /* Profile setup, Eligibility and extras: "Answers you gave employers". Each one can be changed with the control it was asked with, or
      removed (then the next employer that asks it asks again). They stay on this device and travel only with the applications sent. */
