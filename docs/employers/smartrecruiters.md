@@ -16,11 +16,15 @@ Never sent: questions you marked as diversity questions, and optional consents (
 because SmartRecruiters needs a start date for each job and UAply's profile does not hold one.
 
 ## Where you create the key
-SmartRecruiters: **Settings**, **Admin**, **Credential Manager**, create an **Application API** key. Also tell us your company identifier,
-the part after `jobs.smartrecruiters.com/` in your careers address.
+SmartRecruiters (an Administrator): **Settings**, **Administration**, **Apps & Integrations**, **Credentials** (the Credential Manager),
+**New Credential**, **API Key**. SmartRecruiters shows it once. Also tell us your company identifier, the part after
+`jobs.smartrecruiters.com/` in your careers address. (SmartRecruiters' free SmartStart plan may not include API keys.)
 
 ## What the key can do
-An Application API key reads a posting's application configuration and submits candidates to postings. UAply uses it for nothing else.
+SmartRecruiters' API keys give full access to your account's data: SmartRecruiters has no narrower kind of key (its developer page,
+"API key", October 2026). UAply uses it only for two Application API calls, reading a posting's application configuration and submitting
+a candidate to that posting, and for nothing else; it is kept on UAply's server only, never shown or logged. If that is more access than
+you want to give, use the email channel instead ([email-and-webhook.md](email-and-webhook.md)).
 
 ## How to revoke it
 **Settings**, **Admin**, **Credential Manager**: delete or deactivate the key. Applications from UAply stop at once. Then tell us, so we

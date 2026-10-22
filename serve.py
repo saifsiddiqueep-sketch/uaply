@@ -31,6 +31,7 @@ Serves ROOT; each urlpath=file alias maps one URL to a file outside ROOT (e.g. /
   POST /api/auth/code/send, /api/auth/code/verify   sandbox only (sign-up v2): "Email me a code" and signing in with that code;
                           POST /api/auth/signup with {"passwordless": true} makes an account with no password and emails the code
   POST /api/setup/save-google, save-stripe, save-ats, remove-ats   the other boxes on /setup (this computer only)
+  POST /api/setup/test-ats   "Test this connection": an employer's open postings, read with their key (nothing sent or saved)
   GET  /api/billing/status, POST /api/billing/checkout, /api/billing/portal, /api/billing/webhook   Plus and Pro (billing_api.py)
   GET  /api/employer/me, /api/employer/logo/<id>, POST /api/employer/...   Hiring mode, sandbox only (employers_api.py)
   POST /api/profile/resume   read a resume (PDF, Word or text, up to 5 MB) and answer with the profile fields found; nothing is kept (resume_parse.py)
@@ -941,7 +942,7 @@ class H(http.server.SimpleHTTPRequestHandler):
             return self._send(code, out, headers=[("WWW-Authenticate", 'Basic realm="uaply"')] if code == 401 else ())
         if not api or p not in ("/api/apply", "/api/apply/plan", "/api/decision", "/api/auth/signup", "/api/auth/login", "/api/auth/logout",
                                 "/api/auth/delete", "/api/auth/forgot", "/api/auth/reset", "/api/auth/change-password",
-                                "/api/setup/test-mail", "/api/setup/save-mail", "/api/setup/save-google", "/api/setup/save-ats", "/api/setup/remove-ats", "/api/setup/save-stripe", "/api/setup/save-feed-keys", "/api/auth/google/token", "/api/auth/verify", "/api/auth/resend", "/api/chat", "/api/feedback", "/api/billing/checkout", "/api/billing/portal",
+                                "/api/setup/test-mail", "/api/setup/save-mail", "/api/setup/save-google", "/api/setup/save-ats", "/api/setup/remove-ats", "/api/setup/test-ats", "/api/setup/save-stripe", "/api/setup/save-feed-keys", "/api/auth/google/token", "/api/auth/verify", "/api/auth/resend", "/api/chat", "/api/feedback", "/api/billing/checkout", "/api/billing/portal",
                                 "/api/employer/company", "/api/employer/job", "/api/employer/job/status", "/api/employer/applicant",
                                 "/api/employer/import", "/api/profile/resume") + (CODE_PATHS if CODE_SIGNIN else ()):
             return self._refuse(404, {"error": "not found"})
@@ -1023,6 +1024,13 @@ class H(http.server.SimpleHTTPRequestHandler):
                 if PUBLIC:
                     return self._send(403, {"ok": False, "message": "On a hosted server, add the Stripe keys in the host's dashboard (STRIPE_SECRET_KEY and the others), not here."})
                 code, out = setup_api.save_stripe(payload)
+                return self._send(code, out)
+            if p == "/api/setup/test-ats":                  # reads only: on a hosted server it tests the keys saved in the dashboard (none typed)
+                if not self._owner_ok():
+                    return self._send(403, {"error": "Owner pages are off or need the owner password."})
+                if PUBLIC and str(payload.get("api_key") or "").strip():
+                    return self._send(403, {"ok": False, "message": "On a hosted server, test the connections saved in the host's dashboard (UAPLY_ATS_JSON): leave the key box empty."})
+                code, out = setup_api.test_ats(payload)
                 return self._send(code, out)
             if p in ("/api/setup/save-ats", "/api/setup/remove-ats"):
                 if not self._owner_ok():

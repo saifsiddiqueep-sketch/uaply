@@ -428,6 +428,23 @@ class H(http.server.BaseHTTPRequestHandler):
             RECEIVED.clear()
             REJECTED.clear()
             return self._json(200, {"ok": True})
+        # the public lists of open postings ("Test this connection" on /setup counts them): board 'acme' has postings everywhere, 'empty' none
+        if len(parts) == 4 and parts[:2] == ["v1", "boards"] and parts[3] == "jobs":            # Greenhouse
+            return self._json(200, {"jobs": [{"id": 1001}, {"id": 1002}, {"id": 1003}], "meta": {"total": 3}} if parts[2] == "acme" else {"jobs": []}) if parts[2] in ("acme", "empty") else self._json(404, {"status": 404, "error": "Job not found"})
+        if len(parts) == 3 and parts[:2] == ["v0", "postings"]:                                   # Lever
+            return self._json(200, [{"id": "p1"}, {"id": "p2"}] if parts[2] == "acme" else []) if parts[2] in ("acme", "empty") else self._json(404, {"ok": False, "error": "Document not found"})
+        if len(parts) == 3 and parts[:2] == ["posting-api", "job-board"]:                         # Ashby
+            return self._json(200, {"jobs": [{"id": "a1"}, {"id": "a2"}, {"id": "a3"}, {"id": "a4"}] if parts[2] == "acme" else []}) if parts[2] in ("acme", "empty") else self._json(404, {"success": False})
+        if len(parts) == 4 and parts[:2] == ["v1", "companies"] and parts[3] == "postings":      # SmartRecruiters
+            if parts[2] not in ("acme", "empty"):
+                return self._json(404, {"code": "RESOURCE_NOT_FOUND_ERROR", "message": "Company not found"})
+            content = [{"id": "740000000%d" % i, "uuid": "aaaaaaaa-0000-4000-8000-00000000000%d" % i, "name": "Posting %d" % i} for i in (1, 2)] if parts[2] == "acme" else []
+            lim = int((urllib.parse.parse_qs(u.query).get("limit") or ["100"])[0])
+            return self._json(200, {"offset": 0, "limit": lim, "totalFound": len(content), "content": content[:lim]})
+        if parts == ["spi", "v3", "jobs"]:                                                        # Workable: the account's jobs (scope r_jobs)
+            if self.headers.get("Authorization") not in ("Bearer " + WK_KEY, "Bearer " + WK_READONLY):
+                return self._json(401, {"error": "Not authorized"})
+            return self._json(200, {"jobs": [{"shortcode": "WK00000001"}, {"shortcode": "WK00000002"}], "paging": {}})
         if len(parts) == 5 and parts[:3] == ["spi", "v3", "jobs"] and parts[4] == "questions":   # Workable: a job's questions (scope r_jobs)
             if self.headers.get("Authorization") not in ("Bearer " + WK_KEY, "Bearer " + WK_READONLY):
                 return self._json(401, {"error": "Not authorized"})
@@ -481,6 +498,11 @@ class H(http.server.BaseHTTPRequestHandler):
                 return self._json(400, {"ok": False, "error": "Missing name or email"})
             RECEIVED.append({"system": "lever", "site": parts[2], "posting": parts[3], "fields": fields, "files": files})
             return self._json(200, {"ok": True, "applicationId": "app-%d" % len(RECEIVED)})
+        if u.path == "/job.list":                                                              # Ashby: jobs read (the connection test)
+            auth = self.headers.get("Authorization") or ""
+            if auth not in ["Basic " + base64.b64encode((k + ":").encode()).decode() for k in (ASHBY_KEY, ASHBY_READONLY)]:
+                return self._json(401, {"success": False, "errorInfo": {"code": "invalid_api_key", "message": "Invalid API key"}})
+            return self._json(200, {"success": True, "results": [{"id": "a1"}, {"id": "a2"}], "moreDataAvailable": False})
         if u.path in ("/jobPosting.info", "/applicationForm.submit"):                         # Ashby
             auth = self.headers.get("Authorization") or ""
             keys = {"Basic " + base64.b64encode((k + ":").encode()).decode(): k for k in (ASHBY_KEY, ASHBY_READONLY)}

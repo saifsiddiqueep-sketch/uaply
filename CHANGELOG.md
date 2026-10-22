@@ -6,6 +6,21 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 
+### Employer outreach kit and "Test this connection" (the first connected employer)
+- **docs/employers/connect-kit.md**: the outreach email (a swipe right *starts* an application; it is *sent* only where the employer
+  connected), the one-page kit with the ten-minute steps for Greenhouse, Lever, Ashby, SmartRecruiters and Workable and the privacy line,
+  rendered to **connect-kit.pdf** by `node tools/cdp.js tools/render-connect-kit.js` (fails if it stops fitting one page), and the top 50
+  employers in the feed by US jobs with their careers sites, written by `python tools/employer-targets.py --write`. Nothing was sent.
+- **/setup, Connect an employer's hiring system: Test this connection** (and **Test** on each saved connection): reads the employer's
+  own open postings and reports the count, and checks the key where the system has a read for it (Ashby's job list, SmartRecruiters'
+  posting form, Workable's jobs); Greenhouse and Lever keys are checked by the first application. Nothing is sent or saved; the key is
+  never shown. On the hosted site it tests the saved keys only. `POST /api/setup/test-ats`, owner only.
+- **docs/employers/first-connection.md**: our own SmartRecruiters account as launch day's first connected employer, step by step
+  (including what to do if the free plan has no API key). SmartRecruiters' API keys give full access (its own developer page): the kit,
+  the SmartRecruiters page and /setup now say so, and that UAply uses only the Application API.
+- Tests: test-setup 65 (13 new against the stand-in systems, which now serve each system's public posting list and Ashby's job.list),
+  ui-setup, test-ats-flow 42, the per-system ATS suites, test-public 79.
+
 ### Sign-in, server side (PR #49 review): the real visitor's address everywhere, one set of limits, a site-wide cap, Google asks the owner's tick
 - **The visitor's address** for every limit and lock-out is the last hop the host's proxy added (`serve.client_ip`, with Cloudflare's
   CF-Connecting-IP when that hop is Cloudflare's), never what the sender wrote first in X-Forwarded-For. The same helper as learn-cache.

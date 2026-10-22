@@ -11,6 +11,11 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
   check("choosing Gmail hides the Brevo login box", await ev("document.getElementById('glw').hidden"));
   await ev("document.getElementById('sv').click()"); await sleep(800);
   check("saving with empty boxes gives a plain message, not an error", /Enter the Gmail address/.test(await ev("document.getElementById('sr').textContent")), await ev("document.getElementById('sr').textContent"));
+  // Test this connection (the hiring-system box): with nothing typed it asks for the key, and it saves nothing
+  check("the hiring-system box has a Test this connection button", await ev("(document.getElementById('at')||{}).textContent==='Test this connection'"));
+  await ev("(()=>{document.getElementById('ak').value='smartrecruiters';document.getElementById('ab').value='nobody-saved';document.getElementById('aa').value='';document.getElementById('at').click()})()");
+  await sleep(900);
+  check("testing with no key and no saved connection asks for the key", /Paste the employer's key/.test(await ev("document.getElementById('ar').textContent")), await ev("document.getElementById('ar').textContent"));
   check("no script errors on the page", logs.length === 0, logs.join(" / ").slice(0, 200));
   console.log(bad ? bad + " check(s) failed" : "Setup page works");
 };

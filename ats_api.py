@@ -587,3 +587,83 @@ def submit(kind, board, job_id, key, cand, note, resume_meta, resume_bytes):
         return _lever(board, job_id, key, cand, note, resume_meta, resume_bytes)
     except Exception as e:                                   # never let one employer's system break the swipe
         return "failed", "unexpected problem (%s)" % type(e).__name__
+
+
+# ---- "Test this connection" (/setup) ----
+# Reads the employer's own open postings and says how many there are, and checks the key where the system has a read that needs it
+# (Ashby's job.list, SmartRecruiters' posting configuration, Workable's job list). Greenhouse's Job Board key and Lever's Postings key are
+# only ever used to send an application, and neither system has a read that proves them, so for those the test counts the postings and
+# says the key is checked by the first application. Nothing is sent, created or changed anywhere. The key never appears in the answer.
+def _count_postings(kind, board):
+    """(count or None, status) of the board's open postings from the system's public list (no key)."""
+    b = urllib.parse.quote(board)
+    if kind == "greenhouse":
+        status, reply = _call(urllib.request.Request("%s/v1/boards/%s/jobs" % (_base(kind), b)))
+        return (len(reply.get("jobs") or []) if status == 200 and isinstance(reply, dict) else None), status
+    if kind == "lever":
+        status, reply = _call(urllib.request.Request("%s/v0/postings/%s?mode=json" % (_base(kind), b)))
+        return (len(reply) if status == 200 and isinstance(reply, list) else None), status
+    if kind == "ashby":
+        status, reply = _call(urllib.request.Request("%s/posting-api/job-board/%s" % (_base(kind), b)))
+        return (len(reply.get("jobs") or []) if status == 200 and isinstance(reply, dict) else None), status
+    if kind == "smartrecruiters":
+        status, reply = _call(urllib.request.Request("%s/v1/companies/%s/postings?limit=100" % (_base(kind), b)))
+        if status == 200 and isinstance(reply, dict):
+            return int(reply.get("totalFound") or len(reply.get("content") or [])), status
+        return None, status
+    return None, 0
+
+
+def test_connection(kind, board, key):
+    """{"ok", "count", "keyChecked", "message"} for the /setup page. ok: the postings were read and, where it can be checked, the key works."""
+    name = NAMES.get(kind, kind)
+    if not valid_connection(kind, board, key):
+        return {"ok": False, "count": None, "keyChecked": False, "message": "Choose the hiring system, give the board name and the key (or test a saved connection)."}
+    try:
+        if kind == "workable":                               # the key reads the account's own published jobs (scope r_jobs)
+            status, reply = _call(urllib.request.Request("%s/jobs?state=published&limit=100" % _wk_base(board), headers=_wk_headers(key)))
+            if status == 200 and isinstance(reply, dict):
+                n = len(reply.get("jobs") or [])
+                return {"ok": True, "count": n, "keyChecked": True, "message": "Workable account %s: the key works and reads %d published job%s." % (board, n, "" if n == 1 else "s")}
+            return {"ok": False, "count": None, "keyChecked": True, "message": _test_fail(name, board, status, reply, key)}
+        count, status = _count_postings(kind, board)
+        if count is None:
+            return {"ok": False, "count": None, "keyChecked": False, "message": "Could not read %s's open postings on %s (%s). Check the board name: it is the part of their job-board address after the system's own address." % (board, name, _status_words(status))}
+        if kind == "ashby":
+            st, rep = _call(urllib.request.Request("%s/job.list" % _base(kind), data=b"{}", method="POST",
+                                                   headers={"Authorization": _basic(key), "Content-Type": "application/json", "Accept": "application/json"}))
+            if not (st == 200 and isinstance(rep, dict) and rep.get("success") is True):
+                return {"ok": False, "count": count, "keyChecked": True, "message": _test_fail(name, board, st, rep, key, count)}
+            return {"ok": True, "count": count, "keyChecked": True, "message": "%s on Ashby: %d open posting%s, and the key works." % (board, count, "" if count == 1 else "s")}
+        if kind == "smartrecruiters":
+            if not count:
+                return {"ok": True, "count": 0, "keyChecked": False, "message": "%s on SmartRecruiters has no open postings right now, so the key cannot be tried yet. Publish one posting and test again." % board}
+            first = None
+            st0, lst = _call(urllib.request.Request("%s/v1/companies/%s/postings?limit=1" % (_base(kind), urllib.parse.quote(board))))
+            for p in ((lst or {}).get("content") or []) if isinstance(lst, dict) else []:
+                u = str(p.get("uuid") or "")
+                if UUID_RE.match(u):
+                    first = u
+                    break
+            if not first:
+                return {"ok": True, "count": count, "keyChecked": False, "message": "%s on SmartRecruiters: %d open posting%s. The key is checked with the first application." % (board, count, "" if count == 1 else "s")}
+            st, rep = _call(urllib.request.Request("%s/postings/%s/configuration" % (_base(kind), first), headers={"X-SmartToken": key, "Accept": "application/json"}))
+            if st != 200:
+                return {"ok": False, "count": count, "keyChecked": True, "message": _test_fail(name, board, st, rep, key, count)}
+            return {"ok": True, "count": count, "keyChecked": True, "message": "%s on SmartRecruiters: %d open posting%s, and the key reads their application form." % (board, count, "" if count == 1 else "s")}
+        return {"ok": True, "count": count, "keyChecked": False,
+                "message": "%s on %s: %d open posting%s. %s keys are only used to send an application, so the key is checked by the first one." % (board, name, count, "" if count == 1 else "s", name)}
+    except Exception as e:
+        return {"ok": False, "count": None, "keyChecked": False, "message": "The test stopped unexpectedly (%s)." % type(e).__name__}
+
+
+def _status_words(status):
+    return {0: "no answer", 401: "not authorized", 403: "not allowed", 404: "not found", 429: "too many requests"}.get(status, "HTTP %s" % status)
+
+
+def _test_fail(name, board, status, reply, key, count=None):
+    why = _short(reply, key)
+    head = ("%s on %s: %d open posting%s, but " % (board, name, count, "" if count == 1 else "s")) if count is not None else "%s on %s: " % (board, name)
+    if status in (401, 403):
+        return head + "the key was refused (%s). Ask the employer for a new key with the rights on their page in docs/employers." % (why or _status_words(status))
+    return head + "the check did not work (%s)." % (why or _status_words(status))

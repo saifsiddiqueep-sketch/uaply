@@ -184,6 +184,62 @@ t("...and it can be removed", ("workable", "acmeworks") in jobs_api.ats_connecti
 t("with UAPLY_DATA_DIR set the employer list is written there, and the one next to the code is never created or changed",
   (os.path.exists(os.path.join(TMP, "uaply-partners.json")), os.path.exists(code_copy) and os.stat(code_copy).st_mtime_ns), (True, code_stamp))
 
+# "Test this connection": the employer's own open postings, read with the key, against the stand-in hiring systems (tools/mock-ats.py)
+import socket  # noqa: E402
+import subprocess  # noqa: E402
+import time  # noqa: E402
+import urllib.request  # noqa: E402
+with socket.socket() as _s:
+    _s.bind(("127.0.0.1", 0))
+    MPORT = _s.getsockname()[1]
+_mock = subprocess.Popen([sys.executable, os.path.join(HERE, "mock-ats.py"), str(MPORT)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+try:
+    for k in ("GREENHOUSE", "LEVER", "ASHBY", "SMARTRECRUITERS", "WORKABLE"):
+        os.environ["UAPLY_ATS_BASE_" + k] = "http://127.0.0.1:%d" % MPORT
+    for _ in range(60):
+        try:
+            urllib.request.urlopen("http://127.0.0.1:%d/__received" % MPORT, timeout=2).read()
+            break
+        except OSError:
+            time.sleep(0.2)
+    T = lambda kind, board, key="": setup_api.test_ats({"kind": kind, "board": board, "api_key": key})
+    s, out = T("smartrecruiters", "acme", "sr-smarttoken-012")
+    t("SmartRecruiters: the test counts the employer's open postings and checks the key with one posting's application form",
+      (s, out["ok"], out["count"], out["keyChecked"], "2 open postings" in out["message"]), (200, True, 2, True, True))
+    s, out = T("smartrecruiters", "acme", "sr-wrong-token-99")
+    t("...a wrong key: not ok, says the key was refused, and never repeats the key", (out["ok"], "refused" in out["message"], "sr-wrong-token" in json.dumps(out)), (False, True, False))
+    s, out = T("smartrecruiters", "empty", "sr-smarttoken-012")
+    t("...no open postings: says so and that the key can be tried once one is published", (out["ok"], out["count"], out["keyChecked"], "Publish one posting" in out["message"]), (True, 0, False, True))
+    s, out = T("smartrecruiters", "nosuchco", "sr-smarttoken-012")
+    t("...a company identifier that does not exist: not ok, points at the board name", (out["ok"], "board name" in out["message"]), (False, True))
+    s, out = T("greenhouse", "acme", "gh-secret-key-123")
+    t("Greenhouse: counts the board's postings; its key is only used to send, so the first application checks it",
+      (out["ok"], out["count"], out["keyChecked"], "checked by the first one" in out["message"]), (True, 3, False, True))
+    s, out = T("lever", "acme", "lever-key-456")
+    t("Lever: counts the site's postings the same way", (out["ok"], out["count"], out["keyChecked"]), (True, 2, False))
+    s, out = T("ashby", "acme", "ashby-key-789")
+    t("Ashby: counts the job board's postings and checks the key with a jobs read", (out["ok"], out["count"], out["keyChecked"]), (True, 4, True))
+    t("...and a wrong Ashby key is refused", (T("ashby", "acme", "ashby-wrong-key-1")[1]["ok"], "refused" in T("ashby", "acme", "ashby-wrong-key-1")[1]["message"]), (False, True))
+    s, out = T("workable", "acmeworks", "wk-token-345")
+    t("Workable: the token reads the account's published jobs", (out["ok"], out["count"], out["keyChecked"]), (True, 2, True))
+    t("...and a wrong token is refused", T("workable", "acmeworks", "wk-wrong-token-1")[1]["ok"], False)
+    setup_api.save_ats({"kind": "smartrecruiters", "board": "acme", "api_key": "sr-smarttoken-012"})
+    s, out = T("smartrecruiters", "acme")
+    t("a saved connection is tested with its saved key (nothing typed, the key never shown)", (s, out["ok"], out["keyChecked"]), (200, True, True))
+    s, out = T("lever", "unsaved")
+    t("no key typed and none saved: asks for the key", (s, out["ok"]), (400, False))
+    page = setup_api.page("localhost:8767", "http").decode("utf-8")
+    t("the page has the Test this connection button, and a Test button on each saved connection",
+      ('id="at"' in page, 'class="tc" data-k="smartrecruiters" data-b="acme"' in page, "sr-smarttoken" in page), (True, True, False))
+    setup_api.remove_ats({"kind": "smartrecruiters", "board": "acme"})
+    got = json.loads(urllib.request.urlopen("http://127.0.0.1:%d/__received" % MPORT, timeout=5).read())
+    t("testing sent nothing: no application reached any stand-in system", got, [])
+finally:
+    _mock.terminate()
+    _mock.wait(10)
+    for k in ("GREENHOUSE", "LEVER", "ASHBY", "SMARTRECRUITERS", "WORKABLE"):
+        os.environ.pop("UAPLY_ATS_BASE_" + k, None)
+
 # the setup page is the owner's guide to switching test mode off: clickable steps, the exact addresses to give Google, and anchors the sign-in screen links to
 page = setup_api.page("localhost:8767", "http").decode("utf-8")
 t("the page tells Google both local addresses (Google needs the bare localhost one too)", all(("<code>%s</code>" % o) in page for o in ("http://localhost:8767", "http://localhost")), True)
