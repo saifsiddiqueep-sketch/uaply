@@ -6,6 +6,31 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 
+### Share this job (Mohammed's design, version A, October 22)
+- **On the swipe page the one change is a small share icon** (36 px, "Share this job") in the top-right corner of the job card.
+  The header, the example-profile notice, the filters, the card's contents, Pass / Undo / Apply, Help and the bottom bar are as before
+  (`tools/ui-share.js` compares the page with the experiment on and off, element by element). Design: Mohammed.
+- **It shares a UAply link to that job**, not only the employer's: `?job=<id>&t=<title>&c=<company>` (public job facts, nothing about
+  the person), through the phone's share sheet, else a copied link with a "Link copied" note. The message reads "<Role> at <Company> on
+  UAply"; a job that takes applications on its own site also carries the employer's link. Example jobs are never shared by id. The Job
+  Tracker's Share buttons send the same link, and its "Not sent yet" rows get the same icon.
+- **The friend who opens the link** sees that job first, with a small "Shared with you · a free job app · no account needed" line
+  above the card; looking, passing and saving need no account. The address loses `?job=` at once, so a reload is an ordinary visit.
+  Long job ids (up to 16 digits, given to postings whose first id collides) work too, and a saved work-style filter does not hide the
+  shared job. A friend who already passed on or applied to it gets no second card, only the line with a short note saying so.
+- **A job that is no longer listed** shows "No longer listed on UAply" with the title and company from the link, then open jobs like it
+  (title words or the same company first, then the same kind of job), each with its age and where its application goes; the work-style
+  chips filter them, Pass / Undo / Apply are hidden while there is no card, and "Swipe through them" brings the deck back with those
+  jobs first. When nothing open is like it, "See other open jobs" leads back to the deck, so the friend is never stuck there.
+- **The friend never waits in silence.** From the first moment the line names the job ("Shared with you: <title> at <company>.
+  Looking for it in today's listings…"). If the job list fails to load, the line says so with **Try again**; the landing is kept for
+  this tab until it is settled, so the reload still finds the job although `?job=` has left the address. While job boards are still
+  loading and the job is not in what came so far, after 3 answers or 20 seconds the jobs like it show under "Not found yet" (not
+  "No longer listed": UAply does not know that yet), and the job moves to the front if a later answer brings it.
+- Sandbox only: `shared/uaply-share.js` (the "Share this job" experiment, on by default in the sandbox), one hook in
+  `shared/uaply-nav.js` (`shareJob`), `check.js` builds it, and `tools/ui-share.js` runs at 390x844 and 1280x720 in
+  `tools/run-all-tests.sh`.
+
 ### Terms and help say what the app does (October 22)
 - **Terms of Service, section 3: "Applications on your behalf"** (the consent version 3 sentence, drafted in LEGAL-REVIEW.md;
   Saif decided on October 21 that it goes in the Terms). **Pending the lawyer's read before launch.** The list under it names the

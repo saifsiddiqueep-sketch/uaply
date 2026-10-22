@@ -1287,6 +1287,7 @@ function apply(w,host){
   }
   /* share a job: the phone's share sheet in the app, the browser's on phones that have one, else copy the link */
   function shareJob(job){
+    if(w.__uaplyShareJob)return w.__uaplyShareJob(job);   /* Share this job (shared/uaply-share.js, sandbox): the same UAply link as the card's icon */
     var url=job.url||"",text=job.role+" at "+job.co+(url?"":" (on UAply)"),SH=plug("Share");
     if(SH)return SH.share({title:text,text:text,url:url||undefined}).catch(function(){});
     if(w.navigator.share)return w.navigator.share({title:text,text:text,url:url||undefined}).catch(function(){});

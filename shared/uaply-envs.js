@@ -297,6 +297,7 @@ function run(frame,on,key,done){
   if(on.profile)on=Object.assign({},on,{nav:true});                     /* the profile fields live in the navigation's Profile sections */
   if(on.resume)on=Object.assign({},on,{nav:true});                      /* Fill from your resume sits on Profile setup's Background and links step */
   if(on.signup)on=Object.assign({},on,{nav:true});                      /* sign-up v2: its card lives on the navigation's Account screen */
+  if(on.share)on=Object.assign({},on,{nav:true,live:true});             /* Share this job (shared/uaply-share.js): shares real postings, reads the job list */
   return build(on,key).then(function(b){
     /* the features go on as soon as the app's page is parsed (DOMContentLoaded), not at its load event: "load" also waits for every
        font and image, and a slow fonts.googleapis.com held back the agreement box, the live jobs and the navigation for up to 20 s.
