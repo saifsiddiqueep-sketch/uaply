@@ -90,8 +90,16 @@ person's subscription to another. Older objects that carry only the number still
    MX. "No such domain", or neither record: refused, with a sentence that suggests checking the spelling. Any timeout or resolver error:
    **let through** and one line in the log. Verdicts are remembered for a day. No mail server is ever contacted (port 25 is blocked on
    Render, and probing gets a server blocklisted). Only the domain goes to Google and Cloudflare, never the address.
-5. **At most 5 sign-up tries an hour per visitor address** on a public server (the first X-Forwarded-For entry, as the lock-out uses);
-   10 on the owner's own computer, where every request comes from 127.0.0.1.
+5. **At most 40 sign-up tries an hour per visitor address** on a public server (a campus or office shares one address), and at most 5 for
+   one email from one address; 10 on the owner's own computer, where every request comes from 127.0.0.1. Verification codes: 3 an hour per
+   account, 80 per address, 5 per address and email. The visitor address is the last hop the host's proxy added to X-Forwarded-For (an
+   internal 10.x/172.16-31.x/192.168.x/100.64.x hop after it is skipped), or CF-Connecting-IP when that hop is one of Cloudflare's published
+   ranges (read at start and every 24 hours; a built-in copy otherwise). Entries the sender wrote are never used (`serve.client_ip`).
+6. **At most 500 code emails an hour for the whole site** (`UAPLY_CODE_SENDS_PER_HOUR`), every route and visitor together: past it, a
+   code request gets "UAply is sending a lot of sign-in codes right now. Try again in a few minutes, or use Continue with Google."
+7. **Google joining an account whose address was never proven** (opened with a password, or with no password, and no code typed) asks
+   the person for their own 18+ / Terms tick first, and records that tick (`terms_at`); `oauth_login` says `created` only when it made
+   the account, so a page never calls an older account new.
 
 ## Checking a live disk
 On Render: Shell, then `python tools/audit-accounts.py /var/data` (add `--full` to see whole addresses; they are masked by default).

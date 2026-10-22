@@ -143,10 +143,10 @@ for i in range(3):
     auth_api.send_login_code("limit@example.com", "10.2.0.%d" % i)
 s, out, mail = auth_api.send_login_code("limit@example.com", "10.2.0.9")
 t("at most 3 codes an hour per address (same 429 whether or not it has an account)", (s, out.get("code"), mail), (429, "code_limit", None))
-for i in range(12):
+for i in range(auth_api.CODES_PER_IP_PER_HOUR):   # the shared limit (resend_code's too): 80 an hour per visitor address
     auth_api.send_login_code("x%d@example.com" % i, "10.3.0.1")
 s, out, mail = auth_api.signup_passwordless("fresh@example.com", "10.3.0.1", agree=True)
-t("at most 12 codes an hour per connection, sign-up included", (s, out.get("code")), (429, "code_limit"))
+t("at most %d codes an hour per connection, sign-up included" % auth_api.CODES_PER_IP_PER_HOUR, (s, out.get("code")), (429, "code_limit"))
 fails = [auth_api.login_with_code("x%d@example.com" % (i % 12), "000000", "10.4.0.1")[0] for i in range(20)]
 s, out, tok = auth_api.login_with_code("sam@example.com", "000000", "10.4.0.1")
 t("20 wrong codes from one connection: locked for a while", s, 429)
@@ -310,7 +310,7 @@ a2 = auth_api.signup_passwordless("stranger@example.com", "10.10.0.1", agree=Tru
 t("finding 2: after the connection's sign-ups, an existing address and a new one get the same answer", (a1, a1 == a2), ((429, {"error": auth_api.CODE_LIMIT_MSG, "code": "code_limit"}), True))
 for i in range(3):
     auth_api.send_login_code("made-up%d@example.com" % i, "10.10.0.2")
-for i in range(9):
+for i in range(auth_api.CODES_PER_IP_PER_HOUR - 3):
     auth_api.send_login_code("x-up%d@example.com" % i, "10.10.0.2")
 b1 = auth_api.signup_passwordless("member@example.com", "10.10.0.2", agree=True)[:2]
 b2 = auth_api.signup_passwordless("stranger2@example.com", "10.10.0.2", agree=True)[:2]
@@ -341,14 +341,16 @@ err, user, gt = auth_api.oauth_login_ticked("google", "g-new", "brand.new.g@gmai
 t("finding 6: a brand-new Google account still needs the tick, as before", err, "agree")
 auth_api.signup_passwordless("devrule.g@gmail.com", "10.10.2.2", agree=True)
 err, user, gt = auth_api.oauth_login("google", "g-devrule", "devrule.g@gmail.com", False, True)
-t("finding 6: oauth_login itself (dev and the live site) is unchanged", (err, bool(gt)), (None, True))
+t("oauth_login itself (dev and the live site) now asks the owner's own tick too before joining an account never proven", (err, gt), ("agree", None))
+err, user, gt = auth_api.oauth_login("google", "g-devrule", "devrule.g@gmail.com", True, True)
+t("...and with the tick it joins and signs in", (err, bool(gt), (user or {}).get("emailVerified")), (None, True, True))
 
 # Google on a pending no-password account (made but its code never typed)
 auth_api.signup_passwordless("gabi@gmail.com", "10.7.0.1", agree=True)
-err, user, gtok = auth_api.oauth_login("google", "g-1", "gabi@gmail.com", False, True)
-t("Google (Gmail) on a pending no-password account: links and verifies it", (err, user and user["emailVerified"]), (None, True))
+err, user, gtok = auth_api.oauth_login("google", "g-1", "gabi@gmail.com", True, True)
+t("Google (Gmail) on a pending no-password account, with the owner's tick: links and verifies it", (err, user and user["emailVerified"]), (None, True))
 t("...with no 'password removed' message (there was no password)", "passwordRemoved" in (user or {}), False)
-t("...and the account is new as far as the page is concerned", auth_api.created_within(user["id"], 60), True)
+t("...and it does not claim to have made the account (the code sign-up did): no created flag", "created" in (user or {}), False)
 auth_api.remember_google(user["id"], True)
 t("the page's hint holds only 'new or not' (no name from Google)", auth_api.google_hint(user["id"]), {"new": True})
 with sqlite3.connect(auth_api._path) as db:

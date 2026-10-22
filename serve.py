@@ -300,6 +300,104 @@ _swipes, _swipes_lock = {}, threading.Lock()
 _resume_count, _resume_count_lock = [0], threading.Lock()          # resumes read since the start: the only thing the log says about them
 
 
+# ---- the visitor's address, for rate limits and lock-outs ----
+# On Render every request arrives through Render's proxy, which ADDS the address it received the request from to the end of
+# X-Forwarded-For. Anything before that last entry was written by whoever sent the request, so a script could put a new made-up address
+# there on every request and never meet a limit (October 22 audit). The last hop is the one to trust. When uaply.net sits behind
+# Cloudflare, that last hop is a Cloudflare server: then Cloudflare's own CF-Connecting-IP names the visitor, and it is trusted only when
+# the last hop really is in Cloudflare's published ranges (fetched at start and every 24 hours, with this list as the fallback).
+import ipaddress  # noqa: E402
+
+CF_FALLBACK = ("173.245.48.0/20", "103.21.244.0/22", "103.22.200.0/22", "103.31.4.0/22", "141.101.64.0/18", "108.162.192.0/18",
+               "190.93.240.0/20", "188.114.96.0/20", "197.234.240.0/22", "198.41.128.0/17", "162.158.0.0/15", "104.16.0.0/13",
+               "104.24.0.0/14", "172.64.0.0/13", "131.0.72.0/22", "2400:cb00::/32", "2606:4700::/32", "2803:f800::/32", "2405:b500::/32",
+               "2405:8100::/32", "2a06:98c0::/29", "2c0f:f248::/32")
+CF_URLS = ("https://www.cloudflare.com/ips-v4", "https://www.cloudflare.com/ips-v6")
+_cf_nets = [ipaddress.ip_network(n) for n in CF_FALLBACK]
+
+
+def _cf_parse(text):
+    """The networks in one of Cloudflare's lists (one CIDR per line); lines that are not a network are skipped."""
+    out = []
+    for line in (text or "").splitlines():
+        try:
+            out.append(ipaddress.ip_network(line.strip(), strict=False))
+        except ValueError:
+            pass
+    return out
+
+
+def _cf_refresh():
+    """Read Cloudflare's published ranges; keep the last good list (or the built-in one) when the read fails or looks wrong."""
+    global _cf_nets
+    nets = []
+    try:
+        import urllib.request
+        for u in CF_URLS:
+            with urllib.request.urlopen(urllib.request.Request(u, headers={"User-Agent": "UAply/1.0"}), timeout=10) as r:
+                nets += _cf_parse(r.read(20000).decode("utf-8", "replace"))
+    except Exception as e:
+        sys.stderr.write("[uaply] Cloudflare's address list could not be read (%s); keeping the one in use\n" % type(e).__name__)
+        return False
+    if len(nets) >= 5:                                   # a page that is not the list (a login wall, an error page) never replaces it
+        _cf_nets = nets
+        return True
+    return False
+
+
+def _cf_loop():
+    while True:
+        _cf_refresh()
+        time.sleep(24 * 3600)
+
+
+_INTERNAL = [ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16",
+                                                "::1/128", "fc00::/7", "fe80::/10")]
+
+
+def _internal(addr):
+    """A host's own private network (a proxy inside Render's network), never a visitor on the internet."""
+    a = ipaddress.ip_address(addr)
+    return any(a in n for n in _INTERNAL if n.version == a.version)
+
+
+def _ip_or_none(v):
+    try:
+        return str(ipaddress.ip_address((v or "").strip().strip("[]")))
+    except ValueError:
+        return None
+
+
+def is_cloudflare(addr):
+    try:
+        a = ipaddress.ip_address(addr)
+    except ValueError:
+        return False
+    return any(a in n for n in _cf_nets if n.version == a.version)
+
+
+def client_ip(peer, headers, public=None):
+    """The address limits are counted against. This computer: the connection's own address. A public server: the last public address in
+    X-Forwarded-For, read from the right (the hop the host's proxy added; a proxy's own internal 10.x / 172.16-31.x / 192.168.x / 100.64.x
+    entry after it is skipped, so the visitors are never all counted as one), or Cloudflare's CF-Connecting-IP when that hop is a Cloudflare
+    server. Entries to the left of it were written by the sender and are never used."""
+    if not (PUBLIC if public is None else public):
+        return peer
+    hops = [_ip_or_none(h) for h in (headers.get("X-Forwarded-For") or "").split(",") if h.strip()]
+    if not hops or not hops[-1]:
+        return peer
+    last = hops[-1]
+    for h in reversed(hops):
+        if h is None:                                   # something that is not an address: everything left of it is the sender's own text
+            break
+        if not _internal(h):
+            last = h
+            break
+    if is_cloudflare(last):
+        return _ip_or_none(headers.get("CF-Connecting-IP")) or last
+    return last
+
+
 def too_fast(path, ip):
     limit = SWIPE_LIMITS.get(path)
     if not limit:
@@ -689,9 +787,10 @@ class H(http.server.SimpleHTTPRequestHandler):
         err, user, token = login(ident["provider"], ident["subject"], ident["email"], agreed, ident.get("trusted", True))
         if err:
             return self._redirect("/?auth_error=" + err, [self._oauth_cookie("")])
+        made, fin = user.pop("created", False), user.pop("finished", False)   # made: this sign-in made the account (auth_api.oauth_login)
         if CODE_SIGNIN:                                  # /* sign-up v2 */ new account or not, for the page (memory only, 10 minutes)
             # an account that had a password removed was made before, by a password sign-up: never "Account created"
-            auth_api.remember_google(user["id"], (user.pop("finished", False) or auth_api.created_within(user["id"], 60)) and not user.get("passwordRemoved"))
+            auth_api.remember_google(user["id"], (fin or made) and not user.get("passwordRemoved"))
         return self._redirect("/?signed_in=google" + ("&password_removed=1" if user.get("passwordRemoved") else ""), self._cookie(token) + [self._oauth_cookie("")])
 
     def _owner_ok(self):
@@ -868,9 +967,7 @@ class H(http.server.SimpleHTTPRequestHandler):
                 raise ValueError("not an object")
         except Exception:                                        # a garbled Content-Length, a body that is not JSON, or one that is not an object
             return self._refuse(400, {"error": "bad request"})
-        ip = self.client_address[0]
-        if PUBLIC and self.headers.get("X-Forwarded-For"):          # behind the host's proxy: the visitor's own address
-            ip = self.headers["X-Forwarded-For"].split(",")[0].strip()[:64] or ip
+        ip = client_ip(self.client_address[0], self.headers)     # behind the host's proxy: its last hop (see client_ip), never a header a script wrote
         if too_fast(p, ip):
             return self._send(429, {"error": "You're swiping faster than UAply can keep up. Wait a moment and try again.", "code": "slow_down"})
         try:
@@ -966,8 +1063,9 @@ class H(http.server.SimpleHTTPRequestHandler):
                     err, user, token = login(ident["provider"], ident["subject"], ident["email"], payload.get("agree") is True, ident.get("trusted", True))
                 if err:
                     return self._send(429 if err == "limited" else 400, {"error": msg.get(err, msg["failed"]), "code": err})
+                made, fin = user.pop("created", False), user.pop("finished", False)   # made: this sign-in made the account (auth_api.oauth_login)
                 if CODE_SIGNIN:                                  # /* sign-up v2 */ new account or not, for the page (memory only)
-                    auth_api.remember_google(user["id"], (user.pop("finished", False) or auth_api.created_within(user["id"], 60)) and not user.get("passwordRemoved"))
+                    auth_api.remember_google(user["id"], (fin or made) and not user.get("passwordRemoved"))
                     user = dict(user, google=auth_api.google_hint(user["id"]))
                 out = {"user": user}
                 if user.pop("passwordRemoved", False):           # a password nobody had proven was the owner's was removed (auth_api.oauth_login)
@@ -1065,9 +1163,7 @@ class H(http.server.SimpleHTTPRequestHandler):
             return self._refuse(400, {"error": resume_parse.MESSAGES["bad_request"], "code": "bad_request"})
         if n > resume_parse.MAX_BODY:
             return self._refuse(413, {"error": resume_parse.MESSAGES["too_big"], "code": "too_big"})
-        ip = self.client_address[0]
-        if PUBLIC and self.headers.get("X-Forwarded-For"):
-            ip = self.headers["X-Forwarded-For"].split(",")[0].strip()[:64] or ip
+        ip = client_ip(self.client_address[0], self.headers)
         if too_fast("/api/profile/resume", ip):
             return self._refuse(429, {"error": "You have read several resumes in a minute. Wait a moment and try again.", "code": "slow_down"})
         try:
@@ -1192,6 +1288,8 @@ if api:
     # every board refreshes behind it (jobs_api._load_source). On an empty disk the first visitor waits for this same read, never a second one.
     threading.Thread(target=jobs_api.get_jobs, daemon=True).start()
 threading.Thread(target=_midnight_loop, daemon=True).start()
+if PUBLIC and os.environ.get("UAPLY_CF_RANGES", "1") != "0":   # Cloudflare's published ranges, now and every 24 hours (client_ip)
+    threading.Thread(target=_cf_loop, daemon=True, name="uaply-cf").start()
 DRAIN_SECONDS = 15                            # the longest a stop waits for requests in progress: with the rest, about 16 s of Render's 30
 srv.serve_forever()
 srv.socket.close()                            # stop accepting at once: a new connection is refused now instead of waiting for the drain

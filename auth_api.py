@@ -403,9 +403,17 @@ def set_billing(user_id, **fields):
         c.execute("UPDATE users SET %s WHERE id=?" % ", ".join("%s=?" % k for k, _ in pairs), [v for _, v in pairs] + [user_id])
 
 
-SIGNUPS_PER_HOUR = 5            # new accounts per visitor address and hour on a public server (serve.py passes it)
+# A campus, a library or a phone network puts many people behind one address: 5 sign-ups an hour per address turned students away
+# (October 22). The address is the host's last hop (serve.client_ip), which a script cannot change, so the per-address caps can be generous;
+# the same email tried again and again from one address is capped on its own.
+SIGNUPS_PER_HOUR = 40           # sign-up tries per visitor address and hour on a public server (serve.py passes it)
 SIGNUPS_PER_HOUR_LOCAL = 10     # the owner's own computer, where every request comes from 127.0.0.1 (tests, the browser checks)
-SIGNUP_LIMIT_MSG = "Several accounts were already made from this connection in the last hour, so please try again later or log in to the one you have."
+PER_IP_EMAIL_PER_HOUR = 5       # sign-up tries, and codes sent, for one email from one address in an hour
+CODES_PER_IP_PER_HOUR = 80      # verification codes sent per visitor address and hour (one account still gets at most 3 an hour)
+SIGNUP_LIMIT_MSG = ("Many accounts were made from this network in the last hour (a campus or office shares one address). Wait an hour and "
+                    "try again, or sign in if you already have an account.")
+SIGNUP_EMAIL_LIMIT_MSG = ("This email was tried several times in the last hour. Check your inbox and spam folder for the 6-digit code, or sign "
+                          "in if the account exists (Forgot password? sets a new password). You can try again in an hour.")
 
 
 def signup(email, password, ip, agree=False, check_dns=False, per_hour=None):
@@ -436,9 +444,12 @@ def signup_with_code(email, password, ip, agree=False, check_dns=False, per_hour
     if problem:
         return 400, {"error": problem, "code": "mailbox"}, None, None
     with _lock:
+        if len(_recent(_signups, (ip, email), 3600)) >= PER_IP_EMAIL_PER_HOUR:
+            return 429, {"error": SIGNUP_EMAIL_LIMIT_MSG, "code": "signup_email_limit"}, None, None
         if len(_recent(_signups, ip, 3600)) >= (per_hour or SIGNUPS_PER_HOUR_LOCAL):
             return 429, {"error": SIGNUP_LIMIT_MSG, "code": "signup_limit"}, None, None
         _signups[ip].append(time.time())
+        _signups[(ip, email)].append(time.time())
         salt = secrets.token_bytes(16)
         pw_hash = _hash(password, salt)
         now = int(time.time())
@@ -449,6 +460,7 @@ def signup_with_code(email, password, ip, agree=False, check_dns=False, per_hour
                 uid = cur.lastrowid
                 token = _new_session(c, uid)
                 digits = _new_code(c, uid)
+            _count_site_code()                          # its first code email counts toward the site's hour (never refused here)
         except sqlite3.IntegrityError:
             return 409, {"error": "That email already has an account. Sign in instead."}, None, None
     return 200, {"user": {"id": uid, "email": email, "hasPassword": True, "emailVerified": False}}, token, (uid, email, digits)
@@ -568,11 +580,17 @@ def oauth_login(provider, subject, email, agree=False, trusted=True):
     Linking a trusted email to a password account that never proved its email (no code entered, no reset link used): whoever chose
     that password never showed they own the address, and it may have been someone else who signed up first with this person's Gmail
     to watch the account later. So that password is removed and every other session of the account ends; the owner can add a password
-    again with Forgot password. The returned user then carries passwordRemoved=True so the page can say so."""
+    again with Forgot password. The returned user then carries passwordRemoved=True so the page can say so.
+
+    Joining an account whose address was never proven (email_verified 0: opened with a password, with no password, or by a sign-in Google
+    did not vouch for) needs this person's own 18+ / Terms tick (`agree`; "agree" otherwise), and terms_at then becomes that tick: whoever
+    opened the account ticked the box for themselves, not for the address's owner (login_with_code follows the same rule).
+
+    The returned user carries created=True only when this call made the account (so a page never calls an older account new)."""
     email = _clean_email(email)
     if not email or not isinstance(subject, str) or not subject:
         return "failed", None, None
-    removed = False
+    removed = created = False
     with _lock:
         with _db() as c:
             row = c.execute("SELECT u.* FROM identities i JOIN users u ON u.id=i.user_id WHERE i.provider=? AND i.subject=?",
@@ -582,6 +600,11 @@ def oauth_login(provider, subject, email, agree=False, trusted=True):
                 row = c.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
                 if row and not trusted:
                     return "email_in_use", None, None
+                ticked = False
+                if row and not row["email_verified"]:      # an account nobody has proven this address for: the owner's own tick first
+                    if agree is not True:
+                        return "agree", None, None
+                    ticked = True
                 if not row:
                     if agree is not True:
                         return "agree", None, None
@@ -590,6 +613,9 @@ def oauth_login(provider, subject, email, agree=False, trusted=True):
                     cur = c.execute("INSERT INTO users(email, salt, hash, created_at, last_login, terms_at, has_password, email_verified) VALUES(?,?,?,?,?,?,0,?)",
                                     (email, secrets.token_bytes(16), secrets.token_bytes(32), now, now, now, 1 if trusted else 0))
                     row = c.execute("SELECT * FROM users WHERE id=?", (cur.lastrowid,)).fetchone()
+                    created = True
+                if ticked:
+                    c.execute("UPDATE users SET terms_at=? WHERE id=?", (now, row["id"]))       # this person's own tick, not the opener's
                 if trusted and row["has_password"] and not row["email_verified"]:     # a password nobody proved belongs to this address's owner
                     c.execute("UPDATE users SET salt=?, hash=?, has_password=0 WHERE id=?", (secrets.token_bytes(16), secrets.token_bytes(32), row["id"]))
                     for table in ("sessions", "password_resets", "email_codes"):
@@ -605,6 +631,8 @@ def oauth_login(provider, subject, email, agree=False, trusted=True):
     user = public_user(row)
     if removed:
         user["passwordRemoved"] = True
+    if created:
+        user["created"] = True
     return None, user, token
 
 
@@ -734,10 +762,16 @@ def resend_code(token, ip):
     if user["emailVerified"]:
         return 200, {"ok": True, "already": True}, None
     with _lock:
-        if len(_recent(_code_sends, ("u", user["id"]), 3600)) >= 3 or len(_recent(_code_sends, ("ip", ip), 3600)) >= 12:
-            return 429, {"error": "Too many codes requested. Check your inbox and spam folder, or try again in an hour."}, None
-        _code_sends[("u", user["id"])].append(time.time())
-        _code_sends[("ip", ip)].append(time.time())
+        busy = _site_code_refusal()
+        if busy:
+            return 429, busy, None
+        if (len(_recent(_code_sends, ("u", user["id"]), 3600)) >= 3 or len(_recent(_code_sends, ("ip", ip), 3600)) >= CODES_PER_IP_PER_HOUR
+                or len(_recent(_code_sends, ("ipe", ip, user["email"]), 3600)) >= PER_IP_EMAIL_PER_HOUR):
+            return 429, {"error": "Several codes were already sent in the last hour. Check your inbox and spam folder for the newest one (only "
+                         "the newest works), or try again in an hour."}, None
+        for k in (("u", user["id"]), ("ip", ip), ("ipe", ip, user["email"])):
+            _code_sends.setdefault(k, []).append(time.time())
+        _count_site_code()
         with _db() as c:
             digits = _new_code(c, user["id"])
     return 200, {"ok": True, "message": "A new code is on its way. The old one no longer works."}, (user["id"], user["email"], digits)
@@ -786,9 +820,28 @@ def verify_code(token, code, ip):
 # Why no session at sign-up: if "Create my account" signed the person in at once, anyone could open an account on someone else's
 # address and stay signed in to it. Here the session only starts when the code from that inbox is typed in (login_with_code).
 CODE_SENDS_PER_EMAIL = 3         # code emails per address and hour, whether or not the address has an account (so a 429 reveals nothing)
-CODE_SENDS_PER_IP = 12           # code emails per visitor address and hour (the same numbers as resend_code)
 CODE_LOGIN_FAILS = 20            # codes that did not sign in, from one visitor address in FAIL_WINDOW (that connection only, never the account)
 CODE_LIMIT_MSG = "Too many codes requested. Check your inbox and spam folder, or try again in an hour."
+# Every code email the site sends in an hour, from every route and every visitor together (UAPLY_CODE_SENDS_PER_HOUR, default 500): a
+# ceiling on how much mail anyone can make UAply send to other people's inboxes, whatever addresses or connections they use.
+try:
+    CODE_SENDS_SITE_PER_HOUR = max(1, int(os.environ.get("UAPLY_CODE_SENDS_PER_HOUR") or 500))
+except ValueError:
+    CODE_SENDS_SITE_PER_HOUR = 500
+CODE_BUSY_MSG = "UAply is sending a lot of sign-in codes right now. Try again in a few minutes, or use Continue with Google."
+
+
+def _site_code_refusal():
+    """The site-wide hourly cap on code emails: None while there is room, else the 429 body. Call with _lock held."""
+    if len(_recent(_code_sends, ("site",), 3600)) >= CODE_SENDS_SITE_PER_HOUR:
+        return {"error": CODE_BUSY_MSG, "code": "code_busy"}
+    return None
+
+
+def _count_site_code():
+    """One more code email toward the site-wide hour. Call with _lock held. "Email me a code" for an address with no account counts too (it
+    sends nothing), so the answers stay the same whether or not an address has an account."""
+    _code_sends.setdefault(("site",), []).append(time.time())
 # One answer for every code that does not sign in: wrong digits, a code that ran out of time or tries, an address with no code or no account.
 # How many tries are left stays on the server, so a wrong code never tells a stranger whether the address has an account.
 WRONG_CODE_MSG = "That code is not right, or it has expired. Check the newest email from UAply, or send a new code."
@@ -848,7 +901,11 @@ def _code_send_refusal(email, ip, user_id=None, known=False):
     Email me a code and Resend share one limit of 3 an hour for that account. known: the request comes from a device that signed in to this
     address with a code before; when the address's hourly or daily allowance is used up it may still send CODE_SENDS_KNOWN_DAY a day."""
     now = time.time()
-    if len(_recent(_code_sends, ("ip", ip), 3600)) >= CODE_SENDS_PER_IP:
+    busy = _site_code_refusal()
+    if busy:
+        return busy
+    # the same limits as resend_code: 80 an hour per visitor address (serve.client_ip, the host's last hop), 5 an hour per address and email
+    if len(_recent(_code_sends, ("ip", ip), 3600)) >= CODES_PER_IP_PER_HOUR or len(_recent(_code_sends, ("ipe", ip, email), 3600)) >= PER_IP_EMAIL_PER_HOUR:
         return {"error": CODE_LIMIT_MSG, "code": "code_limit"}
     day = _code_day_recent(("send", email))
     hour_full = len(_recent(_code_sends, ("e", email), 3600)) >= CODE_SENDS_PER_EMAIL or \
@@ -864,9 +921,11 @@ def _code_send_refusal(email, ip, user_id=None, known=False):
     else:
         day.append(now)
     _code_sends.setdefault(("ip", ip), []).append(now)
+    _code_sends.setdefault(("ipe", ip, email), []).append(now)
     _code_sends.setdefault(("e", email), []).append(now)
     if user_id is not None:
         _code_sends.setdefault(("u", user_id), []).append(now)
+    _count_site_code()
     return None
 
 
@@ -1080,13 +1139,6 @@ def oauth_login_ticked(provider, subject, email, agree=False, trusted=True):
 # database. Google is asked for "openid email" only, so no name comes from Google (asking for its "profile" scope is a question for Saif).
 NAME_HINT_SECONDS = 600
 _google_hints = {}   # user id -> (new, expires)
-
-
-def created_within(user_id, seconds):
-    """True when this account was made in the last `seconds` (oauth_login makes a new one at the moment Google sends the person back)."""
-    with _db() as c:
-        r = c.execute("SELECT created_at FROM users WHERE id=?", (user_id,)).fetchone()
-    return bool(r) and r["created_at"] >= int(time.time()) - seconds
 
 
 def remember_google(user_id, new):

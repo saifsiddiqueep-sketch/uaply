@@ -6,6 +6,20 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 
+### Sign-in, server side (PR #49 review): the real visitor's address everywhere, one set of limits, a site-wide cap, Google asks the owner's tick
+- **The visitor's address** for every limit and lock-out is the last hop the host's proxy added (`serve.client_ip`, with Cloudflare's
+  CF-Connecting-IP when that hop is Cloudflare's), never what the sender wrote first in X-Forwarded-For. The same helper as learn-cache.
+- **One set of limits:** 40 sign-ups an hour per address, 5 per address and email; codes 3 an hour per account, 80 per address, 5 per
+  address and email, on every route that emails a code (Create my account, Email me a code, Resend).
+- **A site-wide hour:** at most 500 code emails an hour for the whole site (`UAPLY_CODE_SENDS_PER_HOUR`); past it, "UAply is sending a lot of
+  sign-in codes right now. Try again in a few minutes, or use Continue with Google."
+- **Google and an account nobody proved:** joining it now asks this person's own 18+ / Terms tick and records it (`terms_at`), on every
+  server, as the code sign-in already did. `oauth_login` says `created` only when it made the account; "made in the last 60 seconds"
+  is gone, so signing in with Google twice no longer says "Account created" twice.
+- Tests: test-public-auth 97 (forged first entries, Cloudflare, campus limits, the code routes' real address and 80 an hour, the site
+  cap, Google's tick and the created flag; 17 of them fail on 6552edf), test-accounts 144 (4 fail on 6552edf), test-signup-flow 123.
+  docs/reviews/pr49-ui-fixes.md proposes the card's two remaining fixes for Mohammed.
+
 ### Assisted apply: questions first, then the form (fill 95-98% on the Galaxy, nothing required left but agreements)
 - **The bridge.** Before the employer's form opens, the phone app reads it (`UAplyAssist.scan`, which changes nothing) and UAply asks
   what the profile cannot answer in its own question box ("Continue to {company}'s form"); required questions must be answered,
