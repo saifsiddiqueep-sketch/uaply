@@ -138,6 +138,10 @@ run "dev on a laptop (1280x800): one centred column about 960 px wide, Account a
 run "dev: starts without waiting on the font site, and a reload before the job list arrives keeps every swipe" env W=390 H=844 PORT=18767 node tools/cdp.js tools/ui-boot.js
 run "sandbox: the same" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-boot.js
 for sz in 390x844 1280x800; do
+  run "dev at ${sz}: a signed-out first visit leaves a clean console (no 4xx, no console error)" env W="${sz%x*}" H="${sz#*x}" PORT=18767 node tools/cdp.js tools/ui-clean-load.js
+  run "sandbox at ${sz}: the same (Hiring mode asks for a company only with a session)" env W="${sz%x*}" H="${sz#*x}" PORT=18766 node tools/cdp.js tools/ui-clean-load.js
+done
+for sz in 390x844 1280x800; do
   run "sandbox at ${sz}: a student's target titles never empty a section (internships and co-ops never filtered by title; 'Showing all roles' with Filters)" env W="${sz%x*}" H="${sz#*x}" PORT=18766 node tools/cdp.js tools/ui-title-filter.js
 done
 PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/ph" UAPLY_PLANS_HIDDEN=1 UAPLY_CONFIG_JSON='{"feeds":[],"smtp":{},"owner_copy":""}' start python serve.py 18832 dev --api)"
