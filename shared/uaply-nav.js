@@ -376,6 +376,7 @@ function apply(w,host){
   phoneField.innerHTML='<label for="pPhone">Phone</label><input type="tel" id="pPhone" autocomplete="tel" maxlength="20" placeholder="+1 555 123 4567"><small id="pPhoneErr" role="alert"></small>';
   emailField.after(phoneField);FIELDS.settings.push("pPhone");
   var cur="svc",sub={svc:"job",dash:"overview",prof:"settings"},going=false;
+  var viewStack=[],viewNow=null,backing=false,exitAt=0;   /* the screens visited, for the phone's Back button (see __uaplyBack) */
   function label(k,v){if(k==="prof"&&SUB_ALIAS[v])v=SUB_ALIAS[v];var r="";SECS[k].items.forEach(function(i){if(i[0]===v)r=i[1]});return r}
 
   var st=d.createElement("style");st.textContent=CSS;d.head.appendChild(st);
@@ -454,6 +455,8 @@ function apply(w,host){
       b.setAttribute("aria-current",k===cur?"true":"false");
       b.querySelector("small").textContent=label(k,sub[k]);
     });
+    var vk=cur+":"+sub[cur];
+    if(vk!==viewNow){if(viewNow&&!backing){viewStack.push(viewNow);if(viewStack.length>30)viewStack.shift()}viewNow=vk;exitAt=0}
   }
   function closeMenus(except){
     nav.querySelectorAll(".nwrap").forEach(function(wr){
@@ -1267,8 +1270,12 @@ function apply(w,host){
   }
 
   /* ---------- phone-app features (App Store / Google Play build in mobile/). They switch on only when the page runs
-     inside the Capacitor app; on the website every helper quietly does nothing or uses the browser equivalent. ---------- */
-  function cap(){var c=w.Capacitor||(w.parent&&w.parent!==w&&w.parent.Capacitor);return c&&c.isNativePlatform&&c.isNativePlatform()?c:null}
+     inside the Capacitor app; on the website every helper quietly does nothing or uses the browser equivalent.
+     The TOP page's bridge comes first, the frame's only when there is no top one. The app runs in a frame, and the native side answers
+     plugin calls from the top page (the main frame) only. Android (Capacitor 7) also puts a bridge into the same-origin app frame, but
+     every plugin call from it is dropped with no answer (MessageHandler.java: "Plugin execution is allowed in Main Frame only"), so
+     calling it would never add the Back listener and never finish an export. iPhone puts its bridge in the main frame only. ---------- */
+  function cap(){var c=null;try{if(w.parent&&w.parent!==w)c=w.parent.Capacitor||null}catch(e){}c=c||w.Capacitor;return c&&c.isNativePlatform&&c.isNativePlatform()?c:null}
   function plug(name){var c=cap();return c&&c.Plugins&&c.Plugins[name]||null}
   function noteId(id){return Math.abs(+id)%2000000000||1}
   /* two reminders for each interview: the evening before (6 pm) and one hour before */
@@ -1303,9 +1310,41 @@ function apply(w,host){
   },0);
   function icsTime(t){function z(n){return (n<10?"0":"")+n}return t.getUTCFullYear()+z(t.getUTCMonth()+1)+z(t.getUTCDate())+"T"+z(t.getUTCHours())+z(t.getUTCMinutes())+"00Z"}
   function icsText(s){return String(s).replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\r?\n/g,"\\n")}
+  /* the three export buttons (calendar .ics, applications CSV, backup JSON). On the website: a normal download. The phone apps' web
+     views ignore downloads, so there the file is written to the app's own cache folder (@capacitor/filesystem; private to the app,
+     never shared storage, as the backup holds the whole profile) and the phone's share sheet opens to save or send it. An app build
+     without that plugin copies the text instead and says so; it never says "Saved" for a file it did not write. */
   function download(name,type,text){
+    if(cap())return appExport(name,text);
     var b=new w.Blob([text],{type:type}),u=w.URL.createObjectURL(b),a=d.createElement("a");
     a.href=u;a.download=name;d.body.appendChild(a);a.click();a.remove();setTimeout(function(){w.URL.revokeObjectURL(u)},4000);
+  }
+  function appExport(name,text){
+    var FS=plug("Filesystem"),SH=plug("Share");
+    if(!FS||!SH||!FS.writeFile)return copyExport(name,text);
+    /* writing the file gets 8 seconds: a bridge that never answers must not leave the button doing nothing, so the text is copied
+       instead. The share sheet has no time limit: the person may take as long as they like in it. */
+    var tm,late=new Promise(function(ok,no){tm=setTimeout(function(){no(new Error("no answer"))},8000)});
+    return Promise.race([Promise.resolve().then(function(){return FS.writeFile({path:name,data:text,directory:"CACHE",encoding:"utf8"})}),late]).then(function(r){
+      clearTimeout(tm);
+      if(!r||!r.uri)throw new Error("no file");
+      return Promise.resolve(SH.share({title:name,dialogTitle:"Save or send "+name,files:[r.uri]})).then(function(){return "shared"},function(e){
+        if(/cancel/i.test(String(e&&e.message||e)))return "canceled";   /* the person closed the share sheet: nothing to say */
+        throw e;
+      });
+    }).catch(function(){clearTimeout(tm);return copyExport(name,text)});
+  }
+  function copyExport(name,text){
+    return copyText(text).then(function(ok){
+      showToastNote(ok?"Copied "+name+". Paste it into a note or email to keep it.":"This version of the app cannot save "+name+". Nothing was saved.");
+      return ok?"copied":"failed";
+    });
+  }
+  function copyText(t){
+    function old(){try{var ta=d.createElement("textarea");ta.value=t;ta.setAttribute("readonly","");ta.style.cssText="position:fixed;top:0;left:0;opacity:0";d.body.appendChild(ta);ta.select();var ok=d.execCommand("copy");ta.remove();return !!ok}catch(e){return false}}
+    var C=w.navigator.clipboard;
+    if(C&&C.writeText)return Promise.resolve().then(function(){return C.writeText(t)}).then(function(){return true},function(){return old()});
+    return Promise.resolve(old());
   }
   function exportIcs(id){
     var job=A.JOBS.filter(function(j){return j.id===id})[0],a=ap(id),t=new Date(a.when);
@@ -1987,7 +2026,21 @@ function apply(w,host){
     else if(a==="wipe"){
       if(b.getAttribute("data-sure")!=="1"){b.setAttribute("data-sure","1");b.textContent="Click again to delete everything";return}
       [w.__uaplyKey,AK,NK,LK].forEach(function(k){try{w.localStorage.removeItem(k)}catch(x){}});
-      w.location.reload();
+      /* in the phone apps the export files stay in the app's cache folder after the share sheet (the backup holds the whole profile),
+         so they go too: uaply-backup.json, uaply-applications.csv and every interview-*.ics. A delete that fails (a file never made) is
+         ignored, and the page reloads once all of them have answered (at most 8 seconds, like the export, if the bridge never answers).
+         They are not deleted when the share sheet returns: the app the person picked may still be reading the file then. */
+      var FS=plug("Filesystem");
+      if(!FS||!FS.deleteFile){w.location.reload();return}
+      b.disabled=true;
+      var gone=false,reload=function(){if(!gone){gone=true;w.location.reload()}};
+      var del=function(p){return Promise.resolve().then(function(){return FS.deleteFile({path:p,directory:"CACHE"})}).catch(function(){})};
+      var jobs=[del("uaply-backup.json"),del("uaply-applications.csv")];
+      if(FS.readdir)jobs.push(Promise.resolve().then(function(){return FS.readdir({path:"",directory:"CACHE"})}).then(function(r){
+        return Promise.all(((r&&r.files)||[]).map(function(f){return typeof f==="string"?f:(f&&f.name)||""}).filter(function(n){return /^interview-[^\/]*\.ics$/.test(n)}).map(del));
+      }).catch(function(){}));
+      Promise.all(jobs).then(reload,reload);
+      setTimeout(reload,8000);
     }
   });
   function importBackup(txt){
@@ -2636,6 +2689,44 @@ function apply(w,host){
     if(t==="profile")section(sub.prof);
     refresh();
   };
+  /* the phone's Back button (Android; @capacitor/app). Without a listener Capacitor closes the whole app, because UAply changes
+     screens inside one page. Back now closes the top box or menu, then goes back one screen (Profile, Job Tracker, a job type),
+     then to the job cards; on the job cards it asks once and leaves only on a second press within 2 seconds.
+     Returns what it did, for tools/ui-native-back-export.js. */
+  function topDialog(){
+    var ds=[].slice.call(d.querySelectorAll('[role="dialog"]')).filter(function(x){return !x.closest("[hidden]")&&x.getClientRects().length>0});
+    return ds[ds.length-1]||null;
+  }
+  w.__uaplyBack=function(){
+    var dl=topDialog();
+    if(dl){   /* UAply's boxes close on Escape, the rating question on its Close button; a box that needs an answer stays */
+      exitAt=0;dl.dispatchEvent(new w.KeyboardEvent("keydown",{key:"Escape",bubbles:true,cancelable:true}));
+      if(topDialog()===dl){var x=dl.querySelector('button[aria-label="Close"]');if(x)x.click()}
+      return "dialog";
+    }
+    if([].some.call(nav.querySelectorAll(".nmenu"),function(m){return !m.hidden})){closeMenus();exitAt=0;return "menu"}
+    var to=viewStack.pop();
+    while(to&&to===viewNow)to=viewStack.pop();
+    if(!to&&cur!=="svc")to="svc:"+sub.svc;
+    if(to){
+      var c=to.slice(0,to.indexOf(":")),v=to.slice(to.indexOf(":")+1);
+      backing=true;try{closeMenus();sub[c]=v;cur=c;go(c)}finally{backing=false}
+      return "view";
+    }
+    if(exitAt&&Date.now()-exitAt<2000){exitAt=0;var AP=plug("App");if(AP&&AP.exitApp)Promise.resolve(AP.exitApp()).catch(function(){});return "exit"}
+    exitAt=Date.now();showToastNote("Press Back again to leave UAply.");
+    return "ask";
+  };
+  /* one listener per bridge: the bridge belongs to the top page and outlives this frame, and "Delete all my data" reloads only the
+     frame, so adding a listener on every load would run Back twice per press (quit at once on the job cards). The one listener calls
+     whichever page is current through c.__uaplyBackGo, which each load points at its own __uaplyBack. */
+  (function(){
+    var c=cap(),AP=plug("App");if(!c||!AP||!AP.addListener)return;
+    c.__uaplyBackGo=function(){return w.__uaplyBack()};
+    if(c.__uaplyBackOn)return;
+    c.__uaplyBackOn=true;
+    try{Promise.resolve(AP.addListener("backButton",function(){if(typeof c.__uaplyBackGo==="function")c.__uaplyBackGo()})).catch(function(){})}catch(e){}
+  })();
   section(sub.prof);
   refresh();
   /* de-duplication: experiments apply one after another in the same turn, so by the next tick we know whether the

@@ -5,6 +5,7 @@ build: it is what the hosted site and the phone apps run. Each version is tagged
 production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
+- Phone apps, before the testers (Mohammed): Android Back goes back one screen and quits only from the first screen on a second press; the CSV, calendar and backup exports work inside the apps (saved with the file plugin and shared, or copied when the plugin is missing) and Delete all my data removes those files; the iPhone app is locked to portrait and carries its privacy manifest; app plugin calls always go through the top page's bridge, since Android drops calls from frames.
 
 ### Terms and help say what the app does (October 22)
 - **Terms of Service, section 3: "Applications on your behalf"** (the consent version 3 sentence, drafted in LEGAL-REVIEW.md;
