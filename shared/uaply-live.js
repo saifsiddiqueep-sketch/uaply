@@ -716,6 +716,12 @@ function kitApply(w,host){
              A waiting application sent again later stays in Applied, marked not sent, with Try again. */
           if(retry){if(j.code!=="server")mark("failed");return}          /* a server hiccup keeps it waiting for the next try */
           revert();
+          /* the weekly limit inside the store apps: no plan can be chosen there (App Store and Google Play payment rules), so say when
+             applying works again instead of the server's "Choose a bigger plan", and offer no plans to pick */
+          if(j.code==="limit"&&w.__uaplyStoreApp&&w.__uaplyStoreApp()){
+            var used=/^You've used [^.]*\./.exec(j.error||"");
+            toast((used?used[0]:"You've used this week's applications.")+" The limit counts the last 7 days, so you can apply again as older applications drop off. "+job.co+" is back in your deck.","",null,9000);return;
+          }
           var act=j.code==="limit"?["See plans",function(){var b=d.getElementById("nb-prof");if(b){b.click();var it=d.querySelector('.nwrap[data-k=prof] .nitem[data-v=plan]');if(it)it.click()}}]
                   :j.code==="slow_down"||j.code==="server"||j.code==="preview"?["",null]:(j.code==="signin"||j.code==="verify")?["Open Account",openAccount]:["Open Profile",openProfile];
           toast((j.error||"Could not send your application.")+" "+job.co+" is back in your deck.",act[0],act[1],9000);return;
