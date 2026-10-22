@@ -6,6 +6,19 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 
+### Store privacy forms answered from the code, and the deletion page made complete (Mohammed, October 22)
+- **`docs/store/app-privacy-apple.md`** (App Store Connect: App Privacy, age rating, export compliance) and
+  **`docs/store/data-safety-google.md`** (Google Play: Data safety, account deletion, target age, content rating): every answer names
+  the file and line of code it rests on. The app is for 18 and over (Terms, sign-up and the first-swipe agreement). Found while reading
+  the code, for a person to decide before submitting: paid plans inside the iPhone app would need Apple's In-App Purchase (or a
+  free-only launch), the iPhone app has no location permission text, and which Android build goes to Play.
+- **`legal/delete-account.html`**: lists what deletion also removes (help messages sent while signed in, email still waiting to go) and
+  what is kept (help requests in the team's inbox, addresses on the do-not-send list for up to a year); a password-less account types
+  DELETE; the privacy email is a highlighted blank for the legal-blanks task, next to the address that works today.
+- The help assistant's "Deleting my account or my data" answer now names the page, for people who cannot sign in.
+- `node check.js` checks that both store files exist, give the deletion page, and cite only lines that still exist, and that the
+  Privacy Policy and the help answer link to the page.
+
 ### Terms and help say what the app does (October 22)
 - **Terms of Service, section 3: "Applications on your behalf"** (the consent version 3 sentence, drafted in LEGAL-REVIEW.md;
   Saif decided on October 21 that it goes in the Terms). **Pending the lawyer's read before launch.** The list under it names the
