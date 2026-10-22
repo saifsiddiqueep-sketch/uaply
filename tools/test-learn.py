@@ -30,7 +30,8 @@ const win = {};
 new Function("window", read("shared/uaply-learn.js"))(win);
 const L = win.UAplyLearn.core;
 const DAY = 864e5;
-function E(o) { return { like: o.like || {}, dis: o.dis || {}, cnt: o.cnt || {}, n: o.n || 0, L: o.L || 0, D: o.D || 0 }; }
+/* hand-made evidence has no Undo: every stored swipe is a decision (dec = n), and a no (D) means at least one real pass (P) */
+function E(o) { return { like: o.like || {}, dis: o.dis || {}, cnt: o.cnt || {}, n: o.n || 0, dec: o.dec == null ? o.n || 0 : o.dec, P: o.P == null ? (o.D ? 1 : 0) : o.P, L: o.L || 0, D: o.D || 0 }; }
 function state(evs, n, seed, ver) { return { v: 1, seed: seed || 7, n: n == null ? evs.length : n, ver: ver || 1, ev: evs }; }
 /* replay: train on every swipe but the last `hold`, then score the held-out jobs */
 function replay(f, hold) {
@@ -70,12 +71,13 @@ const out = JSON.parse(fs.readFileSync(0, "utf8")).map((q) => {
     case "weight": return a[0].map(L.weight);
     case "evidence": return L.evidence(a[0], a[1]);
     case "score": { const ev = E(a[2]); const s = L.score(a[0], a[1], ev); return Object.assign(s, { explain: L.explain(a[0], s, ev) }); }
-    case "literal": { /* the design's formula word for word (no yes/no balance), for comparison */
-      L.K.center = false; try { const ev = L.evidence(a[2], a[3]); return L.score(a[0], a[1], ev); } finally { L.K.center = true; } }
+    case "literal": { /* the design's formula word for word (no yes/no balance, no "enough to learn from" gate), for comparison */
+      L.K.center = false; L.K.gate = false; try { const ev = L.evidence(a[2], a[3]); return L.score(a[0], a[1], ev); } finally { L.K.center = true; L.K.gate = true; } }
+    case "ready": return L.ready(L.evidence(a[0], a[1]));
     case "scoreEv": { const ev = L.evidence(a[2], a[3]); const s = L.score(a[0], a[1], ev); return Object.assign(s, { explain: L.explain(a[0], s, ev), n: ev.n }); }
     case "order": { const items = a[0]; const r = L.order(items, a[1], a[2], a[3]);
       return { same: r === items, ids: r.map((x) => x.j.id), explore: r.map((x) => !!(x.m.learn && x.m.learn.explore)), pct: r.map((x) => x.m.pct),
-        fit: r.map((x) => (x.m.fit == null ? x.m.pct : x.m.fit)), why: r.map((x) => (x.m.learn ? x.m.learn.why : "")), line: r.map((x) => L.lineHTML(x.m)) }; }
+        fit: r.map((x) => (x.m.fit == null ? x.m.pct : x.m.fit)), why: r.map((x) => (x.m.learn ? x.m.learn.why : "")), line: r.map((x) => L.lineHTML(x.m)), learnN: r.map((x) => (x.m.learn ? x.m.learn.n : null)) }; }
     case "orderMany": { /* the same deck under many seeds: how often is the first non-explore card remote */
       let hits = 0; for (let s = 1; s <= a[2]; s++) { const st = Object.assign({}, a[1], { seed: s }); const r = L.order(a[0], st, a[3]);
         const first = r.find((x) => !x.m.learn.explore); if (first && first.j.mode === "remote") hits++; } return hits; }
@@ -221,14 +223,15 @@ st = ask(("ops", [{"op": "swipe", "job": dict(J, id=i), "dir": "applied", "dwell
 t("never more than 300 swipes are kept on the device", len(st["ev"]) == 300 and st["ev"][0]["id"] == 10)
 
 # ---------- caps ----------
-huge = {"like": {"m:remote": 1000, "t:job": 1000, "o:board": 1000, "r:analyst": 1000}, "dis": {}, "cnt": {}, "n": 10}
+# (L 1 and D 1: this person has both a yes and a no, so the learner may move scores, and the even balance makes centring zero)
+huge = {"like": {"m:remote": 1000, "t:job": 1000, "o:board": 1000, "r:analyst": 1000}, "dis": {}, "cnt": {}, "n": 10, "L": 1, "D": 1}
 s10, s50 = ask(("score", J, 50, huge), ("score", J, 50, dict(huge, n=50)))
 t("no attribute adds more than +1.5, however strong the evidence", all(p["c"] <= 1.5 for p in s10["parts"]) and max(p["raw"] for p in s10["parts"]) > 6)
-sneg = ask(("score", J, 60, {"like": {}, "dis": {"m:remote": 1000, "t:job": 1000}, "cnt": {}, "n": 50}))[0]
+sneg = ask(("score", J, 60, {"like": {}, "dis": {"m:remote": 1000, "t:job": 1000}, "cnt": {}, "n": 50, "L": 1, "D": 1}))[0]
 t("and no attribute takes away more than 1.5, however many passes", all(p["c"] >= -1.5 for p in sneg["parts"]) and min(p["raw"] for p in sneg["parts"]) < -6, sneg["parts"])
 t("before 30 swipes the learned part is at most +25 points (50% -> 75%)", s10["shown"] == 75, s10["shown"])
 t("from 30 swipes on it is at most +40 points (50% -> 90%)", s50["shown"] == 90, s50["shown"])
-neg = {"like": {}, "dis": {"m:remote": 1000, "t:job": 1000}, "cnt": {}, "n": 50}
+neg = {"like": {}, "dis": {"m:remote": 1000, "t:job": 1000}, "cnt": {}, "n": 50, "L": 1, "D": 1}
 t("and at most -40 the other way (60% -> 20%)", ask(("score", J, 60, neg))[0]["shown"] == 20)
 t("no evidence for any of the job's attributes: the score is the match score", ask(("score", J, 63, {"n": 50}))[0]["shown"] == 63)
 
@@ -392,6 +395,115 @@ ranks = ask(("coldStart", COLD, [41, 42, 43, 44, 45], 1, 40, 1792600000000))[0]
 t("a 95%% match stays in the top 10 after a new person's first 5 right swipes on unrelated jobs (40 draws; worst rank %d)" % max(ranks),
   max(ranks) <= 10, ranks)
 t("...and with so little to learn from, the deck stays in match order (the best match first on every draw)", all(r == 1 for r in ranks), ranks)
+
+# ---------- an eager new person: right swipes first, then one quick pass (card Vgip6Itd, October 22) ----------
+# Measured on the dev build before the fix (tools/ui-learn.js, made-up jobs): after 2 right swipes Filters said "You passed on 0 of 1
+# software engineer roles"; after 7 right and 1 quick pass the best card lost a point "because" "You've passed on 0 of 2 software engineer
+# roles", and a remote 85% job never seen dropped to 60%. A yes-heavy person's overall yes rate pushed every kind of job liked only
+# once or twice below the centre, and the line then named a pass that never happened.
+EG = [dict(id=700 + i, co="Eager Co %d" % i, role=["Software Engineer", "Data Analyst"][i % 2] + " %d" % i, mode="onsite", type="job",
+           sal=[120000, 140000], yrs=i % 3, loc="New York, NY", skills=["SQL", "React"][: 1 + i % 2], live=True, source="Eager Co careers page") for i in range(8)]
+eh = [{"id": j["id"], "at": NOW - (8 - i) * 60000, "k": "R", "a": a} for i, (j, a) in enumerate(zip(EG, ask(("attrs", EG))[0]))]
+NEXT = dict(EG[0], id=799, co="Next Co", role="Software Engineer", yrs=0)
+two = eh[:2]
+r2, s2 = ask(("ready", two, NOW), ("scoreEv", NEXT, 95, two, NOW))
+t("eager new person, 2 right swipes: not ready to learn, the next card keeps its 95%% and has no reason line (%d%%, '%s')" % (s2["shown"], s2["explain"]["why"]),
+  r2 is False and s2["shown"] == 95 and s2["delta"] == 0 and s2["explain"]["why"] == "", s2)
+for n in range(1, 8):
+    rn, sn = ask(("ready", eh[:n], NOW), ("scoreEv", NEXT, 95, eh[:n], NOW))
+    if rn or sn["delta"]:
+        t("eager new person: no score moves before %d swipes (moved at %d)" % (K["minN"], n), False, sn)
+        break
+else:
+    t("eager new person: no score moves before %d swipes (1 to 7 right swipes, the card stays 95%%)" % K["minN"], True)
+all8 = eh
+r8, s8 = ask(("ready", all8, NOW), ("scoreEv", NEXT, 95, all8, NOW))
+t("8 right swipes and no pass: still nothing to compare with, nothing moves", r8 is False and s8["delta"] == 0, s8)
+# 7 right, then one quick pass: now the learner may move scores, but only with reasons that happened
+mixed = eh[:7] + [dict(eh[7], k="L", d=300)]
+probe = [NEXT, dict(NEXT, id=798, role="Data Analyst", skills=["SQL"]), dict(NEXT, id=797, mode="remote", loc="Remote (US)", skills=["SQL", "Go"]),
+         dict(NEXT, id=796, yrs=2, skills=["React"])]
+r8m = ask(("ready", mixed, NOW))[0]
+sc = ask(*[("scoreEv", j, 95 - 5 * k, mixed, NOW) for k, j in enumerate(probe)])
+lies = [(x["explain"]["why"], x["explain"].get("yes"), x["explain"].get("no")) for x in sc if x["delta"] and (
+        (x["delta"] < 0 and not x["explain"].get("no")) or (x["delta"] > 0 and not x["explain"].get("yes")) or re.search(r"(passed on|liked) 0 of", x["explain"]["why"]))]
+t("7 right and 1 quick pass: ready to learn, and no card's reason claims a pass (or a like) that did not happen",
+  r8m is True and not lies, (r8m, lies, [(x["shown"], x["explain"]["why"]) for x in sc]))
+down_parts = [(p["a"], round(p["c"], 3)) for x in sc for p in x["parts"] if p["c"] < 0 and not any(h["k"] == "L" and p["a"] in h["a"] for h in mixed)]
+t("a kind of job this person never passed on cannot pull a card down (centring only measures, never invents a no)", not down_parts, down_parts)
+up_parts = [(p["a"], round(p["c"], 3)) for x in sc for p in x["parts"] if p["c"] > 0 and not any(h["k"] != "L" and p["a"] in h["a"] for h in mixed)]
+t("and a kind of job this person never liked cannot push a card up", not up_parts, up_parts)
+lines = ask(*[("line", {"pct": x["shown"], "fit": x["fit"], "learn": {"delta": x["delta"], "why": x["explain"]["why"], "explore": False}}) for x in sc])
+t("no card line says 'passed on 0' or 'liked 0'", not any(re.search(r"(passed on|liked) 0 of", l) for l in lines),
+  [l.encode("ascii", "replace").decode() for l in lines])
+
+# ---------- an eager new person taps Undo: an Undo is never a pass (card Vgip6Itd, review round 1, October 22) ----------
+# Measured on dev and sandbox before this: 8 right swipes, then Undo of the 8th (kinds RRRRRRRU, no swipe left at all). The learner
+# counted the Undo as a pass, became "ready", and the card just undone read "Learned from your swipes: -10. You've passed on 1 of 2
+# product design roles."; 7 of the next 12 cards claimed a pass, and Filters said "You passed on 1 of 2 product design roles."
+def undo_ops(rights, undo_at, after):
+    ops, k = [], 0
+    for j in EG[:rights]:
+        k += 1; ops.append({"op": "swipe", "job": j, "dir": "applied", "dwell": 0, "at": NOW - (20 - k) * 60000})
+        if j is EG[undo_at - 1]:
+            ops.append({"op": "undo", "id": j["id"]})
+    for j in after:
+        k += 1; ops.append({"op": "swipe", "job": j, "dir": "applied", "dwell": 0, "at": NOW - (20 - k) * 60000})
+    return ask(("ops", ops))[0]["ev"]
+ua = undo_ops(8, 8, [])                                                   # 8 right, Undo of the 8th
+ub = undo_ops(6, 6, [dict(EG[6], id=760), dict(EG[7], id=761)])          # 6 right, Undo of the 6th, 2 more right
+UPROBE = [EG[7], EG[5]] + probe
+for name, uev in (("8 right then Undo of the 8th", ua), ("6 right, Undo, 2 right", ub)):
+    kinds = "".join(e["k"] for e in uev)
+    ru, ev_u = ask(("ready", uev, NOW), ("evidence", uev, NOW))
+    su = ask(*[("scoreEv", j, 95 - 3 * k, uev, NOW) for k, j in enumerate(UPROBE)])
+    claims = [(x["shown"], x["explain"]["why"]) for x in su if x["delta"] or x["explain"]["why"]]
+    t("%s (%s): not ready, an Undo is not one of the %d swipes nor a pass (%d swipes, %d passes)" % (name, kinds, K["minN"], ev_u["dec"], ev_u["P"]),
+      kinds.count("U") == 1 and "L" not in kinds and ru is False and ev_u["dec"] == 7 and ev_u["P"] == 0, (kinds, ru, ev_u["dec"], ev_u["P"]))
+    t("%s: every card keeps its match score, the one just undone included, and no reason names a pass" % name, not claims, claims)
+    t("%s: no attribute counts a pass" % name, all(c["no"] == 0 for c in ev_u["cnt"].values()), {a: c for a, c in ev_u["cnt"].items() if c["no"]})
+    udeck = [{"j": j, "m": {"pct": 95 - 3 * k}} for k, j in enumerate(UPROBE)]
+    uo = ask(("order", udeck, {"v": 1, "seed": 7, "n": 7, "ver": 9, "ev": uev}, NOW, None))[0]
+    t("%s: the deck stays in match order, with no learned line and no 'Something different' card" % name,
+      uo["same"] and not any(uo["line"]), (uo["same"], uo["line"]))
+# Once there is a real pass, an Undo may still take some of the lean up away, but it never becomes a reason, and the pass counts are real.
+uc = ua + [{"id": 790, "at": NOW - 30000, "k": "L", "d": 300, "a": ask(("attrs", [dict(NEXT, id=790, co="Pass Co", role="Data Analyst", mode="remote", loc="Remote (US)", skills=["Go"])]))[0][0]}]
+ruc, ev_c = ask(("ready", uc, NOW), ("evidence", uc, NOW))
+sc_u = ask(*[("scoreEv", j, 95 - 3 * k, uc, NOW) for k, j in enumerate(UPROBE)])
+passes = lambda a: sum(1 for h in uc if h["k"] == "L" and a in h["a"])
+bad_down = [(p["a"], round(p["c"], 3)) for x in sc_u for p in x["parts"] if p["c"] < 0 and not passes(p["a"])]
+bad_why = [x["explain"]["why"] for x in sc_u if x["delta"] < 0 and (not x["explain"].get("no") or x["explain"]["no"] != passes(x["explain"]["key"]))]
+t("8 right, Undo, then 1 real pass: ready, and only kinds of job really passed on can pull a card down (an Undo alone never does)",
+  ruc is True and ev_c["P"] == 1 and not bad_down, (ruc, bad_down))
+t("...and every 'passed on N' counts real swipes left only, never the Undo", not bad_why, (bad_why, [(x["shown"], x["explain"]["why"]) for x in sc_u]))
+
+# ---------- an Undo is not one of the 30 swipes either (card Vgip6Itd, review round 2, October 22) ----------
+# Measured before this: 29 real swipes, then a right swipe and its Undo, stored 30 entries. The early limit (25) and the strong-match
+# floor (a 90%+ match loses at most 10 points before 30 swipes) counted entries, not swipes, so one Undo let a 95% card fall to 55.
+MJ = [dict(id=600 + i, co="Co %d" % (i % 7), role=["Software Engineer", "Data Analyst", "Product Designer"][i % 3], mode=["onsite", "remote", "hybrid"][i % 3],
+           type="job", sal=[100000, 130000], yrs=i % 3, loc="New York, NY", skills=[["SQL", "Go"], ["React", "CSS"], ["Figma"]][i % 3], live=True,
+           source="Co careers page") for i in range(36)]
+def swipes29(extra):
+    ops = [{"op": "swipe", "job": MJ[i], "dir": "applied" if i % 3 == 1 else "passed", "dwell": 300, "at": NOW - (100 - i) * 60000} for i in range(29)]
+    return ask(("ops", ops + extra))[0]["ev"]
+STRONG = dict(MJ[0], id=690, co="Co 0", yrs=0)
+plain29 = swipes29([])
+undo29 = swipes29([{"op": "swipe", "job": MJ[30], "dir": "applied", "dwell": 0, "at": NOW - 60000}, {"op": "undo", "id": MJ[30]["id"]}])
+undo25 = ask(("ops", [{"op": "swipe", "job": MJ[i], "dir": "applied" if i % 3 == 1 else "passed", "dwell": 300, "at": NOW - (100 - i) * 60000} for i in range(25)]
+              + [o for k in range(5) for o in ({"op": "swipe", "job": MJ[30 + k], "dir": "applied", "dwell": 0, "at": NOW - (10 - k) * 60000}, {"op": "undo", "id": MJ[30 + k]["id"]})]))[0]["ev"]
+s29, su29, su25 = ask(("scoreEv", STRONG, 95, plain29, NOW), ("scoreEv", STRONG, 95, undo29, NOW), ("scoreEv", STRONG, 95, undo25, NOW))
+ev29u = ask(("evidence", undo29, NOW))[0]
+t("29 swipes then a right swipe and Undo: still 29 swipes (30 stored), the early limit stays %d" % K["capEarly"],
+  ev29u["n"] == 30 and ev29u["dec"] == 29 and su29["lim"] == K["capEarly"] == s29["lim"], (ev29u["n"], ev29u["dec"], s29["lim"], su29["lim"]))
+t("...and the 95%% match the 29 swipes pull down is held at %d or above, Undo or not (shown %s, %s without the Undo)" % (95 - K["strongDrop"], su29["shown"], s29["shown"]),
+  s29["delta"] < 0 and su29["shown"] >= 95 - K["strongDrop"] and su29["shown"] == s29["shown"], (s29["shown"], su29["shown"]))
+t("25 swipes and 5 Undos: still before the 30 swipes, limit %d and the 95%% match held at %d or above (shown %s)" % (K["capEarly"], 95 - K["strongDrop"], su25["shown"]),
+  su25["lim"] == K["capEarly"] and su25["shown"] >= 95 - K["strongDrop"], (su25["lim"], su25["shown"]))
+udk = [{"j": STRONG, "m": {"pct": 95}}] + [{"j": dict(MJ[k], id=650 + k), "m": {"pct": 99 - k}} for k in range(1, 12)]
+uo29 = ask(("order", udk, {"v": 1, "seed": 7, "n": 29, "ver": 31, "ev": undo29}, NOW, None))[0]
+spct = uo29["pct"][uo29["ids"].index(STRONG["id"])]
+t("...in the deck too: the 95%% card shows %s (at least %d), and each card's learn count is the 29 swipes, not the 30 stored entries" % (spct, 95 - K["strongDrop"]),
+  not uo29["same"] and spct >= 95 - K["strongDrop"] and set(uo29["learnN"]) == {29}, (spct, set(uo29["learnN"])))
 
 # ---------- the sandbox page still assembles; dev does not get it ----------
 asm = ask(("assemble",))[0]

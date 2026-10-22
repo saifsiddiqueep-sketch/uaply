@@ -21,8 +21,11 @@ var K={
   early:30,capEarly:25,capLate:40,    /* the learned part of a score: at most 25 points either way before 30 swipes, 40 after */
   every:5,                            /* one card in every five comes from outside the top of the learned ranking */
   priorN:8,                           /* the card draw (Thompson sampling) counts the match score as 8 swipes of evidence, so a weak job is not over-explored */
-  minN:8,                             /* no reordering before 8 swipes, nor while every swipe is a yes (nothing to compare it with): a new
-                                         person's first right swipes used to push a 95% match out of the top 10 (October 22) */
+  minN:8,                             /* no score moves before 8 swipes, nor until there is at least one yes and one no (nothing to compare
+                                         with): a new person's first right swipes used to push a 95% match out of the top 10, and to take
+                                         points off a card "because you passed" when they had passed on nothing (October 22) */
+  gate:true,                          /* scores stay the match until ready() (see minN); only the design's formula word for word in
+                                         tools/test-learn.py turns it off */
   minA:2,                             /* an attribute counts once at least 2 swipes carried it: one swipe is a coincidence, not a taste */
   strong:90,strongDrop:10,            /* before 30 swipes (early), a match of 90% or more never loses more than 10 points to learning and is
                                          ranked by at least that number, so the best matches stay near the top whatever the draw; from 30
@@ -30,7 +33,8 @@ var K={
   center:true                         /* each attribute is measured against how often this person says yes overall (naive Bayes). Without it,
                                          someone who passes more than they apply pushes every attribute down, even "full-time" that every job has,
                                          every card hits the -40 limit and the deck never changes (seen in tools/ui-learn.js). With an even
-                                         yes/no balance it is exactly the design's formula. */
+                                         yes/no balance it is exactly the design's formula. It applies only once there are both yeses and
+                                         noes, and never turns a kind of job that was only liked into a minus, nor one only passed into a plus. */
 };
 var DAY=864e5,MODES={remote:1,hybrid:1,onsite:1},TYPES={job:1,internship:1,coop:1,parttime:1};
 /* role family: seniority and filler words are dropped, a few word forms are joined ("Product Designer" -> "product design") */
@@ -91,35 +95,52 @@ function weight(e){
   return K.fast+(K.slow-K.fast)*(d-K.fastMs)/(K.slowMs-K.fastMs);
 }
 function fadeOf(at,now){return Math.pow(K.fade,Math.max(0,Math.floor((now-at)/DAY)))}
-/* likes and dislikes per attribute value (weighted and faded), plus plain counts for the explanation */
+/* likes and dislikes per attribute value (weighted and faded), plus plain counts for the explanation.
+   Counts: yes = a swipe right (R, D, F), no = a real swipe left (L) and nothing else, undo = a swipe right taken back with Undo (U).
+   An Undo is never a pass: it is not in "no", it does not count as one of the swipes (dec), and it never makes the learner ready (P). */
 function evidence(list,now){
-  var ev=(list||[]).slice(-K.keep),like={},dis={},cnt={},L=0,D=0;
+  var ev=(list||[]).slice(-K.keep),like={},dis={},cnt={},L=0,D=0,P=0,dec=0;
   ev.forEach(function(e){
-    var w=weight(e),f=fadeOf(e.at,now),yes=e.k==="R"||e.k==="D"||e.k==="F";
+    var w=weight(e),f=fadeOf(e.at,now),yes=e.k==="R"||e.k==="D"||e.k==="F",no=e.k==="L";
     if(w>0)L+=w*f;else D-=w*f;                                          /* this person's overall yes and no, each swipe once */
+    if(no)P++;if(e.k!=="U")dec++;
     (e.a||[]).forEach(function(a){
       if(w>0)like[a]=(like[a]||0)+w*f;else if(w<0)dis[a]=(dis[a]||0)-w*f;
-      var c=cnt[a]||(cnt[a]={yes:0,no:0});if(yes)c.yes++;else c.no++;
+      var c=cnt[a]||(cnt[a]={yes:0,no:0,undo:0});if(yes)c.yes++;else if(no)c.no++;else if(e.k==="U")c.undo++;
     });
   });
-  return {like:like,dis:dis,cnt:cnt,n:ev.length,L:L,D:D};
+  return {like:like,dis:dis,cnt:cnt,n:ev.length,dec:dec,P:P,L:L,D:D};
+}
+/* enough to learn from: at least minN swipes (an Undo is not one), with at least one yes and one real pass among them */
+function ready(E){return !!E&&E.dec>=K.minN&&E.L>0&&E.P>0}
+/* this person's overall yes/no balance, the centre each attribute is measured against (only once both a yes and a real pass exist) */
+function center(E){return K.center&&E.L>0&&E.P>0?Math.log((E.L+1)/(E.D+1)):0}
+/* how far one attribute leans, before the cap: null when it has no evidence or too little (minA). A kind of job never passed on (a real
+   swipe left; an Undo is not one) cannot lean down, and one never liked cannot lean up, so the card's reason ("You've passed on N of M")
+   is always about a swipe that happened. An Undo can only take some of the lean up away. */
+function lean(a,E,base){
+  var l=E.like[a]||0,d=E.dis[a]||0,c0=E.cnt[a];if(!l&&!d)return null;
+  if(c0&&c0.yes+c0.no<K.minA)return null;
+  var raw=Math.log((l+1)/(d+1))-base,passed=c0?c0.no>0:d>0,liked=c0?c0.yes>0:l>0;
+  if(!passed&&raw<0)raw=0;if(!liked&&raw>0)raw=0;
+  return raw;
 }
 function logit(p){return Math.log(p/(1-p))}
 function sig(z){return 1/(1+Math.exp(-z))}
 /* logit(p) = logit(p0) + sum over the job's attributes of a value held between -1.5 and +1.5 of log((likes+1)/(dislikes+1)) - log((all yes+1)/(all no+1));
    the learned part is then limited to 25 points (40 from 30 swipes on). fit = the profile match (0-100).
-   An attribute never swiped adds nothing (never shown = unknown, not a no). */
+   An attribute never swiped adds nothing (never shown = unknown, not a no). Before ready() nothing moves: the score is the match. */
 function score(j,fit,E){
   fit=Math.max(0,Math.min(100,+fit||0));
-  var p0=Math.min(0.99,Math.max(0.01,fit/100)),z=logit(p0),parts=[],mass=0,base=K.center?Math.log(((E.L||0)+1)/((E.D||0)+1)):0;
+  var p0=Math.min(0.99,Math.max(0.01,fit/100)),z=logit(p0),parts=[],mass=0,base=center(E),lim=E.dec<K.early?K.capEarly:K.capLate;   /* an Undo is not a swipe: the 30-swipe limits count decisions (dec), not stored entries (n) */
   attrs(j).forEach(function(a){
-    var l=E.like[a]||0,d=E.dis[a]||0,c0=E.cnt[a];if(!l&&!d)return;
-    if(c0&&c0.yes+c0.no<K.minA)return;                                    /* per attribute: too little evidence yet (see minA) */
-    var raw=Math.log((l+1)/(d+1))-base,c=Math.max(-K.cap,Math.min(K.cap,raw));
-    z+=c;mass+=l+d;parts.push({a:a,raw:raw,c:c});
+    var raw=lean(a,E,base);if(raw==null)return;                           /* no evidence, or too little yet (see minA) */
+    var c=Math.max(-K.cap,Math.min(K.cap,raw));
+    z+=c;mass+=(E.like[a]||0)+(E.dis[a]||0);parts.push({a:a,raw:raw,c:c});
   });
-  var p=sig(z),lim=E.n<K.early?K.capEarly:K.capLate,pts=Math.max(-lim,Math.min(lim,100*(p-p0)));
-  if(fit>=K.strong&&E.n<K.early)pts=Math.max(pts,-K.strongDrop);                     /* the floor for strong matches (see strong) */
+  if(K.gate&&!ready(E))return {fit:fit,p0:p0,z:logit(p0),p:p0,pts:0,lim:lim,shown:Math.round(fit),delta:0,parts:[],mass:mass};   /* the match, unmoved */
+  var p=sig(z),pts=Math.max(-lim,Math.min(lim,100*(p-p0)));
+  if(fit>=K.strong&&E.dec<K.early)pts=Math.max(pts,-K.strongDrop);                     /* the floor for strong matches (see strong) */
   var shown=Math.max(0,Math.min(100,Math.round(fit+pts)));
   return {fit:fit,p0:p0,z:z,p:p,pts:pts,lim:lim,shown:shown,delta:shown-fit,parts:parts,mass:mass};
 }
@@ -129,6 +150,7 @@ function explain(j,s,E){
   var up=s.delta>0,best=null;
   s.parts.forEach(function(x){
     if(up?x.c<=0:x.c>=0)return;
+    var n=E.cnt[x.a];if(!n||(up?!n.yes:!n.no))return;                    /* never "passed on 0" (or "liked 0"): the reason is a swipe that happened */
     if(!best||Math.abs(x.c)>Math.abs(best.c)||(Math.abs(x.c)===Math.abs(best.c)&&Math.abs(x.raw)>Math.abs(best.raw)))best=x;
   });
   if(!best)return {why:"",key:""};
@@ -163,12 +185,14 @@ function draw(s,key){
 function order(items,st,now,pin){
   var E=evidence(st&&st.ev,now);
   if(!E.n||!items||!items.length)return items;
-  if(E.n<K.minN||!(E.D>0))return items;                          /* not enough to learn from yet: the match order, untouched */
+  if(E.dec<K.minN||!(E.P>0))return items;                        /* not enough to learn from yet: the match order, untouched (an Undo is
+                                                                    neither a swipe nor a pass here). With passes and no yes yet, scores stay
+                                                                    the match (ready) but the 1-in-5 card still runs */
   var list=items.map(function(x){
     var s=score(x.j,x.m.pct,E);
     if(x.m.capped&&s.shown>45){s.shown=Math.max(45,s.fit);s.delta=s.shown-s.fit}   /* "Capped at 45%" stays true */
     var dr=draw(s,st.seed+":"+st.ver+":"+x.j.id);
-    if(s.fit>=K.strong&&E.n<K.early)dr=Math.max(dr,s.shown/100);                     /* a strong match is ranked by at least its own number */
+    if(s.fit>=K.strong&&E.dec<K.early)dr=Math.max(dr,s.shown/100);                     /* a strong match is ranked by at least its own number */
     return {x:x,s:s,d:dr};
   });
   var ranked=list.slice().sort(function(a,b){return b.d-a.d||b.s.shown-a.s.shown});
@@ -182,7 +206,7 @@ function order(items,st,now,pin){
     if(!pick){while(used[ranked[ri].x.j.id])ri++;pick=ranked[ri]}
     used[pick.x.j.id]=1;
     var why=explain(pick.x.j,pick.s,E);
-    out.push({j:pick.x.j,m:Object.assign({},pick.x.m,{pct:pick.s.shown,fit:pick.s.fit,learn:{delta:pick.s.delta,why:why.why,key:why.key,explore:ex,n:E.n}})});
+    out.push({j:pick.x.j,m:Object.assign({},pick.x.m,{pct:pick.s.shown,fit:pick.s.fit,learn:{delta:pick.s.delta,why:why.why,key:why.key,explore:ex,n:E.dec}})});
   }
   return out;
 }
@@ -205,7 +229,8 @@ function swipe(st,j,dir,dwell,read,now){
   if(st.ev.length>K.keep)st.ev=st.ev.slice(-K.keep);
   st.n++;st.ver++;
 }
-/* Undo: a swipe left is removed entirely; a swipe right becomes a small no */
+/* Undo: a swipe left is removed entirely; a swipe right becomes a small no (U). A U is never called a pass, never counts as a swipe for
+   ready(), and can never pull a card down by itself: see evidence() and lean() */
 function undo(st,id){
   var i=last(st,id);
   if(i>-1){if(st.ev[i].k==="L")st.ev.splice(i,1);else st.ev[i].k="U"}
@@ -278,12 +303,13 @@ function apply(w){
     var el=d.getElementById("lrnSum");if(!el)return;
     if(msg){el.textContent=msg;return}
     var E=evidence(st.ev,Date.now());
-    if(!E.n){el.textContent="Nothing learned yet. Cards are in order of how well your profile fits.";return}
-    var up=null,down=null,base=K.center?Math.log((E.L+1)/(E.D+1)):0;
-    Object.keys(E.cnt).forEach(function(a){var x=Math.log(((E.like[a]||0)+1)/((E.dis[a]||0)+1))-base;if(x>0.01&&(!up||x>up.x))up={a:a,x:x};if(x<-0.01&&(!down||x<down.x))down={a:a,x:x}});
+    if(!E.dec){el.textContent="Nothing learned yet. Cards are in order of how well your profile fits.";return}
+    if(!ready(E)){el.textContent=E.dec+" swipe"+(E.dec===1?"":"s")+" so far, on this device only. No score changes until "+K.minN+" swipes with at least one yes and one no; until then each score is how well your profile fits.";return}
+    var up=null,down=null,base=center(E);
+    Object.keys(E.cnt).forEach(function(a){var x=lean(a,E,base);if(x==null)return;if(x>0.01&&(!up||x>up.x))up={a:a,x:x};if(x<-0.01&&(!down||x<down.x))down={a:a,x:x}});
     function say(o,yes){var c=E.cnt[o.a];return (yes?"liked "+c.yes:"passed on "+c.no)+" of "+(c.yes+c.no)+" "+label(o.a,null)}
     var said=[up&&"You "+say(up,true),down&&(up?"you ":"You ")+say(down,false)].filter(Boolean).join("; ");
-    el.textContent="Learned from your last "+E.n+" swipe"+(E.n===1?"":"s")+", on this device only. "+(said?said+".":"Nothing stands out yet: no kind of job gets more yes or no from you than the rest.")+
+    el.textContent="Learned from your last "+E.dec+" swipe"+(E.dec===1?"":"s")+", on this device only. "+(said?said+".":"Nothing stands out yet: no kind of job gets more yes or no from you than the rest.")+
       " It never uses your voluntary answers, work authorization or GPA, and your filters still decide what you see.";
   }
   d.getElementById("lrnReset").onclick=function(){
@@ -297,5 +323,5 @@ function apply(w){
 }
 
 window.UAplyLearn={patch:patch,apply:apply,
-  core:{K:K,family:family,attrs:attrs,label:label,weight:weight,evidence:evidence,score:score,explain:explain,order:order,draw:draw,fresh:fresh,clean:clean,swipe:swipe,undo:undo,finish:finish,reset:reset,lineHTML:lineHTML}};
+  core:{K:K,family:family,attrs:attrs,label:label,weight:weight,evidence:evidence,score:score,explain:explain,ready:ready,lean:lean,order:order,draw:draw,fresh:fresh,clean:clean,swipe:swipe,undo:undo,finish:finish,reset:reset,lineHTML:lineHTML}};
 })();
