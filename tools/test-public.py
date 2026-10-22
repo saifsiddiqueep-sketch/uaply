@@ -157,7 +157,7 @@ t("/api/jobs says how many sources are still loading (the app asks again while a
 fh = json.loads(req("GET", "/api/feed-health", headers=auth("ownerpw"))[2])
 t("/api/feed-health (owner): every source with its count, successes, failures and whether it is switched off",
   (fh.get("count", 0) > 50, sorted(fh["sources"][0]) if fh.get("sources") else None),
-  (True, ["applyPath", "error", "failures", "inARow", "jobs", "lastError", "lastOk", "links", "ms", "name", "off", "ok", "retry", "source", "status"]))
+  (True, ["applyPath", "checkKinds", "checkPages", "checkSampled", "error", "failures", "formKind", "humanCheck", "inARow", "jobs", "lastError", "lastOk", "links", "ms", "name", "off", "ok", "retry", "route", "source", "status", "withCheck"]))
 
 print(sum(R), "/", len(R))
 sys.exit(0 if all(R) else 1)

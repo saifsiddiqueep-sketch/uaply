@@ -4,6 +4,8 @@ candidates to a review file. Read-only: it only reads the same public, keyless e
   python tools/find-boards.py --names tools/data/board-seeds.txt            company names or domains, one per line (# comments)
   python tools/find-boards.py --simplify                                     every company on the Simplify / Pitt CSC lists (their links name the board)
   python tools/find-boards.py Comcast "Cross River Bank" toasttab.com        names on the command line
+  python tools/find-boards.py --workday tools/data/workday-seeds.txt         Workday careers sites (addresses, or names tried on wd1/3/5/12);
+                                                                             --simplify also takes every Workday site its lists link to
   options: --out FILE (default tools/data/board-candidates.json)  --min-us N (default 5)  --workers N (default 8)
 
 For a name it tries slugs on every system: the name squashed ("crossriverbank"), hyphenated ("cross-river-bank"), with "inc"/"hq"/"careers"
@@ -12,6 +14,7 @@ token is read from each posting's own link, so nothing is guessed. Each board fo
 New Jersey / Delaware postings, answer size. A board already in jobs_api.SOURCES is marked "known". The review file lists every board
 with at least --min-us US postings, most tri-state jobs first; nothing is added to the app by this tool."""
 import argparse
+import html
 import json
 import os
 import re
@@ -20,7 +23,6 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-import urllib.robotparser
 from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -47,7 +49,7 @@ def _wait_turn(host):
     with _host_lock:
         now = time.time()
         at = max(now, _host_next.get(host, 0.0))
-        _host_next[host] = at + (1.5 if "workable" in host else PER_HOST_GAP)      # Workable answers 429 at a few requests a second
+        _host_next[host] = at + (1.5 if "workable" in host else J.CP_MIN_DELAY if host.endswith((".myworkdayjobs.com", ".icims.com")) else PER_HOST_GAP)
     if at > now:
         time.sleep(at - now)
 
@@ -114,7 +116,7 @@ def count(kind, token):
                 robots = ""
             else:
                 raise
-        rp = urllib.robotparser.RobotFileParser()
+        rp = J.RobotsTxt()
         rp.parse(robots.splitlines())
         if not rp.can_fetch(J.CP_UA, sm) or J.HUMAN_CHECK_RE.search(robots):
             return None
@@ -125,6 +127,8 @@ def count(kind, token):
         if not recent:
             return None
         return len(recent), len(recent), 0, len(xml), "", sm
+    elif kind == "workday":
+        return count_workday(token)
     elif kind == "workable":
         d, n = get_json("https://www.workable.com/api/accounts/%s" % q)
         jobs = d.get("jobs") or []
@@ -136,6 +140,73 @@ def count(kind, token):
         return None
     us = [l for l in locs if J._us_ok(l, bool(re.search(r"remote", l, re.I)))]
     return len(jobs), len(us), sum(1 for l in us if TRI_RE.search(l)), n, name
+
+
+WD_TOKEN_RE = re.compile(r"^([a-z0-9][a-z0-9-]{0,62})\.(wd\d{1,3})(?:/([A-Za-z0-9_-]{1,80}))?$")
+
+
+def count_workday(token):
+    """An employer's Workday careers site ("tenant.wd5/Site", or "tenant.wd5" for the first site its robots.txt names): robots.txt must
+    allow its sitemap and job pages, two job pages must carry JobPosting data, and no page may show a human check. (total, us, tri, bytes,
+    name, sitemap, row token) or None. US and tri-state counts come from the place in each page's address (/job/Newark-DE/...); pages
+    whose address names a building are counted as the sampled pages' country says."""
+    m = WD_TOKEN_RE.match(token)
+    if not m:
+        return None
+    tenant, wd, site = m.groups()
+    host = "%s.%s.myworkdayjobs.com" % (tenant, wd)
+    try:
+        robots = get_text("https://%s/robots.txt" % host)
+    except urllib.error.HTTPError as e:
+        if e.code in (404, 410):
+            robots = ""
+        elif e.code in (400, 422):            # no such tenant on this Workday data center
+            return None
+        else:
+            raise
+    if J.HUMAN_CHECK_RE.search(robots):
+        return None
+    rp = J.RobotsTxt()
+    rp.parse(robots.splitlines())
+    maps = [ln.split(":", 1)[1].strip() for ln in robots.splitlines() if ln.lower().startswith("sitemap:")]
+    if site:
+        sm = next((x for x in maps if urllib.parse.urlsplit(x).path.lower().startswith("/%s/" % site.lower())), "https://%s/%s/siteMap.xml" % (host, site))
+    elif maps:
+        sm = maps[0]
+        site = urllib.parse.urlsplit(sm).path.strip("/").split("/")[0]
+    else:
+        return None
+    if not (J._public_https(sm) and urllib.parse.urlsplit(sm).hostname == host and rp.can_fetch(J.CP_UA, sm)):
+        return None
+    xml, sm = get_text(sm, final=True)
+    pages = [html.unescape(u) for u in re.findall(r"<loc>\s*(.*?)\s*</loc>", xml) if "/job/" in u]
+    pages = [u for u in pages if urllib.parse.urlsplit(u).hostname == host and rp.can_fetch(J.CP_UA, u)]
+    if not pages:
+        return None
+    name, seen_us, seen = "", 0, 0
+    for u in pages[:2]:
+        text = get_text(u)
+        if J.HUMAN_CHECK_RE.search(text[:20000]):
+            return None
+        ps = J._ld_postings(text)
+        if not ps:
+            continue
+        raw = J._ld_raw(ps[0], u, tenant)
+        if not raw:
+            continue
+        seen += 1
+        seen_us += bool(J._us_ok(raw["loc"] or "", bool(raw.get("remote"))) or re.search(r"United States|^US$|^USA$", raw.get("country") or ""))
+        org = ps[0].get("hiringOrganization") or {}
+        name = name or (org.get("name") if isinstance(org, dict) else "") or ""
+    if not seen:
+        return None
+    places = [J._wd_place(u, "") for u in pages]
+    known = [x for x in places if x]
+    us = [x for x in known if x == "Remote" or J._us_ok(x, False)]
+    unknown = len(places) - len(known)
+    n_us = len(us) + int(unknown * seen_us / seen)
+    tok = re.sub(r"[^a-z0-9_.-]", "", ("%s-%s" % (tenant, site)).lower())[:80]
+    return len(pages), n_us, sum(1 for x in us if TRI_RE.search(x)), len(xml), name, sm, tok
 
 
 def get_text(url, final=False):
@@ -178,6 +249,8 @@ SIMPLIFY_LINK = [("greenhouse", re.compile(r'https://(?:job-)?boards(?:\.eu)?\.g
                  ("workable", re.compile(r'https://apply\.workable\.com/([A-Za-z0-9_-]+)/'))]
 
 
+WD_SITE_RE = re.compile(r"^https://([A-Za-z0-9-]{1,63})\.(wd\d{1,3})\.myworkdayjobs\.com/(?:[a-z]{2}-[A-Z]{2}/)?([A-Za-z0-9_-]{1,80})")
+
 SIMPLIFY_LISTINGS = ["https://raw.githubusercontent.com/SimplifyJobs/Summer2027-Internships/dev/.github/scripts/listings.json",
                      "https://raw.githubusercontent.com/SimplifyJobs/New-Grad-Positions/dev/.github/scripts/listings.json"]
 
@@ -194,6 +267,10 @@ def simplify_boards():
             continue
         for row in rows if isinstance(rows, list) else []:
             link = str(row.get("url") or "") if isinstance(row, dict) else ""
+            m = WD_SITE_RE.match(link)
+            if m:                                   # an employer's Workday careers site (read from its sitemap and JobPosting pages)
+                found.setdefault(("workday", "%s.%s/%s" % (m.group(1).lower(), m.group(2), m.group(3))), str(row.get("company_name") or m.group(1)))
+                continue
             for kind, rx in SIMPLIFY_LINK:
                 m = rx.match(link)
                 if m:
@@ -275,6 +352,25 @@ def add_reviewed(review_files, min_us, boards_file, limit=None):
     return added
 
 
+def write_review(a, probes, rows):
+    """The review file: every board found with at least --min-us US postings, most tri-state jobs first. A run that picks up after a
+    stop keeps the candidates the file already has (merged by kind and token)."""
+    found = [r for r in rows if "error" not in r]
+    keep = {(r["kind"], r["token"]): r for r in found if r["us"] >= a.min_us}
+    try:
+        with open(a.out, encoding="utf-8") as f:
+            for r in json.load(f).get("candidates") or []:
+                keep.setdefault((r["kind"], r["token"]), r)
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    keep = sorted(keep.values(), key=lambda r: (-r["tri"], -r["us"]))
+    os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
+    with open(a.out, "w", encoding="utf-8", newline="\n") as f:
+        json.dump({"checked": time.strftime("%Y-%m-%d %H:%M"), "probed": len(probes), "found": len(found), "min_us": a.min_us,
+                   "candidates": keep, "errors": [r for r in rows if "error" in r][:200]}, f, indent=1)
+    return found, keep
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--add", nargs="+", metavar="REVIEW_FILE", help="add the reviewed candidates to job-boards.json instead of probing")
@@ -282,6 +378,8 @@ def main():
     ap.add_argument("names", nargs="*")
     ap.add_argument("--names", dest="names_file")
     ap.add_argument("--simplify", action="store_true")
+    ap.add_argument("--workday", metavar="FILE", help="Workday careers sites, one per line: an address (https://x.wd5.myworkdayjobs.com/Site) "
+                    "or a company name, tried as x.wd1, wd3, wd5 and wd12 (a tab, then the company's name, may follow an address)")
     ap.add_argument("--out", default=os.path.join(HERE, "data", "board-candidates.json"))
     ap.add_argument("--min-us", type=int, default=5)
     ap.add_argument("--workers", type=int, default=8)
@@ -300,6 +398,21 @@ def main():
     if a.simplify:                                  # exact boards first: nothing is guessed
         for k, v in simplify_boards().items():
             probes.setdefault(k, v)
+    if a.workday:
+        with open(a.workday, encoding="utf-8") as f:
+            for line in f:
+                line = line.split("#", 1)[0].strip()
+                if not line:
+                    continue
+                addr, _, company = line.partition("\t")
+                m = WD_SITE_RE.match(addr.strip())
+                if m:
+                    probes.setdefault(("workday", "%s.%s/%s" % (m.group(1).lower(), m.group(2), m.group(3))), company.strip() or m.group(1))
+                else:
+                    for sl in slugs(addr)[:2]:
+                        if re.match(r"^[a-z0-9-]+$", sl):
+                            for wd in ("wd1", "wd3", "wd5", "wd12"):
+                                probes.setdefault(("workday", "%s.%s" % (sl, wd)), addr.strip())
     for n in names:
         for s in slugs(n):
             for kind in ("greenhouse", "lever", "ashby", "smartrecruiters", "workable") + (("icims",) if "-" not in s else ()):
@@ -333,23 +446,30 @@ def main():
                "tri": tri, "bytes": size, "known": (kind, token.lower()) in known}
         if kind == "icims":                              # added as an employer's careers site, read from its sitemap and pages
             row.update(kind="careerpage", sitemap=c[5], known=("careerpage", token.lower()) in known)
+        elif kind == "workday":
+            # named as the list or seed names it (a page's own employer can be one hospital of a system)
+            row.update(kind="careerpage", token=c[6], sitemap=c[5], known=("careerpage", c[6]) in known, workday=token,
+                       name=company if company and not re.fullmatch(r"[a-z0-9_.-]+", company) else row["name"])
         return row
 
     t0 = time.time()
+    rows, items = [], list(probes.items())
+    # in parts of 300, the probes done so far saved after each part: a run that is stopped picks up where it was with --resume
     with ThreadPoolExecutor(max_workers=a.workers) as ex:
-        rows = [r for r in ex.map(one, probes.items()) if r]
-    if a.resume:
-        now = time.time()
-        failed = {(r["kind"] if r["kind"] != "careerpage" else "icims", r["token"]) for r in rows if "error" in r}
-        done.update({"%s|%s" % k: now for k in probes if k not in failed})        # an error (429, time-out) is tried again next run
-        with open(a.resume, "w", encoding="utf-8", newline="\n") as f:
-            json.dump(done, f)
-    found = [r for r in rows if "error" not in r]
-    keep = sorted([r for r in found if r["us"] >= a.min_us], key=lambda r: (-r["tri"], -r["us"]))
-    os.makedirs(os.path.dirname(a.out), exist_ok=True)
-    with open(a.out, "w", encoding="utf-8", newline="\n") as f:
-        json.dump({"checked": time.strftime("%Y-%m-%d %H:%M"), "probed": len(probes), "found": len(found), "min_us": a.min_us,
-                   "candidates": keep, "errors": [r for r in rows if "error" in r][:200]}, f, indent=1)
+        for i in range(0, len(items), 300):
+            part = [r for r in ex.map(one, items[i:i + 300]) if r]
+            rows += part
+            if a.resume:
+                now = time.time()
+                failed = {(r["kind"], r["token"]) for r in part if "error" in r}       # (an error row keeps its probe's kind and token)
+                done.update({"%s|%s" % k: now for k, _ in items[i:i + 300] if k not in failed})   # an error (429, time-out) is tried again next run
+                with open(a.resume + ".tmp", "w", encoding="utf-8", newline="\n") as f:
+                    json.dump(done, f)
+                os.replace(a.resume + ".tmp", a.resume)
+            write_review(a, probes, rows)
+            print("  %d of %d probed, %d found, %.0f s" % (min(i + 300, len(items)), len(items), sum(1 for r in rows if "error" not in r),
+                                                         time.time() - t0), flush=True)
+    found, keep = write_review(a, probes, rows)
     new = [r for r in keep if not r["known"]]
     print("%d boards found (%d with %d+ US jobs, %d not in the app yet) in %.0f s; review file: %s" % (len(found), len(keep), a.min_us, len(new), time.time() - t0, a.out))
     for r in new[:40]:

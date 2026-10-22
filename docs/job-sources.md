@@ -31,9 +31,9 @@ the counts on the day they were checked); the app reads that file at start, afte
 each of those boards every 2 hours (spread out). The owner page `/api/feed-health` (owner password) lists every source with its jobs,
 successes and failures; a source that fails 3 refreshes in a row is switched off for a day and then tried again by itself.
 
-How the reading scales to hundreds of boards: 12 reader threads (not one per board); a Greenhouse board's list is read without
+How the reading scales to hundreds of boards: 8 reader threads (not one per board), and 20 more for careers sites (they mostly wait out crawl delays, on places of their own), boards queued round-robin across hiring systems; a Greenhouse board's list is read without
 descriptions (about an eighth of the size) and only the postings that will be kept get their description read, once, and again only
-when the posting changes; employer SmartRecruiters boards read at most 24 descriptions a day; boards are read as they arrive (never
+when the posting changes; employer SmartRecruiters boards read at most 24 descriptions a day, and an unchanged posting (or careers-site page) is made into the same job again from the packed copy, without holding its description; boards are read as they arrive (never
 whole); the list sent to the app is written straight into gzip and only the compressed copy is kept; past 300 MB of memory no new
 board read starts. On a fresh start the first visitor is answered within about 8 seconds with what is ready, and the app asks again
 until every board is in.
@@ -43,6 +43,36 @@ logistics, utilities) plus industry lists (dental groups, real estate, legal, me
 logistics, retail and hospitality, sports and recreation, nonprofits, accounting, media). Besides the five hiring systems the tool
 looks for an iCIMS careers site (`careers-<name>.icims.com`) whose robots.txt allows its sitemap. Probes done in the last 30 days are
 not repeated (`tools/data/board-probed.json`); Workable is asked at most one request every 1.5 seconds (it answers 429 sooner).
+
+Workday careers sites (`--workday tools/data/workday-seeds.txt`, and every Workday link on the Simplify lists): a site's robots.txt
+names its sitemap (`https://<tenant>.wd5.myworkdayjobs.com/<Site>/siteMap.xml`); two job pages must carry JobPosting data and show no
+human check. Workday's JobPosting names a building as the place and marks every posting TELECOMMUTE, so the place is read from the
+page's own address (`/job/Newark-DE/...`) or the first "City, ST" of the description, and a job is remote only when it says so. A
+stopped run picks up where it was (`--resume`, saved every 300 probes).
+
+## Where a job is
+
+Each job carries `geo` ([lat, lng], two decimals) when its place names a US city, town, borough, CDP or township with its state
+("Cherry Hill, NJ", "El Segundo, California, United States", "Abilene TX", "US-PA-Malvern"), a big city named alone ("San Francisco",
+"New York City"), or a ZIP code. The points come from `us-places.tsv.gz` (about 44,000 places; `tools/make-us-places.py` builds it from
+the US Census Bureau's 2024 Gazetteer place and county-subdivision files, public domain), read on first use and kept as one string with
+an index. The app's "near you" order and distance filter use `geo` first and its own city list after; "where you live" now knows every
+ZIP code's first three digits. On October 21, 2026 the app's list placed 54% of on-site jobs; with `geo`, 88%. Careers sites read their
+co-op and internship pages first, then their Pennsylvania, New Jersey and Delaware ones, as each page's own address says.
+
+## Human checks on application pages
+
+`tools/scan-human-checks.py <saved /api/jobs answer>` looks at a sample of each source's application pages (20 per source, every posting
+of a smaller one; fewer where robots.txt asks for a crawl delay, as Lever's 1 second does, so the whole scan fits in 28 minutes): one
+plain GET per page as `UAplyApplyCheck/1.0`, robots.txt (with `*` and `$`) and its crawl delay honoured on every page and redirect, at
+most 3 attempts per page, a source whose pages fail 3 times stopped and marked unknown. It records reCAPTCHA, hCaptcha, Turnstile,
+Arkose and other captchas the page loads or is set up with, and challenge pages (Cloudflare, DataDome, PerimeterX, Imperva, "verify you
+are human"); Cloudflare's quiet bot tag is noted but is not a check. A check is never solved, bypassed or set off on purpose, and a
+challenge page is not asked for again. Per source it writes `humanCheck` (none / sometimes / always / unknown), `formKind` (html-form,
+js-app, redirect to another system, sign-in) and the sample date to `human-checks.json`; `--merge --skip-known` adds new sources later
+without reading the old ones again, and a stopped scan picks up from its checkpoint. The server reads the file at start: each job
+carries `route` ("Ready" when UAply sends the application itself, "Ready, one tap" where a check is likely, "Ready" otherwise), and
+`/api/feed-health` shows each source's result and the totals. No job is removed because of a check.
 
 ## Registry
 
@@ -62,7 +92,7 @@ clearly cover a third party showing it; **High** = terms that forbid our use (no
 | The Muse (`muse`) | Internship and entry-level jobs | https://www.themuse.com/developers/api/v2 | Public API; register an app (key) for production use | "via The Muse" | 30 min | The job on The Muse | The Internship level | **Medium** until the app is registered (key), then **Low** |
 | Simplify and Pitt CSC lists (`simplify`) | GitHub lists of internships and co-ops, https://github.com/SimplifyJobs/Summer2027-Internships (README.md, README-Off-Season.md) | No license file, no reuse terms | Rows are facts (company, title, place, link); only rows linking to a Greenhouse, Lever or SmartRecruiters posting are used, each read from the employer's own board | "via Acme on Greenhouse, listed by Simplify and Pitt CSC" | 6 h (each posting checked daily) | Employer's own posting | Internship or co-op | **Medium**: no license; we credit the list and show only the employer's own data |
 | Himalayas (`himalayas`) | Remote jobs open to the US: all, internships, part-time (3 pages each) | https://himalayas.app/api , https://himalayas.app/terms#api | Show on our own app only; link to the job on Himalayas; `applicationLink` unchanged; never pass jobs on to other boards, Google Jobs or LinkedIn; remove expired jobs | "via Himalayas" | 3 h | `applicationLink` | `employmentType` | **Low**: its published API terms, followed |
-| Employers' careers sites (`careerpage`) | Employers whose own careers site publishes a sitemap of job pages with schema.org JobPosting data (iCIMS sites such as Hackensack Meridian Health, Piedmont, UnityPoint, OHSU, NYU Langone, Dental Care Alliance, Sonrava), found with `tools/find-boards.py` and listed in `job-boards.json` with their sitemap | Each site's robots.txt (read first, its Disallow rules and Crawl-delay followed; a site whose robots.txt cannot be read is not read) | JobPosting data is published for search engines to show; UAply reads at most 40 job pages per site every 6 hours (a page again only when its lastmod changes), one request at a time with at least 2 seconds between them, only pages on the sitemap's own host, never a page behind a login or a human check (the site is then left alone) | "via Acme careers site" | 6 h | The employer's own job page (assisted hand-off) | `employmentType` | **Medium**: public structured data meant to be shown by job search engines, read politely as robots.txt allows; each employer's site terms are not individually reviewed |
+| Employers' careers sites (`careerpage`) | Employers whose own careers site publishes a sitemap of job pages with schema.org JobPosting data (iCIMS sites such as Hackensack Meridian Health, Piedmont, UnityPoint, OHSU, NYU Langone, Dental Care Alliance, Sonrava; Workday sites such as ChristianaCare), found with `tools/find-boards.py` and listed in `job-boards.json` with their sitemap | Each site's robots.txt (read first, its Disallow rules and Crawl-delay followed; a site whose robots.txt cannot be read is not read) | JobPosting data is published for search engines to show; UAply reads at most 40 job pages per site every 6 hours (14 on a site's first read; a page again only when its lastmod changes, or after 2 days when the sitemap gives none), one request at a time with at least 2 seconds between them, only pages on the sitemap's own host, never a page behind a login or a human check (the site is then left alone) | "via Acme careers site" | 6 h | The employer's own job page (assisted hand-off) | `employmentType` | **Medium**: public structured data meant to be shown by job search engines, read politely as robots.txt allows; each employer's site terms are not individually reviewed |
 | Remote OK (`remoteok`) | Remote jobs | The notice in https://remoteok.com/api | Link back to the job on Remote OK (followed link) and name Remote OK; no logo | "via Remote OK" | 6 h | The job on Remote OK | Title words | **Low**: its published conditions, followed |
 | Remotive (`remotive`) | Remote jobs | https://remotive.com/api-documentation | Forbids using listings to collect sign-ups or emails, which UAply does | n/a | n/a | n/a | n/a | **High**: **do not switch on** without written permission |
 | Partner employers | Employers who post on UAply | UAply's own employer terms | The employer gave the posting and agreed to receive applications | "Posted on UAply by ..." | live | Sent to the employer | The employer's own pick | **Low** |

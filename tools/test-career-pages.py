@@ -62,7 +62,13 @@ def fake_get(url, headers=None, as_text=False):
     raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
 
 
+def fake_parts(url, headers=None):
+    body = fake_get(url, headers, True).encode("utf-8")            # a sitemap arrives in 7-byte parts: every tag gets cut somewhere
+    return iter([body[i:i + 7] for i in range(0, len(body), 7)])
+
+
 J._get = fake_get
+J._get_parts = fake_parts
 J.CP_MIN_DELAY = 0.0
 J.CAREER_PAGES["acme"] = SITE + "/sitemap.xml"
 src = ("careerpage", "acme", "Acme Gas")
@@ -80,10 +86,11 @@ t("the job: the employer's own page (without in_iframe), place, pay, type, credi
   (SITE + "/jobs/1/clerk/job", "Philadelphia, PA", [45000, 60000], "full-time", "Acme Gas careers site", "link"))
 t("employmentType PART_TIME -> part-time", [j["jobType"] for j in jobs if j["role"] == "Cashier Part-Time"], ["part-time"])
 CALLS.clear()
-J._cache.pop(src, None)
-J._fetch_source(src)
-t("the next refresh reads the sitemap only: pages whose lastmod did not change are not read again (a human-check page neither)",
+again, _ = J._fetch_source(src)
+t("the next refresh reads the sitemap only: pages whose lastmod did not change are not read again (a human-check page, or one outside the US, neither)",
   [u for u in CALLS if "/jobs/" in u], [])
+t("...and makes the same jobs from the last read's own copies (no description held in between)",
+  sorted((j["id"], j["role"], j["loc"], j["jobType"], j["sal"]) for j in again) == sorted((j["id"], j["role"], j["loc"], j["jobType"], j["sal"]) for j in jobs), True)
 J._robots.clear()
 ANSWERS[SITE + "/robots.txt"] = "User-agent: *\nDisallow: /\n"
 CALLS.clear()
