@@ -50,10 +50,10 @@
    "id": "no-jobs",
    "title": "Why don't I see any jobs (or only a few)?",
    "tags": "no jobs empty nothing few listings missing where jobs come from source feed",
-   "body": "Three things can hide jobs. Your filters (Profile, Filters) may be too strict: try Clear all filters. Your target titles hide full-time and part-time roles that don't match (never internships or co-ops, and when nothing in a section matches, all its roles are shown): add more titles or turn that filter off. And UAply currently lists jobs from employers that agreed to work with it, plus example listings, so there are not many real openings yet. More employers are being added.",
+   "body": "Three things can hide jobs. Your filters (Profile, Filters) may be too strict: try Clear all filters. Your target titles hide full-time and part-time roles that don't match (never internships or co-ops, and when nothing in a section matches, all its roles are shown): add more titles or turn that filter off. And the listings are real postings from employers' public hiring systems (Greenhouse, Lever, Ashby, SmartRecruiters and Workable) and their own careers pages, plus employers connected to UAply, so the mix changes as employers add and remove openings. Most are full-time jobs and internships; part-time and Coop roles are rare, so those lists can be short or empty.",
    "go": "prof:filters",
    "release": {
-    "body": "Three things can hide jobs. Your filters (Profile, Filters) may be too strict: try Clear all filters. Your target titles hide full-time and part-time roles that don't match (never internships or co-ops, and when nothing in a section matches, all its roles are shown): add more titles or turn that filter off. And UAply lists real postings from employers' own public career pages, so the mix changes as employers add and remove openings. Most listings are full-time jobs and internships; part-time and Coop roles are rare, so those lists can be short or empty."
+    "body": "Three things can hide jobs. Your filters (Profile, Filters) may be too strict: try Clear all filters. Your target titles hide full-time and part-time roles that don't match (never internships or co-ops, and when nothing in a section matches, all its roles are shown): add more titles or turn that filter off. And the listings are real postings from employers' public hiring systems (Greenhouse, Lever, Ashby, SmartRecruiters and Workable) and their own careers pages, plus employers connected to UAply, so the mix changes as employers add and remove openings. Most are full-time jobs and internships; part-time and Coop roles are rare, so those lists can be short or empty."
    }
   },
   {
@@ -100,15 +100,21 @@
    "id": "account",
    "title": "Accounts, signing in and email receipts",
    "tags": "account sign in sign up log in login create password email receipt confirmation google apple",
-   "body": "Tap Sign in at the top right to create an account with your email and a password. You must be 18 or older. Once you are signed in and have confirmed your email with the 6-digit code, every swipe right sends a receipt to your email. Google sign-in appears when it has been switched on for this server. Apple, phone and email-link sign-in are not available yet.",
-   "go": "prof:account"
+   "body": "Open Profile, then Account. To create an account, enter your email, first and last name, tick the box to confirm you are 18 or older, and tap Create my account: UAply emails you a 6-digit code, and typing it creates the account. There is no password. To sign in later, tap Have an account? Sign in, enter your email and tap Email me a code. Continue with Google works too when it is switched on. Once you are signed in, every swipe right sends a receipt to your email. Apple and phone sign-in are not available yet.",
+   "go": "prof:account",
+   "release": {
+    "body": "Tap Sign in at the top right to create an account with your email and a password. You must be 18 or older. Once you are signed in and have confirmed your email with the 6-digit code, every swipe right sends a receipt to your email. Google sign-in appears when it has been switched on for this server. Apple, phone and email-link sign-in are not available yet."
+   }
   },
   {
    "id": "forgot-password",
    "title": "I forgot my password",
-   "tags": "forgot password reset change locked out can't log in",
-   "body": "Open Profile, then Account, tap I already have an account, then Forgot password?. Enter your account email and UAply emails you a link that works for one hour. Open it and choose a new password; that signs you out on every device, so log in again with the new password. If no email arrives, check spam, then use Talk to a person. After too many wrong tries, wait a few minutes before trying again.",
-   "go": "prof:account"
+   "tags": "forgot password reset change locked out can't log in can't sign in code",
+   "body": "There is no password to forget: UAply accounts sign in with a code sent to your email. Open Profile, then Account, tap Have an account? Sign in, enter your email and tap Email me a code. The code works for 10 minutes; only the newest one works, and Resend code sends another. If no email arrives, check spam, then use Talk to a person. After too many tries, wait a while before trying again.",
+   "go": "prof:account",
+   "release": {
+    "body": "Open Profile, then Account, tap I already have an account, then Forgot password?. Enter your account email and UAply emails you a link that works for one hour. Open it and choose a new password; that signs you out on every device, so sign in again with the new password. If no email arrives, check spam, then use Talk to a person. After too many wrong tries, wait a few minutes before trying again."
+   }
   },
   {
    "id": "delete",
