@@ -123,12 +123,12 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
   await chip("How do I apply?"); await sleep(700);
   const n1 = String(await lastBot());
   check("8. AI answers on: the first question shows a one-line notice that it goes to an AI provider, and nothing is sent yet",
-    /AI provider/.test(n1) && chatPosts === 0 && (await inApp("return [...d.querySelectorAll('#uaChat button')].filter(b=>b.offsetParent&&/^(Continue|Not now)$/.test(b.textContent.trim())).length")) === 2, n1 + " | posts " + chatPosts);
-  await chip("Not now"); await sleep(600);
-  check("...Not now sends nothing", chatPosts === 0 && /Nothing was sent/.test(String(await lastBot())), "posts " + chatPosts);
+    /AI provider/.test(n1) && chatPosts === 0 && (await inApp("return [...d.querySelectorAll('#uaChat button')].filter(b=>b.offsetParent&&/^(Yes, send it|No, don.t send)$/.test(b.textContent.trim())).length")) === 2, n1 + " | posts " + chatPosts);
+  await chip("No, don't send"); await sleep(600);
+  check("...No sends nothing", chatPosts === 0 && /Nothing was sent/.test(String(await lastBot())), "posts " + chatPosts);
   await chip("How do I apply?"); await sleep(700);
-  await chip("Continue"); await sleep(1200);
-  check("...Continue sends it (one message to the AI)", chatPosts === 1 && /Swipe right to apply/.test(String(await lastBot())), "posts " + chatPosts);
+  await chip("Yes, send it"); await sleep(1200);
+  check("...Yes sends it (one message to the AI)", chatPosts === 1 && /Swipe right to apply/.test(String(await lastBot())), "posts " + chatPosts);
   await nav(base); await sleep(4500);
   await openChat();
   await chip("How do I apply?"); await sleep(1200);

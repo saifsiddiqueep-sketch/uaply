@@ -6,6 +6,23 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 
+### The Help chat asks before it goes to the AI company (October 22, Trello KWU4HK73; credit Mohammed)
+- With AI answers on, the first question shows one line naming the AI company, as the Privacy Policy names it, with a link to that
+  page and **Yes, send it** / **No, don't send** (Apple guideline 5.1.2(i)). Nothing is sent before Yes, a question answered No is
+  never sent later, and the Yes is remembered on that device. The name is read from `legal/privacy.html` when the line is shown, so the
+  Privacy Policy stays the one place it is written; if that page cannot be reached the line says "named in our Privacy Policy".
+- **No** on an answer now sends the answer's own words with the person's note (typed, Skip and Talk to a person), so a wrong or
+  offensive answer can be reported as it was written. It used to send only the help article ids.
+- If the Privacy Policy is slow to load, the line waits at most 3 seconds and then says "named in our Privacy Policy" (a stalled
+  request used to leave the chat stuck on the typing dots, with no way to reach Talk to a person). A Yes to that line sends that one
+  question only; the named line is shown next time.
+- The remembered Yes counts only for the company it named: an older "Continue" yes, or a yes given before the Privacy Policy named a
+  different company, asks again. **Stop sending to the AI** in the chat's footer takes the Yes back. Yes and No look the same.
+- If the chat's settings are slow or fail to load, the first question waits for them (at most 3 seconds) and a stored yes that does not
+  count (to a different company, or to the unnamed line) is dropped and never sent with the question; a yes to the named company still
+  counts. A question asked before AI turned out to be on stays on UAply: the first message after Yes holds only the new question.
+- Test: `tools/ui-chat-consent.js` (46 checks, in `run-all-tests.sh`); `tools/ui-journey.js` follows the new button names.
+
 ### Terms and help say what the app does (October 22)
 - **Terms of Service, section 3: "Applications on your behalf"** (the consent version 3 sentence, drafted in LEGAL-REVIEW.md;
   Saif decided on October 21 that it goes in the Terms). **Pending the lawyer's read before launch.** The list under it names the
