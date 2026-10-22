@@ -45,8 +45,8 @@ from email.utils import formatdate, make_msgid, parseaddr
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 PRIORITY = ("code", "reset", "application")
-DEFERRABLE = ("receipt", "owner_copy", "support", "ack")
-AUTOMATIC = ("code", "reset", "receipt", "owner_copy", "ack")       # sent by a machine: auto-responders must not answer them (RFC 3834)
+DEFERRABLE = ("receipt", "owner_copy", "support", "ack", "digest")   # digest: the day's "finish your application" reminder
+AUTOMATIC = ("code", "reset", "receipt", "owner_copy", "ack", "digest")       # sent by a machine: auto-responders must not answer them (RFC 3834)
 RETRY_SECONDS = 2
 HOLD_RETRY_SECONDS = 900
 MAX_TRIES = 8

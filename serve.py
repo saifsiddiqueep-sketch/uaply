@@ -215,6 +215,8 @@ def no_redirect_path(p):
 # hand). They come from UAPLY_ASSETLINKS_SHA256 (comma-separated, as Play Console shows them, AA:BB:...), so adding or changing a key
 # needs only that setting and a restart, never a new build. Unset (or nothing valid in it): a plain 404, the same as before.
 ASSETLINKS_PATH = "/.well-known/assetlinks.json"
+SECURITY_TXT_PATH = "/.well-known/security.txt"
+SECURITY_CONTACT_DEFAULT = "uaplytechnologies@uaply.net"      # the company's contact address (legal/support.html); SUPPORT_EMAIL wins when set
 ANDROID_PACKAGE = "com.uaply.app"
 FINGERPRINT_RE = re.compile(r"^[0-9A-F]{2}(?::[0-9A-F]{2}){31}$")
 
@@ -813,6 +815,8 @@ class H(http.server.SimpleHTTPRequestHandler):
             return self._health()
         if p == ASSETLINKS_PATH:                                            # the Play Store app's proof that it belongs to this site
             return self._assetlinks()
+        if p == SECURITY_TXT_PATH:                                          # who to tell about a security problem (RFC 9116)
+            return self._send(200, self._security_txt(), "text/plain; charset=utf-8")
         if self._to_public_host():
             return
         if p == "/robots.txt":
@@ -892,6 +896,22 @@ class H(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         if not head:
             self.wfile.write(body)
+
+    def _security_txt(self):
+        """/.well-known/security.txt: the company's contact address, the privacy page, and an expiry a year from now (written on each
+        request, so it never goes stale)."""
+        base = PUBLIC_BASE or (self._site_base() if api else "") or "https://uaply.net"
+        to = SECURITY_CONTACT_DEFAULT
+        try:
+            got = chat_api.support_email() if api else ""
+            if isinstance(got, str) and re.fullmatch(r"[^@\s<>]{1,64}@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", got.strip()):
+                to = got.strip()
+        except Exception:
+            pass
+        expires = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + 365 * 86400))
+        return ("# UAply: tell us about a security problem. We read every message and reply within 2 business days.\n"
+                "Contact: mailto:%s\nExpires: %s\nPreferred-Languages: en\nCanonical: %s%s\n"
+                "# Privacy policy: %s/legal/privacy.html\n" % (to, expires, base, SECURITY_TXT_PATH, base)).encode("utf-8")
 
     def _assetlinks(self, head=False):
         """GET or HEAD /.well-known/assetlinks.json: the statement built at start from UAPLY_ASSETLINKS_SHA256, or a plain 404 without it."""

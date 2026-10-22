@@ -219,7 +219,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, on }) => {
   await menu("nb-dash", "applied"); await sleep(500);
   const row9 = await q("const b=d.querySelector('#track [data-finish=\"" + j9.id + "\"]')||d.querySelector('[data-finish=\"" + j9.id + "\"]');const r=b&&b.closest('.row');if(!r)return '';return JSON.stringify({txt:r.innerText.replace(/\\s+/g,' '),chip:(r.querySelector('.stchip')||{}).textContent||'',links:[...r.querySelectorAll('.joblinks .linkbtn')].map(x=>x.innerText.trim()),open:(r.querySelector('[data-open]')||{getAttribute:()=>''}).getAttribute('data-open'),url:(w.__uaply.JOBS.find(j=>j.id===" + j9.id + ")||{}).url})");
   const r9 = row9 ? JSON.parse(row9) : {};
-  check("9. Applied shows the row with both links: See the job posting, Finish applying on their site", JSON.stringify(r9.links) === JSON.stringify(["See the job posting ↗", "Finish applying on their site ↗"]), row9);
+  check("9. Applied shows the row with both links: See the job posting, Finish applying on their site (and Mark as applied)", JSON.stringify(r9.links) === JSON.stringify(["See the job posting ↗", "Finish applying on their site ↗", "Mark as applied"]), row9);
   check("9. ...the status chip says Finish on their site", r9.chip === "Finish on their site", row9);
   check("9. ...See the job posting opens the job's own address", !!r9.url && r9.open === r9.url, row9);
   // Finish applying: copies only name, email, phone and links (never voluntary answers or the resume) and opens a tagged link
@@ -236,8 +236,10 @@ module.exports = async ({ ev, sleep, nav, send, logs, on }) => {
   check("9. ...and the clipboard holds Name, Email, Phone and LinkedIn", /^Name: Walk Tester\r?\nEmail: walk\.tester@example\.com\r?\nPhone: \(215\) 555-0100\r?\nLinkedIn: https:\/\/www\.linkedin\.com\/in\/walk$/.test(clip9), JSON.stringify(clip9));
   check("9. ...never the resume link, voluntary answers, race, gender, veteran or disability", !/resume|cv\.pdf|race|gender|veteran|disab|ethnic|hispanic/i.test(clip9), JSON.stringify(clip9));
   const opened = JSON.parse(await q("return JSON.stringify(w.__walkOpened)") || "[]");
-  const want9 = (r9.url || "").replace(/^(https:\/\/[^/]*greenhouse\.io\/[^#]*)$/, (m) => m + (m.includes("?") ? "&" : "?") + "gh_src=uaply").replace(/^(https:\/\/[^/]*lever\.co\/[^#]*)$/, (m) => m + (m.includes("?") ? "&" : "?") + "lever-source=uaply");
-  check("9. Finish applying on their site opens the employer's page (tagged only on Greenhouse and Lever)", opened.length === 1 && opened[0] === want9, JSON.stringify(opened) + " wanted " + want9);
+  // the application form, not the posting (apply journey, October 22): Lever /apply, Ashby /application, SmartRecruiters ?oga=true, plus
+  // the source tag on Greenhouse and Lever; tools/ui-journey.js checks each rule on its own
+  const want9 = await q("return w.__uaplyHandoffURL(" + JSON.stringify(r9.url || "") + ")");
+  check("9. Finish applying on their site opens the employer's application form (tagged only on Greenhouse and Lever)", opened.length === 1 && opened[0] === want9, JSON.stringify(opened) + " wanted " + want9);
   const tag9 = JSON.parse(await q("return JSON.stringify([w.__uaplyHandoffURL('https://job-boards.greenhouse.io/acme/jobs/1'),w.__uaplyHandoffURL('https://jobs.lever.co/acme/abc?x=1'),w.__uaplyHandoffURL('https://jobs.ashbyhq.com/acme/1'),w.__uaplyHandoffURL('https://evilgreenhouse.io.example.com/j')])"));
   check("9. source tags: ?gh_src=uaply on Greenhouse, lever-source=uaply on Lever, nothing on any other site", tag9[0].endsWith("?gh_src=uaply") && tag9[1].endsWith("?x=1&lever-source=uaply") && tag9[2] === "https://jobs.ashbyhq.com/acme/1" && !/uaply/.test(tag9[3]), JSON.stringify(tag9));
   const pre9 = await q("return w.__uaplyPrefillText()");

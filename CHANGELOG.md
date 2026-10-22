@@ -126,6 +126,22 @@ production page and only changes when the owner decides.
 - **Measured** on the owner's Galaxy, 20 real postings per system, nothing submitted: see `docs/assisted-apply.md`.
 - Tests: `tools/test-assist.js` (mock form per system in `tools/fixtures/assist/`), `tools/ui-assist-tracker.js` (Job Tracker with a
   stand-in plugin), `tools/assist-measure.js` (real postings, every application-carrying request refused).
+### Five fixes from the October 22 audit
+- **Rate limits count the real visitor.** The visitor's address is the last hop the host's proxy added to X-Forwarded-For (an internal hop
+  after it is skipped), or CF-Connecting-IP when that hop is a Cloudflare server (Cloudflare's published ranges, read at start and every
+  24 hours, with a built-in copy). A script writing a new made-up first entry every try is now locked out like anyone else. The limits are
+  campus-friendly: 40 sign-ups an hour per address (was 5), 5 per address and email, codes 3 per account, 80 per address (was 12), 5 per
+  address and email; each refusal says what to do.
+- **Mark as applied.** A hand-off row in Job Tracker has Mark as applied: the row then says Sent (by you) with the date; Undo once.
+- **One reminder a day.** A hand-off swipe no longer sends its own "Finish your application" email: the jobs wait and go together, the first
+  reminder 30 minutes after the first such swipe, then at most one a day (kind "digest", held by the daily limit like other mail that can
+  wait; removed with the account). Receipts for applications UAply sends are unchanged.
+- **/.well-known/security.txt**: the company's contact address, the privacy page, and an expiry a year from now.
+- **Help chat and the outside AI.** With AI answers on, the first message shows a one-line notice that it goes to Anthropic, with Continue or
+  Not now (remembered on the device); Not now sends nothing.
+- A short message after a swipe is no longer a narrow column (phones use the screen's width; at least 320 px elsewhere).
+- Tests: tools/test-public-auth.py (forged X-Forwarded-For, Cloudflare, sign-up and code limits), tools/test-emails.py (the reminder),
+  tools/test-pages.py (security.txt), tools/ui-journey.js (Mark as applied, the chat notice); each fails on 512bf84.
 
 ### Apply journey fixes (50 real swipes on the Galaxy A17 and a laptop, October 22)
 - **The card tells the truth before the swipe.** Where the server previews forms in test mode (the sandbox), a swipe right on any Greenhouse

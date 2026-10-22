@@ -735,9 +735,118 @@ def mail_ready():
     return _smtp_ready(config())
 
 
+# ---- the "finish your application" reminder: one email a day at most, not one per swipe ----
+# A swipe right on a job that takes applications on the employer's own site used to send its own "Finish your application" email, so a
+# person swiping through 20 jobs got 20 emails (plus the owner's copies) and the 300-a-day mail allowance went fast (October 22). Those
+# jobs are now kept per person and sent together: the first reminder DIGEST_HOLD after the first such swipe (so one swiping session is
+# one email), then at most one every DIGEST_EVERY. Receipts for applications UAply really sent are unchanged. It goes through mailer.py
+# as kind "digest", so the daily limit can hold it like any other email that can wait.
+DIGEST_HOLD = 30 * 60
+DIGEST_EVERY = 24 * 3600
+DIGEST_MAX = 50                                # the most jobs one reminder lists (the newest)
+_digest_lock = threading.Lock()
+
+
+def _digest_path():
+    return os.path.join(DATA, "finish-digest.json") if DATA else ""
+
+
+def _digest_load():
+    try:
+        with open(_digest_path(), encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _digest_save(d):
+    p = _digest_path()
+    if not p:
+        return
+    try:
+        tmp = p + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(d, f)
+        os.replace(tmp, p)
+    except OSError as e:
+        sys.stderr.write("[uaply] the finish-your-application reminders could not be saved: %s\n" % type(e).__name__)
+
+
+def _queue_finish(user, rec, site=""):
+    """Keep one hand-off job for this person's next reminder (once per job)."""
+    j = rec.get("job") or {}
+    with _digest_lock:
+        d = _digest_load()
+        e = d.setdefault(str(user["id"]), {"to": user["email"], "items": [], "last": 0})
+        e["to"] = user["email"]
+        if not any(i.get("id") == j.get("id") for i in e["items"]):
+            e["items"].append({"id": j.get("id"), "co": _s(j.get("co"), 120), "role": _s(j.get("role"), 160), "url": _https(j.get("url")) or "",
+                               "at": int(time.time()), "site": site if isinstance(site, str) and site.startswith("https://") else "",
+                               "test": rec.get("mode") == "test"})
+            e["items"] = e["items"][-DIGEST_MAX:]
+        _digest_save(d)
+
+
+def finish_waiting(user_id):
+    """How many jobs wait for this person's next reminder (for the browser checks and the owner)."""
+    with _digest_lock:
+        return len((_digest_load().get(str(user_id)) or {}).get("items") or [])
+
+
+def send_finish_digests(now=None):
+    """Send each person whose reminder is due one email listing every job waiting on an employer's site. Returns how many were sent (or
+    held by the daily limit, which sends them later). Called every few minutes by the mail worker."""
+    now = time.time() if now is None else now
+    cfg = config()
+    if not _smtp_ready(cfg):
+        return 0
+    done = 0
+    with _digest_lock:
+        d = _digest_load()
+        for uid, e in list(d.items()):
+            items = e.get("items") or []
+            if not items or now - (e.get("last") or 0) < DIGEST_EVERY or now - min(i.get("at") or now for i in items) < DIGEST_HOLD:
+                continue
+            site = next((i.get("site") for i in reversed(items) if i.get("site")), "")
+            subject, body, page = emails.finish_digest({"items": items, "test": any(i.get("test") for i in items),
+                                                        "base_url": _site_base(cfg, site), "user_email": e.get("to", ""),
+                                                        "support_email": cfg.get("support_email") or os.environ.get("SUPPORT_EMAIL", "")})
+            try:
+                status = _send_receipt(cfg, e["to"], subject, body, page, kind="digest", user=int(uid))
+            except MailNotSent as x:
+                status = "bounced" if x.status == "suppressed" else "failed"
+            except Exception as x:
+                status = "failed"
+                sys.stderr.write("[uaply] a finish-your-application reminder was not sent: %s\n" % type(x).__name__)
+            if status in ("sent", "held", "bounced"):     # sent, kept for later by the daily limit, or an address that bounces: not tried again
+                e["items"], e["last"] = [], now
+                done += status != "bounced"
+                try:
+                    auth_api.add_mail(int(uid), e["to"], subject, (HELD_NOTE + "\n\n" + body) if status == "held" else body, status)
+                except Exception:
+                    pass
+        _digest_save(d)
+    return done
+
+
+def _forget_digest(user_id):
+    with _digest_lock:
+        d = _digest_load()
+        if d.pop(str(user_id), None) is not None:
+            _digest_save(d)
+
+
 def _receipt(cfg, user, cand, job, note, rec, site=""):
-    """Email the signed-in applicant a copy of what happened. Never raises: a receipt problem must not undo an application."""
+    """Email the signed-in applicant a copy of what happened. Never raises: a receipt problem must not undo an application.
+    A hand-off waits for the day's reminder instead (see DIGEST_HOLD)."""
     to = user["email"]
+    if rec.get("status") == "handoff" and _smtp_ready(cfg):
+        try:
+            _queue_finish(user, rec, site)
+            return {"to": to, "status": "digest"}
+        except Exception as e:
+            sys.stderr.write("[uaply] a hand-off could not be kept for the reminder: %s\n" % type(e).__name__)
     subject, body, page = emails.applicant_receipt(_mail_ctx(cfg, rec, note, user["email"], site))
     status = "delivered_test"
     if _smtp_ready(cfg):                      # the receipt goes only to the applicant's own address, so it is safe to send in test mode too
@@ -780,6 +889,14 @@ def flush_mail():
 
 
 def start_mail_worker():
+    def digests():
+        while True:
+            time.sleep(300)
+            try:
+                send_finish_digests()
+            except Exception as e:
+                sys.stderr.write("[uaply] sending the finish-your-application reminders failed: %s\n" % type(e).__name__)
+    threading.Thread(target=digests, daemon=True, name="uaply-digest").start()
     return mailer.start_worker(lambda: config() if _smtp_ready(config()) else {}, _mail_sent_later)
 
 
@@ -1070,6 +1187,7 @@ def forget_user(user_id):
     """Remove every application record made while signed in as this account (used when the account is deleted)."""
     if not user_id:
         return 0
+    _forget_digest(user_id)                        # the reminder waiting for this account goes too
     with _lock:
         keep = [a for a in APPS if a.get("user") != user_id]
         gone = len(APPS) - len(keep)

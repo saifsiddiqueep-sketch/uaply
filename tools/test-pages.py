@@ -348,6 +348,14 @@ try:
     hs = get(A, "/.well-known/assetlinks.json", "HEAD")[0]
     t("UAPLY_ASSETLINKS_SHA256 unset: /.well-known/assetlinks.json is a plain 404 (JSON, GET and HEAD), not an empty statement",
       (st, ct, hs, b"package_name" in body) == (404, "application/json", 404, False), "%s %s %s" % (st, ct, body[:80]))
+    # /.well-known/security.txt (RFC 9116): who to tell about a security problem, the privacy page, and an expiry a year away
+    st, ct, sec, _, loc = get(A, "/.well-known/security.txt")
+    secs = sec.decode("utf-8", "replace")
+    exp = re.search(r"^Expires: (\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ)$", secs, re.M)
+    days = (time.mktime(time.strptime(exp.group(1), "%Y-%m-%dT%H:%M:%SZ")) - time.mktime(time.gmtime())) / 86400 if exp else 0
+    t("/.well-known/security.txt: plain text with the company's contact address, the privacy page, and an expiry a year from now",
+      st == 200 and ct.startswith("text/plain") and "Contact: mailto:uaplytechnologies@uaply.net" in secs and "/legal/privacy.html" in secs
+      and 360 <= days <= 366 and re.search(r"^Canonical: \S+/\.well-known/security\.txt$", secs, re.M) is not None, "%s %s %r" % (st, ct, secs[:300]))
 
     pb, B, logb = server({"UAPLY_ASSETLINKS_SHA256": " %s , %s, not-a-fingerprint, %s ,," % (FP1.lower(), FP2, FP1),
                           "UAPLY_PUBLIC_URL": "https://uaply.net"})

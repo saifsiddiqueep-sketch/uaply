@@ -263,7 +263,7 @@ function kitApply(w,host){
         else if(j.status==="failed"){setStatus(j.error||"The email could not be sent.",true);if(sendBtn)sendBtn.disabled=false;return}
         else setStatus("Done.");
         var rc=j.receipt,au=w.__uaplyAuth?w.__uaplyAuth():null;
-        if(rc)statusEl.textContent+=" "+({sent:"Confirmation emailed to "+rc.to+".",delivered_test:testInboxNote(),not_configured:(isRelease?"":"No confirmation email: email sending is not set up yet."),failed:"The confirmation email to "+rc.to+" could not be sent.",held:"Your confirmation email is queued and will arrive later (UAply's email is busy).",bounced:"No confirmation email: emails to "+rc.to+" bounce back.",unverified:"Verify your email (Profile, Account) to get confirmation emails."}[rc.status]||"");
+        if(rc)statusEl.textContent+=" "+({digest:"The steps to finish it come by email, once a day with any others.",sent:"Confirmation emailed to "+rc.to+".",delivered_test:testInboxNote(),not_configured:(isRelease?"":"No confirmation email: email sending is not set up yet."),failed:"The confirmation email to "+rc.to+" could not be sent.",held:"Your confirmation email is queued and will arrive later (UAply's email is busy).",bounced:"No confirmation email: emails to "+rc.to+" bounce back.",unverified:"Verify your email (Profile, Account) to get confirmation emails."}[rc.status]||"");
         else if(au&&au.up&&!au.user)statusEl.textContent+=" Sign in to get a confirmation email.";
         if(j.status!=="handoff")undoBtn.hidden=true;
         if(sendBtn&&(j.status==="sent"||j.status==="delivered_test"||j.status==="duplicate"))sendBtn.hidden=true;
@@ -696,7 +696,7 @@ function kitApply(w,host){
     /* what happened to the applicant's own email receipt (signed-in accounts only) */
     function receiptNote(j){
       var rc=j.receipt,au=w.__uaplyAuth?w.__uaplyAuth():null;
-      if(rc)return " "+({sent:"Confirmation emailed to "+rc.to+".",delivered_test:testInboxNote(),not_configured:(isRelease?"":"No confirmation email: email sending is not set up yet."),failed:"The confirmation email could not be sent.",held:"Your confirmation email is queued and will arrive later (UAply's email is busy).",bounced:"No confirmation email: emails to "+rc.to+" bounce back.",unverified:"Verify your email (Profile, Account) to get confirmation emails."}[rc.status]||"");
+      if(rc)return " "+({digest:"The steps to finish it come by email, once a day with any others.",sent:"Confirmation emailed to "+rc.to+".",delivered_test:testInboxNote(),not_configured:(isRelease?"":"No confirmation email: email sending is not set up yet."),failed:"The confirmation email could not be sent.",held:"Your confirmation email is queued and will arrive later (UAply's email is busy).",bounced:"No confirmation email: emails to "+rc.to+" bounce back.",unverified:"Verify your email (Profile, Account) to get confirmation emails."}[rc.status]||"");
       return au&&au.up&&!au.user?" Sign in to get a confirmation email.":"";
     }
     function deliver(){

@@ -158,7 +158,11 @@ try:
     auth_api.verify_code(tok5, dg, "10.0.0.6")
     u5 = auth_api.user_for(tok5)
     code_, res = uaply_api.submit({"consent": True, "job": dict(job, id=500002), "profile": {"ext": {"phone": "215-555-0100"}, "name": "Una Verified", "email": "unverified@example.com"}}, u5)
-    t("once verified, a swipe sends the confirmation email", (res["receipt"]["status"], bool(last_mail("unverified@example.com"))), ("sent", True))
+    # a hand-off: its "finish your application" waits for the day's reminder (one email a day at most), then goes to the verified address
+    t("once verified, a hand-off swipe keeps its email for the day's reminder", (res["receipt"]["status"], uaply_api.finish_waiting(u5["id"])), ("digest", 1))
+    uaply_api.send_finish_digests(time.time() + uaply_api.DIGEST_HOLD + 60)
+    lm = last_mail("unverified@example.com")
+    t("...which then goes to the verified address", bool(lm) and "Finish your application" in str(lm["Subject"]), True)
 
     # a reset link also proves the email
     s, out, tok6 = auth_api.signup("viaReset@example.com", "correct horse 99", "10.0.0.7", True)

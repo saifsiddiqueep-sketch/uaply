@@ -163,6 +163,15 @@ function apply(w,host){
   function ask(q){
     if(busy)return;
     if(isPreview()){clearChips();previewSay();starters();return}
+    /* AI answers on: the first time, say in one line that the message goes to an outside AI, and send it only on Continue (remembered on
+       this device). Not now sends nothing (October 22: the Help chat went to the AI provider without asking) */
+    if(CFG.ai&&!load().aiOk){
+      clearChips();
+      botSay("AI answers are on: your message goes to our AI provider, Anthropic, to write the reply (it is not kept). Send it?");
+      chips([{label:"Continue",pri:true,run:function(){var s=load();s.aiOk=Date.now();store(s);meSay("Continue");ask(q)}},
+        {label:"Not now",run:function(){meSay("Not now");botSay("Nothing was sent. You can still talk to a person, report a problem or give feedback.");starters()}}]);
+      return;
+    }
     busy=true;clearChips();
     hist.push({role:"user",content:q});hist=hist.slice(-10);
     typing(true);
