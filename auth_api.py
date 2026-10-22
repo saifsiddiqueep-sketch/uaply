@@ -844,7 +844,7 @@ def _count_site_code():
     _code_sends.setdefault(("site",), []).append(time.time())
 # One answer for every code that does not sign in: wrong digits, a code that ran out of time or tries, an address with no code or no account.
 # How many tries are left stays on the server, so a wrong code never tells a stranger whether the address has an account.
-WRONG_CODE_MSG = "That code is not right, or it has expired. Check the newest email from UAply, or send a new code."
+WRONG_CODE_MSG = "That code is not right, or it has expired. Check the newest email from UAply, or press Resend code."
 # How many codes can be guessed at: each code takes at most MAX_CODE_TRIES (5) wrong tries, and at most CODE_SENDS_PER_EMAIL_DAY (6) codes
 # go to one address a day (every route that emails a code counts), so at most 30 guesses a day (about 1 in 33,000), plus 10 at the
 # owner's 2 spare codes. That bound comes from the codes themselves, so nothing here refuses a code that was just emailed and still has
