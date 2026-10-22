@@ -28,6 +28,13 @@ import sys
 import time
 import urllib.parse
 
+# job and company names come from thousands of boards ("Tōkyō", "Zürich"): print them as UTF-8 and never crash on a console or a pipe
+# whose code page lacks a letter (Windows' cp1252 raised UnicodeEncodeError on "ō" and "ē" in the October 21 and 22 full runs)
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except (AttributeError, ValueError):
+    pass
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
@@ -38,6 +45,8 @@ ap.add_argument("--no-rate-limit", action="store_true")
 ap.add_argument("--shields", default="", help="folder of ad-block filter lists (.txt): check no UAply address is blocked (Brave Shields)")
 ap.add_argument("--branch", default="dev", help="the branch the site deploys from; its head on GitHub must be the commit the site runs (default dev)")
 ap.add_argument("--commit", default="", help="the commit the site must run, instead of asking GitHub for the head of --branch")
+ap.add_argument("--repo", default="https://github.com/saifsiddiqueep-sketch/uaply",
+                help="the GitHub repository the site deploys from; its --branch head is read there (git ls-remote), never from a local clone")
 ap.add_argument("--timeout", type=float, default=60)
 A = ap.parse_args()
 
@@ -268,10 +277,12 @@ def deployed():
     want, where = (A.commit or "").strip().lower(), "--commit"
     if not want:
         try:
-            out = subprocess.run(["git", "ls-remote", "origin", "refs/heads/" + A.branch], cwd=ROOT, capture_output=True, text=True, timeout=30).stdout
-            want, where = (out.split() or [""])[0], "origin/" + A.branch
+            # GitHub itself, not this checkout's "origin": a clone of a clone has the computer's own copy as origin, whose dev can be
+            # days old (October 22: a local dev at 0b38ade while GitHub's dev and the live site were both e6aced4)
+            out = subprocess.run(["git", "ls-remote", A.repo, "refs/heads/" + A.branch], cwd=ROOT, capture_output=True, text=True, timeout=30).stdout
+            want, where = (out.split() or [""])[0], "GitHub " + A.branch
         except (OSError, subprocess.SubprocessError) as e:
-            skip("the site runs the latest push to %s" % A.branch, "git and this repository's GitHub remote (%s), or --commit SHA" % type(e).__name__)
+            skip("the site runs the latest push to %s" % A.branch, "git and the GitHub repository (%s), or --commit SHA" % type(e).__name__)
             return
     if not re.fullmatch(r"[0-9a-f]{7,40}", want):
         skip("the site runs the latest push to %s" % A.branch, "the head of %s from GitHub (git ls-remote gave nothing), or --commit SHA" % where)

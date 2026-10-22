@@ -432,6 +432,15 @@ function apply(w,host){
     return w.fetch(path,o).then(function(r){return r.json().then(function(j){return {ok:r.ok,status:r.status,j:j||{}}},function(){return {ok:false,status:r.status,j:{}}})},function(){return {ok:false,status:0,j:{}}});
   }
   function load(){
+    /* a signed-out visitor is never asked about a company: /api/employer/me would answer 401, which the browser prints in the console
+       as a failed request on every page load (testers read it as an error). /api/auth/me answers 200 either way; without a server
+       (a static copy) it fails and the company question below finds that out as before. */
+    return api("/api/auth/me").then(function(a){
+      if(a.ok&&a.j&&a.j.user===null){H.mode="signedout";return}
+      return loadMe();
+    });
+  }
+  function loadMe(){
     return api("/api/employer/me").then(function(r){
       if(r.ok){H.mode="server";H.company=r.j.company;H.jobs=r.j.jobs||[];H.apps=r.j.applicants||[];H.verified=!!r.j.verified;H.email=r.j.email||""}
       else if(r.status===401)H.mode="signedout";
