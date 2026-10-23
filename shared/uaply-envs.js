@@ -321,5 +321,8 @@ function run(frame,on,key,done){
     setTimeout(poll,0);
   });
 }
-window.UAplyEnv={FEATURES:FEATURES,ORDER:ORDER,run:run};
+/* the key under which Share this job keeps a friend's landing in the top page's sessionStorage: shared/uaply-share.js writes it and
+   shared/uaply-live.js reads it (to fetch that job with the first page); one name, here (check.js keeps it that way) */
+var SHARE_KEY="uaply.share.landing";
+window.UAplyEnv={FEATURES:FEATURES,ORDER:ORDER,run:run,SHARE_KEY:SHARE_KEY};
 })();

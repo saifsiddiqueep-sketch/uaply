@@ -51,8 +51,27 @@ function writeCache(jobs,decided){
 }
 
 /* ---------------- live ---------------- */
+/* the app's parts each ask the server the same start-up questions (who is signed in, which sign-ins it offers, how applications are
+   sent): /api/auth/me was asked twice at start, the second answer 0.7 s after the first. In the page itself, before any part runs, a GET
+   of one of these three shares one request: callers within 5 s of its answer get a copy of it, and any other request to /api/ that is
+   not a GET (a sign-in, a sign-out, a code, a profile) forgets them, so nothing stale is ever read after a change */
+function shareGets(){
+  var f=window.fetch;if(!f||window.__uaplyGetShare)return;window.__uaplyGetShare=1;
+  var C={},TTL=5000,ONE=/^\/api\/(auth\/me|auth\/providers|apply\/config)$/;
+  window.fetch=function(u,o){
+    var url=String(u&&u.url||u),m=String(o&&o.method||u&&u.method||"GET").toUpperCase(),p=url.replace(/^https?:\/\/[^\/]+/,"").split("#")[0];
+    if(m!=="GET"){if(/^\/api\//.test(p))C={};return f.apply(this,arguments)}
+    if(!ONE.test(p))return f.apply(this,arguments);
+    var c=C[p];if(c&&(!c.at||Date.now()-c.at<TTL))return c.p.then(function(r){return r.clone()});
+    var e={at:0};C[p]=e;
+    e.p=f.apply(this,arguments).then(function(r){e.at=Date.now();if(!r.ok&&C[p]===e)delete C[p];return r},function(x){if(C[p]===e)delete C[p];throw x});
+    return e.p.then(function(r){return r.clone()});
+  };
+}
 function patch(s){
-  s=once(s,'var q=queue(),deck=$("deck");','var q=queue(),deck=$("deck");if(window.__uaplyNearEnd)window.__uaplyNearEnd(q.length);');   /* paging: the cards left */
+  s=once(s,"<script>","<script>\n("+shareGets.toString()+")();\n");   /* the first script of the page: before anything asks */
+  /* paging: the deck holds its top card while the whole list is ranked, then tells live.js how many cards are left */
+  s=once(s,'var q=queue(),deck=$("deck");','var q=queue(),deck=$("deck");if(window.__uaplyHoldTop)q=window.__uaplyHoldTop(q,JOB_BY_ID,S,evaluate);if(window.__uaplyNearEnd)window.__uaplyNearEnd(q.length);');
   var cached=readCache();
   var extra=cached.length?","+JSON.stringify(cached).slice(1,-1).replace(/<\//g,"<\\/"):"";
   s=once(s,'regional cookbooks."}','regional cookbooks."}'+extra);
@@ -124,18 +143,23 @@ function apply(w,host){
   say("Loading real postings…");
   /* On a fresh start the server answers within seconds with the boards it has read so far and says how many are still loading
      ("pending"): the app asks again a few times and adds what came in, so the first visitor never waits for every board. */
-  /* the job list a page at a time (October 23: 16,000 postings were a 14.8 MB answer and about 3 s before the first card). The first
-     page of PAGE jobs comes at sign-in; the next one is asked for in the background when the person is within NEAR cards of the end of
-     the stack on screen (renderDeck tells __uaplyNearEnd how many are left, after every filter), one stack at a time (?type=, its own
-     "next" cursor). __uaplyJobs.add keeps one copy of each id, so a page that overlaps another (the list rebuilt meanwhile, a stack's
-     own first page) never shows a card twice. The whole list (GET /api/jobs, no query) stays for other callers. */
-  var PAGE=200,NEAR=20,PG=null,pgBusy=false,pgWait=0;
+  /* the job list: the first page for the first card, then the whole list, ranked (October 23). 16,000 postings were a 14.8 MB answer
+     and about 3 s before the first card; but the server's order is its sources' order (the first 200 came from 13 employers, mostly
+     tech, with the first nurse at 603), so ranking only them showed most people tech jobs and a false "none matched your target titles".
+     Now: GET /api/jobs?size=200&page=1 draws the first card at once; then the whole list (the no-query form, about 570 KB compressed)
+     comes in the background and the deck is ranked over all of it, with the card on top held where it is (__uaplyHoldTop) until it is
+     swiped, so nothing moves under a thumb. The "none matched" note waits for that ranking (html.uaRank hides it meanwhile). If the
+     whole list cannot come, the deck carries on a page at a time: within NEAR cards of the end of the stack on screen the next page of
+     that stack (?type=, its own "next" cursor). __uaplyJobs.add keeps one copy of each id, so no card ever shows twice. */
+  var PAGE=200,NEAR=20,PG=null,pgBusy=false,pgWait=0,FULL=false,fullBusy=false,HOLD=0,HOLDT="";
+  try{var rs=d.createElement("style");rs.textContent="html.uaRank #titleNote{display:none!important}";(d.head||d.documentElement).appendChild(rs)}catch(e){}
+  function ranking(on){try{d.documentElement.classList.toggle("uaRank",!!on)}catch(e){}}
   function stackType(){try{var t=w.__uaply.getType&&w.__uaply.getType();return /^(job|parttime|internship|coop)$/.test(t)?t:""}catch(e){return ""}}
-  /* a shared job (Share this job, ?job=<id>) may be on any page: it is read by itself first (GET /api/jobs/<id>) and goes in with the
-     first page, so the friend's landing finds it in that answer (shared/uaply-share.js keeps the landing in the top page's sessionStorage) */
+  /* a shared job (Share this job, ?job=<id>) may be on any page: it is read by itself (GET /api/jobs/<id>), together with the first
+     page, and goes in with it, so the friend's landing finds it in that answer (the landing's key: UAplyEnv.SHARE_KEY) */
   function sharedId(){
     try{var m=/[?&]job=(\d{6,16})(?:&|$)/.exec(w.top.location.search);if(m)return +m[1]}catch(e){}
-    try{var k=w.top.sessionStorage.getItem("uaply.share.landing"),o=k&&JSON.parse(k);if(o&&/^\d{6,16}$/.test(String(o.id))&&Date.now()-(+o.at||0)<30*60000)return +o.id}catch(e){}
+    try{var k=w.top.sessionStorage.getItem(window.UAplyEnv.SHARE_KEY),o=k&&JSON.parse(k);if(o&&/^\d{6,16}$/.test(String(o.id))&&Date.now()-(+o.at||0)<30*60000)return +o.id}catch(e){}
     return 0;
   }
   function oneJob(id){return fetch("/api/jobs/"+id).then(function(r){return r.ok?r.json():null}).then(function(d){return d&&d.job||null},function(){return null})}
@@ -154,8 +178,18 @@ function apply(w,host){
     var src=Object.keys(data.sources||{}).map(function(k){return k+": "+data.sources[k]}).join(" · ");
     say("Real postings: "+fresh.length+" loaded ("+added+" new). "+src);
   }
+  /* the card on top stays on top while a bigger list is ranked: in front of the stack until it is swiped (or the stack changes), even
+     if the new ranking (target titles now matched, say) would not show it */
+  w.__uaplyHoldTop=function(q,BY,S,evaluate){
+    if(!HOLD)return q;
+    if((S.decisions&&S.decisions[HOLD])||stackType()!==HOLDT){HOLD=0;return q}
+    for(var i=0;i<q.length;i++)if(q[i].j.id===HOLD){if(i>0)q.unshift(q.splice(i,1)[0]);return q}
+    var j=BY[HOLD];if(j)q.unshift({j:j,m:evaluate(j,S.profile)});else HOLD=0;
+    return q;
+  };
+  function hold(){try{var c=d.querySelector("#deck .card.top[data-id]");HOLD=c?+c.getAttribute("data-id"):0;HOLDT=stackType()}catch(e){HOLD=0}}
   w.__uaplyNearEnd=function(left){
-    if(!PG||left>NEAR||pgBusy||Date.now()<pgWait)return;
+    if(!PG||FULL||fullBusy||left>NEAR||pgBusy||Date.now()<pgWait)return;
     var t=stackType(),cur=PG[t]||(t?null:PG[""]);
     if(cur&&!cur.next)return;                                   /* this stack has every page it can get */
     pgBusy=true;
@@ -164,25 +198,34 @@ function apply(w,host){
       PG[t]={next:data.next||null,total:data.total};pgBusy=false;took(data);   /* add() redraws the deck, which asks again if it is still short */
     }).catch(function(){pgBusy=false;pgWait=Date.now()+10000});   /* a page that failed: tried again on a later swipe, 10 s on */
   };
+  /* the whole list, after the first card is drawn (and again while boards are still loading, as before paging) */
+  function whole(round){
+    if(fullBusy)return Promise.resolve();
+    fullBusy=true;ranking(true);
+    return fetch("/api/jobs").then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}).then(function(data){
+      hold();fullBusy=false;FULL=true;ranking(false);took(data);
+      if(data.pending>0&&round<15)setTimeout(function(){FULL=false;whole(round+1)},round<3?5000:15000);
+    }).catch(function(){fullBusy=false;ranking(false);try{w.__uaply.renderAll()}catch(x){}});   /* not now: the deck carries on a page at a time */
+  }
   function loadJobs(round){
-  var want=round===0?sharedId():0;
-  return Promise.resolve(want?oneJob(want):null).then(function(one){
-  return fetch("/api/jobs?size="+PAGE+"&page=1").then(function(r){
+  if(round>0)return whole(round);
+  var want=sharedId(),oneP=want?oneJob(want):Promise.resolve(null);
+  return Promise.all([oneP,fetch("/api/jobs?size="+PAGE+"&page=1")]).then(function(x){var one=x[0],r=x[1];
     /* a plain web host with no UAply server (a 404, or an HTML page): a preview. Show the example jobs and say so; a 5xx stays an outage */
     if(r.status===404||(r.ok&&/text\/html/i.test(r.headers.get("content-type")||""))){var pe=new Error("preview");pe.preview=true;throw pe}
-    if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}).then(function(data){
-    if(one&&!(data.jobs||[]).some(function(x){return +x.id===+one.id}))(data.jobs=data.jobs||[]).push(one);
-    PG={"":{next:data.next||null,total:data.total}};pgWait=0;   /* a first page (again, while boards load): every stack's paging starts over */
+    if(!r.ok)throw new Error("HTTP "+r.status);
+    /* the body is read only now, with the shared job in hand: the friend's landing reads this same answer */
+    return r.json().then(function(data){if(one&&!(data.jobs||[]).some(function(y){return +y.id===+one.id}))(data.jobs=data.jobs||[]).push(one);return data})}).then(function(data){
+    PG={"":{next:data.next||null,total:data.total}};pgWait=0;FULL=false;
+    if(data.next)ranking(true);                                 /* more to come: no "none matched" note until it is ranked */
     took(data);
-    if(data.pending>0&&round<15){
-      setTimeout(function(){loadJobs(round+1)},round<3?5000:15000);
-      if((data.jobs||[]).length<5){w.__uaplyLoadingJobs=true;try{w.__uaply.renderAll()}catch(x){}}   /* "Finding jobs for you…", not an empty deck */
-    }
+    if(data.pending>0&&(data.jobs||[]).length<5){w.__uaplyLoadingJobs=true;try{w.__uaply.renderAll()}catch(x){}}   /* "Finding jobs for you…" */
+    /* the first card is drawn: now the whole list, once the browser has painted it */
+    if(data.next||data.pending>0){var go=function(){whole(data.pending>0?1:0)};try{w.requestAnimationFrame(function(){setTimeout(go,30)})}catch(x){setTimeout(go,30)}}
   }).catch(function(e){if(round>0)return;   /* a later round that fails changes nothing: the jobs already shown stay */
     w.__uaplyLoadingJobs=false;
     if(e&&e.preview){w.__uaplyPreviewOn=true;w.__uaplyHideSamples=false;w.__uaplyJobsFailed=false;try{w.__uaply.renderAll()}catch(x){}say(w.__uaplyPreviewText||"Preview: example jobs only.");return}
     if(REL)w.__uaplyJobsFailed=true;if(REL){try{w.__uaply.renderAll()}catch(x){}}say(REL?"Could not load jobs ("+e.message+"). Check your connection and try again.":"Could not load real postings ("+e.message+"). Showing the example jobs.")});
-  });
   }
   /* the sign-in gate (shared/uaply-signup.js): no request for the job list while nobody is signed in; it is asked for once the gate lifts */
   /* (asked again each time the gate lifts: after a code that confirmed the address, the list that answered 403 "verify" comes now) */

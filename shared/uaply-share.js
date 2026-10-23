@@ -172,7 +172,7 @@ function apply(w){
      the line says so, with Try again), then settled: "open" (in front), "seen" (already swiped), "closed" (the list is complete without it).
      Until it is settled the landing is kept in the top page's sessionStorage: ?job= is already off the address, so this is what lets Try
      again (a reload) or a rebuild of the frame pick it up again. SH.left: the friend chose to swipe on, so the closed screen stays away. */
-  var KEEP="uaply.share.landing",KEEP_MS=30*60000;
+  var KEEP=window.UAplyEnv.SHARE_KEY,KEEP_MS=30*60000;   /* the one name (shared/uaply-envs.js) */
   var SH={id:0,t:"",c:"",state:"",pins:[],closed:false,left:false,since:0,seen:""};
   function keep(){try{var st=w.top.sessionStorage;if(st)st.setItem(KEEP,JSON.stringify({id:SH.id,t:SH.t,c:SH.c,at:Date.now()}))}catch(e){}}
   function forget(){try{var st=w.top.sessionStorage;if(st)st.removeItem(KEEP)}catch(e){}}
