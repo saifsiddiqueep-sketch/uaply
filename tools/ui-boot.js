@@ -5,6 +5,7 @@
 // 2. swipes on real postings survive a reload even while /api/jobs has not answered yet (or the job left the feed): the start-up read
 //    used to drop every decision whose job was not in the list yet, and the next save made the loss permanent.
 const PORT = process.env.PORT || "8767";
+const gateSignup = require("./gate-signup.js");   // the test person signs up first (Saif, October 22: no account, no data)
 module.exports = async ({ ev, sleep, send, on, logs }) => {
   const F = "document.querySelector('iframe')&&document.querySelector('iframe').contentDocument";
   const FW = "(document.querySelector('iframe')||{}).contentWindow";
@@ -30,6 +31,7 @@ module.exports = async ({ ev, sleep, send, on, logs }) => {
     return seen;
   };
 
+  await gateSignup({ ev, sleep, nav }, "http://127.0.0.1:" + PORT, "boot");
   // 1. a font site that never answers
   await send("Page.navigate", { url: base });
   const t = await ready(6000);

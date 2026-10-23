@@ -9,6 +9,7 @@
 //    covering nothing, no dialog taller than the screen with its buttons out of sight.
 //    LANDSCAPE=1 W=844 H=390 (or 667x375) checks a phone turned on its side: the same screens, the same checks.
 const PORT = process.env.PORT || "8767";
+const gateSignup = require("./gate-signup.js");   // the test person signs up first (Saif, October 22: no account, no data)
 module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
   const F = "document.querySelector('iframe').contentDocument";
   const FW = "document.querySelector('iframe').contentWindow";
@@ -54,8 +55,8 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
   await send("Fetch.enable", { patterns: [{ urlPattern: "*fonts.googleapis.com*" }, { urlPattern: "*fonts.gstatic.com*" }] });
   on("Fetch.requestPaused", (p) => { setTimeout(() => send("Fetch.continueRequest", { requestId: p.requestId }), 8000); });
   // the test person signs up first (October 22, Saif: on the sandbox nobody reaches anything without an account; the same everywhere)
-  await send("Page.navigate", { url: "http://127.0.0.1:" + PORT + "/healthz" }); await sleep(400);
-  const su = await ev("fetch('/api/auth/signup',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'phonefit.'+Date.now()+'@example.com',password:'Signup-first-99',first:'Test',last:'Person',agree:true,passwordless:false})}).then(r=>r.status)");
+  const who = await gateSignup({ ev, sleep, nav: (u) => send("Page.navigate", { url: u }).then(() => sleep(300)) }, "http://127.0.0.1:" + PORT, "phone");
+  const su = who.ok ? 200 : 0 || await ev("fetch('/api/auth/signup',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'phonefit.'+Date.now()+'@example.com',password:'Signup-first-99',first:'Test',last:'Person',agree:true,passwordless:false})}).then(r=>r.status)");
   check("0. the test person signs up first (POST /api/auth/signup)", su === 200, su);
   const t0 = Date.now();
   await send("Page.navigate", { url: "http://127.0.0.1:" + PORT + "/" });

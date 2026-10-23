@@ -1,6 +1,7 @@
 // Every way of swiping on the release build at iPhone size, and what each one sends. Run against a clean dev server:
 //   W=390 H=844 PORT=8767 node tools/cdp.js tools/ui-swipes.js
 const PORT = process.env.PORT || "8767";
+const gateSignup = require("./gate-signup.js");   // the test person signs up first (Saif, October 22: no account, no data)
 module.exports = async ({ ev, sleep, nav, send, logs }) => {
   const F = "document.querySelector('iframe').contentDocument";
   const FW = "document.querySelector('iframe').contentWindow";
@@ -26,6 +27,7 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
     await sleep(900);
   };
 
+  await gateSignup({ ev, sleep, nav }, "http://127.0.0.1:" + PORT, "swipes");
   await nav("http://127.0.0.1:" + PORT + "/");
   await sleep(3500);
   await ev("(()=>{window.__reqs=[];const f=window.fetch;window.fetch=function(u,o){try{if(/api[/](apply|decision)/.test(String(u)))window.__reqs.push({u:String(u),b:o&&o.body?String(o.body):''})}catch(e){}return f.apply(this,arguments)}})()");

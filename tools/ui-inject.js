@@ -2,6 +2,7 @@
 // nothing may execute and no injected element may appear.
 //   W=390 H=844 PORT=18795 node tools/cdp.js tools/ui-inject.js
 const PORT = process.env.PORT || "18795";
+const gateSignup = require("./gate-signup.js");   // the test person signs up first (Saif, October 22: no account, no data)
 module.exports = async ({ ev, sleep, nav }) => {
   const F = "document.querySelector('iframe').contentDocument";
   let bad = 0;
@@ -22,15 +23,10 @@ module.exports = async ({ ev, sleep, nav }) => {
   };
   const injected = () => ev("JSON.stringify({xss:window.top.__xss||0,imgs:" + F + ".querySelectorAll('img[src=x]').length,svgs:" + F + ".querySelectorAll('svg[onload]').length,scripts:[..." + F + ".querySelectorAll('script')].filter(s=>/__xss/.test(s.textContent)).length,handlers:[..." + F + ".querySelectorAll('*')].filter(e=>e.hasAttribute('onerror')||e.hasAttribute('onload')).length})");
 
+  // an account first, so the application is sent as a signed-in person (and, since October 22, so there is anything to see at all)
+  await gateSignup({ ev, sleep, nav }, "http://127.0.0.1:" + PORT, "inject");
   await nav("http://127.0.0.1:" + PORT + "/");
   await sleep(3500);
-
-  // an account, so the application is sent as a signed-in person
-  await goto("nb-prof", "Account");
-  await sleep(1200);
-  await set("sEmail", "inject.tester@example.com"); await set("sPw", "correct horse 99"); await set("sPw2", "correct horse 99");
-  await ev("(()=>{" + F + ".getElementById('sAgree').checked=true})()");
-  await ev(F + ".querySelector('[data-auth=ssubmit]').click()"); await sleep(2500);
 
   // hostile text in every free-text profile field
   await goto("nb-prof", "Profile setup");

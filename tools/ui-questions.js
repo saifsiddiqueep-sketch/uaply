@@ -3,6 +3,7 @@
 const fs = require("fs");
 const PORT = process.env.PORT, ID = JSON.parse(fs.readFileSync(process.env.IDS, "utf8")), W = Number(process.env.W), H = Number(process.env.H);
 const PHONE = W < 700, TAG = "[" + W + "x" + H + "]";
+const gateSignup = require("./gate-signup.js");   // the test person signs up first (Saif, October 22: no account, no data)
 module.exports = async ({ ev, sleep, nav, send, shot }) => {
   const snap = async (n) => { if (process.env.SHOTS) await shot(require("path").join(process.env.SHOTS, "questions-" + W + "-" + n + ".png")); };
   const F = "document.querySelector('iframe').contentDocument", FW = "document.querySelector('iframe').contentWindow";
@@ -47,6 +48,7 @@ module.exports = async ({ ev, sleep, nav, send, shot }) => {
     "const over=w.document.documentElement.scrollWidth-w.innerWidth;return b.left>=0&&b.right<=w.innerWidth+0.5&&over<=0?'ok':'left '+b.left+' right '+b.right+' of '+w.innerWidth+', page wider by '+over})()");
 
   // ---- the person: a profile with name and email only, the first-application agreement given --------------------------------------------
+  await gateSignup({ ev, sleep, nav }, "http://127.0.0.1:" + PORT, "questions");
   await nav(base); await sleep(3000);
   const email = "q" + W + "@example.com";
   await ev("(()=>{const w=" + FW + ";w.localStorage.setItem((w.__uaplyKey||'uaply')+'.consent',JSON.stringify({v:3,at:Date.now(),agent:true}));const A=w.__uaply;Object.assign(A.S.profile,{name:'Sam Rivera',email:'" + email + "',custom:true,title:'Data Analyst',years:1,skills:['Python','SQL']});A.save()})()");

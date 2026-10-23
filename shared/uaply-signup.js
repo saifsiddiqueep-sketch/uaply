@@ -205,6 +205,13 @@ body.sgGated #acctSec{display:flex!important}
 /* the card's styles go into the production page's own style sheet, so the card never shows unstyled */
 function patch(s){
   s=once(s,"</style>",CSS+"</style>");
+  /* the gate (October 22, the runner's finding): signed out, the page builds no job card, no Applied list and no dashboard, so no job's
+     title is anywhere in the page, drawn or hidden. __uaplyGateUp is up from the first line and comes down only once /api/auth/me
+     answers with an account (gateSync); every drawing of the deck, Applied and the dashboard asks it first, and the gate going up again
+     (Sign out) empties them */
+  s=once(s,'var KEY="','window.__uaplyGateUp=true;\nvar KEY="');
+  s=once(s,'function renderAll(){renderDeck();renderApps();renderDash()}',
+    'function renderAll(){if(window.__uaplyGateUp){["deck","pane-apps","pane-dash"].forEach(function(i){var e=$(i);if(e)e.innerHTML=""});return}renderDeck();renderApps();renderDash()}');
   return s;
 }
 
@@ -428,10 +435,24 @@ function apply(w,host){
   function pwStep(u){var cs=getCodeStep();return u&&u.emailVerified===false&&cs&&cs.kind==="pw"&&cs.email.toLowerCase()===String(u.email||"").toLowerCase()?cs:null}
   function gateSync(){
     var on=wantGate(),was=gated;
-    if(on!==was){gated=on;d.body.classList.toggle("sgGated",on);try{d.documentElement.classList.toggle("sgGated",on)}catch(e){}}
+    if(on!==was){
+      gated=on;w.__uaplyGateUp=on;d.body.classList.toggle("sgGated",on);try{d.documentElement.classList.toggle("sgGated",on)}catch(e){}
+      /* up: the deck, Applied, the dashboard and Job Tracker are emptied. Down: they are drawn, and the job list is asked for now (the
+         first time: uaply-live.js waits for this; the server answers 401 to a visitor with no account anyway) */
+      try{A.renderAll()}catch(e){}try{var tpn=d.getElementById("pane-track");if(on&&tpn)tpn.innerHTML="";else if(w.__uaplyTrack)w.__uaplyTrack()}catch(e){}
+      if(!on&&w.__uaplyLoadJobs)try{w.__uaplyLoadJobs()}catch(e){}
+    }
     if(on){try{B.account()}catch(e){}}
     else if(was===true){if(V.view==="signedin")resetV();try{B.cards()}catch(e){}}
   }
+  /* any data route answering 401 "signin" (the session ended, or was never there): back to the gate */
+  var f0=w.fetch;
+  if(typeof f0==="function")w.fetch=function(){
+    return f0.apply(this,arguments).then(function(r){
+      if(r&&r.status===401){try{r.clone().json().then(function(j){if(j&&j.code==="signin"){if(srv().user)B.signedIn(null);else gateSync()}},function(){})}catch(e){}}
+      return r;
+    });
+  };
   w.__uaplyGated=function(){return gated!==false};
   w.__uaplyGateSync=gateSync;
 
@@ -443,7 +464,7 @@ function apply(w,host){
   /* the app's own signed-in card says how a person with no password signs in: here that is an emailed code (or Google), not "Forgot password" */
   w.__uaplyNoPwNote=function(user){
     if(codeOn!==true)return "";
-    var s=srv(),g=!s.hideGoogle&&(s.google||s.testInbox)&&!gOff(user&&user.email);
+    var s=srv(),g=!s.hideGoogle&&!!(user&&user.googleLinked)&&!gOff(user&&user.email);
     return '<p class="note" style="margin:0">You sign in with an emailed code'+(g?' or with Google':'')+'. No password needed.</p>';
   };
 
@@ -565,7 +586,7 @@ function apply(w,host){
       B.post("/api/auth/signup",{email:V.email,password:pw.value(),first:V.first,last:V.last,agree:true,passwordless:false}).then(function(r){
         if(!sb.isConnected)return;
         sb.disabled=false;sb.removeAttribute("aria-busy");sb.textContent="Create my account";
-        if(!r.ok){var t=(r.j&&r.j.error)||"Could not create the account. Try again.";if(r.j&&r.j.code==="mailbox"){em.error(t);fxs(em.input)}else if(r.j&&r.j.field==="password"||/password/i.test(t)){pw.error(t);fxs(pw.input)}else{agMsg("err",t);fxs(sb)}return}
+        if(!r.ok){var t=(r.j&&r.j.error)||"Could not create the account. Try again.";if(r.j&&r.j.code==="mailbox"||/already has an account/i.test(t)){em.error(t);fxs(em.input)}else if(r.j&&r.j.field==="password"||/password/i.test(t)){pw.error(t);fxs(pw.input)}else{agMsg("err",t);fxs(sb)}return}
         V.email=(r.j&&r.j.user&&r.j.user.email)||(r.j&&r.j.email)||V.email;V.delivery=(r.j&&r.j.delivery)||"";
         V.pwUp="";afterPasswordSignup(r.j&&r.j.user);
       });

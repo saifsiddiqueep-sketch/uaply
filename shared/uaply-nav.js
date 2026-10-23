@@ -307,6 +307,8 @@ html{-webkit-tap-highlight-color:transparent}a,button,input,select,textarea,summ
     October 22, 2026). Above the card, and reaching further down, it is 44 px again */
  .filters button{z-index:1}
  .filters button::after{height:52px}
+ /* ...and never over the location card's or a banner's own buttons next to them (Try again, Not now: 39 px on a turned phone) */
+ .banner button,#locAsk .acts .btn{z-index:2}
 }
 #fJt button{min-height:44px}
 .toast button{position:relative}
@@ -515,6 +517,7 @@ function apply(w,host){
   };
   var TYPE_LABEL={job:"Full-time",parttime:"Part-time",internship:"Internship",coop:"Co-op"};
   function renderTrack(){
+    if(w.__uaplyGateUp){tp.innerHTML="";return}   /* the sign-in gate: no Job Tracker rows while nobody is signed in */
     var by={applied:[],accepted:[],rejected:[],interview:[],passed:[]};
     A.JOBS.forEach(function(j){
       var x=A.S.decisions[j.id];if(!x)return;

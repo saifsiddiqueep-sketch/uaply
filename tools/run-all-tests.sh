@@ -175,7 +175,7 @@ wait_port 18847
 run "sandbox sign-up card on a phone (390x844): 16 px gutters and the same flow" env W=390 H=844 PORT=18847 MOCK_GOOGLE_PORT=8790 CDP_LIMIT_MS=900000 node tools/cdp.js tools/ui-signup.js
 # the sign-in gate (October 22, Saif): signed out, only the card; nothing behind it by scrolling, keys, #hash or the app's own buttons
 mkdir -p "$TMP/gate"
-PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/gate" UAPLY_CONFIG_JSON='{"delivery":"test","smtp":{},"feeds":[],"owner_copy":""}' start python serve.py 18848 sandbox --api)"
+PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/gate" UAPLY_SIGNUP_TEST=1 UAPLY_CONFIG_JSON='{"delivery":"test","smtp":{},"feeds":[],"owner_copy":""}' start python serve.py 18848 sandbox --api)"
 wait_port 18848
 run "the sign-in gate on a phone (390x844): only the card, its links open, sign-up to the questions, Sign out brings it back" env W=390 H=844 PORT=18848 node tools/cdp.js tools/ui-gate.js
 run "the sign-in gate on a laptop (1280x800): the same" env W=1280 H=800 PORT=18848 node tools/cdp.js tools/ui-gate.js

@@ -7,6 +7,7 @@
 // then reloads and checks every application still has its Job Tracker row, the passes are kept, no stand-in job reaches the deck, and the
 // old swipes got their row copy. Then 1,000 passes plus one more swipe: the oldest pass goes, the newest stays, no application goes.
 const PORT = process.env.PORT;
+const gateSignup = require("./gate-signup.js");   // the test person signs up first (Saif, October 22: no account, no data)
 module.exports = async ({ ev, sleep, nav }) => {
   const F = "document.querySelector('iframe').contentDocument", FW = "document.querySelector('iframe').contentWindow";
   let pass = 0, fail = 0;
@@ -16,8 +17,8 @@ module.exports = async ({ ev, sleep, nav }) => {
   const agree = () => ev("(()=>{const m=" + F + ".getElementById('kcYes');if(m){m.click();return true}return false})()");
 
   // the test person signs up first (October 22, Saif: nobody reaches anything on the site without an account)
-  await nav(base + "healthz"); await sleep(300);
-  const su = await ev("fetch('/api/auth/signup',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'tracker.'+Date.now()+'@example.com',password:'Signup-first-99',first:'Test',last:'Person',agree:true,passwordless:false})}).then(r=>r.status)");
+  const who = await gateSignup({ ev, sleep, nav }, base, "tracker");
+  const su = who.ok ? 200 : 0 || await ev("fetch('/api/auth/signup',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'tracker.'+Date.now()+'@example.com',password:'Signup-first-99',first:'Test',last:'Person',agree:true,passwordless:false})}).then(r=>r.status)");
   check("the test person signs up first (POST /api/auth/signup), so the app opens behind the sign-in gate", su === 200, su);
   await nav(base); await ready(); await sleep(800); await agree(); await sleep(500);
   const KEY = await ev("window.__uaplyBuildKey");
