@@ -28,7 +28,11 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
   await send("Storage.clearDataForOrigin", { origin: base, storageTypes: "all" });
 
-  // ---- 1. a first visit, signed out: only the card ----
+  // ---- 1. a first visit, signed out: only the card, on screen at once (Reviewer 3, October 22: 2.5 s of blank screen before it) ----
+  const t0 = Date.now(); send("Page.navigate", { url: base + "/?app=1" });
+  let tCard = 0;
+  for (let i = 0; i < 200 && !tCard; i++) { if (await ev("(()=>{try{const c=" + q(".sg-card") + ";return !!c&&c.getClientRects().length>0}catch(e){return false}})()").catch(() => false)) tCard = Date.now() - t0; else await sleep(25); }
+  check("the card is on screen within 1.5 s of opening the page (" + tCard + " ms), not after the server has answered", tCard > 0 && tCard < 1500, tCard);
   await load();
   check("signed out, the gate is up", (await gated()) && (await me()) === null);
   let s = await seen();
@@ -104,6 +108,9 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   s = await seen(); check("during the questions nothing behind the card is drawn either", nothingBehind(s), JSON.stringify(s));
   await click(".sg-next"); await sleep(400); await click(".sg-next"); await sleep(500); await click(".sg-next"); await sleep(1200);
   check("after the questions the gate is gone and the cards are on screen", !(await gated()) && (await ev("!" + F + ".getElementById('pane-swipe').hidden")) && (await ev("!!" + q("#bnav") + "&&" + q("#bnav") + ".getClientRects().length>0")));
+  const consent = await ev("(()=>{const b=" + q("#kitConsent") + ";return b?b.innerText:''})()");
+  check("the first-swipe agreement does not ask the age again (the sign-up tick did), and keeps the authorization sentence",
+    !consent || (!/18 or older/.test(consent) && /authorize UAply/.test(consent)), consent.slice(0, 300));
   await load();
   check("a reload, signed in: the app as before, no gate", !(await gated()) && (await me()) === email);
 
@@ -113,10 +120,36 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   s = await seen();
   check("Sign out: the gate is back, the card is empty, nothing behind it is drawn", (await gated()) && (await me()) === null && nothingBehind(s) &&
     (await ev(q("[data-email] input") + ".value")) === "", JSON.stringify(s));
+  const so = await ev("(" + q("#acctSec") + ").innerText");
+  check("...and it is Welcome back (sign in), with Create an account as the link", /Welcome back/.test(so) && /New here\?\s*Create an account/.test(so) && !/Create your UAply account/.test(so), so.slice(0, 300));
+  if (prov.codeSignin) {
+    await typeIn("[data-email] input", email); await click(".sg-codeinst"); await sleep(1500);
+    const sc = await ev("(" + q("#acctSec") + ").innerText");
+    check("Email me a code instead, with the address typed: the code is sent on that one press", /we sent it a 6-digit code/.test(sc) && sc.includes(email), sc.slice(0, 300));
+  }
   await load();
   check("and after a reload, signed out: the gate", (await gated()) && nothingBehind(await seen()));
 
-  const errs = logs.filter((l) => !/favicon|ERR_FILE_NOT_FOUND|401/.test(l));
+  // ---- 8. signed in, address not confirmed (not a test server): the job list answers 403 "verify", and the card shows its code step ----
+  if (!prov.signupTest) {
+    const vm = "verify." + stamp + "@example.com";
+    const st = await ev("fetch('/api/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'" + vm + "',password:'Verify-" + stamp + "-pw',first:'Vera',last:'Fy',agree:true})}).then(r=>r.status)");
+    await load();
+    for (let i = 0; i < 30 && !/Check your email/.test(await ev("(" + q("#acctSec") + ").innerText")); i++) await sleep(300);
+    const tv = await ev("(" + q("#acctSec") + ").innerText");
+    s = await seen();
+    check("an account whose address is not confirmed: the job list answers 403 verify, and the card shows its code step (still nothing behind it)",
+      st === 200 && /Check your email/.test(tv) && tv.includes(vm) && (await gated()) && nothingBehind(s), st + " " + tv.slice(0, 200) + " " + JSON.stringify(s));
+    const vc = await ev("fetch('/outbox').then(r=>r.text()).then(t=>{const m=t.replace(/<[^>]+>/g,' ').match(new RegExp('([0-9]{6}) is your UAply verification code to '+" + JSON.stringify(vm.replace(/\./g, "\\.")) + "));return m?m[1]:''})");
+    await typeIn(".sg-code input", vc);
+    for (let i = 0; i < 40 && !(await ev("!!(" + FW + "&&" + FW + ".__uaply&&!" + F + ".body.classList.contains('sgGated'))").catch(() => false)); i++) await sleep(300);
+    await sleep(1500);
+    const v2 = JSON.parse(await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>JSON.stringify(j.user))"));
+    check("...the code confirms it and the app loads (the job list answers now)", !!v2 && v2.emailVerified === true && !(await gated()) &&
+      (await ev("fetch('/api/jobs').then(r=>r.status)")) === 200, JSON.stringify(v2));
+  } else console.log("  (a test server confirms every new account at once: the 403 verify step is checked on a server without test mode)");
+
+  const errs = logs.filter((l) => !/favicon|ERR_FILE_NOT_FOUND|401|403/.test(l));
   check("no script errors", errs.length === 0, errs.join(" | "));
   console.log("\n" + (n - bad) + " / " + n);
   if (bad) throw new Error(bad + " gate check(s) failed");

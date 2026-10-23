@@ -341,7 +341,7 @@ function apply(w,host){
   /* after a sign-out the next person on this device starts from an empty card: no email, no name, the box unticked (their tick must be
      their own), no saved Google trip, nothing left from the questions */
   function forget(){
-    resetV();V.view="up";V.email=V.first=V.last="";V.pwUp=V.pwIn="";V.agreed=false;V.gWait=false;V.err="";V.errTop=false;V.user=null;V.kind="";V.delivery="";V.cd=null;V.pvOpen=false;
+    resetV();V.view="in";V.codeMode=false;V.email=V.first=V.last="";V.pwUp=V.pwIn="";V.agreed=false;V.gWait=false;V.err="";V.errTop=false;V.user=null;V.kind="";V.delivery="";V.cd=null;V.pvOpen=false;
     gGone="";lastF=null;wasIn=false;setPending(null);setCodeStep(null);V.sentAt=0;V.noSend=false;
   }
   /* the card field that had focus (data-f), so a redraw from the app (a late start-up answer on a slow connection replaces the Account
@@ -371,13 +371,8 @@ function apply(w,host){
   w.__uaplySignCard=function(el,user){
     if(user)wasIn=true;else if(wasIn||V.user)forget();   /* signed out since the last drawing */
     var pend=getPending();
-    if(codeOn===null&&!pend){
-      /* the server has not said yet whether it signs in by code: hold the card's place (nothing to type into, so nothing typed is lost
-         when the answer redraws the screen); signed in, the app's own card as before */
-      if(user)return false;
-      host0=el;back=null;el.className="sg";el.innerHTML='<div class="sg-wait" aria-busy="true"><span class="sg-vh">Loading…</span></div>';
-      return true;
-    }
+    /* the card is drawn at once, before the server has said whether it can email codes (Reviewer 3, October 22: 2.5 s of blank screen
+       on load): only "Email me a code instead" waits for that answer, and the redraw it brings keeps what was typed (lastF, V) */
     host0=el;   /* back from Google before the server's answer: the card already knew */
     if(user){
       if(V.view==="q"||V.view==="signedin"||(V.view==="code"&&(V.kind==="g"||V.kind==="pw"))){render();restoreFocus();return true}
@@ -548,7 +543,7 @@ function apply(w,host){
       (gh?gh+'<div class="sg-or">or</div>':'')+
       '<form class="sg-stack sg-su" novalidate>'+emailFieldHTML(V.email)+
       '<div class="sg-two">'+textFieldHTML("First name","given-name","",V.first,"sg-fn","next")+textFieldHTML("Last name","family-name","",V.last,"sg-ln","go")+'</div>'+
-      '<p class="sg-fine sg-nameh">Goes on your applications. Kept on this device.</p>'+pwFieldHTML(true)+
+      '<p class="sg-fine sg-nameh">Goes on your applications.</p>'+pwFieldHTML(true)+
       '<label class="sg-agree"><input type="checkbox" class="sg-ag" data-f="tick"'+(gh.indexOf('id="gBtn"')>-1?' id="gAgree"':'')+' aria-describedby="'+aid+'"'+(V.agreed?" checked":"")+'><span>'+AGREE+'</span></label>'+
       '<p class="sg-fmsg sg-amsg" id="'+aid+'" aria-live="polite"></p>'+
       '<button type="submit" class="sg-btn pri wide">Create my account</button></form>'+
@@ -688,7 +683,19 @@ function apply(w,host){
         p.className="sg-fmsg sg-fgmsg"+(r.ok?" ok":" err");p.textContent=t;
       });
     };
-    var ci=c.querySelector(".sg-codeinst");if(ci)ci.onclick=function(){seen();V.email=em.value()||V.email;V.codeMode=true;render(true)};
+    /* Email me a code instead: with a good address typed, the code goes on this press; without one, the card asks for the address */
+    var ci=c.querySelector(".sg-codeinst");if(ci)ci.onclick=function(){
+      seen();V.email=em.value()||V.email;V.codeMode=true;
+      if(checkEmail(V.email).s!=="ok"){render(true);return}
+      ci.disabled=true;ci.textContent="Sending a code…";
+      B.post("/api/auth/code/send",{email:V.email}).then(function(r){
+        if(!c.isConnected)return;
+        if(!r.ok){V.err=(r.j&&r.j.error)||"Could not send a code. Try again.";render(true);return}
+        V.kind="in";V.delivery="";V.view="code";V.sentAt=Date.now();V.noSend=false;
+        setCodeStep({kind:"in",email:V.email,at:V.sentAt});
+        render(true);
+      });
+    };
     var up=c.querySelector(".sg-usepw");if(up)up.onclick=function(){seen();V.email=em.value()||V.email;V.codeMode=false;render(true)};
     /* a code from an earlier email (another tab, or before a reload): the six boxes, and nothing is sent */
     var tc=c.querySelector(".sg-typec");
@@ -918,7 +925,7 @@ function apply(w,host){
     if(k===0&&V.pwGone)made+='<p class="sg-fine">'+PWGONE()+'</p>';
     if(k===0&&gOff(email))made+='<p class="sg-fine">'+GGONE+'</p>';
     if(k===0&&V.cleared)made+='<p class="sg-fine">This device had another account’s details (phone, resume, saved answers). They were cleared here, so your applications carry only your own.</p>';
-    if(step==="name")html=made+eyebrow+'<h2 tabindex="-1">What should employers call you?</h2><div class="sg-two">'+textFieldHTML("First name","given-name","",V.first,"sg-fn","next")+textFieldHTML("Last name","family-name","",V.last,"sg-ln","next")+'</div><p class="sg-fine">Employers need a name on every application. Kept on this device. Use the name on your resume.</p>';
+    if(step==="name")html=made+eyebrow+'<h2 tabindex="-1">What should employers call you?</h2><div class="sg-two">'+textFieldHTML("First name","given-name","",V.first,"sg-fn","next")+textFieldHTML("Last name","family-name","",V.last,"sg-ln","next")+'</div><p class="sg-fine">Employers need a name on every application. Goes on your applications. Use the name on your resume.</p>';
     if(step==="work")html=made+eyebrow+'<h2 tabindex="-1">What kind of work are you after?</h2><p class="sg-sub">We’ll show these first. You can change this later.</p><div class="sg-chips" role="group" aria-label="Kinds of work">'+WORK.map(function(x){return '<button type="button" class="sg-chip" aria-pressed="'+(V.work.indexOf(x)>-1)+'">'+x+'</button>'}).join("")+'</div>'+textFieldHTML("Something else","off","e.g. dental assistant",V.other,"","next");
     if(step==="where")html=eyebrow+'<h2 tabindex="-1">Where do you want to work?</h2>'+textFieldHTML("City or ZIP code","address-level2","Austin, TX",V.where,"","done")+'<div class="sg-chips"><button type="button" class="sg-chip sg-rem" aria-pressed="'+V.remote+'">Remote is fine</button>'+(s.near?'<button type="button" class="sg-chip sg-loc" aria-pressed="'+V.near+'">'+I.pin+' Use my location</button>':'')+'</div><p class="sg-fine sg-locmsg" aria-live="polite">'+(s.near?(V.near?"Using your device location, rounded to about a mile. It stays on this device and is never sent to our server.":"Your browser asks before it shares your location. It stays on this device and is never sent to our server."):"Kept on this device. Used to sort jobs by distance.")+'</p>';
     /* the end: honest about the app's readiness rule. Below READY_MIN a swipe right sends nothing, so this says what is missing, one tap from its field */

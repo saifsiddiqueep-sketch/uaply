@@ -355,7 +355,7 @@ function apply(w,host){
   /* the Plan screen is in every build: on a real server it is backed by Stripe (see billingHTML); the simulated one remains only without a server */
   var ACCT={account:1,plan:1,data:1};
   var LEADS={
-    account:"Sign in to get an email receipt for each application and to apply directly to employers that take applications through UAply. Your profile stays on this device.",   /* nothing syncs a profile between devices, so the screen must not promise it */
+    account:"Sign in to get an email receipt for each application and to apply directly to employers that take applications through UAply. Your name goes with your account; the rest of your profile stays on this device.",   /* nothing syncs a profile between devices, so the screen must not promise it */
     plan:"Choose your plan. Payments are made on Stripe's secure page; you can cancel any time.",
     data:"Back up, move or delete everything UAply keeps about you.",
     settings:"Your details. Every card is scored against them, and they fill in your application note and the email address recruiters reply to.",
@@ -365,7 +365,7 @@ function apply(w,host){
      them; the owner's computer (test inbox) and a server with email keep the line above */
   function leadOf(v){
     /* signed in: the line above "You are signed in" must not still ask the person to sign in */
-    if(v==="account"&&SRV.up&&SRV.user)return "Your sign-in, email confirmations and password. Your profile stays on this device.";
+    if(v==="account"&&SRV.up&&SRV.user)return "Your sign-in, your name, email confirmations and password. The rest of your profile stays on this device.";
     if(v==="account"&&SRV.up&&SRV.mailKnown&&!(SRV.canEmail||SRV.testInbox))return "Sign in to keep a record of your applications with your account and to apply directly to employers that take applications through UAply. Email receipts start once email is switched on for this site. Your profile stays on this device.";
     return LEADS[v];
   }
@@ -1911,7 +1911,7 @@ function apply(w,host){
     var h='<h3>'+label("prof",v)+'</h3><p class="lead">'+(v==="plan"&&earlyAccess()?EARLY:leadOf(v))+'</p>';
     /* preview: the release build shows only the preview note; the sandbox keeps its simulated sign-in below it */
     /* sign-up v2 (shared/uaply-signup.js): when that file is loaded and the server signs in by emailed code, its card replaces the signed-out Account screen and its two questions run here just after sign-up; it answers false to keep the card below. Without that file nothing changes */
-    acctSec.classList.remove("sgnOn");if(v==="account"&&SRV.up&&!AUI.reset&&!preview()&&w.__uaplySignCard){acctSec.innerHTML=h+(typeof shieldsLine==="function"?shieldsLine():"")+'<div id="sgnHost"></div><p class="note" id="aMsg" role="status"></p>';if(w.__uaplySignCard(d.getElementById("sgnHost"),SRV.user)!==false){acctSec.classList.add("sgnOn");paintHeader();return}}
+    acctSec.classList.remove("sgnOn");if(v==="account"&&(SRV.up||(w.__uaplyGated&&w.__uaplyGated()))&&!AUI.reset&&!preview()&&w.__uaplySignCard){acctSec.innerHTML=h+(typeof shieldsLine==="function"?shieldsLine():"")+'<div id="sgnHost"></div><p class="note" id="aMsg" role="status"></p>';if(w.__uaplySignCard(d.getElementById("sgnHost"),SRV.user)!==false){acctSec.classList.add("sgnOn");paintHeader();return}}
     if(v==="account"){acctSec.innerHTML=h+shieldsLine()+readyHTML("account")+(preview()?previewHTML()+(REL?"":accountHTML()):accountHTML())+'<p class="note" id="aMsg" role="status"></p>';paintHeader();setTimeout(mountGoogle,0);return}
     if(v==="plan"&&preview()&&REL){
       h+=previewHTML();
@@ -2273,7 +2273,7 @@ function apply(w,host){
   function serverHTML(){
     if(!SRV.user&&AUI.reset)return resetHTML();
     if(!SRV.user&&AUI.forgot&&AUI.sMode==="in")return forgotHTML();
-    if(SRV.user)return '<div class="plan" style="display:flex;flex-direction:column;gap:8px"><span class="tag" style="background:var(--accent);color:var(--accent-ink)">ACCOUNT</span><b>You are signed in</b><small>'+E(SRV.user.email)+(SRV.user.emailVerified===false?' · email not verified yet':' · email verified')+'</small>'+verifyHTML()+
+    if(SRV.user)return '<div class="plan" style="display:flex;flex-direction:column;gap:8px"><b>You are signed in</b><small>'+E(SRV.user.email)+(SRV.user.emailVerified===false?' · email not verified yet':' · email verified')+'</small>'+verifyHTML()+
       '<p class="note" style="margin:0">'+(SRV.user.emailVerified===false?'Once your email is verified, each swipe right sends a confirmation to it':'Every time you swipe right, a confirmation goes to this email')+(SRV.canEmail?'':SRV.testInbox?' (no real email is connected here yet, so it is saved in the <a href="/outbox" target="_blank" rel="noopener noreferrer">test inbox</a>; <a href="/setup#gmail" target="_blank" rel="noopener noreferrer">connect Gmail</a> to send real ones)':' (email is not switched on for this site yet, so no confirmation goes out for now)')+'.</p>'+
       (AUI.survey||AUI.delOpen?'':'<div class="acts"><button type="button" class="btn ghost" data-auth="sout">Sign out</button></div>'+changeHTML())+
       deleteHTML()+

@@ -151,13 +151,28 @@ module.exports = async ({ ev, sleep, nav, send, logs, on }) => {
   // 6. Account: sign up, the line above "You are signed in", a failed sign-out, Sign in wording (the first account signs out for it)
   await ev("fetch('/api/auth/logout',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:'{}'})");
   await nav(BASE + "/"); await waitFor("return !!d.getElementById('bnav')&&!!d.getElementById('acctSec')", 15000); await sleep(800);
-  await menu("nb-prof", "account");
+  // since October 22 (Saif) signed out is the sign-in gate: the sign-up card is the whole screen, and the person signs up on it by touch
+  const gateUp = (await q("return d.body.classList.contains('sgGated')&&d.querySelector('.sg-su')?'y':''")) === "y";
+  if (!gateUp) await menu("nb-prof", "account");
   const email = "walk" + Date.now() + "@example.com", pw = "Walk-" + Math.random().toString(36).slice(2) + "-Pw9";
-  await type("#sEmail", email); await type("#sPw", pw); await type("#sPw2", pw);
-  await tap("d.getElementById('sAgree')");
-  await tap("d.querySelector('[data-auth=ssubmit]')");
-  const signed = await waitFor("return /You are signed in/.test(d.getElementById('acctSec').innerText)", 8000);
-  check("6. sign-up on this server signs the person in", !!signed, (await text("#aMsg")));
+  if (gateUp) {
+    await type(".sg-su [data-email] input", email); await type(".sg-su .sg-fn input", "Walk"); await type(".sg-su .sg-ln input", "Tester"); await type(".sg-su .sg-pw input", pw);
+    await tap("d.querySelector('.sg-su .sg-ag')");
+    await tap("d.querySelector('.sg-su [type=submit]')");
+    await waitFor("return /Check your email|1 of 2|What kind of work|What should employers/i.test(d.getElementById('acctSec').innerText)?1:''", 8000);
+    if (/Check your email/.test(await text("#acctSec"))) {
+      const c = await ev("fetch('/outbox').then(r=>r.text()).then(t=>{const m=t.replace(/<[^>]+>/g,' ').match(/([0-9]{6}) is your UAply verification code/);return m?m[1]:''})");
+      await type(".sg-code input", c); await sleep(2000);
+    }
+    for (let i = 0; i < 4 && (await q("return d.body.classList.contains('sgGated')?'y':''")) === "y"; i++) { await tap("d.querySelector('.sg-next')"); await sleep(700); }
+    await menu("nb-prof", "account");
+  } else {
+    await type("#sEmail", email); await type("#sPw", pw); await type("#sPw2", pw);
+    await tap("d.getElementById('sAgree')");
+    await tap("d.querySelector('[data-auth=ssubmit]')");
+  }
+  const signed = await waitFor("return /You are signed in|Signed in as/.test(d.getElementById('acctSec').innerText)", 8000);
+  check("6. sign-up on this server signs the person in" + (gateUp ? " (on the sign-in gate's card, by touch)" : ""), !!signed && (await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>j.user&&j.user.email)")) === email, (await text("#acctSec")).slice(0, 200));
   const lead = await text("#acctSec .lead");
   check("6. signed in, the Account line no longer says 'Sign in to get an email receipt'", !/^Sign in/.test(lead) && /Your sign-in/.test(lead), lead);
   // a server that is restarting (Render answers 502 during a deploy)
@@ -176,15 +191,23 @@ module.exports = async ({ ev, sleep, nav, send, logs, on }) => {
   check("6. ...which is true: the server still has the session", me === true, me);
   await send("Fetch.disable");
   await tap(byText("/^Sign out$/"));
-  const so2 = await waitFor("return /^Signed out/.test(d.getElementById('aMsg').innerText.trim())", 5000);
-  check("6. with the server back, Sign out signs out", !!so2 && (await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>!!(j&&j.user)).catch(()=>null)")) === false, await text("#aMsg"));
-  if (await q("return !!d.querySelector('[data-auth=smode]')&&/already have/.test(d.querySelector('[data-auth=smode]').innerText)")) await tap("d.querySelector('[data-auth=smode]')");
+  const so2 = gateUp ? await waitFor("return d.body.classList.contains('sgGated')?'y':''", 5000) : await waitFor("return /^Signed out/.test(d.getElementById('aMsg').innerText.trim())", 5000);
+  check("6. with the server back, Sign out signs out" + (gateUp ? " (and the sign-in gate is back)" : ""), !!so2 && (await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>!!(j&&j.user)).catch(()=>null)")) === false, await text("#aMsg"));
+  if (gateUp) await tap("d.querySelector('.sg-to-in')");
+  else if (await q("return !!d.querySelector('[data-auth=smode]')&&/already have/.test(d.querySelector('[data-auth=smode]').innerText)")) await tap("d.querySelector('[data-auth=smode]')");
   const form = await text("#acctSec");
   check("6. the sign-in form says Sign in, never Log in", /Sign in to UAply/.test(form) && !/\bLog in\b/.test(form), form.slice(0, 160));
-  await type("#sEmail", email); await type("#sPw", pw);
-  await tap("d.querySelector('[data-auth=ssubmit]')");
-  const si = await waitFor("const t=d.getElementById('aMsg').innerText.trim();return /…$/.test(t)?'':t", 6000);
-  check("6. signing in says 'You are signed in.'", si === "You are signed in.", si);
+  if (gateUp) {
+    await type(".sg-si [data-email] input", email); await type(".sg-si .sg-pw input", pw);
+    await tap("d.querySelector('.sg-si [type=submit]')");
+    const si = await waitFor("return d.body.classList.contains('sgGated')?'':'in'", 8000);
+    check("6. signing in with the password opens the app (the gate lifts)", si === "in" && (await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>j.user&&j.user.email)")) === email, si);
+  } else {
+    await type("#sEmail", email); await type("#sPw", pw);
+    await tap("d.querySelector('[data-auth=ssubmit]')");
+    const si = await waitFor("const t=d.getElementById('aMsg').innerText.trim();return /…$/.test(t)?'':t", 6000);
+    check("6. signing in says 'You are signed in.'", si === "You are signed in.", si);
+  }
 
   // 7. help: No offers a person
   await tap("d.getElementById('uaChatBtn')");

@@ -45,7 +45,7 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   check("no sideways scrolling", !L.hs);
   let t = await text();
   check("the card reads in order: Create your UAply account, Google, or, Email, First name, Last name, Password (at least 8), the 18+ tick, Create my account, Sign in",
-    /Create your UAply account[\s\S]*Continue with Google[\s\S]*\bor\b[\s\S]*Email[\s\S]*First name[\s\S]*Last name[\s\S]*Kept on this device[\s\S]*Password[\s\S]*At least 8 characters[\s\S]*18 or older[\s\S]*Create my account[\s\S]*Have an account\?[\s\S]*Sign in/.test(t) && !/18 or older[\s\S]*Continue with Google/.test(t), t.slice(0, 500));
+    /Create your UAply account[\s\S]*Continue with Google[\s\S]*\bor\b[\s\S]*Email[\s\S]*First name[\s\S]*Last name[\s\S]*Goes on your applications[\s\S]*Password[\s\S]*At least 8 characters[\s\S]*18 or older[\s\S]*Create my account[\s\S]*Have an account\?[\s\S]*Sign in/.test(t) && !/18 or older[\s\S]*Continue with Google/.test(t), t.slice(0, 500));
   const G = JSON.parse(await ev("(()=>{const d=" + F + ",y=(s)=>{const e=d.querySelector(s);return e?Math.round(e.getBoundingClientRect().bottom):-1};return JSON.stringify({g:y('[data-sg=google]'),tick:y('.sg-agree'),create:y('.sg-su [type=submit]')})})()"));
   console.log("  measured: Google bottom " + G.g + " px, tick bottom " + G.tick + " px, Create bottom " + G.create + " px, window " + L.vh + " px");
   check("one password box, for a new password, with its show/hide button", await ev("(()=>{const d=" + F + ",p=d.querySelectorAll('#acctSec input[type=password]');return p.length===1&&p[0].autocomplete==='new-password'&&!!d.querySelector('.sg-pw .sg-eye[aria-label=\"Show password\"]')})()"));
