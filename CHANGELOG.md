@@ -119,6 +119,21 @@ production page and only changes when the owner decides.
   `shared/uaply-nav.js` (`shareJob`), `check.js` builds it, and `tools/ui-share.js` runs at 390x844 and 1280x720 in
   `tools/run-all-tests.sh`.
 
+### Phone apps: location and notification permissions (Mohammed, October 22)
+- **iPhone** (`mobile/ios/App/App/Info.plist`): the location reason iOS shows in its prompt, "UAply uses your location only to show
+  jobs near you first. It is rounded to about a mile, stays on this device and is never sent to our server." Without it iOS refused
+  location inside the app, so Jobs near you could never work there. "While using the app" only; no background location.
+- **Android** (`mobile/android/app/src/main/AndroidManifest.xml`): approximate and precise location (the app's web view asks for both
+  at once and accepts "Approximate" on Android 12 and later), location hardware optional, and POST_NOTIFICATIONS for the interview
+  reminders on Android 13 and later (the reminders plugin also adds it; now it is written down and checked). No background location.
+- No plugin added: Jobs near you uses the browser's own location call, which the app's web view passes to these prompts. The website
+  is unchanged. Jobs near you is already on dev (546ecd6), so both apps use these prompts from their next build. **Before store
+  submission** the in-app wording must name the app, not the browser ("Your browser will ask", "the icon at the left of the address
+  bar" in shared/uaply-nav.js and the sign-up step in shared/uaply-signup.js): follow-up card for Mohammed.
+- New check `tools/test-mobile-perms.py` (24 checks, in `tools/run-all-tests.sh`): the permissions, the iPhone text and its promise,
+  every plugin the web code calls present in both apps, the same "never sent to our server" in the web card and Play's Data safety,
+  and two guards that keep the location away from employer pages (no `allowNavigation` to other sites, no location in AssistActivity).
+
 ### Terms and help say what the app does (October 22)
 - **Terms of Service, section 3: "Applications on your behalf"** (the consent version 3 sentence, drafted in LEGAL-REVIEW.md;
   Saif decided on October 21 that it goes in the Terms). **Pending the lawyer's read before launch.** The list under it names the
