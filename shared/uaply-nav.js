@@ -307,6 +307,9 @@ html{-webkit-tap-highlight-color:transparent}a,button,input,select,textarea,summ
      the box scrolls inside itself with its buttons pinned to its bottom edge
    - a message's action (Undo, OK) is a 44 px target, the account and hiring buttons in the header 44 px tall */
 @media (max-height:740px){
+ /* the card's "View original posting" link: a 48 px tall tap area, so a card that sits a fraction of a pixel off (a transform, a
+    rounding) never measures it under 44 */
+ .card .linkbtn[data-open]{position:relative}.card .linkbtn[data-open]::after{content:"";position:absolute;left:0;right:0;top:50%;height:48px;transform:translateY(-50%)}
  .filters button,.banner button,#locAsk .acts .btn{position:relative}
  .filters button::after,.banner button::after,#locAsk .acts .btn::after{content:"";position:absolute;left:0;right:0;top:50%;height:46px;transform:translateY(-50%)}
  /* with no "example profile" line above them (a person's own profile, after sign-up) the job type buttons are the first thing in the
@@ -417,10 +420,18 @@ function apply(w,host){
   /* on the job deck the message also clears the Pass / Undo / Apply row: it used to sit on top of it (390x844: the message's
      Undo link lay on the Apply button, so a tap on Apply right after a pass undid the pass). Worked out each time a message appears. */
   function toastAt(){
-    var a=d.querySelector("#pane-swipe:not([hidden]) .actions"),nr=nav.getBoundingClientRect(),y=nr.height?nr.top:w.innerHeight;
+    var a=d.querySelector("#pane-swipe:not([hidden]) .actions"),nr=nav.getBoundingClientRect(),y=nr.height?nr.top:w.innerHeight,side=null;
     /* only a row along the bottom: on a turned phone the row is a column at the top right, and the message would have jumped over the header */
-    if(a){var r=a.getBoundingClientRect();if(r.height&&r.bottom>0&&r.top<y&&r.top>w.innerHeight/2)y=Math.min(y,r.top)}
+    if(a){var r=a.getBoundingClientRect();if(r.height&&r.bottom>0&&r.top<y&&r.top>w.innerHeight/2)y=Math.min(y,r.top);
+      /* a turned phone (Galaxy walk, October 23): the message across the bottom lay on whatever the deck column had scrolled there (a
+         filter chip, the location card's Not now), so a tap on it right after a Pass hit the message's Undo. There it sits in the
+         buttons' own column instead, under Pass / Undo / Apply, as wide as that column: nothing of the deck is under it */
+      else if(r.height&&r.top<w.innerHeight/2&&r.left>w.innerWidth/2)side=r}
     d.documentElement.style.setProperty("--toast-at",(Math.max(0,Math.round(w.innerHeight-y))+8)+"px");
+    [].forEach.call(d.querySelectorAll(".toast"),function(t){
+      if(side){t.style.left="auto";t.style.transform="none";t.style.right=Math.max(0,Math.round(w.innerWidth-side.right))+"px";t.style.minWidth="0";t.style.width=t.style.maxWidth=Math.round(side.width)+"px";t.style.flexWrap="wrap"}
+      else{t.style.left=t.style.transform=t.style.right=t.style.minWidth=t.style.width=t.style.maxWidth=t.style.flexWrap=""}
+    });
   }
   new w.MutationObserver(function(ms){for(var i=0;i<ms.length;i++)for(var j=0;j<ms[i].addedNodes.length;j++){var n=ms[i].addedNodes[j];if(n.nodeType===1&&(n.classList.contains("toast")||n.querySelector&&n.querySelector(".toast"))){toastAt();return}}}).observe(d.body,{childList:true,subtree:true});
   /* how much of the top card lies under the sticky Pass / Undo / Apply row (see #deck[data-covered] in the CSS). Worked out again when
