@@ -1,7 +1,8 @@
 // Makes the Google Play listing pictures in mobile/store/play/ from the app itself (headless Chrome, no image library):
 //   icon-512.png             the app icon, 512 x 512, from mobile/assets/icon-only.png
 //   feature-graphic.png      1024 x 500, the logo and the name on the app's own colours (24-bit, no transparency, as Play asks)
-//   screenshots/phone/*.png  1080 x 1920 (a 432 x 768 phone screen at 2.5x): Jobs, Job Tracker, Profile setup, Filters, Help
+//   screenshots/phone/*.png  1080 x 1920 (a 432 x 768 phone screen at 2.5x): the sign-up card (the first screen since the sign-in gate),
+//                            then Jobs, Job Tracker, Profile setup, Filters, Help after an example sign-up
 //   screenshots/tablet/*.png 1080 x 1920 (a 675 x 1200 seven-inch tablet at 1.6x): the same screens
 // It starts its own sandbox server on a free port with a temporary data folder and the built-in example jobs (no network), switches
 // the sandbox to the same features as the release build (dev/index.html's PROMOTED list, so nothing sandbox-only is pictured), fills in
@@ -106,9 +107,11 @@ module.exports = async ({ ev, sleep, nav, send }) => {
 
   // ---------- the screenshots, from a sandbox server of its own ----------
   const port = await freePort(), base = "http://127.0.0.1:" + port;
+  const PASSWORD = "Example-" + Date.now().toString(36) + "-pw";          // the example account's, for this run only (a throwaway test server)
   const data = fs.mkdtempSync(path.join(os.tmpdir(), "uaply-play-"));
   const proc = spawn(PY, [path.join(ROOT, "serve.py"), String(port), path.join(ROOT, "sandbox"), "--api"], { cwd: ROOT, stdio: "ignore",
-    env: Object.assign({}, process.env, { UAPLY_DATA_DIR: data, UAPLY_CONFIG_FILE: "none", UAPLY_CONFIG_JSON: '{"feeds":[],"smtp":{}}', HOST: "127.0.0.1" }) });
+    env: Object.assign({}, process.env, { UAPLY_DATA_DIR: data, UAPLY_CONFIG_FILE: "none", UAPLY_CONFIG_JSON: '{"feeds":[],"smtp":{}}', HOST: "127.0.0.1",
+      UAPLY_SIGNUP_TEST: "1" }) });          // test mode (never on a public server): the example sign-up is signed in at once, no email is sent
   try {
     let upOk = false;
     for (let i = 0; i < 120 && !upOk; i++) { try { upOk = (await fetch(base + "/healthz")).ok; } catch (e) {} if (!upOk) await sleep(250); }
@@ -116,6 +119,16 @@ module.exports = async ({ ev, sleep, nav, send }) => {
     const promoted = JSON.parse(/var PROMOTED=(\[[^\]]*\])/.exec(fs.readFileSync(path.join(ROOT, "dev", "index.html"), "utf8"))[1]);
     const F = "document.querySelector('iframe').contentDocument", FW = "document.querySelector('iframe').contentWindow";
     const q = (js) => ev("(()=>{try{const d=" + F + ",w=" + FW + ";" + js + "}catch(e){return 'ERR '+e.message}})()");
+    const card = async () => { for (let i = 0; i < 120; i++) { if ((await q("const c=d.querySelector('.sg-card');return !!c&&c.getClientRects().length>0&&d.body.classList.contains('sgGated')")) === true) return true; await sleep(250); } return false; };
+    const typeIn = (sel, v) => q("const e=d.querySelector(" + JSON.stringify(sel) + ");if(!e)return false;e.focus();e.value=" + JSON.stringify(v) + ";e.dispatchEvent(new Event('input',{bubbles:true}));e.blur();return true");
+    const click = (sel) => q("const e=d.querySelector(" + JSON.stringify(sel) + ");if(!e)return false;e.click();return true");
+    // what the listing must not show: a job count, Hiring mode's switch, the example-profile banner, or any test-mode words
+    // (only the text the picture shows: what lies inside the screen, read from each text node's own box)
+    const unwanted = () => q("const tw=d.createTreeWalker(d.body,NodeFilter.SHOW_TEXT),r=d.createRange(),H=w.innerHeight,parts=[];let n;" +
+      "while((n=tw.nextNode())){if(!n.nodeValue.trim())continue;r.selectNodeContents(n);const b=r.getBoundingClientRect();if(b.width>0&&b.bottom>0&&b.top<H&&w.getComputedStyle(n.parentElement).visibility!=='hidden')parts.push(n.nodeValue)}" +
+      "const t=parts.join(' '),c=t.match(/\\b\\d[\\d,]* (?:jobs?|postings?|listings?|matches)\\b|jobs? left/),m=t.match(/owner only|test mode|test server|\\[test\\]|nothing is sent to any employer/i);" +
+      "return [d.getElementById('modeSw')&&d.getElementById('modeSw').offsetParent?'Hiring mode switch':'',c?'a job count (\"'+c[0]+'\")':''," +
+      "/example profile/i.test(t)?'example-profile banner':'',m?'a test-mode hint (\"'+m[0]+'\")':''].filter(Boolean).join(', ')");
     const ready = async () => { for (let i = 0; i < 60; i++) { if ((await q("return !!(d.getElementById('nb-prof')&&w.__uaply)")) === true) return true; await sleep(250); } return false; };
     const go = async (nb, view) => {
       await q("d.getElementById('" + nb + "').click()"); await sleep(400);
@@ -131,7 +144,37 @@ module.exports = async ({ ev, sleep, nav, send }) => {
       await send("Browser.grantPermissions", { origin: base, permissions: ["geolocation"] });
       await send("Emulation.setGeolocationOverride", { latitude: 39.9526, longitude: -75.1652, accuracy: 100 });   // Philadelphia
       await send("Storage.clearDataForOrigin", { origin: base, storageTypes: "all" });
+      await send("Network.clearBrowserCookies", {});
       await nav(base + "/?app=1");
+      // the release build's features only: switch each sandbox experiment on or off to match dev's PROMOTED list (each switch reloads the
+      // app; the switches live in the outer sandbox page)
+      const chips0 = JSON.parse(await ev("JSON.stringify([...document.querySelectorAll('#feats button')].map(b=>[b.dataset.k,b.getAttribute('aria-pressed')==='true']))"));
+      for (const [k, on] of chips0) {
+        if (on !== promoted.includes(k)) { await ev("document.querySelector('#feats button[data-k=\"" + k + "\"]').click()"); await sleep(150); }
+      }
+      await sleep(1500);
+      // 1. signed out, the sign-up card is the whole screen (the sign-in gate): the listing's first picture
+      const dir = path.join(OUT, "screenshots", dev.dir);
+      for (const f of fs.readdirSync(dir)) if (f.endsWith(".png")) fs.unlinkSync(path.join(dir, f));
+      if (!(await card())) { console.log("FAIL the " + dev.dir + " screen does not open on the sign-up card"); process.exitCode = 1; return; }
+      // this computer has no Google sign-in set up, so the card adds an owner-only note under the Google button (".sg-mark"); visitors
+      // never see it, and the listing pictures the card as they do
+      await q("d.querySelectorAll('.sg-mark').forEach(e=>{if(/Owner only/i.test(e.textContent))e.style.display='none'});d.scrollingElement.scrollTop=0"); await sleep(300);
+      const bad0 = await unwanted();
+      if (bad0) { console.log("FAIL the " + dev.dir + " sign-up card shows " + bad0); process.exitCode = 1; }
+      await save(path.join(dir, "1-sign-up.png"));
+      // the example person signs up (test mode: signed in at once), then answers the two questions with what is suggested
+      if (dev === DEVICES[0]) {
+        await typeIn("[data-email] input", PERSON.email); await typeIn(".sg-fn input", PERSON.name.split(" ")[0]);
+        await typeIn(".sg-ln input", PERSON.name.split(" ").slice(1).join(" ")); await typeIn(".sg-pw input", PASSWORD);
+        await click(".sg-su .sg-ag"); await click(".sg-su [type=submit]"); await sleep(2000);
+        for (let i = 0; i < 4 && (await q("return d.body.classList.contains('sgGated')")) === true; i++) { await click(".sg-next"); await sleep(700); }
+      } else {                                  // the same account signs in (the page's own address, so the session cookie is set for it)
+        await ev("fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:" + JSON.stringify(PERSON.email) +
+          ",password:" + JSON.stringify(PASSWORD) + "})}).then(r=>r.status)");
+        await nav(base + "/?app=1"); await sleep(1500);
+      }
+      if ((await q("return d.body.classList.contains('sgGated')")) !== false) { console.log("FAIL the " + dev.dir + " example sign-up did not open the app"); process.exitCode = 1; return; }
       await ready();
       // an example person, three applications in different stages and one passed job
       const seeded = await q("const A=w.__uaply;Object.assign(A.S.profile," + JSON.stringify(PERSON) + ");const ids=A.JOBS.slice(0,6).map(j=>j.id),now=Date.now();" +
@@ -140,8 +183,7 @@ module.exports = async ({ ev, sleep, nav, send }) => {
         "A.S.tips=false;A.save();return ids.length");
       await nav(base + "/?app=1");
       await ready();
-      // the release build's features only: switch each sandbox experiment on or off to match dev's PROMOTED list (each switch reloads the
-      // app; the switches live in the page, so this comes after the last page load)
+      // the switches are kept by the outer page across the reload; set any that came back different
       const chips = JSON.parse(await ev("JSON.stringify([...document.querySelectorAll('#feats button')].map(b=>[b.dataset.k,b.getAttribute('aria-pressed')==='true']))"));
       for (const [k, on] of chips) {
         if (on !== promoted.includes(k)) { await ev("document.querySelector('#feats button[data-k=\"" + k + "\"]').click()"); await sleep(150); }
@@ -150,20 +192,21 @@ module.exports = async ({ ev, sleep, nav, send }) => {
       await sleep(1200);
       await q("const b=d.getElementById('kcYes');if(b)b.click()"); await sleep(300);
       await q("const b=d.getElementById('tipsClose');if(b)b.click()"); await sleep(300);
-      const dir = path.join(OUT, "screenshots", dev.dir);
-      // nothing the release build does not have may be pictured: Hiring mode's switch, the "N jobs left" counter, the example-profile banner
-      const extra = await q("const t=d.body.innerText;return [d.getElementById('modeSw')&&d.getElementById('modeSw').offsetParent?'Hiring mode switch':'',/job[s]? left/.test(t)?'jobs-left counter':'',/example profile/i.test(t)?'example-profile banner':''].filter(Boolean).join(', ')");
-      if (extra) { console.log("FAIL the " + dev.dir + " screen shows what the release build does not have: " + extra); process.exitCode = 1; }
-      await save(path.join(dir, "1-jobs.png"));                   // the deck is the first screen
-      await go("nb-dash", "applied"); await save(path.join(dir, "2-job-tracker.png"));
+      // nothing the release build does not have may be pictured, and no job count or test-mode words (checked on every screen below)
+      const shot = async (name) => { const bad = await unwanted(); if (bad) { console.log("FAIL the " + dev.dir + " " + name + " screen shows " + bad); process.exitCode = 1; }
+        await save(path.join(dir, name)); };
+      await shot("2-jobs.png");                                   // the deck, after the sign-up
+      await go("nb-dash", "applied"); await shot("3-job-tracker.png");
       await go("nb-prof", "settings");
-      await q("const b=[...d.querySelectorAll('button')].find(x=>{const t=x.innerText.trim();return x.offsetParent&&t.charAt(0)==='1'&&t.length<4});if(b)b.click()"); await sleep(600);   // step 1, About you
+      await q("const b=[...d.querySelectorAll('button')].find(x=>{const t=x.innerText.trim();return x.offsetParent&&/^1(?:\\s|$)/.test(t)&&t.length<20});if(b)b.click()"); await sleep(600);   // step 1, About you
       await q("d.scrollingElement.scrollTop=0"); await sleep(200);
-      await save(path.join(dir, "3-profile.png"));
-      await go("nb-prof", "filters"); await save(path.join(dir, "4-filters.png"));
+      await shot("4-profile.png");
+      await go("nb-prof", "filters");
+      await q("const e=d.getElementById('fCount');if(e)e.style.visibility='hidden'"); await sleep(100);
+      await shot("5-filters.png");
       await go("nb-svc", "job");
       await q("const b=d.getElementById('uaChatBtn');if(b)b.click()"); await sleep(1200);
-      await save(path.join(dir, "5-help.png"));
+      await shot("6-help.png");
       console.log("wrote the " + dev.dir + " screenshots (" + seeded + " example jobs used)");
     }
   } finally {

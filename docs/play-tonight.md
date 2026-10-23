@@ -13,8 +13,6 @@ do. Background: `docs/play-store.md` (the ten steps), `mobile/store/play/README.
 - **The app opens with Chrome's address bar until the next release.** uaply.net does not yet serve the web manifest, the icons,
   `/.well-known/assetlinks.json` or the account-deletion page (all four answered 404 tonight; they are in the release). Internal
   testers can still install and use it.
-- **Screenshots with the sign-up card first** are made once the sign-in gate is merged into sandbox (a bot; see below). The Main store
-  listing can be saved without them; it is not public until production anyway.
 
 ## Saif, in the Play Console
 
@@ -49,8 +47,8 @@ do. Background: `docs/play-store.md` (the ten steps), `mobile/store/play/README.
 - Done tonight on branch `play-tonight`: the listing texts and forms updated for the sign-in gate (an account is now needed, the reviewer
   gets a demo account, the testers' invite says the first screen asks to sign up), the target-API rule (Android 16, API 36), internal
   testing before the closed test, the device check, and `mobile/twa/build-bundle.ps1` (the one command above).
-- When the sign-in gate is merged: regenerate every screenshot (`node tools/cdp.js tools/make-play-assets.js`) with the sign-up card
-  first, phone and tablet (`0-sign-up.png` then `1-jobs.png` ... `5-help.png`, all 1080 x 1920), and run `python tools/test-play-listing.py`.
+- Done after the sign-in gate was merged: every screenshot regenerated with the sign-up card first, phone and tablet
+  (`1-sign-up.png`, then `2-jobs.png` ... `6-help.png`, all 1080 x 1920), checked by `python tools/test-play-listing.py`.
 - Once Saif sends the fingerprints: `UAPLY_ASSETLINKS_SHA256` on Render (owner approval for the variable), then check
   https://uaply.net/.well-known/assetlinks.json after the release with Google's Digital Asset Links checker.
 - Paste-ready answers for every App content screen: `mobile/store/play/app-content.md`, `data-safety.md`, `content-rating.md`. (The Data
