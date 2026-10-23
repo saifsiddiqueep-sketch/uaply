@@ -1,0 +1,44 @@
+name: Daily health snapshot of uaply.net
+
+# Render deletes its logs after 7 days, so launch-week numbers would vanish. Once a day this saves what anyone can see of the live site as
+# dated files in a workflow artifact (kept 90 days; download it from the run's page under Artifacts):
+#   uaply-health-DATE.json      tools/uptime-check.py: health, home page and /readyz with response times, and /api/status's public facts
+#                               (yes/no answers and the deployed commit, never a key)
+#   uaply-live-check-DATE.txt   tools/live-check.py: every PASS/FAIL/SKIP line, without the wrong logins (--no-rate-limit)
+# A down site is saved, never an alarm (the uptime check is the alarm). A missing or broken script turns the run red instead of saving
+# an error message as if it were a snapshot. The repository is public, so the artifact can be downloaded by anyone signed in to GitHub;
+# it holds only what the site already shows publicly. docs/uptime.md has the details.
+# GitHub runs scheduled workflows only from the default branch (main): main needs this file, tools/uptime-check.py and tools/live-check.py.
+on:
+  schedule:
+    - cron: "23 11 * * *"                # 11:23 UTC every day (7:23 in the morning in New York in summer time)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Save the public health summary
+        id: snap
+        run: |
+          d=$(date -u +%F)
+          mkdir -p snapshot
+          # "|| true": a down site still saves its lines (uptime-check exits 1, live-check exits 1 on a FAIL)
+          python3 tools/uptime-check.py --base https://uaply.net --json "snapshot/uaply-health-$d.json" || true
+          python3 tools/live-check.py --base https://uaply.net --no-rate-limit > "snapshot/uaply-live-check-$d.txt" 2>&1 || true
+          tail -2 "snapshot/uaply-live-check-$d.txt"
+          # a missing or broken script writes no JSON, or no "N passed, N failed, N skipped" line: fail the run so someone sees it
+          test -s "snapshot/uaply-health-$d.json"
+          grep -qE '^[0-9]+ passed, [0-9]+ failed, [0-9]+ skipped$' "snapshot/uaply-live-check-$d.txt"
+          echo "date=$d" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: uaply-health-${{ steps.snap.outputs.date }}
+          path: snapshot/
+          retention-days: 90
+          if-no-files-found: error

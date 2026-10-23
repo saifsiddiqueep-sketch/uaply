@@ -92,6 +92,7 @@ run "swipe learning: the math, the worked example, the replay test" python tools
 run "fill from your resume: six resumes, layouts, dates, refused files, the endpoint" python tools/test-resume.py 18798
 run "the server as Render runs it: start, stop mid-request, restart on the same disk" python tools/test-render.py 18782
 run "the owner's self-check in /api/status: last job board read, last email sent, disk room, warnings; owner only" python tools/test-self-check.py 18960
+run "the outside uptime check: two tries before an alarm, one issue \"uaply.net is down\" opened, edited and closed, the daily snapshot (stand-in site and GitHub)" python tools/test-uptime.py 18963
 run "reading every job board stays under 110 MB, the first visitor never waits for every board, a redeploy answers from the saved list at once" python tools/test-feed-memory.py
 run "job types per feed, the Job type filter, the Simplify / Pitt CSC lists" python tools/test-job-types.py 18840
 run "the whole US with PA, NJ, DE first: places, the city table, CareerOneStop, the distance filter" python tools/test-tristate.py 18842

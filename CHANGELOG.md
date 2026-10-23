@@ -119,6 +119,24 @@ production page and only changes when the owner decides.
   `shared/uaply-nav.js` (`shareJob`), `check.js` builds it, and `tools/ui-share.js` runs at 390x844 and 1280x720 in
   `tools/run-all-tests.sh`.
 
+### Outside uptime check and a daily health snapshot (Mohammed, October 22)
+- **`.github/workflows/uptime.yml`, "Uptime of uaply.net"**: from GitHub's machines, `tools/uptime-check.py` asks `/healthz`, the home
+  page and `/readyz` (none on the server yet: a 404 is a SKIP). A failure is asked again 2 minutes later; only a second failure opens
+  the single issue **uaply.net is down**, which mentions both founders so GitHub emails them. While down the issue is edited quietly; when
+  the site answers again it gets a note and closes. Only an issue the check opened is ever edited or closed. Every 10 minutes, free
+  because the repository is public (so the issue is public too); `UPTIME_HOURLY=on` drops to hourly if the repository is ever made
+  private, and `UPTIME_PAUSED=on` silences it.
+- **`.github/workflows/health-snapshot.yml`**: once a day, the public health summary (`uaply-health-DATE.json`: the checks with times and
+  `/api/status`'s yes/no facts and commit) and `live-check.py --no-rate-limit` output, as a workflow artifact kept 90 days, so launch-week
+  numbers outlive Render's 7-day logs. A missing or broken script turns the run red instead of saving an error.
+- Nothing runs until four files are on `main` (GitHub's rule for schedules): both workflows, `tools/uptime-check.py` and
+  `tools/live-check.py`. `docs/uptime.md` says what runs, what an alert looks like, how to
+  silence it, what it costs and how to add a phone alert (UptimeRobot, free). `check.yml` is unchanged.
+- `tools/test-uptime.py` (40 checks, in `tools/run-all-tests.sh`): a stand-in site (up, a one-second deploy blip, 503, a dead address,
+  a home page that is not UAply's, `/readyz` 404/500/200) and a stand-in GitHub; one issue opened only after two failures, edited not
+  duplicated, closed with a note, a pull request or a person's issue with the same title never touched, the wording honest about no
+  answer versus an error answer, the token never printed, and both workflow files.
+
 ### Terms and help say what the app does (October 22)
 - **Terms of Service, section 3: "Applications on your behalf"** (the consent version 3 sentence, drafted in LEGAL-REVIEW.md;
   Saif decided on October 21 that it goes in the Terms). **Pending the lawyer's read before launch.** The list under it names the
