@@ -17,8 +17,8 @@ only) and checked by `python tools/test-play-listing.py` (exact pixel sizes, for
 | Main store listing | Full description | `text/full-description.txt` | 4000 max |
 | Main store listing | App icon | `icon-512.png` | 512 x 512 PNG, 1 MB max |
 | Main store listing | Feature graphic | `feature-graphic.png` | 1024 x 500, PNG without transparency |
-| Main store listing | Phone screenshots (2 to 8) | `screenshots/phone/1-jobs.png` ... `5-help.png` (to be regenerated with the sign-up card first, `0-sign-up.png`, once the sign-in gate is merged) | 1080 x 1920 (9:16), no transparency |
-| Main store listing | 7-inch tablet screenshots | `screenshots/tablet/1-jobs.png` ... `5-help.png` | 1080 x 1920 (9:16), no transparency |
+| Main store listing | Phone screenshots (2 to 8) | `screenshots/phone/1-sign-up.png` (the sign-up card, the first screen), then `2-jobs.png` ... `6-help.png` after an example sign-up | 1080 x 1920 (9:16), no transparency |
+| Main store listing | 7-inch tablet screenshots | `screenshots/tablet/1-sign-up.png` ... `6-help.png` | 1080 x 1920 (9:16), no transparency |
 | Main store listing | 10-inch tablet screenshots | the same tablet files (optional) | |
 | Store settings | Category, contact email, website | `app-content.md`, "Store settings" | |
 | Policy > App content > Privacy policy | URL | https://uaply.net/legal/privacy.html (`app-content.md`) | |

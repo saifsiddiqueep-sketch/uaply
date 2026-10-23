@@ -16,8 +16,8 @@ swipe work exactly as on uaply.net. From the plan of October 21, 2026 ("UAply Sw
 | 9 | Internal testing first (up to 100 testers, no review wait), then the closed test: 12 testers opted in for 14 days in a row (a personal account made after November 13, 2023 cannot apply for production before); invite text prepared | Owner and testers | 14 days | `mobile/store/play/testers.md` |
 | 10 | Apply for production; review usually takes under 7 days | Owner | After step 9 | Play Console, Dashboard |
 
-Store pictures: the screenshots must show the sign-up card first now that the sign-in gate is on. `tools/make-play-assets.js` is run
-again from the gate's sandbox once it is merged (every phone and tablet screenshot is regenerated, with the sign-up card as the first).
+Store pictures: the screenshots show the sign-up card first, as the sign-in gate does (`1-sign-up.png`), then Jobs, Job Tracker,
+Profile, Filters and Help after an example sign-up on a test-mode sandbox server (`node tools/cdp.js tools/make-play-assets.js`, October 23).
 
 Two rules that keep the listing safe:
 - **No buy buttons inside the app.** The free-only switch (`UAPLY_PLANS_HIDDEN=1`) already guarantees it; Google Play's payments policy
