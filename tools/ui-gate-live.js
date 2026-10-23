@@ -11,7 +11,8 @@
 // 4. the data addresses answer 401 to a signed-out request (/api/jobs, /api/apply, /api/apply/plan, /api/apply/mark, /api/chat,
 //    /api/profile/resume, /api/outbox, /api/feedback, /api/employer/me) while /healthz, /api/auth/providers, /api/apply/config,
 //    /api/chat/config and /api/billing/status answer 200. Until the server half of the gate is in, the 401 lines print as
-//    "WAIT server not yet gated" and do not fail; --server-gated (or GATE_SERVER=1) makes them FAIL;
+//    "WAIT server not yet gated" and do not fail; --server-gated (or GATE_SERVER=1) makes them FAIL. The owner's pages (/outbox,
+//    /api/outbox, /feedback, /setup, /api/feed-health) must answer 401 or 403 on a public server and are open on this computer;
 // 5. the service worker keeps nothing that could show a job to a signed-out visitor: its cache holds only the offline screen and its
 //    icon, no /api/ answer and no page, and its code saves nothing else (no cache.put) and answers page loads from the network first.
 const fs = require("fs");
@@ -40,7 +41,11 @@ const BASE = String(arg("base", process.env.BASE || "")).replace(/\/+$/, "");
 const SERVER_GATED = process.argv.includes("--server-gated") || process.env.GATE_SERVER === "1";
 const OUT = arg("out", "");
 const SIZES = [[390, 844, true], [1280, 800, false]];
-const DATA_GET = ["/api/jobs", "/api/outbox", "/api/employer/me"];
+const DATA_GET = ["/api/jobs", "/api/employer/me"];
+// the owner's pages (serve.py OWNER_PAGES): behind the owner check, not the sign-in gate. On a public server a visitor gets 401 (an
+// owner password is set) or 403 (none is); on this computer (not public) they are open by design: the test inbox is how a code is read
+// before anyone is signed in. Which one this server is comes from /api/status "public".
+const OWNER = ["/outbox", "/api/outbox", "/feedback", "/setup", "/api/feed-health"];
 const DATA_POST = ["/api/apply", "/api/apply/plan", "/api/apply/mark", "/api/chat", "/api/profile/resume", "/api/feedback"];
 const OPEN = ["/healthz", "/api/auth/providers", "/api/apply/config", "/api/chat/config", "/api/billing/status"];
 
@@ -76,6 +81,15 @@ module.exports = async ({ ev, sleep, send, on, logs, shot }) => {
   for (const p of OPEN) {
     let s = 0; try { const r = await fetch(BASE + p, {}); await r.text(); s = r.status; } catch (e) {}
     check("signed out, " + p + " answers 200 (it must work before an account exists)", s === 200, "HTTP " + s);
+  }
+  let pub = null;
+  try { const r = await fetch(BASE + "/api/status", {}); const j = JSON.parse(await r.text()); if (typeof j.public === "boolean") pub = j.public; } catch (e) {}
+  if (pub === null) pub = !/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(BASE);      // an older server without "public": judge by the address
+  info("this server is " + (pub ? "public: the owner's pages must be closed to a visitor" : "on this computer only: the owner's pages are open by design"));
+  for (const p of OWNER) {
+    let s = 0; try { const r = await fetch(BASE + p, {}); await r.text(); s = r.status; } catch (e) {}
+    if (pub) check("signed out, the owner's page " + p + " is closed to a visitor (401 with an owner password, 403 without)", s === 401 || s === 403, "HTTP " + s);
+    else check("this computer: the owner's page " + p + " answers (open to the owner here by design)", s === 200, "HTTP " + s);
   }
   for (const [m, p] of DATA_GET.map((x) => ["GET", x]).concat(DATA_POST.map((x) => ["POST", x]))) {
     let s = 0;
