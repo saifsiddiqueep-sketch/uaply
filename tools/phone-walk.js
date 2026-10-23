@@ -171,12 +171,12 @@ module.exports = async ({ ev, sleep, nav, send }) => {
     await orient(); let p = await where(finder, inPage); if (!p) return null; await sleep(250); p = await where(finder, inPage); if (!p) return null;
     await ev("(()=>{window.__th=null;const f=" + F + ";const rec=e=>{if(!window.__th)window.__th=e.target};const on=(t)=>{t.addEventListener('pointerdown',rec,{capture:true,once:true})};on(window);if(f&&f.contentWindow)on(f.contentWindow);return 1})()");
     const [x, y] = toScreen(p.x, p.y); wake(); adb("shell", "input", "tap", String(x), String(y)); await sleep(700);
-    return ev("(()=>{const f=" + F + ";const d=" + (inPage ? "document" : "f.contentDocument") + ";const e=(" + finder + "),h=window.__th;return !h||!e||e===h||e.contains(h)||(h.closest&&h.closest('label')&&h.closest('label').contains(e))})()");
+    return ev("(()=>{const f=" + F + ";const d=" + (inPage ? "document" : "f.contentDocument") + ";const e=(" + finder + "),h=window.__th;return !!h&&(!e||e===h||e.contains(h)||(h.closest&&h.closest('label')&&h.closest('label').contains(e)))})()");   // no pointerdown in the page (the keyboard, the address bar): a miss
   };
   const tap = async (finder, inPage) => {
     const ok = await tapOnce(finder, inPage); if (ok === null) return false; if (ok) return true;
     await calibrate(); const again = await tapOnce(finder, inPage); if (again === null) return false;
-    if (!again) log("a tap missed twice (" + finder.slice(0, 60) + "): the page moved under it");
+    if (!again) { fail("a tap missed twice (" + finder.slice(0, 60) + "): it reached something else, or nothing in the page"); return false; }
     return true;
   };
   const swipe = async (finder, dx, dy, ms) => { await orient(); const p = await where(finder); if (!p) return false; await sleep(250); const [x, y] = toScreen(p.x, p.y);
