@@ -142,7 +142,14 @@ module.exports = async ({ ev, sleep, nav, send }) => {
   const calibrate = async (finder) => {
     dpr = await ev("devicePixelRatio");
     await ev("window.__pd=null;const f=" + F + ";const hit=e=>{if(!window.__pd)window.__pd=[e.clientX,e.clientY,e.view===window?0:1]};addEventListener('pointerdown',hit,true);if(f&&f.contentWindow)f.contentWindow.addEventListener('pointerdown',hit,true);1");
-    const p = JSON.parse(await ev("(()=>{const f=" + F + ";const d=f?f.contentDocument:document;const e=" + (finder || "[d.getElementById('kcH'),d.querySelector('.brand'),d.querySelector('.sg-bb .sg-lg'),d.querySelector('.sg-card h1,.sg-card h2'),d.querySelector('h1')].find(e=>e&&e.getClientRects().length&&e.getBoundingClientRect().width>0)") + ";const r=e.getBoundingClientRect(),o=f?f.getBoundingClientRect():{left:0,top:0};return JSON.stringify({x:o.left+r.left+Math.min(r.width/2,30),y:o.top+r.top+r.height/2})})()"));
+    // (not the header's logo when the header shows: on the sandbox the logo is a link home, so every measuring tap jumped to the Jobs tab, and
+    //  a walk that measured again after the keyboard closed lost its place: Account never opened, Sign out never pressed, October 23. The
+    //  widest empty stretch of the header between its buttons is used, which does nothing when tapped)
+    const gap = finder ? "" : "if(!(k&&k.getClientRects().length)){const h=d.querySelector('header.bar');if(h&&h.getClientRects().length&&h.getBoundingClientRect().height>20){const hr=h.getBoundingClientRect();" +
+      "const cs=[...h.querySelectorAll('button,a,input,[role=link],[role=button],[tabindex]')].filter(x=>x.getClientRects().length).map(x=>x.getBoundingClientRect()).sort((a,b)=>a.left-b.left);" +
+      "let best=null,prev=hr.left;for(const c of cs){if(c.left-prev>(best?best.w:0))best={x:(prev+c.left)/2,w:c.left-prev};prev=Math.max(prev,c.right)}if(hr.right-prev>(best?best.w:0))best={x:(prev+hr.right)/2,w:hr.right-prev};" +
+      "if(best&&best.w>=16)return JSON.stringify({x:o.left+best.x,y:o.top+hr.top+hr.height/2})}}";
+    const p = JSON.parse(await ev("(()=>{const f=" + F + ";const d=f?f.contentDocument:document;const o=f?f.getBoundingClientRect():{left:0,top:0};const k=d.getElementById('kcH');" + gap + "const e=" + (finder || "[k,d.querySelector('.sg-bb .sg-lg'),d.querySelector('.sg-card h1,.sg-card h2'),d.querySelector('h1')].find(e=>e&&e.getClientRects().length&&e.getBoundingClientRect().width>0)") + ";const r=e.getBoundingClientRect();return JSON.stringify({x:o.left+r.left+Math.min(r.width/2,30),y:o.top+r.top+r.height/2})})()"));
     const guessTop = Math.round((await ev("screen.height")) * dpr - (await ev("innerHeight")) * dpr - 134);
     const X = Math.round(p.x * dpr), Y = Math.round(guessTop + p.y * dpr);
     wake(); adb("shell", "input", "tap", String(X), String(Y)); await sleep(700);
@@ -157,13 +164,36 @@ module.exports = async ({ ev, sleep, nav, send }) => {
   const where = async (finder, inPage) => JSON.parse(await ev("(()=>{const f=" + F + ";const d=" + (inPage ? "document" : "f.contentDocument") + ";const e=(" + finder + ");if(!e)return 'null';e.scrollIntoView({block:'center'});const r=e.getBoundingClientRect(),o=" + (inPage ? "{left:0,top:0}" : "f.getBoundingClientRect()") + ";const v=window.visualViewport||{offsetLeft:0,offsetTop:0};return JSON.stringify({x:o.left+r.left+r.width/2-v.offsetLeft,y:o.top+r.top+r.height/2-v.offsetTop,w:r.width,h:r.height})})()"));
   // (the visual viewport's offset: with Android's keyboard open Chrome scrolls the visible part, and a tap measured without it landed
   //  on the box above the one meant: the sign-up card's First name tap went to Email, October 22, 2026)
-  const tap = async (finder, inPage) => { await orient(); let p = await where(finder, inPage); if (!p) return false; await sleep(250); p = await where(finder, inPage); const [x, y] = toScreen(p.x, p.y); wake(); adb("shell", "input", "tap", String(x), String(y)); await sleep(700); return true; };
+  // a tap is checked: the element the finger reached must be the one meant (or inside it). When it was not (the address bar or the keyboard
+  // moved the page between measuring and tapping: a Save and continue tap landed on the Jobs tab, then Account was never opened and Sign
+  // out never pressed, October 23), the screen is measured again and the tap tried once more
+  const tapOnce = async (finder, inPage) => {
+    await orient(); let p = await where(finder, inPage); if (!p) return null; await sleep(250); p = await where(finder, inPage); if (!p) return null;
+    await ev("(()=>{window.__th=null;const f=" + F + ";const rec=e=>{if(!window.__th)window.__th=e.target};const on=(t)=>{t.addEventListener('pointerdown',rec,{capture:true,once:true})};on(window);if(f&&f.contentWindow)on(f.contentWindow);return 1})()");
+    const [x, y] = toScreen(p.x, p.y); wake(); adb("shell", "input", "tap", String(x), String(y)); await sleep(700);
+    return ev("(()=>{const f=" + F + ";const d=" + (inPage ? "document" : "f.contentDocument") + ";const e=(" + finder + "),h=window.__th;return !!h&&(!e||e===h||e.contains(h)||(h.closest&&h.closest('label')&&h.closest('label').contains(e)))})()");   // no pointerdown in the page (the keyboard, the address bar): a miss
+  };
+  const tap = async (finder, inPage) => {
+    const ok = await tapOnce(finder, inPage); if (ok === null) return false; if (ok) return true;
+    await calibrate(); const again = await tapOnce(finder, inPage); if (again === null) return false;
+    if (!again) { fail("a tap missed twice (" + finder.slice(0, 60) + "): it reached something else, or nothing in the page"); return false; }
+    return true;
+  };
   const swipe = async (finder, dx, dy, ms) => { await orient(); const p = await where(finder); if (!p) return false; await sleep(250); const [x, y] = toScreen(p.x, p.y);
     wake(); adb("shell", "input", "swipe", String(x), String(y), String(Math.round(x + dx * dpr)), String(Math.round(y + dy * dpr)), String(ms || 250)); await sleep(900); return true; };
   const q = (js) => ev("(()=>{try{const d=" + F + ".contentDocument,w=d.defaultView;" + js + "}catch(e){return 'ERR '+e.message}})()");
   const waitFor = async (js, ms) => { const end = Date.now() + (ms || 10000); let v; while (Date.now() < end) { v = await q(js); if (v && !String(v).startsWith("ERR")) return v; await sleep(300); } return v; };
   const byText = (re, sel) => "[...d.querySelectorAll('" + (sel || "button,a,[role=button],.nitem") + "')].find(b=>b.offsetParent&&" + re + ".test(b.innerText.trim()))";
-  const menu = async (tab, item) => { await tap("d.getElementById('" + tab + "')"); await sleep(400); return tap("[...d.querySelectorAll('.nitem')].find(b=>b.offsetParent&&b.getAttribute('data-v')==='" + item + "')"); };
+  // a tab opens its menu, and a second tap closes it: the tab is tapped only while its menu is shut, and again if the item is not on show
+  // (a walk that tapped Profile with its menu already open closed it, so Account never opened, October 23)
+  const menu = async (tab, item) => {
+    const shown = "[...d.querySelectorAll('.nitem')].find(b=>b.offsetParent&&b.getAttribute('data-v')==='" + item + "')";
+    for (let k = 0; k < 2; k++) {
+      if (!(await q("return " + shown + "?'yes':''"))) { await tap("d.getElementById('" + tab + "')"); await sleep(500); }
+      if (await q("return " + shown + "?'yes':''")) return tap(shown);
+    }
+    fail("menu · " + tab.replace("nb-", "") + " › " + item + " did not open"); return false;
+  };
   const keyboardShot = async (name, finder, label) => {           // tap a field so Android's keyboard opens, check it, then close the keyboard
     if (!(await tap(finder))) { fail(label + " · the field to type in was not found"); return; }
     await sleep(900);
@@ -246,7 +276,7 @@ module.exports = async ({ ev, sleep, nav, send }) => {
     await menu("nb-prof", "account"); await step("account", "Account");
     if (!LIVE && (await q("return d.querySelector('[data-auth=sout]')?'in':''"))) {     // signed up through the gate: sign out, and the gate is back
       await tap("d.querySelector('[data-auth=sout]')"); await sleep(1800);
-      if (await q("return d.body.classList.contains('sgGated')?'yes':''")) log("Sign out: the sign-in gate is back"); else fail("Sign out · the sign-in gate did not come back");
+      if (await waitFor("return d.body.classList.contains('sgGated')?'yes':''", 6000) === "yes") log("Sign out: the sign-in gate is back"); else fail("Sign out · the sign-in gate did not come back");
       await step("gate-after-signout", "the sign-in gate after Sign out");
     }
     await keyboardShot("signin-keyboard", "d.getElementById('aEmail')||d.getElementById('sEmail')||d.querySelector('#acctSec input[type=email],#acctSec input[inputmode=email]')", "Sign in, typing an email");

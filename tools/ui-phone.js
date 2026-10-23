@@ -158,10 +158,13 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
 
   // ---------------------------------------------------------------- 2. swipes the way people swipe
   // the least a swipe right needs to apply (October 21): a name, an email and a phone number; without them it opens "Finish your profile first"
-  await ev("(()=>{const A=document.querySelector('iframe').contentWindow.__uaply;Object.assign(A.S.profile,{name:'Phone Tester',email:'phone.tester@example.com',custom:true});A.S.profile.ext=Object.assign({},A.S.profile.ext,{phone:'+1 215 555 0100'});A.save();A.renderAll()})()");
+  // (no target title and every work style: the example profile's own, Frontend Developer and no on-site work, turned into the person's
+  // with custom:true, hide most of a feed that is still loading, and the deck ran dry in the middle of these swipes: "no card")
+  await ev("(()=>{const A=document.querySelector('iframe').contentWindow.__uaply;Object.assign(A.S.profile,{name:'Phone Tester',email:'phone.tester@example.com',custom:true,title:'',modes:{remote:true,hybrid:true,onsite:true}});A.S.profile.ext=Object.assign({},A.S.profile.ext,{phone:'+1 215 555 0100'});A.save();A.renderAll()})()");
   await menu("nb-svc", "Full-time"); await sleep(600);
   const swipe = async (name, dx, dy, steps, ms, bend, expect) => {
-    const c = await cardCenter(); if (!c) { check(name, false, "no card"); return; }
+    const c = await cardCenter();
+    if (!c) { check(name, false, "no card: " + await ev("(()=>{try{const d=" + F + ",A=" + FW + ".__uaply,dk=d.getElementById('deck');return JSON.stringify({deck:(dk&&dk.innerText||'').replace(/\s+/g,' ').slice(0,160),swipeHidden:d.getElementById('pane-swipe').hidden,type:A.getType(),dialogs:[...d.querySelectorAll('[role=dialog]')].filter(x=>x.getClientRects().length).map(x=>x.id||x.className)})}catch(e){return e.message}})()")); return; }
     await watch();
     const k0 = await topKey(), d0 = await decisions(), s0 = await sentFor(k0);
     const at = await ev("(()=>{const f=document.querySelector('iframe').getBoundingClientRect();const e=" + F + ".elementFromPoint(" + c.x + "-f.left," + c.y + "-f.top);return e?(e.closest('.card.top')?'card':(e.id||e.className||e.tagName)):'none'})()");
@@ -184,15 +187,16 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
   await swipe("a quick short flick left (80px) passes", -80, 0, 4, 12, false, "passed");
   await swipe("a curved thumb swipe left that starts slightly downward passes", -170, 45, 14, 16, true, "passed");
   await swipe("a curved thumb swipe right that starts slightly upward applies", 170, -45, 14, 16, true, "applied");
-  await swipe("a slow, deliberate drag left of half the card passes", -0.5 * (await cardCenter()).w, 10, 30, 25, false, "passed");
+  { const cc = await cardCenter();   // a missing card is a failed check (swipe() says so), never a crash of the whole script
+    await swipe("a slow, deliberate drag left of half the card passes", -0.5 * (cc ? cc.w : 300), 10, 30, 25, false, "passed"); }
   await swipe("a vertical scroll on the card does not swipe", 8, -160, 12, 16, false, "nothing");
   await swipe("a short accidental nudge (25px) does not swipe", 25, 4, 4, 30, false, "nothing");
   const c = await cardCenter(); const k0 = await topKey();
-  await tap(c.x, c.y); await sleep(500);
-  check("a plain tap on the card does not swipe", (await topKey()) === k0);
+  if (c) { await tap(c.x, c.y); await sleep(500); }
+  check("a plain tap on the card does not swipe", !!c && (await topKey()) === k0, c ? "" : "no card");
   // two fast swipes, the second starting 150 ms after the first lifts (while the first card is still flying off): both count
   {
-    const d0 = await decisions(), p = await cardCenter();
+    const d0 = await decisions(), p = (await cardCenter()) || { x: 200, y: 400 };   // no card: the check below fails, the script goes on
     const fast = async () => {                          // events paced like a real finger, without waiting for each answer
       const P = [send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: p.x, y: p.y, id: 1 }] })];
       for (let i = 1; i <= 10; i++) { await sleep(14); P.push(send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: p.x - 20 * i, y: p.y, id: 1 }] })); }
