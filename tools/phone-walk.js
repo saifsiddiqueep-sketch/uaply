@@ -110,8 +110,9 @@ const FIT = String.raw`(doc,label)=>{const w=doc.defaultView,out=[],vw=w.innerWi
     else if(!hits(a,(s.l+s.r)/2,(s.t+s.b)/2)){const t=doc.elementFromPoint((s.l+s.r)/2,(s.t+s.b)/2);out.push(label+': "'+(t?name(t):'?')+'" lies over the field being typed in ("'+name(a)+'")')}}
   const bar=doc.getElementById('bnav');if(bar&&shown(bar)&&!kb){const b=bar.getBoundingClientRect();if(b.bottom>vt+vh+1)out.push(label+': the bottom bar is partly below the screen ('+Math.round(b.bottom)+' > '+Math.round(vt+vh)+')')}
   return out}`;
-// small text is listed as a note, not a fit problem: Chrome does not enlarge it on a page with width=device-width
-const SMALL = String.raw`(doc,label)=>{const w=doc.defaultView;return [...doc.querySelectorAll('p,li,small,span,label,button,a,b,em,strong,td,th,div')].filter(e=>e.getClientRects().length&&w.getComputedStyle(e).visibility!=='hidden'&&!e.closest('[aria-hidden=true]')&&[...e.childNodes].some(n=>n.nodeType===3&&n.textContent.trim().length>1)&&parseFloat(w.getComputedStyle(e).fontSize)<12).slice(0,4).map(e=>label+': '+w.getComputedStyle(e).fontSize+' "'+e.textContent.trim().slice(0,20)+'"')}`;
+// small text (under 14 px, the owner's rule since October 23) is listed as a note, not a fit problem: Chrome does not enlarge it on a page
+// with width=device-width
+const SMALL = String.raw`(doc,label)=>{const w=doc.defaultView;return [...doc.querySelectorAll('p,li,small,span,label,button,a,b,em,strong,td,th,div')].filter(e=>e.getClientRects().length&&w.getComputedStyle(e).visibility!=='hidden'&&!e.closest('[aria-hidden=true]')&&[...e.childNodes].some(n=>n.nodeType===3&&n.textContent.trim().length>1)&&parseFloat(w.getComputedStyle(e).fontSize)<14).slice(0,4).map(e=>label+': '+w.getComputedStyle(e).fontSize+' "'+e.textContent.trim().slice(0,20)+'"')}`;
 
 module.exports = async ({ ev, sleep, nav, send }) => {
   fs.mkdirSync(OUT, { recursive: true });

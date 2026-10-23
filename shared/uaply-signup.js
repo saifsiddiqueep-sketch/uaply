@@ -19,7 +19,7 @@ var CSS=`
 #acctSec.sgnOn{max-width:none;width:100%;padding:12px 0 16px;flex:1 0 auto;justify-content:center;justify-content:safe center;gap:0}
 #acctSec.sgnOn.sgWide{max-width:none}
 #acctSec.sgnOn>h3,#acctSec.sgnOn>.lead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-#acctSec.sgnOn>#aMsg{text-align:center;margin-top:10px}
+#acctSec.sgnOn>#aMsg{text-align:center;margin-top:10px;font-size:14px}
 #acctSec.sgnOn>#aMsg:empty{display:none}
 #pane-profile:has(>#acctSec.sgnOn:not([hidden])){display:flex;flex-direction:column;min-height:100%}
 .sg{--sg-field:color-mix(in srgb,var(--muted) 72%,var(--surface));--sg-no:color-mix(in srgb,var(--no,#E03A45) 88%,var(--ink));--sg-yes:var(--yes,#0B8F62);--sg-yes-ink:color-mix(in srgb,var(--yes,#0B8F62) 80%,var(--ink));--sg-yes-bg:var(--yes-bg,#DCF5EA);
@@ -41,8 +41,8 @@ var CSS=`
 .sg-chead{display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px;margin-bottom:4px}
 .sg-chead h1{font-size:25px;line-height:1.15}
 .sg-sub{color:var(--muted);margin:0}
-.sg-fine{color:var(--muted);font-size:13px;margin:0}
-.sg-or{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:13px}
+.sg-fine{color:var(--muted);font-size:14px;line-height:1.35;margin:0}
+.sg-or{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:14px;line-height:1.2}
 .sg-or::before,.sg-or::after{content:"";flex:1;height:1px;background:var(--line)}
 .sg-stack{display:flex;flex-direction:column;gap:12px}
 .sg-two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -72,20 +72,20 @@ var CSS=`
 #acctSec .sg .sg-fld.bad input{border-color:var(--sg-no)}
 .sg-fld .sg-tick{position:absolute;right:13px;top:50%;transform:translateY(-50%) scale(.6);color:var(--sg-yes);opacity:0;transition:opacity .2s,transform .2s;font-size:18px;display:flex;pointer-events:none}
 .sg-fld.good .sg-tick{opacity:1;transform:translateY(-50%) scale(1)}
-.sg-fmsg{margin:6px 0 0;font-size:13px;color:var(--muted)}
+.sg-fmsg{margin:6px 0 0;font-size:14px;line-height:1.35;color:var(--muted)}
 .sg-fmsg:empty{display:none}
 .sg-fld.bad .sg-fmsg,.sg-fmsg.err{color:var(--sg-no)}
 .sg-fmsg.nudge{color:var(--accent);font-weight:600}
 .sg-fmsg.ok{color:var(--sg-yes-ink)}
-.sg-fix{font:600 13px var(--body);color:var(--accent);background:none;border:0;padding:0;text-decoration:underline;cursor:pointer}
+.sg-fix{font:600 14px var(--body);color:var(--accent);background:none;border:0;padding:0;text-decoration:underline;cursor:pointer}
 .sg-agree{display:flex;gap:10px;align-items:flex-start;font-size:14px;cursor:pointer;line-height:1.4;color:var(--ink);min-height:44px;padding:2px 0}   /* the whole row ticks the box: a 44 px target (phone fit rule) */
 .sg-agree input{width:20px;height:20px;margin:0;flex:none;accent-color:var(--accent);cursor:pointer}
 .sg-agree span{flex:1;min-width:0}
 .sg-agree a{color:var(--accent)}
 .sg-agree.bad span{color:var(--sg-no)}
-.sg-note{margin:0;font-size:13px;color:var(--muted);text-align:center}
+.sg-note{margin:0;font-size:14px;color:var(--muted);text-align:center}
 .sg-note a{color:var(--accent)}
-.sg-gnote{margin:0;font-size:13px;background:var(--sg-yes-bg);color:var(--ink);border-radius:12px;padding:9px 12px;display:flex;gap:8px;align-items:flex-start}
+.sg-gnote{margin:0;font-size:14px;background:var(--sg-yes-bg);color:var(--ink);border-radius:12px;padding:9px 12px;display:flex;gap:8px;align-items:flex-start}
 .sg-gnote .sg-i{color:var(--sg-yes);margin-top:2px}
 .sg-gis{min-height:44px;display:flex;justify-content:center}
 .sg-have{margin:0;font-size:14px;text-align:center;background:color-mix(in srgb,var(--accent) 9%,var(--surface));border:1px solid color-mix(in srgb,var(--accent) 30%,var(--line));border-radius:12px;padding:6px 12px;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;column-gap:6px}
@@ -95,7 +95,7 @@ var CSS=`
 .sg-okc{width:58px;height:58px;border-radius:50%;display:grid;place-items:center;background:var(--sg-yes-bg);color:var(--sg-yes);font-size:28px;margin:0 auto}
 .sg-done{display:flex;flex-direction:column;gap:12px;text-align:center}
 .sg-done h2,.sg-codestep h2{font-size:25px;line-height:1.15}
-.sg-mark{font:12px var(--mono);color:var(--muted);margin:0;text-align:center}
+.sg-mark{font:14px/1.35 var(--mono);color:var(--muted);margin:0;text-align:center}
 .sg-mark a{color:var(--accent)}
 .sg-code{display:flex;gap:8px;justify-content:center}
 #acctSec .sg .sg-code input{flex:0 1 46px;min-width:0;width:46px;height:56px;border-radius:12px;border:1.5px solid var(--sg-field);background:var(--surface);color:var(--ink);text-align:center;font:600 22px var(--mono);padding:0;margin:0}
@@ -123,12 +123,12 @@ var CSS=`
 .sg-qs{max-width:540px;display:flex;flex-direction:column;gap:16px}
 .sg-qs h2{font-size:32px;line-height:1.1}
 .sg-made{display:inline-flex;align-self:flex-start;align-items:center;gap:8px;margin:0 0 4px;font-weight:600;font-size:14px;color:var(--sg-yes-ink);background:var(--sg-yes-bg);border-radius:999px;padding:6px 12px 6px 10px}
-.sg-eyebrow{font:600 12px var(--mono);color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin:0}
+.sg-eyebrow{font:600 14px var(--mono);color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin:0}
 .sg-chips{display:flex;flex-wrap:wrap;gap:8px}
 .sg-chip{font:600 14px var(--body);color:var(--ink);background:var(--surface);border:1.5px solid var(--sg-field);border-radius:999px;padding:9px 15px;min-height:44px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background-color .15s,border-color .15s}
 .sg-chip:hover{border-color:var(--accent)}
 .sg-chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
-.sg-pvh{font:600 11px var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 8px}
+.sg-pvh{font:600 14px var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 8px}
 .sg-pvcard{background:var(--bg);border:1px solid var(--line);border-radius:20px;padding:20px;display:flex;flex-direction:column;gap:10px}
 .sg-pvn{font:800 22px var(--display);overflow-wrap:anywhere}
 .sg-pvph{color:var(--muted);font-weight:600}
@@ -136,7 +136,7 @@ var CSS=`
 .sg-pvr span{color:var(--muted)}
 .sg-pvr b{font-weight:600;min-width:0;overflow-wrap:anywhere}
 .sg-pvr.later b{font-weight:400;color:var(--muted);font-style:italic}
-.sg-vfl{display:flex;align-items:center;gap:6px;margin:10px 0 0;font-size:13px;font-weight:600;color:var(--sg-yes-ink)}
+.sg-vfl{display:flex;align-items:center;gap:6px;margin:10px 0 0;font-size:14px;font-weight:600;color:var(--sg-yes-ink)}
 .sg-vfl .sg-i{color:var(--sg-yes)}
 .sg-flash{animation:sgflash .6s}
 @keyframes sgflash{0%{background:color-mix(in srgb,var(--accent2) 30%,transparent)}100%{background:transparent}}
@@ -145,8 +145,8 @@ var CSS=`
 .sg-pvmini{display:none}
 .sg-q4f{display:flex;align-items:center;gap:12px;padding:14px 28px 18px;border-top:1px solid var(--line)}
 .sg-q4f .sp{flex:1}
-.sg-kh{font:12px var(--mono);color:var(--muted)}
-.sg-kh kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 5px;background:var(--bg)}
+.sg-kh{font:14px var(--mono);color:var(--muted)}
+.sg-kh kbd{font:14px var(--mono);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 5px;background:var(--bg)}
 @media (max-width:700px){
   .sg-card{max-width:none;padding:22px 20px 20px;border-radius:22px;gap:11px}
   .sg-bb{padding:0 0 12px}
@@ -162,7 +162,7 @@ var CSS=`
   .sg-pv{order:-1}
   .sg-pvh,.sg-pvcard,.sg-vfl{display:none}
   .sg-pv.open .sg-pvcard,.sg-pv.open .sg-vfl{display:flex}
-  .sg-pvmini{display:flex;width:100%;align-items:center;gap:10px;font:600 13px var(--body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:10px 12px;min-height:44px;cursor:pointer;margin-bottom:8px}
+  .sg-pvmini{display:flex;width:100%;align-items:center;gap:10px;font:600 14px var(--body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:10px 12px;min-height:44px;cursor:pointer;margin-bottom:8px}
   .sg-pvmini .sg-meter{flex:1;margin:0;height:6px}
   .sg-pvmini .sg-i{transition:transform .2s}
   .sg-pv.open .sg-pvmini .sg-i{transform:rotate(90deg)}
@@ -188,7 +188,7 @@ body.sgGated #main>*:not(#pane-profile){display:none!important}
 body.sgGated #pane-profile{display:flex!important;flex-direction:column;min-height:100%}
 body.sgGated #pane-profile>*:not(#acctSec){display:none!important}
 body.sgGated #acctSec{display:flex!important}
-.sg-legal{margin:2px 0 0;text-align:center;font-size:13px;color:var(--muted);display:flex;flex-wrap:wrap;justify-content:center;column-gap:4px}
+.sg-legal{margin:2px 0 0;text-align:center;font-size:14px;color:var(--muted);display:flex;flex-wrap:wrap;justify-content:center;column-gap:4px}
 .sg-legal a{color:var(--muted);text-decoration:underline;display:inline-flex;align-items:center;min-height:44px;padding:0 6px}
 /* the password box: its own show/hide button inside the box, a 44 px target */
 #acctSec .sg .sg-pw input{padding-right:52px}
@@ -198,8 +198,8 @@ body.sgGated #acctSec{display:flex!important}
 .sg-eye svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .sg-pwh{margin-top:6px}
 .sg-pw.bad .sg-pwh{display:none}
-.sg-alt{margin:0;text-align:center;font-size:13px}
-.sg-alt .sg-lnk{font-size:13px;font-weight:500;color:var(--muted)}
+.sg-alt{margin:0;text-align:center;font-size:14px}
+.sg-alt .sg-lnk{font-size:14px;font-weight:500;color:var(--muted)}
 `;
 
 /* the card's styles go into the production page's own style sheet, so the card never shows unstyled */
@@ -261,6 +261,40 @@ function apply(w,host){
   }
   function bring(){var a=d.activeElement;if(editable(a)&&a.closest(".sg"))inView(a)}
   w.__uaplyKbBring=bring;
+
+  /* ---------- the card's own pages in the installed app (live walk, October 23): Terms, Privacy, Delete an account, Help and support and
+     the tick line's links open in a new tab in a browser; in the installed app (standalone, or the phone apps) that "tab" replaced the
+     card and the phone's Back button then closed the app. There they open over the card instead, with a history entry: Back (or the
+     page's own "Back to UAply", or the Back button on top) closes the page and the card is as it was, with what was typed in it. ---------- */
+  function installed(){
+    try{var t=w.top;if(t.Capacitor||(t.navigator&&t.navigator.standalone))return true;
+      return ["standalone","fullscreen","minimal-ui"].some(function(m){return t.matchMedia&&t.matchMedia("(display-mode: "+m+")").matches})}catch(e){return false}
+  }
+  function cardPage(a){var u;try{u=new URL(a.href,w.top.location.href)}catch(e){return null}
+    return u.origin===w.top.location.origin&&/^\/legal\/[\w-]+\.html$/.test(u.pathname)?u.href:null}
+  function openOver(url,from){
+    var T=w.top,D=T.document,old=D.getElementById("sgPage");if(old)old.remove();
+    var ov=D.createElement("div");ov.id="sgPage";ov.setAttribute("role","dialog");ov.setAttribute("aria-modal","true");ov.setAttribute("aria-label","UAply page");
+    ov.style.cssText="position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;background:var(--bg,#FDF0F2);padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)";
+    var bar=D.createElement("div");bar.style.cssText="flex:none;display:flex;align-items:center;padding:4px 8px;border-bottom:1px solid var(--line,#F3DADF);background:var(--surface,#fff)";
+    var back=D.createElement("button");back.type="button";back.textContent="\u2039 Back to sign-up";
+    back.style.cssText="min-height:44px;min-width:44px;padding:0 12px;border:0;background:none;color:var(--ink,#2A1218);font:600 15px system-ui,sans-serif;cursor:pointer;border-radius:10px";
+    var fr=D.createElement("iframe");fr.title="UAply page";fr.src=url;fr.style.cssText="flex:1;min-height:0;width:100%;border:0;background:#fff";
+    bar.appendChild(back);ov.appendChild(bar);ov.appendChild(fr);D.body.appendChild(ov);
+    try{T.history.pushState({sgPage:1},"")}catch(e){}
+    function close(viaPop){if(!ov.isConnected)return;ov.remove();T.removeEventListener("popstate",onPop);if(!viaPop){try{T.history.back()}catch(e){}}fx(from)}
+    function onPop(){close(true)}
+    T.addEventListener("popstate",onPop);
+    back.onclick=function(){close(false)};
+    /* the page's own "Back to UAply" (and any link off the legal pages) leaves them: that is closing the page, not loading the app in it */
+    fr.addEventListener("load",function(){var pth="";try{pth=fr.contentWindow.location.pathname}catch(e){}if(!/^\/legal\//.test(pth))close(false)});
+    setTimeout(function(){try{back.focus()}catch(e){}},0);
+  }
+  d.addEventListener("click",function(e){
+    var a=e.target&&e.target.closest&&e.target.closest(".sg a[href]");if(!a||e.defaultPrevented||e.button>0||e.metaKey||e.ctrlKey||e.shiftKey)return;
+    var url=cardPage(a);if(!url||!installed())return;
+    e.preventDefault();openOver(url,a);
+  });
   d.addEventListener("focusin",function(e){if(!editable(e.target)||!e.target.closest(".sg"))return;[60,320,650].forEach(function(t){setTimeout(bring,t)})});
   w.addEventListener("resize",function(){setTimeout(bring,30)});
   (function kbFrame(){
