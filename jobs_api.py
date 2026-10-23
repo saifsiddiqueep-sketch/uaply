@@ -33,7 +33,8 @@ LEGAL STATUS OF EACH SOURCE (checked October 2026; this is not legal advice, hav
   emailed to anyone (the recruiter address is dropped); swiping right only opens the employer's own page.
 
 get_jobs() returns {"fetched_at", "sources", "jobs", "merged", "aged_out"} where each job already matches the shape the app expects
-(with postedDays, and updatedDays where the feed gives an update date, and "route": "Ready" when UAply sends the application itself,
+(the list form: a feed job without the fields no card shows, LIST_DROP, which job_full and GET /api/jobs/<id> give; get_page is the same
+list a page at a time; with postedDays, and "route": "Ready" when UAply sends the application itself,
 "Ready, one tap" where the employer's page is likely to ask for a human check, "Ready" otherwise; see human-checks.json). Postings older
 than MAX_AGE_DAYS are left out, and the same job from two feeds is shown once ("merged" counts the copies left out).
 """
@@ -3131,17 +3132,44 @@ def apply_classes():
     return c
 
 
-def _out_job(j, now_ms, conns, feed, blocked=frozenset()):
+# What the list form (/api/jobs, get_jobs) leaves out of a feed job, because no card shows it (measured October 23, 2026 on 14,326 jobs:
+# 13.3 MB of JSON): the 650-character description (only the emails use it, from this server's own copy), the record's credit line ("via
+# ..." again, which the server takes from its own copy, never the browser's), the update date and its age, the official announcement
+# (both read from this server's copy for the receipt), and of the employer-system reference only its kind (the app asks
+# job.ats.kind === "greenhouse"; the board and posting id stay here). GET /api/jobs/<id> answers the whole job (job_full).
+LIST_DROP = ("desc", "credit", "updated", "updatedDays", "announcement")
+
+
+def _out_job(j, now_ms, conns, feed, blocked=frozenset(), full=False):
     """`feed`: False for a partner employer's job, else its feed's route label (or True). `blocked`: the addresses on the bounce list
-    (mailer.blocked_addresses): a posting whose application address is on it is a hand-off again."""
-    out = _with_age(j, now_ms, drop=("desc",) if feed else ())
+    (mailer.blocked_addresses): a posting whose application address is on it is a hand-off again. full: every field (the per-job route)."""
+    out = _with_age(j, now_ms, drop=("desc",) if feed and not full else ())
     if feed and out.get("apply") == "email" and str(out.get("contact") or "").lower() in blocked:
         out.update(contact="", apply="link", instant=False)          # it bounced, or its owner asked UAply to stop: finish on their site
     if conns and _connected(out, conns):        # marked on the copy, so the shared cache stays as fetched
         out.update(apply="direct", instant=True, contact="")          # their own hiring system takes it: never also an email
     # sent in UAply (a connected system, or an email to the employer): "Ready"; a hand-off: its source's label
     out["route"] = ROUTE_READY if out.get("instant") or not isinstance(feed, str) else feed
+    if feed and not full:
+        for k in LIST_DROP:
+            out.pop(k, None)
+        if isinstance(out.get("ats"), dict):
+            out["ats"] = {"kind": out["ats"].get("kind")}       # a new dict: the cached job keeps its whole reference
     return out
+
+
+def job_full(job_id):
+    """One listed job with every field the list form leaves out (LIST_DROP), as the app would get it, or None. A feed job is looked up in
+    the cache, a partner employer's job in the partner list (an employer's account email never goes out, as in the list)."""
+    now_ms, conns = time.time() * 1000, ats_connections()
+    for pj in partner_jobs():
+        if pj["id"] == job_id:
+            return _out_job({k: v for k, v in pj.items() if k != "contact"} if pj.get("emp") else pj, now_ms, conns, False)
+    j = _find_job(job_id)
+    if not j:
+        return None
+    src = next((s for s in SOURCES if _has(_cache.get(s) or {}, job_id)), None)
+    return _out_job(j, now_ms, conns, route_label(src) if src else True, mailer.blocked_addresses(), full=True)
 
 
 def _collect(meta, now_ms):
@@ -3197,7 +3225,10 @@ def _collect(meta, now_ms):
 
 
 JSON_MEMO_S = 20                 # seconds the encoded job list is reused while nothing changed (a few thousand jobs are megabytes to encode)
-_json_memo = {"key": None, "at": 0.0, "gz": b"", "pending": 0}
+_json_memo = {"key": None, "at": 0.0, "gz": b"", "pending": 0, "blocks": [], "kinds": [], "meta": {}, "stamp": 0}
+PAGE_SIZE, PAGE_MAX = 200, 1000  # the paged form (get_page): jobs per page when none is asked for, and the most one page may hold
+PAGE_BLOCK = 250                 # jobs per compressed block of the memo (a page unpacks only the blocks it needs)
+PAGE_TYPES = ("job", "parttime", "internship", "coop")      # the deck's stacks (a job's "type"), the paged form's type filter
 _json_lock = threading.Lock()
 _version = [0]                   # raised whenever a source's copy or status changes
 
@@ -3206,6 +3237,58 @@ def get_json(compressed=False):
     """The job list as JSON bytes (gzip-compressed with compressed=True), encoded once and reused for up to JSON_MEMO_S seconds while no
     source, partner posting or connected hiring system changed: every visitor's request used to build and encode the whole list again."""
     import gzip
+    m = _memo()
+    return m["gz"] if compressed else gzip.decompress(m["gz"])
+
+
+def get_page(size=None, page=None, cursor=None, types=None):
+    """One page of the job list as JSON bytes: {"jobs": [...], "total", "page", "size", "next", and the list's other fields (sources,
+    merged, aged_out, pending, fetched_at)}. The same jobs in the same order as get_json, cut from the same memo (nothing is encoded again).
+    size: jobs per page (PAGE_SIZE, at most PAGE_MAX). page: 1 for the first. cursor: the "next" of the page before, which carries on where
+    it ended even if the list was rebuilt meanwhile ("changed": true then, and the app keeps telling jobs apart by id). types: a job's
+    "type" values to keep (PAGE_TYPES), all when empty; "total" counts the jobs that pass it."""
+    m = _memo()
+    with _json_lock:
+        blocks, kinds, meta, stamp = m["blocks"], m["kinds"], m["meta"], m["stamp"]
+    try:
+        size = min(PAGE_MAX, max(1, int(size))) if size not in (None, "") else PAGE_SIZE
+    except (TypeError, ValueError):
+        size = PAGE_SIZE
+    want = {t for t in (types or ()) if t in PAGE_TYPES}
+    sel = [i for i, k in enumerate(kinds) if k in want] if want else range(len(kinds))
+    changed, start = False, 0
+    if cursor:
+        try:
+            cs, pos = (int(x) for x in str(cursor).split(".", 1))
+        except ValueError:
+            cs, pos = stamp, 0
+        changed = cs != stamp
+        import bisect
+        start = bisect.bisect_left(sel, pos)                     # the first job at or after where the page before ended
+        page = None
+    else:
+        try:
+            page = max(1, int(page)) if page not in (None, "") else 1
+        except (TypeError, ValueError):
+            page = 1
+        start = (page - 1) * size
+    chosen = sel[start:start + size]
+    lines, opened = [], {}
+    for i in chosen:
+        b = i // PAGE_BLOCK
+        if b not in opened:
+            opened[b] = zlib.decompress(blocks[b]).split(b"\n")
+        lines.append(opened[b][i % PAGE_BLOCK])
+    nxt = "%d.%d" % (stamp, chosen[-1] + 1) if chosen and start + size < len(sel) else None
+    head = dict(meta, total=len(sel), page=page, size=size, next=nxt)
+    if changed:
+        head["changed"] = True
+    return b'{"jobs":[' + b",".join(lines) + b"]," + json.dumps(head, separators=(",", ":"))[1:].encode("utf-8")
+
+
+def _memo():
+    """The encoded job list (see get_json), rebuilt when it is out of date: the whole list gzip-compressed, and the same jobs in blocks of
+    PAGE_BLOCK (zlib, one job per line) with each job's type, for get_page."""
     pj = partner_jobs()
     blocked = mailer.blocked_addresses()        # an address that bounced or asked UAply to stop: its postings are hand-offs again at once
     key = (_version[0], tuple((j.get("id"), j.get("closed"), j.get("posted"), j.get("role")) for j in pj), tuple(sorted(ats_connections())), hide_errors,
@@ -3219,12 +3302,22 @@ def get_json(compressed=False):
         if not reuse:
             # written one job at a time straight into the compressor: no copy of the whole list, no megabytes of text at once (at 7,000
             # jobs the copies and the text were about 30 MB on top of the jobs themselves); only the compressed list is kept
+            # Compact JSON (no spaces after , and :): about 7% fewer bytes to parse on a phone, the same once compressed.
             meta, conns, now_ms = {}, ats_connections(), time.time() * 1000
             z = zlib.compressobj(5, zlib.DEFLATED, 31)          # 31: a gzip stream
-            parts = [z.compress(b'{"jobs": [')]
+            parts, blocks, block, kinds = [z.compress(b'{"jobs":[')], [], [], []
             for i, (j, feed) in enumerate(_collect(meta, now_ms)):
-                parts.append(z.compress((b"," if i else b"") + json.dumps(_out_job(j, now_ms, conns, feed, blocked)).encode("utf-8")))
-            parts.append(z.compress(b"], " + json.dumps(meta)[1:].encode("utf-8")) + z.flush())     # the list's other fields after the jobs
-            m.update(key=(_version[0],) + key[1:], at=time.time(), gz=b"".join(parts), pending=meta.get("pending", 0))
-            del parts
-        return m["gz"] if compressed else gzip.decompress(m["gz"])
+                line = json.dumps(_out_job(j, now_ms, conns, feed, blocked), separators=(",", ":")).encode("utf-8")
+                parts.append(z.compress((b"," if i else b"") + line))
+                block.append(line)                               # (JSON text never holds a raw line break: one job per line)
+                kinds.append(sys.intern(j.get("type") or "job"))
+                if len(block) == PAGE_BLOCK:
+                    blocks.append(zlib.compress(b"\n".join(block), 5))
+                    block = []
+            if block:
+                blocks.append(zlib.compress(b"\n".join(block), 5))
+            parts.append(z.compress(b"]," + json.dumps(meta, separators=(",", ":"))[1:].encode("utf-8")) + z.flush())     # the list's other fields after the jobs
+            m.update(key=(_version[0],) + key[1:], at=time.time(), gz=b"".join(parts), pending=meta.get("pending", 0),
+                     blocks=blocks, kinds=kinds, meta=meta, stamp=m["stamp"] + 1)
+            del parts, block
+        return m

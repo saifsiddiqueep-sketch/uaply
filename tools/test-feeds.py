@@ -7,6 +7,7 @@ code) and checks the save endpoint over HTTP, the job list, and, when Chrome is 
 import contextlib
 import glob
 import io
+import gzip
 import json
 import os
 import shutil
@@ -440,13 +441,55 @@ def http_checks(port):
         t("HTTP: /setup has the Job feed keys box and never the keys", (s, 'id="feeds"' in page, KEY in page, MUSE in page), (200, True, False, False))
         sys.path.insert(0, HERE)
         import gate_session                    # the sign-in gate: the job list needs a signed-in, confirmed person
-        s, body = call("GET", "/api/jobs", cookie=gate_session.cookie(base))
+        ck = gate_session.cookie(base)
+        s, body = call("GET", "/api/jobs", cookie=ck)
         data_out = json.loads(body)
         city = [j for j in data_out["jobs"] if j.get("via") == "City of Philadelphia on SmartRecruiters"]
         t("HTTP: the job list serves the City's 40 jobs from the last 60 days (not the 27 older ones; two postings with one title stay two), each with its via label and postedDays",
           (len(city), sorted({j["postedDays"] for j in city}), data_out.get("aged_out"), data_out.get("merged")), (40, [5], 27, 0))
         t("HTTP: USAJOBS is listed as skipped (this server reads no settings file)", data_out["sources"].get("USAJOBS/philadelphia"), "no key")
         t("HTTP: the job list never contains a key", (KEY in body, MUSE in body), (False, False))
+        # ---- the list form, the paged form and one job (October 23: 16,424 jobs were 14.8 MB on a phone) ----
+        one = city[0]
+        t("HTTP: the list form leaves out what no card shows (description, credit line, update date, announcement); of ats only its kind",
+          ([k for k in ("desc", "credit", "updated", "updatedDays", "announcement") if any(k in j for j in data_out["jobs"])],
+           sorted({tuple(sorted(j["ats"])) for j in data_out["jobs"] if j.get("ats")})), ([], [("kind",)]))
+        s, b1 = call("GET", "/api/jobs/%d" % one["id"], cookie=ck)
+        full = json.loads(b1).get("job") or {}
+        t("HTTP: GET /api/jobs/<id> answers the whole job: its credit line and its full employer-system reference",
+          (s, full.get("id"), full.get("credit"), sorted(full.get("ats") or {})), (200, one["id"], "via City of Philadelphia on SmartRecruiters", ["board", "id", "kind"]))
+        t("HTTP: a job that is not listed: 404 'gone'", (call("GET", "/api/jobs/1", cookie=ck)[0], json.loads(call("GET", "/api/jobs/1", cookie=ck)[1]).get("code")), (404, "gone"))
+        t("HTTP: one job is behind the sign-in gate too", call("GET", "/api/jobs/%d" % one["id"])[0], 401)
+        s, pb = call("GET", "/api/jobs?size=7&page=1", cookie=ck)
+        pg = json.loads(pb)
+        whole = [j["id"] for j in data_out["jobs"]]
+        t("HTTP: ?size=7&page=1 is the first 7 jobs of the whole list, the total and a cursor, with the list's sources",
+          (s, [j["id"] for j in pg["jobs"]], pg["total"], pg["page"], pg["size"], bool(pg["next"]), "sources" in pg), (200, whole[:7], len(whole), 1, 7, True, True))
+        seen_ids, cur, n = [], None, 0
+        while n < 50:
+            pg = json.loads(call("GET", "/api/jobs?size=7" + ("&cursor=" + cur if cur else ""), cookie=ck)[1])
+            seen_ids += [j["id"] for j in pg["jobs"]]
+            cur, n = pg["next"], n + 1
+            if not cur:
+                break
+        t("HTTP: following the cursor walks the whole list once, in order, and the last page has no cursor", (seen_ids == whole, n, cur), (True, -(-len(whole) // 7), None))
+        t("HTTP: ?page=2 is the next 7", [j["id"] for j in json.loads(call("GET", "/api/jobs?size=7&page=2", cookie=ck)[1])["jobs"]], whole[7:14])
+        types = sorted({j.get("type") for j in data_out["jobs"]})
+        want = types[0]
+        pt = json.loads(call("GET", "/api/jobs?type=%s&size=1000" % want, cookie=ck)[1])
+        t("HTTP: ?type= keeps one stack (%s): its jobs only, and the total counts just those" % want,
+          ([j["id"] for j in pt["jobs"]], pt["total"]), ([j["id"] for j in data_out["jobs"] if j.get("type") == want], sum(1 for j in data_out["jobs"] if j.get("type") == want)))
+        t("HTTP: a size over 1000 is held to 1000, a size that is not a number is 200", (json.loads(call("GET", "/api/jobs?size=99999", cookie=ck)[1])["size"],
+          json.loads(call("GET", "/api/jobs?size=lots", cookie=ck)[1])["size"]), (1000, 200))
+        t("HTTP: a cursor that is not ours starts at the beginning", [j["id"] for j in json.loads(call("GET", "/api/jobs?size=3&cursor=nonsense", cookie=ck)[1])["jobs"]], whole[:3])
+        t("HTTP: the paged form is behind the sign-in gate too", call("GET", "/api/jobs?size=5")[0], 401)
+        rq = urllib.request.Request(base + "/api/jobs?size=40", headers={"Cookie": ck, "Accept-Encoding": "gzip"})
+        with urllib.request.urlopen(rq, timeout=30) as r:
+            gz_page = (r.headers.get("Content-Encoding"), json.loads(gzip.decompress(r.read()))["total"])
+        rq = urllib.request.Request(base + "/api/jobs", headers={"Cookie": ck, "Accept-Encoding": "gzip, deflate, br"})
+        with urllib.request.urlopen(rq, timeout=30) as r:
+            gz_all = (r.headers.get("Content-Encoding"), len(json.loads(gzip.decompress(r.read()))["jobs"]))
+        t("HTTP: a page and the whole list are both sent gzip-compressed when the browser takes it", (gz_page, gz_all), (("gzip", len(whole)), ("gzip", len(whole))))
         with open(os.path.join(TMP, "server.log"), encoding="utf-8", errors="replace") as f:
             t("HTTP: the server log never contains a key", any(k in f.read() for k in (KEY, MUSE)), False)
         # the same places tools/cdp.js looks: UAPLY_CHROME, the Windows install, a Playwright Chromium, google-chrome/chromium, the Mac app
