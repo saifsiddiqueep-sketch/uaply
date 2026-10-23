@@ -34,6 +34,9 @@ module.exports = async function gateSignup({ ev, sleep, nav }, base, tag) {
       if (!(await ev(F + ".body.classList.contains('sgGated')"))) break;
       await ev("(()=>{const b=" + F + ".querySelector('.sg-next');if(b)b.click()})()"); await sleep(700);
     }
+    // the card wrote a profile for the new person (name, work, place): the device goes back to how the test found it, as after the
+    // API sign-up below, so a test built on the example profile still has it. The session cookie stays: that is the account.
+    await ev("(()=>{try{localStorage.clear();sessionStorage.clear()}catch(e){}return 1})()");
   } else {
     const st = await ev("fetch('/api/auth/signup',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:" + JSON.stringify(email) + ",password:" + JSON.stringify(PW) + ",first:'Test',last:'Person',agree:true,passwordless:false})}).then(r=>r.status)");
     let u = await me();

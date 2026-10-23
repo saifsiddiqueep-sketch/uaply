@@ -2189,6 +2189,7 @@ function apply(w,host){
     var ga=(d.getElementById("gAgree")||{}).checked;
     msg("Signing in with Google…");
     apiPost("/api/auth/google/token",{credential:resp&&resp.credential,agree:!!ga}).then(function(r){
+      if(!r.ok&&r.j&&(r.j.code==="agree_owner"||r.j.code==="agree")&&w.__uaplySignReturn&&w.__uaplySignReturn.call(w,r.j.code,false,false))return;   /* the card asks for the owner's own tick (the same hook as googleReturn's) */
       if(!r.ok||!r.j.user){msg((r.j&&r.j.error)||"Google sign-in did not work. Try again.");return}
       SRV.user=r.j.user;afterServerSignIn();renderAcct("account");msg(r.j.passwordRemoved?PW_GONE:"Signed in with Google.");
     });

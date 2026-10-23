@@ -408,7 +408,7 @@ function apply(w,host){
       }else{
         V.view=pend&&pend.mode==="in"?"in":"up";
         V.err=({cancelled:"Google sign-in was cancelled.",expired:"That Google sign-in expired or could not be checked. Try again.",unverified:"Google says that email address is not verified, so UAply cannot use it.",
-          off:"Google sign-in is not switched on.",email_in_use:"That email already has a UAply account. Use Email me a code to sign in to it.",disposable:"Please use an email address you’ll keep. Temporary addresses can’t be used for job applications."})[er]||"Google sign-in did not work. Try again, or use your email.";
+          off:"Google sign-in is not switched on.",email_in_use:"That email already has a UAply account. Sign in with your password, or Email me a code instead.",disposable:"Please use an email address you’ll keep. Temporary addresses can’t be used for job applications."})[er]||"Google sign-in did not work. Try again, or use your email.";
         V.errTop=true;
       }
       render(true);
@@ -450,9 +450,19 @@ function apply(w,host){
   if(typeof f0==="function")w.fetch=function(){
     return f0.apply(this,arguments).then(function(r){
       if(r&&r.status===401){try{r.clone().json().then(function(j){if(j&&j.code==="signin"){if(srv().user)B.signedIn(null);else gateSync()}},function(){})}catch(e){}}
+      /* 403 "verify": signed in, but the address is not proven yet. The card's "Check your email" code step (the session's own code,
+         kind "pw"), not the sign-up; once the code is accepted the app loads (a fresh start, so the job list comes now) */
+      if(r&&r.status===403){try{r.clone().json().then(function(j){if(j&&j.code==="verify")needCode()},function(){})}catch(e){}}
       return r;
     });
   };
+  function needCode(){
+    var u=srv().user;if(!u||(V.view==="code"&&V.kind==="pw"))return;
+    var cs=getCodeStep();
+    V.user=u;V.email=u.email||V.email;V.kind="pw";V.view="code";V.verifyOnly=true;V.noSend=false;
+    V.sentAt=cs&&cs.kind==="pw"&&cs.email.toLowerCase()===String(u.email||"").toLowerCase()?+cs.at||0:0;
+    gateSync();try{B.redraw()}catch(e){}
+  }
   w.__uaplyGated=function(){return gated!==false};
   w.__uaplyGateSync=gateSync;
 
@@ -748,6 +758,7 @@ function apply(w,host){
         box.classList.add("ok");cm.className="sg-fmsg sg-cmsg ok";cm.textContent="Code accepted.";
         setTimeout(function(){if(!c.isConnected)return;
           if(kind==="g"){var u=Object.assign({},V.user||srv().user||{},{emailVerified:true});V.user=u;B.signedIn(u);V.view="q";startQuestions();return}
+          if(kind==="pw"&&V.verifyOnly){V.verifyOnly=false;setCodeStep(null);V.view="";B.signedIn(Object.assign({},V.user||srv().user||{},{emailVerified:true}));try{w.top.location.reload()}catch(e){w.location.reload()}return}
           if(kind==="pw"){var pu=Object.assign({},V.user||srv().user||{},{emailVerified:true});setCodeStep(null);V.user=pu;V.isNew=true;V.cd=null;claimDevice(pu.email||V.email);saveName(V.first,V.last,pu.email||V.email);B.signedIn(pu);V.view="q";startQuestions();return}
           var user=r.j&&r.j.user;if(!user){cm.textContent="Signed in, but the answer was incomplete. Reload the page.";return}
           setPending(null);setCodeStep(null);V.noSend=false;V.user=user;V.viaG=false;V.cd=null;if(user.googleRemoved)gGone=String(user.email||"").toLowerCase();

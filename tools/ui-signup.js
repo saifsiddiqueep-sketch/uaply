@@ -98,7 +98,7 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   await sleep(400);
   t = await text();
   check("an unticked Google tap stays on the card, shakes the box, says why and moves focus to the box",
-    /Tick the box first, then Continue with Google/.test(t) && (await ev("location.pathname")) === "/" && shook === true && (await ev(F + ".activeElement&&" + F + ".activeElement.classList.contains('sg-ag')")), "shook " + shook);
+    /Tick the box first, then Continue with Google/.test(t) && /^\/(app\.html)?$/.test(await ev("location.pathname")) && shook === true && (await ev(F + ".activeElement&&" + F + ".activeElement.classList.contains('sg-ag')")), "shook " + shook);
   await click("[data-sg=google]"); await sleep(300);
   check("with reduced motion the box does not shake (the message still shows)", (await ev(q(".sg-agree") + ".classList.contains('sg-shake')")) === false && /Tick the box first/.test(await text()));
 
