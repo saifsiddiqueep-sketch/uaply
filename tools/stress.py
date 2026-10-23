@@ -2,12 +2,20 @@
   python tools/stress.py 18795            (needs: python serve.py 18795 dev --api with its own UAPLY_DATA_DIR)
 Checks: 300 simultaneous page and API reads, 24 simultaneous sign-ups from one address (each hashes a password; the anti-spam limit may refuse some
 with 429, which is correct), and 24 simultaneous wrong-password logins for one real account (the lock-out must hold under pressure).
-No request may come back as a server error or hang."""
+No request may come back as a server error or hang.
+The job list is behind the sign-in gate, so every reader carries a signed-in, confirmed session: one test person (tools/gate_session.py;
+a server in sign-up test mode, UAPLY_SIGNUP_TEST=1, confirms it at once, otherwise its code is read from the test inbox) signed in on
+8 devices. Only one sign-up: the local limit is 10 sign-up tries an hour per address, and the sign-up burst below needs the rest."""
 import http.client
 import json
+import os
+import secrets
 import sys
 import threading
 import time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import gate_session  # noqa: E402
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 18795
 HOST = "127.0.0.1:%d" % PORT
@@ -19,9 +27,11 @@ def t(name, ok, extra=""):
     print(("PASS " if ok else "FAIL ") + name + ("  " + extra if extra else ""))
 
 
-def call(method, path, body=None):
+def call(method, path, body=None, cookie=""):
     c = http.client.HTTPConnection("127.0.0.1", PORT, timeout=60)
     h = {"Origin": "http://" + HOST}
+    if cookie:
+        h["Cookie"] = cookie
     data = None
     if body is not None:
         h["Content-Type"] = "application/json"
@@ -53,8 +63,25 @@ def burst(n, fn):
 
 
 paths = ["/", "/api/jobs", "/api/auth/me", "/api/auth/providers", "/api/apply/config", "/healthz", "/legal/privacy.html", "/uaply-nav.js"]
+def sessions(n):
+    """n session cookies of one new, confirmed test person: one sign-up, then n - 1 more sign-ins (each a device of its own)."""
+    email, pw = "reader.%s@example.com" % secrets.token_hex(4), "Reader-%s-pw" % secrets.token_hex(6)
+    out = [gate_session.cookie("http://" + HOST, email=email, password=pw)]
+    while len(out) < n:
+        c = http.client.HTTPConnection("127.0.0.1", PORT, timeout=60)
+        c.request("POST", "/api/auth/login", body=json.dumps({"email": email, "password": pw}), headers={"Origin": "http://" + HOST, "Content-Type": "application/json"})
+        r = c.getresponse()
+        r.read()
+        if r.status != 200:
+            raise SystemExit("signing the reader in again failed: HTTP %s" % r.status)
+        out.append(r.getheader("Set-Cookie").split(";")[0])
+        c.close()
+    return out
+
+
+SESSIONS = sessions(8)                                        # reader i uses device i % 8
 for round_no in (1, 2, 3):                                    # three bursts in a row: one lucky run must not hide refused connections
-    res, took = burst(300, lambda i: call("GET", paths[i % len(paths)]))
+    res, took = burst(300, lambda i: call("GET", paths[i % len(paths)], cookie=SESSIONS[i % len(SESSIONS)]))
     bad = [r for r in res if r[0] != 200]
     t("300 simultaneous reads all answer 200 (burst %d of 3)" % round_no, not bad, "(%d bad: %s) in %.1fs, slowest %.1fs" % (len(bad), sorted({str(b[0]) for b in bad}), took, max(r[1] for r in res)))
 
