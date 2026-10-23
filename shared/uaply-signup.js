@@ -548,7 +548,7 @@ function apply(w,host){
   function signup(focus){
     back=null;V.view="up";
     var hid=uid("h"),aid=uid("am"),gh=googleHTML();
-    var c=shell('<div class="sg-chead"><h1 id="'+hid+'" tabindex="-1">Create your UAply account</h1><p class="sg-sub">Takes a minute.</p></div>'+
+    var c=shell('<div class="sg-chead"><h1 id="'+hid+'" tabindex="-1">Create your UAply account</h1></div>'+
       (V.errTop?'<p class="sg-fmsg err" role="alert" style="text-align:center">'+esc(V.err)+'</p>':'')+haveHTML()+
       /* Mohammed's order: Google, "or", Email, First name, Last name, the 18+ tick, Create my account. The server needs the tick before
          Google opens; that is the tick's state, not its place, so an unticked Google tap stays here, shakes the box and says why */
