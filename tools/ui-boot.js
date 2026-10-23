@@ -31,7 +31,7 @@ module.exports = async ({ ev, sleep, send, on, logs }) => {
     return seen;
   };
 
-  await gateSignup({ ev, sleep, nav }, "http://127.0.0.1:" + PORT, "boot");
+  await gateSignup({ ev, sleep, nav: (u) => send("Page.navigate", { url: u }).then(() => sleep(300)) }, "http://127.0.0.1:" + PORT, "boot");
   // 1. a font site that never answers
   await send("Page.navigate", { url: base });
   const t = await ready(6000);

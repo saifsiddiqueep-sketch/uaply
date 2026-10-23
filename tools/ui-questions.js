@@ -60,7 +60,10 @@ module.exports = async ({ ev, sleep, nav, send, shot }) => {
   // a phone's keyboard, as the box sees it: the visible part of the screen shrinks to 420 px (the top page's visual viewport, read when the
   // box opens). Send application must stay inside it (apply journey, October 22: the keyboard covered Send on the Galaxy)
   if (PHONE) await ev("(()=>{window.__realVV=window.visualViewport;window.visualViewport={width:" + W + ",height:420,offsetTop:0,offsetLeft:0,scale:1,addEventListener(){},removeEventListener(){}};return 1})()");
-  check("swipe right on Every Kind Co", (await swipe(ID["Every Kind Co|Data Analyst"])) === "ok");
+  // (the job list now loads only for an account: wait for it before the swipe, up to 20 s)
+  for (let i = 0; i < 40 && !(await ev("!!" + FW + ".__uaply.JOBS.find(j=>j.id===" + ID["Every Kind Co|Data Analyst"] + ")")); i++) await sleep(500);
+  const sw = await swipe(ID["Every Kind Co|Data Analyst"]);
+  check("swipe right on Every Kind Co", sw === "ok", sw + " (jobs in the app: " + (await ev(FW + ".__uaply.JOBS.filter(j=>j.live).length")) + ", signed in: " + (await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>j.user?j.user.email:'nobody')")) + ")");
   await sleep(3000);
   if (PHONE) {
     const pin = JSON.parse(await ev("(()=>{const d=" + F + ",o=d.getElementById('kitAsk'),y=d.getElementById('kaYes');if(!o||!y)return 'null';const b=y.getBoundingClientRect(),ob=o.getBoundingClientRect();" +

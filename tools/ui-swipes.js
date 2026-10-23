@@ -154,8 +154,11 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
     /Saved .+ to Applied · \d+% match|Applied to /.test(u.text) && u.after > u.before, JSON.stringify({ co: u.co, before: u.before, after: u.after }) + " " + u.text.slice(-120));
   // this account's own code (the test inbox lists every account's mail): the subject is "123456 is your UAply verification code to <address>"
   const code = await ev("fetch('/outbox').then(r=>r.text()).then(t=>{t=t.replace(/<[^>]+>/g,' ').replace(/\\s+/g,' ');const m=t.match(new RegExp('([0-9]{6}) is your UAply (?:verification|sign-in) code to '+" + JSON.stringify(who.replace(/\./g, "\\.")) + "));return m?m[1]:''})");
-  check("the verification code is in the test inbox", /^[0-9]{6}$/.test(code), code);
-  check("the code verifies the account", (await ev("fetch('/api/auth/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:'" + code + "'})}).then(r=>r.status)")) === 200);
+  // a test server (UAPLY_SIGNUP_TEST=1, providers.signupTest) confirms the address at sign-up and emails no code (docs/ACCOUNTS.md, test mode)
+  const testMode = (await ev("fetch('/api/auth/providers').then(r=>r.json()).then(j=>!!j.signupTest)")) === true;
+  if (testMode) console.log("     (a test server: the address was confirmed at sign-up, so there is no code to type)");
+  check("the verification code is in the test inbox" + (testMode ? " (test server: already confirmed at sign-up)" : ""), testMode ? (await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>!!(j.user&&j.user.emailVerified))")) === true : /^[0-9]{6}$/.test(code), code);
+  if (!testMode) check("the code verifies the account", (await ev("fetch('/api/auth/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:'" + code + "'})}).then(r=>r.status)")) === 200);
   const v = await swipeAndInbox();
   check("verified: the swipe right is saved, and its confirmation is in the test inbox", /Saved .+ to Applied · \d+% match|Applied to /.test(v.text) && v.after > v.before,
     JSON.stringify({ co: v.co, before: v.before, after: v.after }) + " " + v.text.slice(-120));

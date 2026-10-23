@@ -62,7 +62,9 @@ try:
     seed(data)
     cfg = {"feeds": [], "delivery": "test", "smtp": {}, "google": {}, "owner_copy": "", "autofill_preview": True}
     cfg["feeds"] = ["greenhouse"]                         # only the seeded Greenhouse entries (all fresh: nothing is fetched)
-    env = dict(os.environ, UAPLY_DATA_DIR=data, UAPLY_CONFIG_JSON=json.dumps(cfg), UAPLY_ATS_BASE_GREENHOUSE="http://127.0.0.1:%d" % ATS, UAPLY_LINK_CHECK="0")
+    # UAPLY_SIGNUP_TEST=1: a test server, so the test person who signs up first (tools/gate-signup.js) is confirmed at once (Saif, October 22)
+    env = dict(os.environ, UAPLY_DATA_DIR=data, UAPLY_CONFIG_JSON=json.dumps(cfg), UAPLY_ATS_BASE_GREENHOUSE="http://127.0.0.1:%d" % ATS, UAPLY_LINK_CHECK="0",
+               UAPLY_SIGNUP_TEST="1")
     procs.append(subprocess.Popen([sys.executable, "serve.py", str(PORT), "dev", "--api"], cwd=ROOT, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
     ids = {}
     for _ in range(60):
