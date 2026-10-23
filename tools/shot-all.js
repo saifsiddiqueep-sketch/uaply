@@ -1,4 +1,4 @@
-// Saves a screenshot of every screen (Services tabs, Dashboard tabs, Profile tabs, chat, legal footer) into OUT=<folder>.
+// Saves a screenshot of every screen (Services tabs, Job Tracker tabs, Profile tabs, chat, legal footer) into OUT=<folder>.
 //   OUT=<folder> W=390 H=844 PORT=18795 node tools/cdp.js tools/shot-all.js
 const path = require("path");
 const fs = require("fs");

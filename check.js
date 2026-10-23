@@ -34,13 +34,13 @@ fs.readdirSync(".").filter((f) => f.endsWith(".py")).forEach((f) => {     /* eve
 });
 
 console.log("JSON files");
-fs.readdirSync(".").filter((f) => f.endsWith(".json") && !["uaply-config.json", "uaply-partners.json"].includes(f)).concat(   /* never the owner's secret files: an error message could quote them */[".claude/launch.json", "help/articles.json", "mobile/capacitor.config.json"]).filter((f) => fs.existsSync(f)).forEach((f) => {
+fs.readdirSync(".").filter((f) => f.endsWith(".json") && !["uaply-config.json", "uaply-partners.json"].includes(f)).concat(   /* never the owner's secret files: an error message could quote them */[".claude/launch.json", "help/articles.json", "mobile/capacitor.config.json", "shared/uaply.webmanifest", "mobile/twa/twa-manifest.json"]).filter((f) => fs.existsSync(f)).forEach((f) => {
   try { JSON.parse(fs.readFileSync(f, "utf8")); ok(f); } catch (e) { bad(f + ": " + e.message); }
 });
 
 console.log("Legal pages");
 try {
-  ["index", "terms", "privacy", "ai-and-employment", "copyright"].forEach((n) => {
+  ["index", "terms", "privacy", "ai-and-employment", "copyright", "delete-account"].forEach((n) => {
     const s = fs.readFileSync("legal/" + n + ".html", "utf8");
     const open = (s.match(/<mark>/g) || []).length, close = (s.match(/<\/mark>/g) || []).length;
     open === close ? ok("legal/" + n + ".html (" + open + " blank" + (open === 1 ? "" : "s") + " to fill in before publishing)") : bad("legal/" + n + ".html has an unclosed <mark>");
@@ -80,9 +80,9 @@ console.log("Wiring between files");
 try {
   /* a fresh copy of every shared script, so this does not depend on the section above */
   const W = {}, fakeDoc = { getElementById() { return null; } };
-  ["nav", "live", "profile", "chat", "envs", "employers", "learn", "resume"].forEach((f) => new Function("window", "localStorage", "document", fs.readFileSync("shared/uaply-" + f + ".js", "utf8"))(W, localStorage, fakeDoc));
+  ["nav", "live", "profile", "chat", "envs", "employers", "learn", "resume", "signup", "share"].forEach((f) => new Function("window", "localStorage", "document", fs.readFileSync("shared/uaply-" + f + ".js", "utf8"))(W, localStorage, fakeDoc));
   const E = W.UAplyEnv, prod = fs.readFileSync("prod/index.html", "utf8");
-  const NEEDS = { submit: ["nav", "live", "kit"], profile: ["nav"], employers: ["nav"], resume: ["nav"] };   /* the same rule as run() in uaply-envs.js */
+  const NEEDS = { submit: ["nav", "live", "kit"], profile: ["nav"], employers: ["nav"], resume: ["nav"], signup: ["nav"], share: ["nav", "live"] };   /* the same rule as run() in uaply-envs.js */
   const build = (keys) => {
     let s = prod, err = "";
     E.ORDER.forEach((k) => { if (keys.includes(k) && E.FEATURES[k].patch) { try { s = E.FEATURES[k].patch(s); } catch (e) { err += k + ": " + e.message + ". "; } } });
@@ -100,6 +100,23 @@ try {
   /* sandbox-only: Hiring mode, the pretend back end, and the "Save to Applied?" question the sandbox removed */
   const leak = P.filter((k) => ["employers", "backend", "confirm"].includes(k));
   leak.length ? bad("sandbox-only features in the release build: " + leak.join(", ")) : ok("no sandbox-only feature (Hiring mode, Mock back end, Confirm apply) is in the release build");
+  /* the sign-in card can be promoted to dev only together with its file. Code sign-in runs wherever the server runs (Saif, October 22:
+     sign-up with a password, the emailed code to verify and as the other way in), and the sign-up test mode never on a public server */
+  !P.includes("signup") || dev.includes('<script src="uaply-signup.js"></script>') ? ok("sign-up v2 is not promoted, or it is and its file loads in dev") : bad("dev promotes signup but does not load uaply-signup.js");
+  {
+    const sv = fs.readFileSync("serve.py", "utf8");
+    /\bCODE_SIGNIN = os\.environ\.get\("UAPLY_CODE_SIGNIN", ""\) != "0"/.test(sv) ? ok("code sign-in is on wherever the server runs (UAPLY_CODE_SIGNIN=0 is the only off switch)") : bad("serve.py: CODE_SIGNIN is no longer on for every instance");
+    /\bSIGNUP_TEST = os\.environ\.get\("UAPLY_SIGNUP_TEST", ""\) == "1" and not PUBLIC\b/.test(sv) ? ok("the sign-up test mode can never be on for a public server") : bad("serve.py: SIGNUP_TEST must be tied to not PUBLIC");
+  }
+  /* its hooks in shared/uaply-nav.js: a merge that drops one would bring the old card back without a word, so each must be there once */
+  {
+    const nav = fs.readFileSync("shared/uaply-nav.js", "utf8"), count = (s) => nav.split(s).length - 1;
+    const hooks = ["w.__uaplySignCard(", "w.__uaplySignReturn(", "w.__uaplyNoPwNote(", "w.__uaplyAuthApi=", "w.__uaplyReadiness="];
+    const off = hooks.filter((s) => count(s) !== 1);
+    off.length ? bad("shared/uaply-nav.js: sign-up v2 hooks missing or doubled: " + off.join(", ")) : ok("shared/uaply-nav.js has each sign-up v2 hook exactly once");
+  }
+  /* the hosted copies (share/build-share.js) have no server, so they leave the sign-up card out */
+  !/uaply-signup/.test(fs.readFileSync("share/build-share.js", "utf8")) ? ok("the hosted copies leave out sign-up v2 (it needs the server)") : bad("share/build-share.js inlines uaply-signup.js, which needs a server");
   /* allowed in dev since October 17: Learns from your swipes (its file must load) and consent before the first swipe. Still sandbox-only:
      Hiring mode's file and the sandbox's controls bar (All on / All off / Clear saved swipes) */
   !P.includes("learn") || dev.includes('<script src="uaply-learn.js"></script>') ? ok("Learns from your swipes is promoted and its file loads in dev") : bad("dev promotes learn but does not load uaply-learn.js");

@@ -2,21 +2,25 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="UAply">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="theme-color" content="#FDF0F2">
+<meta name="theme-color" content="#FDF0F2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#190B10" media="(prefers-color-scheme: dark)">   <!-- the installed app's status and navigation bars follow the phone's light or dark mode -->
 <title>UAply sandbox</title>
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=2">
 <link rel="icon" type="image/png" sizes="192x192" href="favicon-192.png?v=2">
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=2">
+<link rel="manifest" href="/uaply.webmanifest">
 <style>
 /* SANDBOX: every experiment can be toggled freely. Own storage key, never touches prod or dev data. */
 :root{--bg:#FDF0F2;--surface:#FFFFFF;--ink:#2A1218;--muted:#7B5560;--line:#F3DADF;--accent:#C92A55;--accent2:#F0663B;--accent-ink:#FFFFFF}
 @media (prefers-color-scheme: dark){:root{--bg:#190B10;--surface:#26131A;--ink:#FBE9EE;--muted:#C79BA6;--line:#40222B;--accent:#FF7A98;--accent2:#FFA86B;--accent-ink:#1A0A0F}}
 *{box-sizing:border-box}
+/* taps and focus: shared/uaply-focus.css */
+html{-webkit-tap-highlight-color:transparent}a,button,input,select,textarea,summary,label,[role=button],[tabindex]{-webkit-tap-highlight-color:transparent}:focus:not(:focus-visible){outline:none}:focus-visible{outline:3px solid var(--accent,#C92A55);outline-offset:2px}
 html,body{height:100%;margin:0}
 body{display:flex;flex-direction:column;background:var(--bg);color:var(--ink);font:14px/1.4 'DM Sans','Segoe UI',system-ui,sans-serif}
 .top{display:flex;flex-direction:column;gap:8px;padding:10px 14px;background:var(--surface);border-bottom:1px solid var(--line)}
@@ -51,9 +55,9 @@ body.app iframe{border:0;border-radius:0;width:100%!important}
   <div class="chips" id="feats" role="group" aria-label="Experiments"></div>
   <p class="note" id="note">Pick an experiment to see what it does.</p>
 </div>
-<div class="stage" id="stage"><iframe id="app" title="UAply sandbox build" allow="geolocation"></iframe></div>
+<div class="stage" id="stage"><iframe id="app" title="UAply sandbox build" allow="geolocation; clipboard-write"></iframe></div>
 <div class="log" id="log" aria-live="polite"></div>
-<script>window.UAplyOpts={nearMe:true,consentFirst:true,simpleTabs:true,navLift:0,
+<script>window.UAplyOpts={nearMe:true,consentFirst:true,shieldsHelp:true,simpleTabs:true,navLift:0,
   /* Stripe Payment Links (TEST mode, "UAply sandbox" Stripe account): used where there is no server, like the GitHub Pages copy */
   stripeLinks:{starter:"https://buy.stripe.com/test_00w6oA7S25nWcZUcEDcEw00",pro:"https://buy.stripe.com/test_dRm9AM8W6aIgcZU8oncEw01"}};   /* sandbox only: ask for device location and show the commute slider; ask for consent once, before the first swipe */</script>
 <script src="uaply-nav.js"></script>
@@ -64,12 +68,14 @@ body.app iframe{border:0;border-radius:0;width:100%!important}
 <script src="uaply-envs.js"></script>
 <script src="uaply-employers.js"></script>
 <script src="uaply-resume.js"></script>
+<script src="uaply-signup.js"></script>
+<script src="uaply-share.js"></script>
 <script>
 (function(){
 var KEY="hireswipe.sandbox.v1",E=window.UAplyEnv,
     _ci=E.ORDER.indexOf("confirm");if(_ci>-1)E.ORDER.splice(_ci,1);   /* a swipe right is the whole action here: no "Save to Applied?" question, not even with All on */
 /* glide (Phone swipe) decides every swipe when on; easy and axis stay on so switching glide off in the controls falls back to them */
-var on={glide:true,learn:true,easy:true,axis:true,nav:true,profile:true,live:true,kit:true,submit:true,smart:true,fit:true,anim:true,guide:true,tap:true,dates:true,hint:true,chat:true,employers:true,resume:true};
+var on={glide:true,learn:true,easy:true,axis:true,nav:true,profile:true,live:true,kit:true,submit:true,smart:true,fit:true,anim:true,guide:true,tap:true,dates:true,hint:true,chat:true,employers:true,resume:true,signup:true,share:true};   /* signup: sign-up v2, the no-password card (shared/uaply-signup.js). share: Share this job (shared/uaply-share.js) */
 var frame=document.getElementById("app"),noteEl=document.getElementById("note"),logEl=document.getElementById("log");
 function load(){logEl.classList.remove("on");logEl.innerHTML="";E.run(frame,on,KEY,function(err){if(err)noteEl.textContent="Problem: "+err})}
 function paint(n){document.querySelectorAll("#feats button").forEach(function(b){b.setAttribute("aria-pressed",on[b.dataset.k]?"true":"false")});if(n)noteEl.textContent=n}
@@ -91,10 +97,14 @@ fold.onclick=function(){setMin(!topEl.classList.contains("min"))};
 setMin(window.innerHeight<800);
 /* phones get the app full screen; ?controls=1 brings the sandbox controls back, ?app=1 forces app mode anywhere */
 var qs=location.search,standalone=(window.matchMedia&&matchMedia("(display-mode: standalone)").matches)||navigator.standalone===true;
-if(standalone||/[?&]app=1/.test(qs)||(window.innerWidth<700&&!/[?&]controls=1/.test(qs)))document.body.classList.add("app");
+/* a phone opened while turned on its side is wide but short: app mode too (the controls took two thirds of a 330 px tall screen) */
+var turnedPhone=window.innerHeight<500&&window.matchMedia&&matchMedia("(pointer:coarse)").matches;
+if(standalone||/[?&]app=1/.test(qs)||((window.innerWidth<700||turnedPhone)&&!/[?&]controls=1/.test(qs)))document.body.classList.add("app");
 paint("On by default: "+E.ORDER.filter(function(k){return on[k]}).map(function(k){return E.FEATURES[k].name}).join(", ")+".");   /* read from `on` above, so the list never goes stale */
 load();
 })();
 </script>
+<script>/* the installable website: shared/uaply-sw.js shows the offline and "starting up" screen when a page cannot load. Only on https or this computer (a service worker needs one). It saves only that screen, never the app or its data */
+if("serviceWorker"in navigator&&(location.protocol==="https:"||location.hostname==="localhost"||location.hostname==="127.0.0.1"))window.addEventListener("load",function(){navigator.serviceWorker.register("/uaply-sw.js").catch(function(){})});</script>
 </body>
 </html>

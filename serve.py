@@ -28,15 +28,21 @@ Serves ROOT; each urlpath=file alias maps one URL to a file outside ROOT (e.g. /
   GET  /help/articles.json  the help articles the assistant answers from
   POST /api/auth/verify, /api/auth/resend   the 6-digit code that proves an email is the person's own
   POST /api/auth/google/token   "Continue with Google" through Google's own button
+  POST /api/auth/code/send, /api/auth/code/verify   sandbox only (sign-up v2): "Email me a code" and signing in with that code;
+                          POST /api/auth/signup with {"passwordless": true} makes an account with no password and emails the code
   POST /api/setup/save-google, save-stripe, save-ats, remove-ats   the other boxes on /setup (this computer only)
+  POST /api/setup/test-ats   "Test this connection": an employer's open postings, read with their key (nothing sent or saved)
   GET  /api/billing/status, POST /api/billing/checkout, /api/billing/portal, /api/billing/webhook   Plus and Pro (billing_api.py)
   GET  /api/employer/me, /api/employer/logo/<id>, POST /api/employer/...   Hiring mode, sandbox only (employers_api.py)
   POST /api/profile/resume   read a resume (PDF, Word or text, up to 5 MB) and answer with the profile fields found; nothing is kept (resume_parse.py)
   GET  /healthz           for the host's health check: {"ok": true} from memory, 503 once the server is stopping (HEAD too)
   POST /api/email/events  Brevo's webhook: bounces and complaints put an address on the bounce list (needs email_events_secret; mailer.py)
   GET  /api/status        what is switched on, as yes/no facts only (never a key, an address or a path), and the deployed commit: for tools/live-check.py
+  GET  /.well-known/assetlinks.json   the Play Store app's link to this site, from UAPLY_ASSETLINKS_SHA256 (404 when unset; HEAD too)
+  GET  /uaply.webmanifest, /uaply-sw.js, /uaply-offline.html, /uaply-icon-*.png   the installable website (shared/)
 Accounts use an HttpOnly session cookie. When a signed-in user swipes right, a receipt goes to their email."""
-import sys, os, re, json, http.server, base64, hmac, threading, time, signal, random
+import sys, os, re, json, http.server, base64, hmac, threading, time, signal, random, shutil, urllib.parse
+import ui_rules
 
 LEGAL_NAME = re.compile(r"^[A-Za-z0-9_-]+\.(html|css|png)$")       # the files in legal/: terms.html, style.css, favicon-32.png ...
 
@@ -50,7 +56,7 @@ BIND = os.environ.get("HOST", "127.0.0.1")
 PUBLIC = BIND not in ("127.0.0.1", "localhost", "::1")
 # Owner-only pages (/outbox, /feedback) need this password when the server is public. Without it they are switched off.
 OWNER_PASSWORD = os.environ.get("OWNER_PASSWORD", "")
-OWNER_PAGES = ("/outbox", "/api/outbox", "/feedback", "/setup")
+OWNER_PAGES = ("/outbox", "/api/outbox", "/feedback", "/setup", "/api/feed-health")
 root = os.path.abspath(sys.argv[2])
 rest = sys.argv[3:]
 api = "--api" in rest
@@ -62,6 +68,27 @@ for a in rest:
     alias[u] = os.path.abspath(f)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+SHARED = os.path.join(HERE, "shared")
+# the shared files the pages ask for by their own names (/uaply-signup.js, /uaply.webmanifest) or as /shared/<file>: a file added to
+# shared/ after this server started is found on disk when it is asked for (the alias table below is made once, at the start, so until
+# October 23 every file added since answered 404 until a restart). Only a plain file name directly inside shared/: no folder, no "..".
+SHARED_ALIAS_RE = re.compile(r"^/(uaply(?:-[A-Za-z0-9_-]+)?\.(?:js|css|webmanifest|json|html|png))$")
+SHARED_NAME_RE = re.compile(r"^[A-Za-z0-9_-][A-Za-z0-9_.-]*\.(?:js|css|webmanifest|json|html|png|svg|txt)$")
+CODE_SIGNIN = False      # code sign-in ("Email me a code"): set below, on wherever the server runs (UAPLY_CODE_SIGNIN=0 switches it off)
+SIGNUP_TEST = False      # UAPLY_SIGNUP_TEST=1: sign-up makes a verified account and signs it in at once, no email (never on a public server,
+                         # never on Render), and no email of any kind leaves the server: codes, reset links, receipts and reminders go to the
+                         # test inbox (/outbox) only, even with real email settings (uaply_api.NO_MAIL)
+# Saif, October 22: nobody reaches site data without an account. Without a session these answer 401 {"error": "Sign in first.",
+# "code": "signin"}; with a session whose account never confirmed its address (a password sign-up whose emailed code is not typed yet),
+# 403 {"error": "Confirm your email first.", "code": "verify"} (docs/ACCOUNTS.md, "The sign-in contract"). Every /api/auth/* route stays
+# open to that session, so it can type the code, ask for a new one or sign out. Owner pages keep their own owner check instead.
+GATED_GET = ("/api/jobs",)
+GATED_GET_PREFIX = ("/api/employer/logo/",)
+GATED_POST = ("/api/apply", "/api/apply/plan", "/api/apply/mark", "/api/decision", "/api/chat", "/api/feedback", "/api/profile/resume",
+              "/api/employer/company", "/api/employer/job", "/api/employer/job/status", "/api/employer/applicant", "/api/employer/import")
+SIGNIN_FIRST = {"error": "Sign in first.", "code": "signin"}
+VERIFY_FIRST = {"error": "Confirm your email first.", "code": "verify"}
+CODE_PATHS = ("/api/auth/code/send", "/api/auth/code/verify")      # sign-up v2: POST routes that exist only while CODE_SIGNIN is on
 # browsers and crawlers ask for /favicon.ico whatever the page says: answer with the instance's own icon (a PNG; every browser takes it)
 alias.setdefault("/favicon.ico", next((f for f in (os.path.join(root, "favicon-32.png"), os.path.join(HERE, "legal", "favicon-32.png"))
                                        if os.path.isfile(f)), os.path.join(HERE, "legal", "favicon-32.png")))
@@ -100,21 +127,251 @@ if api:
                      ("/uaply-live.js", "shared/uaply-live.js"), ("/uaply-profile.js", "shared/uaply-profile.js"),
                      ("/uaply-chat.js", "shared/uaply-chat.js"), ("/uaply-employers.js", "shared/uaply-employers.js"),
                      ("/uaply-learn.js", "shared/uaply-learn.js"), ("/uaply-resume.js", "shared/uaply-resume.js"),
+                     ("/uaply-signup.js", "shared/uaply-signup.js"),      # sign-up v2 (the sandbox's "Sign-up, nothing hidden")
                      ("/help/articles.json", "help/articles.json"),
-                     ("/prod-index.html", "prod/index.html")):
+                     # assisted apply in the phone app: the autofill it puts into an employer's page, and the per-system switch
+                     # (assisted or automatic) the owner's lawyer sets (docs/assisted-apply.md)
+                     ("/uaply-assist.js", "shared/uaply-assist.js"), ("/assist-systems.json", "shared/assist-systems.json"),
+                     ("/prod-index.html", "prod/index.html"),
+                     # the installable website (Android "Install app", the Play Store app): its manifest, icons, service worker and the
+                     # screen that worker shows when a page cannot load. The worker sits at the site root so it covers every page.
+                     ("/uaply.webmanifest", "shared/uaply.webmanifest"), ("/uaply-sw.js", "shared/uaply-sw.js"),
+                     ("/uaply-offline.html", "shared/uaply-offline.html"),
+                     ("/uaply-icon-192.png", "shared/uaply-icon-192.png"), ("/uaply-icon-512.png", "shared/uaply-icon-512.png"),
+                     ("/uaply-icon-maskable-192.png", "shared/uaply-icon-maskable-192.png"),
+                     ("/uaply-icon-maskable-512.png", "shared/uaply-icon-maskable-512.png")):
         alias.setdefault(url, os.path.join(HERE, rel))
     import jobs_api, uaply_api, auth_api, chat_api, google_auth, setup_api, billing_api, employers_api, resume_parse
     uaply_api.init(os.path.basename(root))
     employers_api.init(os.path.basename(root))                    # Hiring mode: on for the sandbox only
     auth_api.init(os.path.basename(root))
+    # Sign-in (Saif, October 22): sign up with email, first and last name and a password; the emailed code verifies the address after
+    # sign-up and is the other way to sign in. Code sign-in, with its two rules (Google asks the owner's own 18+ tick when it joins an
+    # account nobody proved; Resend counts toward the day's cap), is on wherever the server runs, sandbox, dev and the live site alike.
+    # A public server that cannot send email still refuses to pretend to send codes (code_signin_live). UAPLY_CODE_SIGNIN=0 switches the
+    # code routes off (a test server that checks the password routes alone).
+    CODE_SIGNIN = os.environ.get("UAPLY_CODE_SIGNIN", "") != "0"
+    SIGNUP_TEST = os.environ.get("UAPLY_SIGNUP_TEST", "") == "1" and not PUBLIC and "RENDER" not in os.environ   # test mode: never on a
+    # public server, whatever is set, and never on Render (its own RENDER variable, any value), even if HOST were wrong. Filler addresses
+    # must never make a real send or a bounce, so in test mode nothing is emailed, whatever email settings are present (Saif's sandbox has
+    # real ones): every message lands in the test inbox instead.
+    uaply_api.NO_MAIL = SIGNUP_TEST
     chat_api.init(os.path.basename(root))
     billing_api.PUBLIC = PUBLIC                                     # Plan and billing: buy buttons on a public server only when Stripe keys are set
     uaply_api.hide_errors = jobs_api.hide_errors = PUBLIC       # a hosted server never shows visitors raw error text; the owner's own computer still does
+    jobs_api.link_check_on = PUBLIC          # a hosted server checks every source's apply links in the background (UAPLY_LINK_CHECK=0: off)
     uaply_api.PUBLIC = PUBLIC                                   # the live site never labels a real hand-off email [TEST]
     uaply_api.start_mail_worker()                               # sends receipts and copies held back by the daily email limit (mailer.py)
     # the job-list warm-up starts after the port is bound (at the end of this file), so the health check passes at once
 
 OOPS ="Something went wrong on our side. Try again in a moment."
+
+# UAPLY_PUBLIC_URL (e.g. https://uaply.net), set on the live host only: the one address search engines and visitors should use. With it set,
+# a page asked for on any other address (www.uaply.net, uaply.onrender.com) is answered with a 301 to the same page there, and the pages say
+# so (canonical link, sitemap). Unset (the sandbox, dev, this computer): nothing changes.
+PUBLIC_BASE = uaply_api.public_url_env() if api else ""
+PUBLIC_HOST = PUBLIC_BASE[len("https://"):]
+if api and (os.environ.get("UAPLY_PUBLIC_URL") or "").strip() and not PUBLIC_BASE:
+    sys.stderr.write("[uaply] UAPLY_PUBLIC_URL is ignored: it must be a bare https address such as https://uaply.net (no path, no spaces)\n")
+
+
+def _storage_key():
+    """The browser storage key of this instance's app (var KEY="..." in its index.html), so the moved page can find what this browser keeps."""
+    try:
+        with open(os.path.join(root, "index.html"), encoding="utf-8") as f:
+            m = re.search(r'var KEY="([A-Za-z0-9._-]{1,60})"', f.read())
+        return m.group(1) if m else ""
+    except OSError:
+        return ""
+
+
+# The home page on an old address (www.uaply.net, the onrender.com address) once UAPLY_PUBLIC_URL is set. A browser keeps each address's data
+# apart, so a blind 301 would leave someone's profile and swipes behind at the old address. This page looks: with UAply data in this browser
+# it offers "Save a backup" (the same file as Profile, Data & privacy, Back up) and "Continue to uaply.net" with ?moved=1, where the app opens
+# Restore once; with none it goes on to the same address on the public host at once. Nothing is sent anywhere: the file is made in the browser.
+MOVED_PAGE = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UAply has moved</title><link rel="canonical" href="%(base)s/"><link rel="icon" type="image/png" href="/favicon.ico">
+<noscript><meta http-equiv="refresh" content="0;url=%(go)s"></noscript>
+<style>body{font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;margin:0;padding:24px 16px;color:#1d1d1f;background:#fff}main{max-width:520px;margin:0 auto}
+h1{font-size:24px;margin:0 0 8px}.btn{display:inline-block;min-height:44px;padding:10px 18px;border-radius:10px;border:0;font:inherit;font-weight:600;cursor:pointer;text-decoration:none;margin:6px 8px 0 0}
+.pri{background:#e0245e;color:#fff}.sec{background:#f1f1f4;color:#1d1d1f}@media (prefers-color-scheme:dark){body{background:#111;color:#eee}.sec{background:#2a2a2e;color:#eee}}</style>
+</head><body><main><h1>UAply has moved to %(host)s</h1>
+<p id="msg">Taking you to <a href="%(go)s">%(host)s</a>&hellip;</p>
+<div id="keep" hidden><p>This browser holds your UAply profile and swipes from this address. A browser keeps each address's data apart, so save a
+backup here first. On %(host)s, open Profile, then Data &amp; privacy, and choose the file under Restore.</p>
+<button type="button" class="btn pri" id="save">Save a backup</button><a class="btn sec" id="cont" href="%(base)s/?moved=1">Continue to %(host)s</a>
+<p id="saved" hidden>Saved as uaply-backup.json in your downloads.</p></div>
+<p><a href="%(go)s">Continue to %(host)s</a></p>
+<script>(function(){
+var K=%(key)s,S=null,A=null;
+try{S=JSON.parse(localStorage.getItem(K)||"null");A=JSON.parse(localStorage.getItem(K+".acct")||"null")}catch(e){}
+var has=!!(S&&typeof S==="object"&&S.profile&&typeof S.profile==="object"&&(S.profile.custom||Object.keys(S.decisions||{}).length||(S.history||[]).length));
+if(A&&typeof A==="object"&&["phone","linkedin","portfolio","summary","cover","resumeName","resumeUrl"].some(function(k){return typeof A[k]==="string"&&A[k].trim()})||(A&&A.apps&&typeof A.apps==="object"&&Object.keys(A.apps).length))has=true;
+if(has&&!(S&&S.profile&&typeof S.profile==="object"))S={profile:{},decisions:{}};
+if(!has){location.replace(%(go_js)s);return}
+document.getElementById("msg").hidden=true;document.getElementById("keep").hidden=false;
+document.getElementById("save").onclick=function(){
+  var o={app:"uaply",v:1,exported:new Date().toISOString(),profile:S.profile,decisions:S.decisions||{}};if(A&&typeof A==="object")o.acct=A;
+  var u=URL.createObjectURL(new Blob([JSON.stringify(o)],{type:"application/json"})),a=document.createElement("a");
+  a.href=u;a.download="uaply-backup.json";document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(u)},5000);
+  document.getElementById("saved").hidden=false;
+};
+})();</script></main></body></html>
+"""
+
+
+def moved_page(go):
+    """MOVED_PAGE for this request; go is where it leads when there is nothing to keep (the same path and query on the public host)."""
+    import html as _html
+    return ui_rules.with_focus(MOVED_PAGE % {"base": PUBLIC_BASE, "host": _html.escape(PUBLIC_HOST), "go": _html.escape(go, quote=True),
+                          "go_js": json.dumps(go).replace("<", "\\u003c"), "key": json.dumps(_storage_key())}, pressed=True).encode("utf-8")
+
+
+def no_redirect_path(p):
+    """The API (webhooks, the Google sign-in callback, scripts), the health check and the Android ownership file answer on every address;
+    only pages are moved. (Android reads assetlinks.json without following redirects.)"""
+    return p == "/api" or p.startswith("/api/") or p == "/healthz" or p == ASSETLINKS_PATH
+
+
+# /.well-known/assetlinks.json: proves to Android that the UAply app in the Play Store (package com.uaply.app, a Trusted Web Activity in
+# mobile/twa/) belongs to this site, so the app opens it full screen without an address bar. It lists the SHA-256 fingerprints of the
+# certificates that sign the app: Play App Signing's key (the app people install from Play) and the upload key (a build installed by
+# hand). They come from UAPLY_ASSETLINKS_SHA256 (comma-separated, as Play Console shows them, AA:BB:...), so adding or changing a key
+# needs only that setting and a restart, never a new build. Unset (or nothing valid in it): a plain 404, the same as before.
+ASSETLINKS_PATH = "/.well-known/assetlinks.json"
+SECURITY_TXT_PATH = "/.well-known/security.txt"
+SECURITY_CONTACT_DEFAULT = "uaplytechnologies@uaply.net"      # the company's contact address (legal/support.html); SUPPORT_EMAIL wins when set
+ANDROID_PACKAGE = "com.uaply.app"
+FINGERPRINT_RE = re.compile(r"^[0-9A-F]{2}(?::[0-9A-F]{2}){31}$")
+
+
+def assetlinks_fingerprints(raw):
+    """(valid fingerprints in AA:BB:... form, count of entries that are not a SHA-256 fingerprint). 64 bare hex digits are accepted too."""
+    good, bad = [], 0
+    for v in (raw or "").split(","):
+        v = v.strip().upper()
+        if not v:
+            continue
+        if re.fullmatch(r"[0-9A-F]{64}", v):
+            v = ":".join(v[i:i + 2] for i in range(0, 64, 2))
+        if FINGERPRINT_RE.match(v):
+            if v not in good:
+                good.append(v)
+        else:
+            bad += 1
+    return good, bad
+
+
+_fps, _bad_fps = assetlinks_fingerprints(os.environ.get("UAPLY_ASSETLINKS_SHA256"))
+if _bad_fps:
+    sys.stderr.write("[uaply] UAPLY_ASSETLINKS_SHA256: %d entr%s ignored: each must be a SHA-256 certificate fingerprint such as AB:CD:... "
+                     "(32 pairs of hex digits), copied from Play Console, Setup, App signing\n" % (_bad_fps, "y" if _bad_fps == 1 else "ies"))
+ASSETLINKS = (json.dumps([{"relation": ["delegate_permission/common.handle_all_urls"],
+                           "target": {"namespace": "android_app", "package_name": ANDROID_PACKAGE, "sha256_cert_fingerprints": _fps}}],
+                         indent=2) + "\n").encode("utf-8") if _fps else b""
+
+
+def search_tags(canon, home=False):
+    """The tags added to a page served on the public host: its canonical address, and on the home page the site's name for search results."""
+    import html as _html
+    out = '<link rel="canonical" href="%s">' % _html.escape(PUBLIC_BASE + canon, quote=True)
+    if home:
+        ld = json.dumps({"@context": "https://schema.org", "@type": "WebSite", "name": "UAply", "alternateName": PUBLIC_HOST, "url": PUBLIC_BASE + "/"})
+        out += '<script type="application/ld+json">%s</script>' % ld.replace("<", "\\u003c")
+    return out.encode("utf-8")
+
+
+def sitemap_xml():
+    """/sitemap.xml on the public host: the home page and every legal and support page."""
+    from xml.sax.saxutils import escape
+    names = sorted(n for n in os.listdir(os.path.join(HERE, "legal")) if n.endswith(".html") and n != "index.html" and LEGAL_NAME.match(n))
+    urls = ["/", "/legal/"] + ["/legal/" + n for n in names]
+    body = "".join("<url><loc>%s</loc></url>" % escape(PUBLIC_BASE + u) for u in urls)
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">%s</urlset>\n' % body).encode("utf-8")
+
+
+# ---- versioned script and style files: browsers and the phone apps may keep them for a year ----
+# Every page used to be sent with Cache-Control: no-store, so each visit downloaded about 600 KB of the same scripts again (October 22).
+# A script or style file now has a name with its content's hash in it (uaply-nav.3f2a9c0d1e.js): the pages are rewritten to ask for that
+# name as they are sent, and a hashed name is sent with a year's cache (immutable). A changed file gets a new name, so a deploy is seen at
+# once (the pages themselves, the API and the service worker stay no-store). The plain names keep working, uncached, for anything else.
+VERSIONED = {}                                   # plain address ("/uaply-nav.js", "/legal/style.css") -> the file
+VERSION_RE = re.compile(r"^(/(?:legal/)?[A-Za-z0-9_-]+)\.([0-9a-f]{10})\.(js|css)$")
+_hashes = {}                                     # file -> ((mtime, size), hash)
+LONG_CACHE = "public, max-age=31536000, immutable"
+NOT_VERSIONED = ("/uaply-sw.js", "/uaply-assist.js")    # asked for by their plain names by other programs (the service worker's scope, the app)
+
+
+def shared_file(p):
+    """The file in shared/ an address names when no alias does (see SHARED_ALIAS_RE), or None. Never outside shared/."""
+    if not api:
+        return None
+    m = SHARED_ALIAS_RE.match(p)
+    name = m.group(1) if m else (p[len("/shared/"):] if p.startswith("/shared/") else "")
+    if not name or "/" in name or "\\" in name or ".." in name or not SHARED_NAME_RE.match(name):
+        return None
+    f = os.path.join(SHARED, name)
+    if os.path.dirname(os.path.abspath(f)) != os.path.abspath(SHARED) or not os.path.isfile(f):
+        return None
+    return f
+
+
+def versioned_file(plain):
+    """The file behind a versioned address: one of VERSIONED, or a script or style sheet added to shared/ since the start."""
+    f = VERSIONED.get(plain)
+    if f or plain in NOT_VERSIONED or not plain.endswith((".js", ".css")):
+        return f
+    return shared_file(plain) if SHARED_ALIAS_RE.match(plain) else None
+if api:          # the shared scripts the pages load, and the legal pages' style sheet (never the service worker or the assist script,
+                 # which other programs ask for by their plain names)
+    for url in ("/uaply-envs.js", "/uaply-nav.js", "/uaply-live.js", "/uaply-profile.js", "/uaply-chat.js", "/uaply-employers.js",
+                "/uaply-learn.js", "/uaply-resume.js"):
+        VERSIONED[url] = alias[url]
+    VERSIONED["/legal/style.css"] = os.path.join(HERE, "legal", "style.css")
+
+
+def content_hash(f):
+    """The first 10 hex digits of the file's SHA-256 (worked out again only when the file changes)."""
+    try:
+        st = os.stat(f)
+    except OSError:
+        return ""
+    sig = (st.st_mtime_ns, st.st_size)
+    hit = _hashes.get(f)
+    if hit and hit[0] == sig:
+        return hit[1]
+    import hashlib
+    with open(f, "rb") as fh:
+        h = hashlib.sha256(fh.read()).hexdigest()[:10]
+    _hashes[f] = (sig, h)
+    return h
+
+
+def versioned_url(plain):
+    """/uaply-nav.js -> /uaply-nav.<hash>.js (the plain address when it is not a versioned file)."""
+    f = versioned_file(plain)
+    h = content_hash(f) if f else ""
+    if not h:
+        return plain
+    stem, ext = plain.rsplit(".", 1)
+    return "%s.%s.%s" % (stem, h, ext)
+
+
+_ASSET_RE = re.compile(rb'(<(?:script|link)\b[^>]*?\b(?:src|href)=")([A-Za-z0-9_./-]+\.(?:js|css))(")')
+
+
+def version_assets(body, page_dir="/"):
+    """A page's <script src> and <link href> to versioned files, rewritten to their hashed names (relative names stay relative)."""
+    def fix(m):
+        ref = m.group(2).decode("ascii")
+        plain = ref if ref.startswith("/") else page_dir + ref
+        if not versioned_file(plain):
+            return m.group(0)
+        new = versioned_url(plain)
+        out = new if ref.startswith("/") else new[len(page_dir):]
+        return m.group(1) + out.encode("ascii") + m.group(3)
+    return _ASSET_RE.sub(fix, body)
 
 
 def log_oops(where, e):
@@ -126,7 +383,7 @@ def log_oops(where, e):
 # robots.txt: the app and the legal pages may be indexed; the API and the owner-only pages are not pages for search engines
 ROBOTS = b"User-agent: *\nDisallow: /api/\nDisallow: /outbox\nDisallow: /feedback\nDisallow: /setup\nAllow: /\n"
 # the app's own page for an address that does not exist (it used to be Python's bare "Error response" page)
-NOT_FOUND_PAGE = """<!doctype html>
+NOT_FOUND_PAGE = ui_rules.with_focus("""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Page not found - UAply</title><link rel="icon" type="image/png" href="/favicon.ico"><meta name="robots" content="noindex">
 <style>
@@ -142,16 +399,115 @@ nav{margin-top:18px;font-size:14px;color:var(--muted)}nav a{color:inherit}
 <body><main><h1>Page not found</h1><p>There is nothing at this address. It may have moved, or the link may have a typo.</p>
 <a class="btn" href="/">Back to UAply</a>
 <nav><a href="/legal/">Terms and policies</a> &middot; <a href="/legal/support.html">Support</a></nav></main></body></html>
-""".encode("utf-8")
+""", pressed=True).encode("utf-8")
 
 MAX_BODY = 40000
 MAX_APPLY_BODY = 1500000
 MAX_COMPANY_BODY = 200000
 
 # Swipes per visitor per minute. A person swipes a few times a minute; a script hammering the server would otherwise fill its disk and memory.
-SWIPE_LIMITS = {"/api/apply": 40, "/api/decision": 150, "/api/profile/resume": 12}   # a person reads a resume once or twice
+SWIPE_LIMITS = {"/api/apply": 40, "/api/apply/plan": 120, "/api/apply/mark": 120, "/api/decision": 150, "/api/profile/resume": 12}   # a person reads a resume once or twice
 _swipes, _swipes_lock = {}, threading.Lock()
 _resume_count, _resume_count_lock = [0], threading.Lock()          # resumes read since the start: the only thing the log says about them
+
+
+# ---- the visitor's address, for rate limits and lock-outs ----
+# On Render every request arrives through Render's proxy, which ADDS the address it received the request from to the end of
+# X-Forwarded-For. Anything before that last entry was written by whoever sent the request, so a script could put a new made-up address
+# there on every request and never meet a limit (October 22 audit). The last hop is the one to trust. When uaply.net sits behind
+# Cloudflare, that last hop is a Cloudflare server: then Cloudflare's own CF-Connecting-IP names the visitor, and it is trusted only when
+# the last hop really is in Cloudflare's published ranges (fetched at start and every 24 hours, with this list as the fallback).
+import ipaddress  # noqa: E402
+
+CF_FALLBACK = ("173.245.48.0/20", "103.21.244.0/22", "103.22.200.0/22", "103.31.4.0/22", "141.101.64.0/18", "108.162.192.0/18",
+               "190.93.240.0/20", "188.114.96.0/20", "197.234.240.0/22", "198.41.128.0/17", "162.158.0.0/15", "104.16.0.0/13",
+               "104.24.0.0/14", "172.64.0.0/13", "131.0.72.0/22", "2400:cb00::/32", "2606:4700::/32", "2803:f800::/32", "2405:b500::/32",
+               "2405:8100::/32", "2a06:98c0::/29", "2c0f:f248::/32")
+CF_URLS = ("https://www.cloudflare.com/ips-v4", "https://www.cloudflare.com/ips-v6")
+_cf_nets = [ipaddress.ip_network(n) for n in CF_FALLBACK]
+
+
+def _cf_parse(text):
+    """The networks in one of Cloudflare's lists (one CIDR per line); lines that are not a network are skipped."""
+    out = []
+    for line in (text or "").splitlines():
+        try:
+            out.append(ipaddress.ip_network(line.strip(), strict=False))
+        except ValueError:
+            pass
+    return out
+
+
+def _cf_refresh():
+    """Read Cloudflare's published ranges; keep the last good list (or the built-in one) when the read fails or looks wrong."""
+    global _cf_nets
+    nets = []
+    try:
+        import urllib.request
+        for u in CF_URLS:
+            with urllib.request.urlopen(urllib.request.Request(u, headers={"User-Agent": "UAply/1.0"}), timeout=10) as r:
+                nets += _cf_parse(r.read(20000).decode("utf-8", "replace"))
+    except Exception as e:
+        sys.stderr.write("[uaply] Cloudflare's address list could not be read (%s); keeping the one in use\n" % type(e).__name__)
+        return False
+    if len(nets) >= 5:                                   # a page that is not the list (a login wall, an error page) never replaces it
+        _cf_nets = nets
+        return True
+    return False
+
+
+def _cf_loop():
+    while True:
+        _cf_refresh()
+        time.sleep(24 * 3600)
+
+
+_INTERNAL = [ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16",
+                                                "::1/128", "fc00::/7", "fe80::/10")]
+
+
+def _internal(addr):
+    """A host's own private network (a proxy inside Render's network), never a visitor on the internet."""
+    a = ipaddress.ip_address(addr)
+    return any(a in n for n in _INTERNAL if n.version == a.version)
+
+
+def _ip_or_none(v):
+    try:
+        return str(ipaddress.ip_address((v or "").strip().strip("[]")))
+    except ValueError:
+        return None
+
+
+def is_cloudflare(addr):
+    try:
+        a = ipaddress.ip_address(addr)
+    except ValueError:
+        return False
+    return any(a in n for n in _cf_nets if n.version == a.version)
+
+
+def client_ip(peer, headers, public=None):
+    """The address limits are counted against. This computer: the connection's own address. A public server: the last public address in
+    X-Forwarded-For, read from the right (the hop the host's proxy added; a proxy's own internal 10.x / 172.16-31.x / 192.168.x / 100.64.x
+    entry after it is skipped, so the visitors are never all counted as one), or Cloudflare's CF-Connecting-IP when that hop is a Cloudflare
+    server. Entries to the left of it were written by the sender and are never used. Each address counts on its own here; only the site's
+    hour of code emails groups an IPv6 visitor by its /64 (auth_api.share_key)."""
+    if not (PUBLIC if public is None else public):
+        return peer
+    hops = [_ip_or_none(h) for h in (headers.get("X-Forwarded-For") or "").split(",") if h.strip()]
+    if not hops or not hops[-1]:
+        return peer
+    last = hops[-1]
+    for h in reversed(hops):
+        if h is None:                                   # something that is not an address: everything left of it is the sender's own text
+            break
+        if not _internal(h):
+            last = h
+            break
+    if is_cloudflare(last):
+        return _ip_or_none(headers.get("CF-Connecting-IP")) or last
+    return last
 
 
 def too_fast(path, ip):
@@ -209,8 +565,47 @@ def _path_key(path):
     return "(files and pages)"
 
 
-def record_request(method, path, code, ms):
-    """Count one answered request (called by the handler) and log its line when it is an API call, an error or slow."""
+def code_signin_live():
+    """Code sign-in is on and can deliver its codes: a public server with no email set up does not offer it (and its code routes answer
+    503 mail_off) instead of pretending to send codes."""
+    return CODE_SIGNIN and (not PUBLIC or bool(uaply_api.mail_ready()))
+
+
+CODE_OFF_MSG = "Signing in with an emailed code is not available right now. Use Continue with Google, or try again later."
+
+
+def _mail_later(send, *args):
+    """sign-up v2: hand an email to a background thread and answer at once. "Email me a code" (and Forgot password on the sandbox) only
+    email an address that has an account, so sending before answering made those answers slower exactly when the address has one: a
+    careful outsider could time them. The code or link is already saved, so nothing waits on the mail service."""
+    def run():
+        try:
+            send(*args)
+        except Exception as e:                                   # the send functions log their own problems; this is a last guard
+            sys.stderr.write("[uaply] a background email was not sent: %s: %s\n" % (type(e).__name__, str(e)[:200]))
+    threading.Thread(target=run, daemon=True).start()
+
+
+def _login_code_mail(user_id):
+    """On the background thread: make the "Email me a code" code (auth_api.issue_login_code) and email it with the sign-in wording."""
+    mail = auth_api.issue_login_code(user_id)
+    if mail:
+        uaply_api.send_verification_mail(*mail, purpose="signin")
+
+
+def _reset_mail(user_id, base):
+    """On the background thread (item 20): write the reset link's token (auth_api.issue_reset_token) and email the link."""
+    mail = auth_api.issue_reset_token(user_id)
+    if mail:
+        uid, addr, tok = mail
+        body = ("Hi,\n\nSomeone asked to reset the password for this UAply account. Use this link within one hour:\n\n%s\n\n"
+                "If you did not ask for this, ignore this email; your password has not changed.\n\n--\nUAply") % (base + "/?reset=" + tok)
+        uaply_api.send_system_mail(uid, addr, "Reset your UAply password", body, secret=True, kind="reset")
+
+
+def record_request(method, path, code, ms, stat=None):
+    """Count one answered request (called by the handler) and log its line when it is an API call, an error or slow.
+    stat: what the handler says this request was ("signups", "logins"), or "skip" to count neither (sign-up v2)."""
     if path == "/healthz":                                       # Render asks every few seconds: counted apart, never logged
         with _stats_lock:
             _stats["health"] += 1
@@ -231,7 +626,10 @@ def record_request(method, path, code, ms):
             if i < TIMES_KEPT:
                 s["ms"][i] = ms
         if method == "POST" and code == 200:
-            if path == "/api/auth/signup":
+            if stat:                                             # sign-up v2: a no-password sign-up counts when its code is typed
+                if stat != "skip":
+                    s[stat] += 1
+            elif path == "/api/auth/signup":
                 s["signups"] += 1
             elif path == "/api/auth/login":
                 s["logins"] += 1
@@ -286,7 +684,16 @@ def _midnight_loop():
 _stopping = threading.Event()                    # set at SIGTERM: /healthz answers 503 from then on
 
 
+
+
+def _signup_cap():
+    """Sign-ups per visitor address and hour: SIGNUPS_PER_HOUR on a public server; on this computer 10 (SIGNUPS_PER_HOUR_LOCAL), except
+    in sign-up test mode (UAPLY_SIGNUP_TEST=1, never public), where every browser test signs a fresh person up behind the sign-in gate
+    and a full test run makes far more than 10 from 127.0.0.1."""
+    return auth_api.SIGNUPS_PER_HOUR if PUBLIC else (100000 if SIGNUP_TEST else None)
+
 class H(http.server.SimpleHTTPRequestHandler):
+    extensions_map = dict(http.server.SimpleHTTPRequestHandler.extensions_map, **{".webmanifest": "application/manifest+json"})
     server_version = "UAply"                     # not "SimpleHTTP/0.6 Python/3.12.7": no version for a scanner to match (Render passes it on)
     sys_version = ""
 
@@ -299,7 +706,9 @@ class H(http.server.SimpleHTTPRequestHandler):
     def handle_one_request(self):
         """Count the requests being answered, so a stop (a deploy) can let them finish first. An idle kept-open connection is not counted."""
         self._counted = False
+        self._cache = None                                   # Cache-Control for this request (end_headers); a kept-open connection starts afresh
         self._code = None
+        self._stat = None
         try:
             super().handle_one_request()
         finally:
@@ -308,7 +717,7 @@ class H(http.server.SimpleHTTPRequestHandler):
                     _busy[0] -= 1
                 if self._code and getattr(self, "command", None):
                     try:
-                        record_request(self.command, self.path.split("?", 1)[0], self._code, (time.monotonic() - self._t0) * 1000)
+                        record_request(self.command, self.path.split("?", 1)[0], self._code, (time.monotonic() - self._t0) * 1000, self._stat)
                     except Exception:
                         pass
 
@@ -336,7 +745,7 @@ class H(http.server.SimpleHTTPRequestHandler):
             # /legal/C:/...) read ANY file on the server, because joining onto an absolute path throws the folder away.
             name = p[len("/legal/"):] or "index.html"
             return os.path.join(HERE, "legal", name if LEGAL_NAME.match(name) else "not-a-legal-page")
-        return alias.get(p) or super().translate_path(path)
+        return alias.get(p) or shared_file(p) or super().translate_path(path)
 
     def send_error(self, code, message=None, explain=None):
         """A page that does not exist gets the app's own "Page not found" page with a way back, not Python's bare error page.
@@ -389,20 +798,40 @@ class H(http.server.SimpleHTTPRequestHandler):
         """The session token from this instance's cookie ('' if there is none)."""
         return self._cookie_value(auth_api.cookie_name())
 
+    def _gate(self):
+        """The gate's answer for a gated route, or None when it may go on: (401, SIGNIN_FIRST) with no live session, (403, VERIFY_FIRST)
+        when the session's account has emailVerified false. Google (when Google vouches for the address), a code sign-in and test mode
+        all make verified accounts, so only a password sign-up waiting for its emailed code is held here."""
+        u = auth_api.user_for(self._token())
+        if not u:
+            return 401, SIGNIN_FIRST
+        if not u.get("emailVerified"):
+            return 403, VERIFY_FIRST
+        return None
+
     def _cookie(self, token):
         secure = "; Secure" if (self.headers.get("X-Forwarded-Proto") == "https") else ""
         age = auth_api.SESSION_SECONDS if token else 0
         return [("Set-Cookie", "%s=%s; HttpOnly; SameSite=Lax; Path=/; Max-Age=%d%s" % (auth_api.cookie_name(), token, age, secure))]
+
+    def _known(self):
+        """sign-up v2: the known-device cookie ('' if absent): set after a code sign-in on this device (auth_api._code_send_refusal)."""
+        return self._cookie_value(auth_api.cookie_name() + "_known")[:100]
+
+    def _known_cookie(self, value):
+        secure = "; Secure" if (self.headers.get("X-Forwarded-Proto") == "https") else ""
+        return [("Set-Cookie", "%s_known=%s; HttpOnly; SameSite=Strict; Path=/api/auth; Max-Age=%d%s" % (
+            auth_api.cookie_name(), value, auth_api.KNOWN_SECONDS if value else 0, secure))] if value else []
 
     def _origin_parts(self):
         host = self.headers.get("Host") or "localhost"
         return host, ("https" if self.headers.get("X-Forwarded-Proto") == "https" else "http")
 
     def _site_base(self):
-        """The public address of this site, for links in emails."""
+        """The public address of this site, for links in emails (UAPLY_PUBLIC_URL first)."""
         cfg = uaply_api.config()
         g = cfg.get("google") if isinstance(cfg.get("google"), dict) else {}
-        for v in (cfg.get("public_url"), g.get("public_url")):
+        for v in (uaply_api.public_url_env(), cfg.get("public_url"), g.get("public_url")):
             if isinstance(v, str) and v.startswith(("http://", "https://")):
                 return v.rstrip("/")
         host, proto = self._origin_parts()
@@ -415,6 +844,96 @@ class H(http.server.SimpleHTTPRequestHandler):
         for k, v in headers:
             self.send_header(k, v)
         self.end_headers()
+
+    def _to_public_host(self):
+        """GET or HEAD of a page on another address than UAPLY_PUBLIC_URL: 301 to the same path and query there. True when answered.
+        The Location is always PUBLIC_BASE plus this request's own path, so a forged Host header can only ever lead to the public host."""
+        if not PUBLIC_BASE or no_redirect_path(self.path.split("?", 1)[0]):
+            return False
+        host = (self.headers.get("Host") or "").strip().lower()
+        if host.endswith(":443") and ":" not in PUBLIC_HOST:
+            host = host[:-4]
+        if not host or host == PUBLIC_HOST:
+            return False
+        # only an ordinary path: never "http://other.site/..." (an absolute address in the request line) or control characters in a header
+        if not self.path.startswith("/") or any(ord(c) < 33 or ord(c) == 127 for c in self.path):
+            return False
+        # the raw bytes of the path, percent-encoded where they are not plain ASCII, so the header is always valid
+        go = PUBLIC_BASE + urllib.parse.quote(self.path.encode("latin-1", "replace"), safe="/?&=%:+,;@!$'()*~-._")
+        if self.command == "GET" and self.path.split("?", 1)[0] == "/":
+            body = moved_page(go)                                       # the home page: look for this browser's data before moving on
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return True
+        self.send_response(301)
+        self.send_header("Location", go)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+        return True
+
+    def _versioned(self, head=False):
+        """GET or HEAD of /uaply-nav.<hash>.js or /legal/style.<hash>.css. True when answered."""
+        m = VERSION_RE.match(self.path.split("?", 1)[0])
+        if not m:
+            return False
+        plain = "%s.%s" % (m.group(1), m.group(3))
+        f = versioned_file(plain)
+        if not f:
+            return False
+        try:
+            with open(f, "rb") as fh:
+                body = fh.read()
+        except OSError:
+            return False
+        current = m.group(2) == content_hash(f)
+        self.send_response(200)
+        self.send_header("Content-Type", "text/javascript; charset=utf-8" if plain.endswith(".js") else "text/css; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self._cache = LONG_CACHE if current else None       # an old hash (a page from before a deploy): today's file, never kept
+        self.end_headers()
+        if not head:
+            self.wfile.write(body)
+        return True
+
+    def _tagged_page(self, head=False):
+        """The home page and the legal and support pages: their scripts and style sheet asked for by their versioned names, and on the
+        public host also their canonical link (and the home page the site's name for search results). True when answered; False leaves
+        the page to the ordinary file serving."""
+        if not api:
+            return False
+        p = self.path.split("?", 1)[0].split("#", 1)[0]
+        if p in ("/", "/index.html"):
+            f, canon, home = os.path.join(root, "index.html"), "/", True
+        elif p == "/prod-index.html":                                   # the page the app frames: the same app, so the same address
+            f, canon, home = alias.get(p, ""), "/", False
+        elif p.startswith("/legal/"):
+            name = p[len("/legal/"):] or "index.html"
+            if not (LEGAL_NAME.match(name) and name.endswith(".html")):
+                return False
+            f, canon, home = os.path.join(HERE, "legal", name), ("/legal/" if name == "index.html" else "/legal/" + name), False
+        else:
+            return False
+        try:
+            with open(f, "rb") as fh:
+                body = fh.read()
+        except OSError:
+            return False
+        at = body.lower().find(b"</head>")
+        if at < 0:
+            return False
+        if PUBLIC_BASE:
+            body = body[:at] + search_tags(canon, home) + body[at:]
+        body = version_assets(body, "/legal/" if p.startswith("/legal/") else "/")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if not head:
+            self.wfile.write(body)
+        return True
 
     def _oauth_cookie(self, value):
         secure = "; Secure" if (self.headers.get("X-Forwarded-Proto") == "https") else ""
@@ -434,9 +953,14 @@ class H(http.server.SimpleHTTPRequestHandler):
         err, ident, agreed = google_auth.finish(q, self._cookie_value(auth_api.cookie_name() + "_oauth"), host, proto)
         if err:
             return self._redirect("/?auth_error=" + err, [self._oauth_cookie("")])
-        err, user, token = auth_api.oauth_login(ident["provider"], ident["subject"], ident["email"], agreed, ident.get("trusted", True))
+        login = auth_api.oauth_login_ticked if CODE_SIGNIN else auth_api.oauth_login      # /* sign-up v2 */ the owner's own tick (sandbox)
+        err, user, token = login(ident["provider"], ident["subject"], ident["email"], agreed, ident.get("trusted", True))
         if err:
             return self._redirect("/?auth_error=" + err, [self._oauth_cookie("")])
+        made, fin = user.pop("created", False), user.pop("finished", False)   # made: this sign-in made the account (auth_api.oauth_login)
+        if CODE_SIGNIN:                                  # /* sign-up v2 */ new account or not, for the page (memory only, 10 minutes)
+            # an account that had a password removed was made before, by a password sign-up: never "Account created"
+            auth_api.remember_google(user["id"], (fin or made) and not user.get("passwordRemoved"))
         return self._redirect("/?signed_in=google" + ("&password_removed=1" if user.get("passwordRemoved") else ""), self._cookie(token) + [self._oauth_cookie("")])
 
     def _owner_ok(self):
@@ -456,18 +980,39 @@ class H(http.server.SimpleHTTPRequestHandler):
         p = self.path.split("?", 1)[0]
         if p == "/healthz":                                                 # for the host's health check
             return self._health()
+        if p == ASSETLINKS_PATH:                                            # the Play Store app's proof that it belongs to this site
+            return self._assetlinks()
+        if p == SECURITY_TXT_PATH:                                          # who to tell about a security problem (RFC 9116)
+            return self._send(200, self._security_txt(), "text/plain; charset=utf-8")
+        if self._to_public_host():
+            return
         if p == "/robots.txt":
-            return self._send(200, ROBOTS, "text/plain; charset=utf-8")
-        if api and p == "/legal":                                           # a typed uaply.net/legal (no slash) finds the legal pages too
+            return self._send(200, ROBOTS + (("Sitemap: %s/sitemap.xml\n" % PUBLIC_BASE).encode() if PUBLIC_BASE else b""), "text/plain; charset=utf-8")
+        if PUBLIC_BASE and p == "/sitemap.xml":
+            return self._send(200, sitemap_xml(), "application/xml; charset=utf-8")
+        if self._tagged_page():
+            return
+        if self._versioned():
+            return
+        if api and p == "/legal":                                         # a typed uaply.net/legal (no slash) finds the legal pages too
             return self._redirect("/legal/")
         if api and p in OWNER_PAGES and not self._owner_ok():
             if not OWNER_PASSWORD:
                 return self._send(403, {"error": "Owner pages are off on this server. Set OWNER_PASSWORD to use them."})
             return self._send(401, {"error": "Owner password required."}, headers=[("WWW-Authenticate", 'Basic realm="UAply owner"')])
+        if api and (p in GATED_GET or p.startswith(GATED_GET_PREFIX)):
+            held = self._gate()
+            if held:
+                return self._send(*held)
         if api:
             try:
                 if p == "/api/jobs":
-                    return self._send(200, jobs_api.get_json())
+                    # a few thousand jobs are megabytes of JSON: sent compressed to any browser that says it takes gzip (all of them do)
+                    if "gzip" in (self.headers.get("Accept-Encoding") or "").lower():
+                        return self._send(200, jobs_api.get_json(compressed=True), headers=[("Content-Encoding", "gzip"), ("Vary", "Accept-Encoding")])
+                    return self._send(200, jobs_api.get_json(), headers=[("Vary", "Accept-Encoding")])
+                if p == "/api/feed-health":                                 # owner only (OWNER_PAGES): every source's count, successes and failures
+                    return self._send(200, jobs_api.feed_health())
                 if p == "/api/apply/config":
                     cfg_out = uaply_api.public_config()
                     if not PUBLIC:                          # only a copy running on the owner's computer has a test inbox page to point to
@@ -478,11 +1023,24 @@ class H(http.server.SimpleHTTPRequestHandler):
                 if p == "/outbox":
                     return self._send(200, uaply_api.outbox_html(), "text/html; charset=utf-8")
                 if p == "/api/status":
-                    return self._send(200, status_facts())
+                    facts = status_facts()
+                    if self._owner_ok():          # the owner (this computer, or OWNER_PASSWORD): which questions employers asked, by kind,
+                        facts = dict(facts, questions=uaply_api.question_stats(), selfCheck=self_check())   # and the self-check
+                    return self._send(200, facts)
                 if p == "/api/auth/me":
-                    return self._send(200, {"user": auth_api.user_for(self._token())})
+                    me = auth_api.user_for(self._token())
+                    if me:                                                          # whether a Google login opens it (item 23)
+                        me = dict(me, googleLinked=auth_api.google_linked(me["id"]))
+                    if CODE_SIGNIN and me and auth_api.google_hint(me["id"]):      # what the Google sign-in a moment ago said
+                        me = dict(me, google=auth_api.google_hint(me["id"]))
+                    return self._send(200, {"user": me})
                 if p == "/api/auth/providers":
-                    return self._send(200, google_auth.public_config(*self._origin_parts()))
+                    out = google_auth.public_config(*self._origin_parts())
+                    if code_signin_live():                                          # "Email me a code" can be offered
+                        out = dict(out, codeSignin=True)
+                    if SIGNUP_TEST:                                 # test mode: sign-up signs in at once, nothing is emailed (never public)
+                        out = dict(out, signupTest=True, testMode=True)
+                    return self._send(200, out)
                 if p in ("/api/auth/google/start", "/api/auth/google/callback"):
                     return self._google(p)
                 if p == "/api/billing/status":
@@ -517,9 +1075,39 @@ class H(http.server.SimpleHTTPRequestHandler):
         if not head:
             self.wfile.write(body)
 
+    def _security_txt(self):
+        """/.well-known/security.txt: the company's contact address, the privacy page, and an expiry a year from now (written on each
+        request, so it never goes stale)."""
+        base = PUBLIC_BASE or (self._site_base() if api else "") or "https://uaply.net"
+        to = SECURITY_CONTACT_DEFAULT
+        try:
+            got = chat_api.support_email() if api else ""
+            if isinstance(got, str) and re.fullmatch(r"[^@\s<>]{1,64}@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", got.strip()):
+                to = got.strip()
+        except Exception:
+            pass
+        expires = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + 365 * 86400))
+        return ("# UAply: tell us about a security problem. We read every message and reply within 2 business days.\n"
+                "Contact: mailto:%s\nExpires: %s\nPreferred-Languages: en\nCanonical: %s%s\n"
+                "# Privacy policy: %s/legal/privacy.html\n" % (to, expires, base, SECURITY_TXT_PATH, base)).encode("utf-8")
+
+    def _assetlinks(self, head=False):
+        """GET or HEAD /.well-known/assetlinks.json: the statement built at start from UAPLY_ASSETLINKS_SHA256, or a plain 404 without it."""
+        body = ASSETLINKS or json.dumps({"error": "No Android app is linked to this site yet."}).encode("utf-8")
+        self.send_response(200 if ASSETLINKS else 404)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if not head:
+            self.wfile.write(body)
+
     def do_HEAD(self):
         if self.path.split("?", 1)[0] == "/healthz":                     # uptime monitors often ask with HEAD
             return self._health(head=True)
+        if self.path.split("?", 1)[0] == ASSETLINKS_PATH:
+            return self._assetlinks(head=True)
+        if self._to_public_host() or self._tagged_page(head=True) or self._versioned(head=True):
+            return
         super().do_HEAD()
 
     def do_POST(self):
@@ -550,11 +1138,11 @@ class H(http.server.SimpleHTTPRequestHandler):
                 log_oops(p, e)
                 code, out = 500, {"error": OOPS}
             return self._send(code, out, headers=[("WWW-Authenticate", 'Basic realm="uaply"')] if code == 401 else ())
-        if not api or p not in ("/api/apply", "/api/decision", "/api/auth/signup", "/api/auth/login", "/api/auth/logout",
+        if not api or p not in ("/api/apply", "/api/apply/plan", "/api/apply/mark", "/api/decision", "/api/auth/signup", "/api/auth/login", "/api/auth/logout",
                                 "/api/auth/delete", "/api/auth/forgot", "/api/auth/reset", "/api/auth/change-password",
-                                "/api/setup/test-mail", "/api/setup/save-mail", "/api/setup/save-google", "/api/setup/save-ats", "/api/setup/remove-ats", "/api/setup/save-stripe", "/api/setup/save-feed-keys", "/api/auth/google/token", "/api/auth/verify", "/api/auth/resend", "/api/chat", "/api/feedback", "/api/billing/checkout", "/api/billing/portal",
+                                "/api/setup/test-mail", "/api/setup/save-mail", "/api/setup/save-google", "/api/setup/save-ats", "/api/setup/remove-ats", "/api/setup/test-ats", "/api/setup/save-stripe", "/api/setup/save-feed-keys", "/api/auth/google/token", "/api/auth/verify", "/api/auth/resend", "/api/chat", "/api/feedback", "/api/billing/checkout", "/api/billing/portal",
                                 "/api/employer/company", "/api/employer/job", "/api/employer/job/status", "/api/employer/applicant",
-                                "/api/employer/import", "/api/profile/resume"):
+                                "/api/employer/import", "/api/profile/resume") + (CODE_PATHS if CODE_SIGNIN else ()):
             return self._refuse(404, {"error": "not found"})
         # Only accept requests made by this site's own pages (blocks cross-site forms and scripts).
         origin = self.headers.get("Origin")
@@ -562,6 +1150,10 @@ class H(http.server.SimpleHTTPRequestHandler):
         if origin not in ("http://" + host, "https://" + host) or (PUBLIC and origin != "https://" + host and
                                                                   self.headers.get("X-Forwarded-Proto") == "https"):
             return self._refuse(403, {"error": "cross-site request refused"})
+        if p in GATED_POST:
+            held = self._gate()
+            if held:
+                return self._refuse(*held)
         if p == "/api/profile/resume":
             return self._resume_upload()
         try:
@@ -578,20 +1170,55 @@ class H(http.server.SimpleHTTPRequestHandler):
                 raise ValueError("not an object")
         except Exception:                                        # a garbled Content-Length, a body that is not JSON, or one that is not an object
             return self._refuse(400, {"error": "bad request"})
-        ip = self.client_address[0]
-        if PUBLIC and self.headers.get("X-Forwarded-For"):          # behind the host's proxy: the visitor's own address
-            ip = self.headers["X-Forwarded-For"].split(",")[0].strip()[:64] or ip
+        ip = client_ip(self.client_address[0], self.headers)     # behind the host's proxy: its last hop (see client_ip), never a header a script wrote
         if too_fast(p, ip):
             return self._send(429, {"error": "You're swiping faster than UAply can keep up. Wait a moment and try again.", "code": "slow_down"})
         try:
+            # /* sign-up v2 */ (sandbox only) no password: the account is made, a code is emailed, and nobody is signed in until it is typed
+            if CODE_SIGNIN and (p == "/api/auth/code/send" or (p == "/api/auth/signup" and payload.get("passwordless") is True)) \
+                    and not code_signin_live():                  # a public server that cannot send email must not pretend to (as /api/auth/forgot)
+                return self._send(503, {"error": CODE_OFF_MSG, "code": "mail_off"})
+            if CODE_SIGNIN and p == "/api/auth/signup" and payload.get("passwordless") is True:
+                self._stat = "skip"                              # counted as a sign-up once its code is typed (/api/auth/code/verify)
+                code, out, mail = auth_api.signup_passwordless(payload.get("email"), ip, payload.get("agree"), dns_check(),
+                                                               _signup_cap(), self._known(), self._token(),
+                                                               payload.get("first"), payload.get("last"))
+                if mail:                                         # new address or not, a code goes out, so the wait is the same
+                    out = dict(out, delivery=uaply_api.send_verification_mail(*mail))
+                return self._send(code, out)
+            if CODE_SIGNIN and p == "/api/auth/code/send":
+                code, out, mail = auth_api.send_login_code(payload.get("email"), ip, self._known(), defer=True, session=self._token())
+                self._send(code, out)                            # the same answer whether or not the address has an account, and as fast:
+                if mail:                                         # the code is made and emailed only once the answer has gone out
+                    _mail_later(_login_code_mail, mail[0])
+                return None
+            if CODE_SIGNIN and p == "/api/auth/code/verify":
+                code, out, token = auth_api.login_with_code(payload.get("email"), payload.get("code"), ip, payload.get("agree") is True)
+                if token:
+                    self._stat = "signups" if out["user"].get("new") else "logins"
+                    # this device proved the inbox: it keeps 2 spare codes a day for this address (auth_api._code_send_refusal)
+                    return self._send(code, out, headers=self._cookie(token) + self._known_cookie(auth_api.known_device(out["user"]["id"])))
+                return self._send(code, out)
+            # /* end sign-up v2 */
             if p == "/api/auth/signup":
-                # the account and its first code are made in one locked step (auth_api.signup_with_code), so a Google sign-in for the same
-                # address racing this sign-up can never leave it half made
+                # the sign-up (Saif, October 22): email, first and last name, a password, the 18+ / Terms tick. The account and its first
+                # code are made in one locked step (auth_api.signup_with_code), so a Google sign-in for the same address racing this
+                # sign-up can never leave it half made. The answer goes first and the code is emailed after it; in test mode
+                # (UAPLY_SIGNUP_TEST, never public) the account is verified at once and nothing is emailed.
                 code, out, token, mail = auth_api.signup_with_code(payload.get("email"), payload.get("password"), ip, payload.get("agree"),
-                                                                   dns_check(), auth_api.SIGNUPS_PER_HOUR if PUBLIC else None)
-                if mail:                                         # a new password account must prove it owns the email: send the first code
+                                                                   dns_check(), _signup_cap(),
+                                                                   payload.get("first"), payload.get("last"), verified=SIGNUP_TEST)
+                if code == 200 and SIGNUP_TEST:
+                    out = dict(out, delivery="none", testMode=True)
+                if mail:                                         # a new password account must prove it owns the email: its first code
                     uid, addr, digits = mail
-                    out = dict(out, delivery=uaply_api.send_verification_mail(uid, addr, digits))
+                    if CODE_SIGNIN:                              # every code to an address counts toward the day's cap
+                        auth_api.note_code_sent(addr)
+                    # what the email will do, said in the answer: an address on the bounce list gets nothing (mailer.py)
+                    told = "bounced" if uaply_api.mailer.suppressed(addr) else ("sent" if uaply_api.mail_ready() else "delivered_test")
+                    self._send(code, dict(out, delivery=told), headers=self._cookie(token) if token else ())
+                    _mail_later(uaply_api.send_verification_mail, uid, addr, digits)
+                    return None
                 return self._send(code, out, headers=self._cookie(token) if token else ())
             if p == "/api/auth/login":
                 code, out, token = auth_api.login(payload.get("email"), payload.get("password"), ip)
@@ -609,6 +1236,13 @@ class H(http.server.SimpleHTTPRequestHandler):
                 if PUBLIC:
                     return self._send(403, {"ok": False, "message": "On a hosted server, add the Stripe keys in the host's dashboard (STRIPE_SECRET_KEY and the others), not here."})
                 code, out = setup_api.save_stripe(payload)
+                return self._send(code, out)
+            if p == "/api/setup/test-ats":                  # reads only: on a hosted server it tests the keys saved in the dashboard (none typed)
+                if not self._owner_ok():
+                    return self._send(403, {"error": "Owner pages are off or need the owner password."})
+                if PUBLIC and str(payload.get("api_key") or "").strip():
+                    return self._send(403, {"ok": False, "message": "On a hosted server, test the connections saved in the host's dashboard (UAPLY_ATS_JSON): leave the key box empty."})
+                code, out = setup_api.test_ats(payload)
                 return self._send(code, out)
             if p in ("/api/setup/save-ats", "/api/setup/remove-ats"):
                 if not self._owner_ok():
@@ -640,13 +1274,19 @@ class H(http.server.SimpleHTTPRequestHandler):
                 msg = {"agree": "Tick the box to confirm you are 18 or older and agree to the Terms and Privacy Policy, then choose Google again.",
                        "failed": "Google sign-in could not be checked. Try again.", "unverified": "Google says that email address is not verified, so UAply cannot use it.",
                        "off": "Google sign-in is not switched on.", "limited": "Too many tries. Wait a minute and try again.",
-                       "email_in_use": "That email already has a UAply account. Log in with your email and password instead.",
-                       "disposable": auth_api.KEEP_MSG}
+                       "email_in_use": "That email already has a UAply account. Sign in with your email and password instead.",
+                       "disposable": auth_api.KEEP_MSG,
+                       "agree_owner": "This email has a UAply account that was never finished. Tick the box to confirm you are 18 or older and agree, then choose Google again."}   # sign-up v2 (sandbox)
                 err, ident = google_auth.verify_credential(payload.get("credential"), ip)
                 if not err:
-                    err, user, token = auth_api.oauth_login(ident["provider"], ident["subject"], ident["email"], payload.get("agree") is True, ident.get("trusted", True))
+                    login = auth_api.oauth_login_ticked if CODE_SIGNIN else auth_api.oauth_login      # /* sign-up v2 */ the owner's own tick (sandbox)
+                    err, user, token = login(ident["provider"], ident["subject"], ident["email"], payload.get("agree") is True, ident.get("trusted", True))
                 if err:
                     return self._send(429 if err == "limited" else 400, {"error": msg.get(err, msg["failed"]), "code": err})
+                made, fin = user.pop("created", False), user.pop("finished", False)   # made: this sign-in made the account (auth_api.oauth_login)
+                if CODE_SIGNIN:                                  # /* sign-up v2 */ new account or not, for the page (memory only)
+                    auth_api.remember_google(user["id"], (fin or made) and not user.get("passwordRemoved"))
+                    user = dict(user, google=auth_api.google_hint(user["id"]))
                 out = {"user": user}
                 if user.pop("passwordRemoved", False):           # a password nobody had proven was the owner's was removed (auth_api.oauth_login)
                     out["passwordRemoved"] = True
@@ -655,7 +1295,7 @@ class H(http.server.SimpleHTTPRequestHandler):
                 code, out = auth_api.verify_code(self._token(), payload.get("code"), ip)
                 return self._send(code, out)
             if p == "/api/auth/resend":
-                code, out, mail = auth_api.resend_code(self._token(), ip)
+                code, out, mail = (auth_api.resend_code_daily if CODE_SIGNIN else auth_api.resend_code)(self._token(), ip)   # /* sign-up v2 */ the day's cap
                 if mail:
                     uid, addr, digits = mail
                     mail_status = uaply_api.send_verification_mail(uid, addr, digits)
@@ -665,17 +1305,15 @@ class H(http.server.SimpleHTTPRequestHandler):
                 if PUBLIC and not uaply_api.mail_ready():       # a real server that cannot send email must not pretend to
                     return self._send(200, {"ok": False, "delivery": "unavailable",
                                             "message": "Password reset by email is not available right now. Use Help, then Talk to a person, and we will help you get back in."})
-                code, out, mail = auth_api.request_reset(payload.get("email"), ip)
-                if mail:
-                    uid, addr, tok = mail
-                    link = self._site_base() + "/?reset=" + tok
-                    body = ("Hi,\n\nSomeone asked to reset the password for this UAply account. Use this link within one hour:\n\n%s\n\n"
-                            "If you did not ask for this, ignore this email; your password has not changed.\n\n--\nUAply") % link
-                    status = uaply_api.send_system_mail(uid, addr, "Reset your UAply password", body, secret=True, kind="reset")
-                    out = dict(out, delivery=status)
-                else:
+                # the answer goes first on every server, the same whether or not the address has an account; the link's token is written
+                # and emailed after it, on the background thread (item 20: before, the email, and then the token, came first on dev)
+                code, out, mail = auth_api.request_reset(payload.get("email"), ip, defer=True)
+                if code == 200:
                     out = dict(out, delivery=("sent" if uaply_api.mail_ready() else "delivered_test"))
-                return self._send(code, out)
+                self._send(code, out)
+                if mail:
+                    _mail_later(_reset_mail, mail[0], self._site_base())
+                return None
             if p == "/api/auth/reset":
                 code, out = auth_api.reset_password(payload.get("token"), payload.get("password"), ip)
                 return self._send(code, out, headers=self._cookie("") if code == 200 else ())
@@ -698,6 +1336,19 @@ class H(http.server.SimpleHTTPRequestHandler):
                 code, out = chat_api.chat(payload, ip)
             elif p == "/api/feedback":
                 code, out = chat_api.feedback(payload, ip, auth_api.user_for(self._token()), notify=uaply_api.send_support_ticket)
+            elif p == "/api/apply/plan":
+                # what a swipe right on this job would do now (the posting's form read and answered, nothing recorded or sent)
+                code, out = uaply_api.submit(dict(payload, plan_only=True), auth_api.user_for(self._token()), self._site_base())
+            elif p == "/api/apply/mark":
+                # Job Tracker's "Mark as applied" (and its Undo): the day's reminder stops listing that job (uaply_api.mark_applied)
+                u = auth_api.user_for(self._token())
+                if not u:
+                    code, out = 401, {"error": "Sign in first."}
+                elif not u.get("emailVerified"):           # reminders go only to a verified address, so only such an account has marks to keep
+                    code, out = 403, {"error": "Verify your email first (Profile, Account).", "code": "verify"}
+                else:
+                    left = uaply_api.mark_applied(u["id"], payload.get("job"), payload.get("marked") is not False)
+                    code, out = (400, {"error": "Invalid job."}) if left is None else (200, {"ok": True, "waiting": left})
             elif p == "/api/apply":
                 u = auth_api.user_for(self._token())
                 over = billing_api.limit_reached(u)
@@ -735,9 +1386,7 @@ class H(http.server.SimpleHTTPRequestHandler):
             return self._refuse(400, {"error": resume_parse.MESSAGES["bad_request"], "code": "bad_request"})
         if n > resume_parse.MAX_BODY:
             return self._refuse(413, {"error": resume_parse.MESSAGES["too_big"], "code": "too_big"})
-        ip = self.client_address[0]
-        if PUBLIC and self.headers.get("X-Forwarded-For"):
-            ip = self.headers["X-Forwarded-For"].split(",")[0].strip()[:64] or ip
+        ip = client_ip(self.client_address[0], self.headers)
         if too_fast("/api/profile/resume", ip):
             return self._refuse(429, {"error": "You have read several resumes in a minute. Wait a moment and try again.", "code": "slow_down"})
         try:
@@ -752,15 +1401,20 @@ class H(http.server.SimpleHTTPRequestHandler):
         self._send(code, out)
 
     def end_headers(self):
-        self.send_header("Cache-Control", "no-store")
+        if not PUBLIC and code_changed():
+            self.send_header("X-UAply-Stale", "restart")                 # this computer's server runs older code than the files on disk
+        self.send_header("Cache-Control", getattr(self, "_cache", None) or "no-store")   # a versioned file: a year (see VERSIONED); the rest never
         self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-UAply", "1")       # "a UAply server": prod/index.html's hand-over to app.html reads it from a HEAD of the page itself
         self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
         self.send_header("X-Frame-Options", "SAMEORIGIN")               # the app frames itself; other sites may not
         # the same rule for browsers that only read CSP, plus no plugins and no <base> tag pointing scripts elsewhere. Deliberately no script
         # or style rules: the pages carry their own inline code, and Google's and Stripe's pages are reached by full-page redirects.
-        self.send_header("Content-Security-Policy", "frame-ancestors 'self'; object-src 'none'; base-uri 'self'")
+        # The web manifest and the service worker (uaply-sw.js) may only come from this site itself.
+        self.send_header("Content-Security-Policy", "frame-ancestors 'self'; object-src 'none'; base-uri 'self'; manifest-src 'self'; worker-src 'self'")
         self.send_header("Permissions-Policy", "camera=(), microphone=(), usb=(), payment=()")   # never used; location stays the browser's default (the app asks)
-        if self.headers.get("X-Forwarded-Proto") == "https":
+        h = getattr(self, "headers", None)                              # not there yet when the request line itself was malformed (a 400)
+        if h is not None and h.get("X-Forwarded-Proto") == "https":
             self.send_header("Strict-Transport-Security", "max-age=31536000")
         super().end_headers()
 
@@ -779,12 +1433,72 @@ def status_facts():
             "google": bool(google_auth.enabled()), "googleButton": bool(google_auth.button_enabled()),
             "payments": bool(b["on"]), "paymentsTest": bool(b["on"] and b["test"]),
             "paymentsWebhook": bool(b["on"] and str(b.get("webhook_secret") or "").startswith("whsec_")),
-            "ai": bool(chat_api.ai_ready()), "ownerPages": bool(OWNER_PASSWORD) if PUBLIC else True, "commit": COMMIT}
+            "ai": bool(chat_api.ai_ready()), "ownerPages": bool(OWNER_PASSWORD) if PUBLIC else True, "commit": COMMIT,
+            "apply": apply_facts()}
+
+
+FEEDS_STALE_MINUTES = 120         # job boards are read every 30 minutes (the slowest every 6 hours): two hours with no good read is a problem
+try:                              # the data disk is 1 GB; below this, sign-ups and applications may soon fail to be written
+    DISK_LOW_MB = max(1, int(os.environ.get("UAPLY_DISK_LOW_MB") or 100))
+except ValueError:
+    DISK_LOW_MB = 100
+
+
+def self_check():
+    """The owner's self-check in /api/status (owner only: this computer, or OWNER_PASSWORD), next to the outside uptime check
+    (docs/uptime.md), which only knows whether the site answers: when a job board was last read successfully, when an email last went
+    out, and how much room the data disk has left. Times are Unix seconds and minutes ago; null means not since this copy started (job
+    boards) or never (email). warnings lists, in plain words, what needs a look; ok is true when it is empty."""
+    now = time.time()
+    ago = lambda t: int((now - t) // 60) if t else None
+    feed_at, mail_at = jobs_api.last_feed_ok(), uaply_api.mailer.last_sent()
+    feeds_on = bool(jobs_api.feeds_allowed())
+    try:
+        du = shutil.disk_usage(DATA_DIR)
+        disk = {"freeMB": du.free // 1048576, "totalMB": du.total // 1048576, "usedPercent": round(100.0 * du.used / du.total, 1) if du.total else None}
+    except OSError:
+        disk = {"freeMB": None, "totalMB": None, "usedPercent": None}
+    warnings = []
+    if feeds_on and (now - feed_at) / 60 > FEEDS_STALE_MINUTES and time.time() - STARTED > FEEDS_STALE_MINUTES * 60:
+        warnings.append("No job board was read successfully in the last %d hours." % (FEEDS_STALE_MINUTES // 60))
+    if disk["freeMB"] is not None and disk["freeMB"] < DISK_LOW_MB:
+        warnings.append("Less than %d MB free on the data disk." % DISK_LOW_MB)
+    if PERSISTENT is False:
+        warnings.append("The data folder is not on a persistent disk: accounts are lost at the next deploy.")
+    return {"ok": not warnings, "warnings": warnings,
+            "feeds": {"on": feeds_on, "lastOk": int(feed_at) or None, "minutesAgo": ago(feed_at)},
+            "email": {"on": bool(uaply_api.mail_ready()), "lastSent": int(mail_at) or None, "minutesAgo": ago(mail_at)},
+            "disk": dict(disk, persistent=PERSISTENT), "upMinutes": int((now - STARTED) // 60)}
+
+
+_apply_memo = {"at": 0, "v": None}
+
+
+def apply_facts():
+    """The apply engine in /api/status: whether it can record applications (its folder is writable), the delivery mode, and how many listed jobs
+    take each way of applying (counts only, never an employer, address or key). "configured" says which ways the owner set up, so a check can
+    demand at least one such job. Read at most once a minute: it walks the job list the app already serves."""
+    if _apply_memo["v"] and time.time() - _apply_memo["at"] < 60:
+        return _apply_memo["v"]
+    try:
+        folder = uaply_api.DATA
+        writable = bool(folder) and os.path.isdir(folder) and os.access(folder, os.W_OK)
+        partners = jobs_api.partner_jobs()
+        classes = jobs_api.apply_classes()          # counted one job at a time (the whole list was copied here once a minute)
+        configured = {"ats": bool(jobs_api.ats_connections() or jobs_api._ats_jobs), "email": any(j.get("contact") for j in partners),
+                      "webhook": any(j.get("webhook") for j in partners), "handoff": True}
+        v = {"ok": writable, "mode": uaply_api.config().get("delivery"), "classes": classes, "configured": configured}
+    except Exception as e:
+        log_oops("/api/status", e)
+        v = {"ok": False, "mode": None, "classes": {}, "configured": {}}
+    _apply_memo.update(at=time.time(), v=v)
+    return v
 
 
 # The commit this copy runs: Render sets RENDER_GIT_COMMIT (the full id) for every deploy. Only its first 7 hex digits are shown (public
 # anyway on GitHub); tools/live-check.py compares them with the branch on GitHub, so a deploy that never happened is caught. None elsewhere.
 COMMIT = (lambda c: c[:7] if re.fullmatch(r"[0-9a-f]{7,40}", c) else None)((os.environ.get("RENDER_GIT_COMMIT") or "").strip().lower())
+STARTED = time.time()             # when this copy started (the self-check's "since this copy started")
 
 
 class Server(http.server.ThreadingHTTPServer):
@@ -812,6 +1526,62 @@ _busy, _busy_lock = [0], threading.Lock()
 srv = Server((BIND, port), H)
 
 
+# ---- a local server started before its code changed on disk (never on Render: PUBLIC) ----
+STARTED_AT = time.time()
+_stale = {"checked": 0.0, "changed": False, "logged": 0.0}
+
+
+def _watched():
+    """serve.py and every *_api.py next to it (and UAPLY_STALE_WATCH, a file a test touches)."""
+    out = [os.path.join(HERE, "serve.py")] + [os.path.join(HERE, n) for n in os.listdir(HERE) if n.endswith("_api.py")]
+    extra = os.environ.get("UAPLY_STALE_WATCH")
+    return out + ([extra] if extra else [])
+
+
+def code_changed():
+    """True once serve.py or an *_api.py on disk is newer than this process (looked at every 5 seconds at most); logs
+    "code changed on disk, restart me" at most once a minute. The server never restarts itself."""
+    now = time.time()
+    if now - _stale["checked"] >= 5:
+        _stale["checked"] = now
+        try:
+            _stale["changed"] = _stale["changed"] or any(os.path.getmtime(f) > STARTED_AT + 1 for f in _watched() if os.path.exists(f))
+        except OSError:
+            pass
+    if _stale["changed"] and now - _stale["logged"] >= 60:
+        _stale["logged"] = now
+        sys.stderr.write("[uaply] code changed on disk, restart me (serve.py or an *_api.py is newer than this server)\n")
+        sys.stderr.flush()
+    return _stale["changed"]
+
+
+def git_head():
+    """The commit the code was started from, read from .git (a worktree's .git file too), or "unknown"."""
+    try:
+        g = os.path.join(HERE, ".git")
+        if os.path.isfile(g):
+            with open(g, encoding="utf-8") as f:
+                g = os.path.normpath(os.path.join(HERE, f.read().split("gitdir:", 1)[1].strip()))
+        with open(os.path.join(g, "HEAD"), encoding="utf-8") as f:
+            head = f.read().strip()
+        if not head.startswith("ref:"):
+            return head[:12]
+        ref = head[4:].strip()
+        for base in (g, os.path.normpath(os.path.join(g, "..", ".."))):    # a worktree keeps its refs in the main .git
+            rf = os.path.join(base, ref)
+            if os.path.isfile(rf):
+                with open(rf, encoding="utf-8") as f:
+                    return "%s (%s)" % (f.read().strip()[:12], ref.rsplit("/", 1)[-1])
+        packed = os.path.join(os.path.normpath(os.path.join(g, "..", "..")) if "worktrees" in g else g, "packed-refs")
+        with open(packed, encoding="utf-8") as f:
+            for line in f:
+                if line.strip().endswith(" " + ref):
+                    return "%s (%s)" % (line.split()[0][:12], ref.rsplit("/", 1)[-1])
+    except (OSError, IndexError):
+        pass
+    return "unknown"
+
+
 def _stop(signum, frame):
     """A host stops the server with SIGTERM at every deploy (Render then waits 30 seconds before forcing it). Stop taking new requests, let the
     ones in progress finish (a swipe that is sending an email, a sign-up), then exit normally."""
@@ -826,6 +1596,8 @@ for _sig in ("SIGTERM", "SIGBREAK"):          # SIGBREAK: Ctrl+Break on Windows,
         signal.signal(getattr(signal, _sig), _stop)
 
 sys.stderr.write(startup_summary() + "\n")
+if not PUBLIC:
+    sys.stderr.write("[uaply] started from git %s; a request after serve.py or an *_api.py changes on disk gets X-UAply-Stale: restart\n" % git_head())
 if PUBLIC and api and PERSISTENT is False:
     sys.stderr.write("[uaply] WARNING: %s is not on a persistent disk. Accounts, applications and feedback will disappear at the next deploy. "
                      "In Render: the service, Disks, add a disk with mount path %s.\n" % (DATA_DIR, DATA_DIR))
@@ -835,6 +1607,8 @@ if api:
     # every board refreshes behind it (jobs_api._load_source). On an empty disk the first visitor waits for this same read, never a second one.
     threading.Thread(target=jobs_api.get_jobs, daemon=True).start()
 threading.Thread(target=_midnight_loop, daemon=True).start()
+if PUBLIC and os.environ.get("UAPLY_CF_RANGES", "1") != "0":   # Cloudflare's published ranges, now and every 24 hours (client_ip)
+    threading.Thread(target=_cf_loop, daemon=True, name="uaply-cf").start()
 DRAIN_SECONDS = 15                            # the longest a stop waits for requests in progress: with the rest, about 16 s of Render's 30
 srv.serve_forever()
 srv.socket.close()                            # stop accepting at once: a new connection is refused now instead of waiting for the drain

@@ -1,4 +1,4 @@
-// Each "Add" item in the profile checklist (Dashboard > Overview, "Profile N% complete") must open Profile setup on the step that
+// Each "Add" item in the profile checklist (Job Tracker > Overview, "Profile N% complete") must open Profile setup on the step that
 // asks for it, by a real tap on a phone and a real mouse click on a desktop.
 //   PORT=18796 W=390 H=844 node tools/cdp.js tools/ui-checklist.js
 // (It used to open Profile > Settings and Profile > Preferences, which the guided Profile setup replaced, so it found 0 items
@@ -6,6 +6,8 @@
 const PORT = process.env.PORT || "8766";
 const PHONE = Number(process.env.W || 1100) < 700;
 module.exports = async ({ ev, sleep, nav, send, logs }) => {
+  // the sign-in gate (October 22, Saif): nobody reaches the jobs without an account, so a fresh test person signs up first (tools/gate-signup.js)
+  await require("./gate-signup.js")({ ev, sleep, nav }, "http://127.0.0.1:" + (process.env.PORT || "8767"), "checklist");
   const F = "document.querySelector('iframe').contentDocument";
   let bad = 0;
   const check = (n, ok, x) => { if (!ok) bad++; console.log((ok ? "PASS " : "FAIL ") + n + (x ? "  " + x : "")); };

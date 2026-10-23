@@ -7,6 +7,7 @@ public server, needs OWNER_PASSWORD.
   POST /api/setup/test-mail   send one test email to the owner (owner_copy, else the SMTP from address)
   POST /api/setup/save-mail, save-google, save-stripe   the Connect boxes: write the git-ignored uaply-config.json (never in a test run)
   POST /api/setup/save-ats, remove-ats                  an employer's hiring-system key, in the git-ignored employer list
+  POST /api/setup/test-ats                              reads that employer's open postings with the key (typed, or saved) and checks it
   POST /api/setup/save-feed-keys   the Job feed keys box: save the USAJOBS and The Muse API keys (this computer only)
 """
 import html
@@ -23,6 +24,7 @@ import billing_api
 import google_auth
 import jobs_api
 import uaply_api
+import ui_rules
 
 CLIENT_RE = re.compile(r"^\d+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$")
 # the live site's addresses, which Google must be told about (Render's own address keeps working next to the custom domain)
@@ -185,6 +187,17 @@ def save_ats(payload):
     return 200, {"ok": True, "saved": True, "message": "Connected. Real %s postings from %s now say Apply instantly, and a swipe right sends the application into their system." % (ats_api.NAMES[kind], board)}
 
 
+def test_ats(payload):
+    """The "Test this connection" button: read the employer's own open postings with the key typed in the box, or with the one already
+    saved for that board (never shown), and say how many there are and whether the key works. Nothing is saved, sent or changed. (status, body)"""
+    kind = str(payload.get("kind") or "").strip().lower()
+    board = str(payload.get("board") or "").strip()
+    key = str(payload.get("api_key") or "").strip() or jobs_api.ats_connections().get((kind, board), "")
+    if not key:
+        return 400, {"ok": False, "message": "Paste the employer's key, or connect it first, then test."}
+    return 200, ats_api.test_connection(kind, board, key)
+
+
 def remove_ats(payload):
     kind, board = str(payload.get("kind") or "").strip().lower(), str(payload.get("board") or "").strip()
     path = jobs_api.partners_file(for_writing=True)
@@ -226,10 +239,13 @@ FEED_NAMES = {"usajobs": "USAJOBS key", "muse": "The Muse key"}
 
 
 def feed_status():
-    """Which job feed keys are set (in uaply-config.json or the host's UAPLY_CONFIG_JSON). Only yes or no; a key is never read back out."""
+    """Which job feed keys are set (in uaply-config.json, the host's UAPLY_CONFIG_JSON, or UAPLY_USAJOBS_KEY). Only yes or no; a key is never
+    read back out. A well-formed UAPLY_USAJOBS_KEY counts, as it does for the feed itself (jobs_api.feed_keys)."""
     k = uaply_api.config().get("feed_keys")
     k = k if isinstance(k, dict) else {}
-    return {n: isinstance(k.get(n), str) and bool(jobs_api.KEY_RE.match(k[n].strip())) for n in FEED_NAMES}
+    out = {n: isinstance(k.get(n), str) and bool(jobs_api.KEY_RE.match(k[n].strip())) for n in FEED_NAMES}
+    out["usajobs"] = out["usajobs"] or bool(jobs_api.KEY_RE.match((os.environ.get("UAPLY_USAJOBS_KEY") or "").strip()))
+    return out
 
 
 def save_feed_keys(payload):
@@ -326,6 +342,8 @@ def test_mail():
     to = uaply_api._owner_copy(cfg) or (s.get("from_addr") or "")
     if not (s.get("host") and s.get("from_addr")):
         return 200, {"ok": False, "message": "Email sending is not set up yet. Fill in the Connect email box on this page first."}
+    if uaply_api.NO_MAIL:                       # test mode (UAPLY_SIGNUP_TEST=1): the settings are kept, but nothing leaves this server
+        return 200, {"ok": False, "message": "Test mode is on (UAPLY_SIGNUP_TEST=1), so this server sends no email: every message is in the test inbox (/outbox). Start it without test mode to send a test."}
     if not uaply_api.mail_ready():
         return 200, {"ok": False, "message": "Email sending has no password or key yet. Add one in the Connect email box on this page."}
     if not to:
@@ -366,7 +384,8 @@ def page(host, proto):
         rows.insert(0, '<article><b>Why you still see the test inbox and a test sign-in</b><p class="m">Until the first two items below are connected, this computer cannot show Google\'s real account chooser '
                        'and cannot send real email, so sign-up codes and receipts are saved in the <a href="/outbox">test inbox</a> instead. Connect both and the app behaves like the live site: '
                        'Google\'s own "Continue with Google" button, and real emails in real inboxes.</p></article>')
-    conn_html = "".join('<p class="m">%s / %s <button type="button" class="rm" data-k="%s" data-b="%s">Disconnect</button></p>' % (e(ats_api.NAMES.get(k, k)), e(b), e(k), e(b)) for k, b in connections()).replace("%", "%%")
+    conn_html = "".join('<p class="m">%s / %s <button type="button" class="tc" data-k="%s" data-b="%s">Test</button> <button type="button" class="rm" data-k="%s" data-b="%s">Disconnect</button> <span class="m tcr" role="status"></span></p>'
+                        % (e(ats_api.NAMES.get(k, k)), e(b), e(k), e(b), e(k), e(b)) for k, b in connections()).replace("%", "%%")
     fs = feed_status()
     feeds_html = ("".join('<p class="m">%s: <b>%s</b>%s</p>' % (e(label), "saved" if fs[n] else "not added yet",
                                                                  (' <button type="button" class="fx" data-n="%s">Remove</button>' % n) if fs[n] else "")
@@ -374,7 +393,7 @@ def page(host, proto):
     feeds_help = _linkify("USAJOBS lists every federal job near Philadelphia, internships included: request a free key at https://developer.usajobs.gov/APIRequest/ "
                           "(it arrives by email; give the email you used below). The Muse asks every app to register: get a key at https://www.themuse.com/developers/api/v2 . "
                           "Keys are saved only in uaply-config.json on this computer and are never shown again. On a hosted server, put them in UAPLY_CONFIG_JSON "
-                          "as feed_keys instead.").replace("%", "%%")
+                          "as feed_keys instead, or give the USAJOBS key its own variables UAPLY_USAJOBS_KEY and UAPLY_USAJOBS_EMAIL.").replace("%", "%%")
     here = origins(host, proto)
     every = here + [o for o in LIVE_ORIGINS if o not in here]
     copy = '<p><code>%s</code> <button type="button" class="cp" data-v="%s">Copy</button></p>'
@@ -384,7 +403,7 @@ def page(host, proto):
         n = auth_api.counts()
     except Exception:
         n = {"users": 0, "mail": 0}
-    return ("""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    return ui_rules.with_focus("""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>UAply setup</title><style>
 :root{--bg:#FDF0F2;--surface:#FFFFFF;--ink:#2A1218;--muted:#7B5560;--line:#F3DADF;--accent:#C92A55;--good:#1E7A4C}
 @media (prefers-color-scheme: dark){:root{--bg:#190B10;--surface:#26131A;--ink:#FBE9EE;--muted:#C79BA6;--line:#40222B;--accent:#FF7A98;--good:#5FD39A}}
@@ -409,11 +428,12 @@ code{background:var(--bg);padding:1px 5px;border-radius:5px}
 <p><input id="gc" type="email" placeholder="Send copies and tests to (optional)" style="width:280px;max-width:90vw;padding:8px;border:1px solid var(--line);border-radius:8px"></p>
 <p><button id="sv" type="button">Save and send a test email</button> <span id="sr" class="m" role="status"></span></p></article>
 <article id="ats"><b>Connect an employer's hiring system</b><p class="m">For an employer that uses Greenhouse, Lever, Ashby, SmartRecruiters or Workable and gave you the key they created. Their real postings then say <b>Apply instantly</b>. The key is saved only in uaply-partners.json on this computer and is never shown again.</p>
-<p class="m">Where the employer makes the key: <b>Greenhouse</b> Configure, Dev Center, API Credential Management (a Job Board API key). <b>Lever</b> Settings, Integrations and API (a Postings API key, made by a Super Admin). <b>Ashby</b> Admin, Integrations, API Keys (a key with the Candidates write and Jobs read permissions). <b>SmartRecruiters</b> Settings, Admin, Credential Manager (an Application API key). <b>Workable</b> profile icon, Settings, Integrations, Apps, API Access Tokens, Generate API token (an Admin makes it, with the r_jobs and w_candidates scopes). The board name is the one in the employer's job-board address: boards.greenhouse.io/<i>board</i>, jobs.lever.co/<i>site</i>, jobs.ashbyhq.com/<i>board</i>, jobs.smartrecruiters.com/<i>company</i> or apply.workable.com/<i>subdomain</i>.</p>
+<p class="m">Where the employer makes the key: <b>Greenhouse</b> Configure, Dev Center, API Credential Management (a Job Board API key). <b>Lever</b> Settings, Integrations and API (a Postings API key, made by a Super Admin). <b>Ashby</b> Admin, Integrations, API Keys (a key with the Candidates write and Jobs read permissions). <b>SmartRecruiters</b> Settings, Administration, Apps &amp; Integrations, Credentials (the Credential Manager), New Credential, API Key (an Administrator; it gives full access, UAply uses only the Application API). <b>Workable</b> profile icon, Settings, Integrations, Apps, API Access Tokens, Generate API token (an Admin makes it, with the r_jobs and w_candidates scopes). The board name is the one in the employer's job-board address: boards.greenhouse.io/<i>board</i>, jobs.lever.co/<i>site</i>, jobs.ashbyhq.com/<i>board</i>, jobs.smartrecruiters.com/<i>company</i> or apply.workable.com/<i>subdomain</i>.</p>
 <p><select id="ak" aria-label="Hiring system" style="padding:8px;border:1px solid var(--line);border-radius:8px"><option value="greenhouse">Greenhouse</option><option value="lever">Lever</option><option value="ashby">Ashby</option><option value="smartrecruiters">SmartRecruiters</option><option value="workable">Workable</option></select>
 <input id="ab" type="text" placeholder="Board name, e.g. acme" style="width:200px;max-width:50vw;padding:8px;border:1px solid var(--line);border-radius:8px"></p>
 <p><input id="aa" type="password" placeholder="The employer's API key" autocomplete="off" style="width:280px;max-width:90vw;padding:8px;border:1px solid var(--line);border-radius:8px"></p>
-<p><button id="as" type="button">Connect</button> <span id="ar" class="m" role="status"></span></p>
+<p><button id="as" type="button">Connect</button> <button id="at" type="button">Test this connection</button> <span id="ar" class="m" role="status"></span></p>
+<p class="m">Test this connection reads the employer's own open postings with the key (nothing is sent or saved) and says how many there are and whether the key works.</p>
 @@CONNS@@</article>
 <article id="billing"><b>Connect Stripe (Plus and Pro)</b><p class="m">Saved only in uaply-config.json on this computer. Card numbers never reach UAply; people pay on Stripe's page.</p>
 <p><input id="ss" type="password" placeholder="Secret key sk_test_..." autocomplete="off" style="width:280px;max-width:90vw;padding:8px;border:1px solid var(--line);border-radius:8px"></p>
@@ -438,6 +458,9 @@ fetch('/api/setup/save-mail',{method:'POST',headers:{'Content-Type':'application
 ;(function(){var v=document.getElementById('gv'),w=document.getElementById('glw');function sync(){w.hidden=v.value!=='brevo'}v.onchange=sync;sync()})();
 document.getElementById('as').onclick=function(){var r=document.getElementById('ar'),g=function(i){return document.getElementById(i).value};r.textContent='Saving...';
 fetch('/api/setup/save-ats',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:g('ak'),board:g('ab'),api_key:g('aa')})}).then(function(x){return x.json()}).then(function(j){if(j.saved){document.getElementById('aa').value='';setTimeout(function(){location.reload()},900)}r.textContent=j.message||j.error||'Done'}).catch(function(){r.textContent='Could not reach the server.'})}
+document.getElementById('at').onclick=function(){var r=document.getElementById('ar'),g=function(i){return document.getElementById(i).value};r.textContent='Testing...';
+fetch('/api/setup/test-ats',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:g('ak'),board:g('ab'),api_key:g('aa')})}).then(function(x){return x.json()}).then(function(j){r.textContent=j.message||j.error||'Done'}).catch(function(){r.textContent='Could not reach the server.'})}
+document.querySelectorAll('.tc').forEach(function(b){b.onclick=function(){var r=b.parentNode.querySelector('.tcr');r.textContent='Testing...';fetch('/api/setup/test-ats',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:b.getAttribute('data-k'),board:b.getAttribute('data-b')})}).then(function(x){return x.json()}).then(function(j){r.textContent=j.message||j.error||'Done'}).catch(function(){r.textContent='Could not reach the server.'})}})
 document.querySelectorAll('.rm').forEach(function(b){b.onclick=function(){fetch('/api/setup/remove-ats',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:b.getAttribute('data-k'),board:b.getAttribute('data-b')})}).then(function(){location.reload()})}})
 document.getElementById('sb').onclick=function(){var r=document.getElementById('sbr'),g=function(i){return document.getElementById(i).value};r.textContent='Saving...';
 fetch('/api/setup/save-stripe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({secret_key:g('ss'),webhook_secret:g('sw'),price_plus:g('sp1'),price_pro:g('sp2')})}).then(function(x){return x.json()}).then(function(j){if(j.saved){document.getElementById('ss').value='';document.getElementById('sw').value=''}r.textContent=j.message||j.error||'Done'}).catch(function(){r.textContent='Could not reach the server.'})}

@@ -5,7 +5,8 @@
      no internet, or the site is down or restarting. "Try again" goes back to the site (keep SITE equal to server.url), and the
      page also tries again by itself the moment the phone reconnects. -->
 <style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#FDF0F2;color:#2A1218;font:16px/1.5 system-ui,sans-serif;text-align:center;padding:24px;box-sizing:border-box}
-@media (prefers-color-scheme: dark){body{background:#190B10;color:#FBE9EE}}button{min-height:48px;padding:0 24px;border:0;border-radius:999px;background:#C92A55;color:#fff;font:inherit;font-weight:700}</style>
+@media (prefers-color-scheme: dark){body{background:#190B10;color:#FBE9EE}}button{min-height:48px;padding:0 24px;border:0;border-radius:999px;background:#C92A55;color:#fff;font:inherit;font-weight:700}
+html{-webkit-tap-highlight-color:transparent}a,button,input,select,textarea,summary,label,[role=button],[tabindex]{-webkit-tap-highlight-color:transparent}:focus:not(:focus-visible){outline:none}:focus-visible{outline:3px solid var(--accent,#C92A55);outline-offset:2px}button:not(:disabled):active,.btn:active{transform:translateY(1px);filter:brightness(.95)}</style>
 </head><body><main><h1>UAply</h1><p id="m">Can't reach UAply right now. Check that you're connected to the internet, then try again.</p><button type="button" id="b">Try again</button></main>
 <script>
 var SITE="https://uaply.net/";

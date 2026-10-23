@@ -22,6 +22,7 @@ import sys
 import threading
 import time
 import uuid
+import ui_rules
 
 import uaply_api
 
@@ -95,29 +96,55 @@ def _s(v, n):
     return re.sub(r"[\r\t]+", " ", v).strip()[:n] if isinstance(v, str) else ""
 
 
+def _paid():
+    """Whether Plan & billing offers Choose Plus and Choose Pro on this server (Stripe keys set, or the owner's own computer), the same
+    test the screen uses. A release article can carry a "paid" wording for that case, so the assistant never says "free during early
+    access" next to a screen that sells Plus."""
+    try:
+        import billing_api
+        return bool(billing_api.buttons()) and not billing_api.hidden()
+    except Exception:
+        return False
+
+
+def _hidden():
+    """Whether Plus and Pro are hidden for a free-only launch (billing_api.hidden): articles then use their "hidden" wording, which never
+    says to tap Choose Plus."""
+    try:
+        import billing_api
+        return bool(billing_api.hidden())
+    except Exception:
+        return False
+
+
 def articles():
-    """The help articles, reloaded when the file changes. Invalid entries are skipped."""
+    """The help articles, reloaded when the file changes (or when paid plans are switched on or off). Invalid entries are skipped."""
     try:
         mtime = os.path.getmtime(HELP_PATH)
     except OSError:
         return []
+    paid, hid = _paid(), _hidden()
     with _lock:
-        if _help["mtime"] != mtime:
+        if _help["mtime"] != mtime or _help.get("paid") != paid or _help.get("hidden") != hid:
             try:
                 with open(HELP_PATH, encoding="utf-8") as f:
                     raw = json.load(f).get("articles", [])
                 def rel(a):
                     r = a.get("release") if isinstance(a.get("release"), dict) else {}
+                    if hid and isinstance(r.get("hidden"), dict):
+                        return r["hidden"]
+                    if RELEASE and paid and isinstance(r.get("paid"), dict):
+                        return r["paid"]
                     return r if RELEASE else {}
                 _help["articles"] = [
                     {"id": _s(a.get("id"), 60), "title": _s(a.get("title"), 120), "tags": _s(a.get("tags"), 400),
                      "body": _s(rel(a).get("body") or a.get("body"), 1500), "go": _s(rel(a).get("go") or a.get("go"), 40)}
                     for a in raw if isinstance(a, dict) and a.get("id") and a.get("title") and a.get("body")
                     and not rel(a).get("hide")]
-                _help["mtime"] = mtime
+                _help["mtime"], _help["paid"], _help["hidden"] = mtime, paid, hid
             except Exception as e:                  # a typo in the file: keep the last good articles, and tell the owner why answers are missing
                 print("UAply Assistant: help/articles.json could not be read (%s: %s)" % (type(e).__name__, str(e)[:160]), file=sys.stderr)
-                _help["mtime"] = mtime              # said once per change of the file, not on every question
+                _help["mtime"], _help["paid"], _help["hidden"] = mtime, paid, hid     # said once per change of the file, not on every question
         return list(_help["articles"])
 
 
@@ -291,6 +318,10 @@ def chat(p, ip):
         return 400, {"error": "Type a question first."}
     q = history[-1]["content"]
     s = _ai_settings()
+    # the message goes to the AI provider only when the person said Continue to the page's notice (aiOk: true), checked here too (October
+    # 22 review): an old cached page or a script that skips the notice gets the help articles' answer, and nothing leaves UAply
+    if s["enabled"] and s["key"] and p.get("aiOk") is not True:
+        return 200, dict(_from_articles(q), aiConsent=True)
     if s["enabled"] and s["key"] and _sdk() and _ai_budget_ok(s["limit"]):
         try:
             data = _ask_ai(history, s)
@@ -436,7 +467,7 @@ def feedback_html():
                                              "saved": "not emailed (no real email connected)",
                                              "held": "held: emailed later (the daily email limit, or the mail service was down)"}.get(r.get("delivery"), "saved"))
         for r in recs[:200]) or "<p class='m'>No feedback yet.</p>"
-    return ("""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    return ui_rules.with_focus("""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>UAply feedback</title><style>
 :root{--bg:#FDF0F2;--surface:#FFFFFF;--ink:#2A1218;--muted:#7B5560;--line:#F3DADF;--accent:#C92A55}
 @media (prefers-color-scheme: dark){:root{--bg:#190B10;--surface:#26131A;--ink:#FBE9EE;--muted:#C79BA6;--line:#40222B;--accent:#FF7A98}}

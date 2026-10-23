@@ -158,12 +158,14 @@ try:
         {"title": "Account Executive", "shortcode": "ZZ99", "employment_type": "Full-time", "url": "https://apply.workable.com/j/ZZ99", "country": "France", "city": "Paris",
          "description": "<p>Excel and analytics.</p>", "locations": [{"country": "France", "city": "Paris", "hidden": False}]},
         {"title": "No code", "url": "https://apply.workable.com/j/x"}]}
-    real_get = jobs_api._get
+    real_get, real_items = jobs_api._get, jobs_api._get_items
     jobs_api._get = lambda url, headers=None: (seen.append(url), feed)[1]
+    # the feed is read as it arrives (_get_items, since October 21, 2026): the same made-up answer, a posting at a time
+    jobs_api._get_items = lambda url, key=None, headers=None: (seen.append(url), iter(feed[key] if key else feed))[1]
     try:
         raw = jobs_api._fetch_raw("workable", "acmeworks", "Acme Works")
     finally:
-        jobs_api._get = real_get
+        jobs_api._get, jobs_api._get_items = real_get, real_items
     t("the feed reads Workable's public, keyless jobs list for the account", seen, ["https://www.workable.com/api/accounts/acmeworks?details=true"])
     t("...keeps postings that have a shortcode and title, with the location", [(r["id"], r["loc"]) for r in raw],
       [("AB12CD34EF", "Philadelphia, Pennsylvania, United States"), ("ZZ99", "Paris, France")])

@@ -37,6 +37,9 @@ function build(src, out, title, edits, extra) {
   h = h.replace(/(<script src="uaply-[a-z]+\.js"><\/script>\s*)+/, () => inline + (extra || "") + "\n");
   if (!h.includes("__PROD_SRC")) throw new Error("script tags not found in " + src);
   h = h.replace(/<title>[^<]*<\/title>/, "<title>" + title + "</title>");
+  // the installable-website parts (web manifest, service worker) need UAply's own server, which a hosted copy does not have
+  h = h.replace(/<link rel="manifest"[^>]*>\s*/, "").replace(/<script>\/\* the installable website:[\s\S]*?<\/script>\s*/, "");
+  if (/rel="manifest"|uaply-sw\.js/.test(h)) throw new Error("the manifest link or the service worker is still in " + src);
   edits.forEach(([a, b]) => { if (!h.includes(a)) throw new Error("edit target missing: " + a.slice(0, 40)); h = h.replace(a, () => b); });
   h = darkBlocks(h);
   // the host adds the document skeleton

@@ -9,7 +9,7 @@
 //     or download or file picker or email opened, or the clipboard got text; or it is inert on purpose (disabled, already chosen)
 //   - no script error
 // Screens: the three bottom menus and every item in them, the header (Sign in, Switch to hiring, the logo), the help button
-// and its panel, the footer links, the consent box, the message after a swipe, every Dashboard list (with applications in
+// and its panel, the footer links, the consent box, the message after a swipe, every Job Tracker list (with applications in
 // each status), the five Profile setup steps, Filters, Account (signed out and signed in), Plan & billing, Data & privacy,
 // and in the sandbox the employer-questions box and every Hiring mode screen (with a test account it creates on this server).
 // Links that would leave the app (employer sites, legal pages, mail) are noted instead of opened; the legal and help pages on
@@ -145,7 +145,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
   const reload = async () => { await nav(BASE); await waitFrame(); await sleep(1500); await hook(); };
   const NOTES = [];
 
-  // makes sure the Dashboard lists have something in every status (applied, interview, accepted, rejected, passed)
+  // makes sure the Job Tracker lists have something in every status (applied, interview, accepted, rejected, passed)
   const seed = () => ev(`(()=>{const A=${FW}.__uaply;const want={applied:3,interview:2,accepted:2,rejected:2,passed:2};const have={};
     for(const [k,x] of Object.entries(A.S.decisions)){const st=x.s==='passed'?'passed':(x.st||'applied');have[st]=(have[st]||0)+1}
     const free=A.JOBS.filter(j=>j.live&&!A.S.decisions[j.id]);let n=0;
@@ -158,7 +158,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
   for (const [v, l] of svc) add("Services › " + l, "#pane-swipe", async () => { await menu("svc", v); }, { reset: () => ev("(()=>{const A=" + FW + ".__uaply;if(A.getFilter()!=='all')A.setFilter('all')})()") });
   add("Message after a swipe", "#toastHost,#kitToast", async () => { await menu("svc", "job"); await sleep(300); await ev("(" + F + ").getElementById('btnNo').click()"); await sleep(700); }, { fresh: true });
   for (const [v, l] of [["overview", "Overview"], ["applied", "Applied"], ["interview", "Interviews"], ["accepted", "Accepted"], ["rejected", "Rejected"]])
-    add("Dashboard › " + l, "#pane-track", async () => { await seed(); await menu("dash", v); });
+    add("Job Tracker › " + l, "#pane-track", async () => { await seed(); await menu("dash", v); });
   for (let i = 0; i < 5; i++) add("Profile setup › step " + (i + 1), "#pane-profile", async () => { await menu("prof", "settings"); await sleep(300); await ev("(()=>{const b=" + F + ".querySelector('.wzDots button[data-step=\"" + i + "\"]');if(b)b.click()})()"); });
   add("Profile › Filters", "main > section:not([hidden])", async () => { await menu("prof", "filters"); }, { details: true });
   add("Profile › Account", "main > section:not([hidden])", async () => { await menu("prof", "account"); }, { details: true });
@@ -194,6 +194,8 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
       const st = await ctlState();
       if (!st.focused) { res = "does not take the focus"; }
       else if (p.readonly) { ok = true; res = "takes the focus (read-only)"; }
+      // date and time boxes ignore inserted text (they take digits per segment or the picker), so typing "7" would always look broken
+      else if (p.tag === "INPUT" && /^(date|time|datetime-local|month|week)$/.test(p.type)) { ok = true; res = "takes the focus (" + p.type + " box, typing not tried)"; }
       else {
         await send("Input.insertText", { text: "7" }); await sleep(150);
         const st2 = await ctlState();
@@ -264,7 +266,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
     else { await menu("svc", "job"); await sleep(300); await ev("(" + F + ").getElementById('btnYes').click()"); await sleep(1200); }
   };
   await walk({ name: "Consent box", root: "#kitConsent", open: consentOpen, fresh: true });
-  await ev("(()=>{const w=" + FW + ";w.localStorage.setItem((w.__uaplyKey||'uaply')+'.consent',JSON.stringify({v:2,at:Date.now()}));const o=w.document.getElementById('kitConsent');if(o)o.remove()})()");
+  await ev("(()=>{const w=" + FW + ";w.localStorage.setItem((w.__uaplyKey||'uaply')+'.consent',JSON.stringify({v:3,at:Date.now(),agent:true}));const o=w.document.getElementById('kitConsent');if(o)o.remove()})()");
 
   // ---- a profile that can apply (name, email, resume file), as a person would have it after Profile setup
   await menu("prof", "settings"); await sleep(600);
@@ -296,9 +298,9 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
   }
 
   // ---- header, footer, help button (the same on every screen)
-  // (opened from Dashboard, so the UAply logo, which goes home to the job cards, has somewhere to go)
+  // (opened from Job Tracker, so the UAply logo, which goes home to the job cards, has somewhere to go)
   await walk({ name: "Header and footer", root: ".bar,#legalbar,#uaChatBtn,#bnav", open: async () => { await menu("dash", "overview"); }, fresh: true, noShot: true,
-    skip: /^Services|^Dashboard|^Profile/, skipWhy: "the bottom menu buttons are pressed above with each of their items" });
+    skip: /^Services|^Job Tracker|^Profile/, skipWhy: "the bottom menu buttons are pressed above with each of their items" });
   // keyboard in Hiring mode must never swipe the job deck hidden under it
   if (sandbox) {
     await menu("svc", "job"); await sleep(300);
@@ -329,11 +331,11 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
   // ---- signed in: an account on this server (the test inbox gives the code), then Account again, and Hiring mode in the sandbox
   const email = "controls." + Date.now() + "@example.com";
   const su = await ev("fetch('/api/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'" + email + "',password:'controls test 12345',agree:true})}).then(r=>r.status)");
-  const code = await ev("fetch('/outbox').then(r=>r.text()).then(t=>{const m=t.match(/([0-9]{6}) is your UAply verification code/);return m?m[1]:''})");
+  const code = await ev("fetch('/outbox').then(r=>r.text()).then(t=>{const m=t.match(/([0-9]{6}) is your UAply (?:verification|sign-in) code/);return m?m[1]:''})");
   const vf = await ev("fetch('/api/auth/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:'" + code + "'})}).then(r=>r.status)");
   check("a test account is created and verified on this server", su === 200 && vf === 200, su + "/" + vf);
   await reload();
-  await ev("(()=>{const w=" + FW + ";w.localStorage.setItem((w.__uaplyKey||'uaply')+'.consent',JSON.stringify({v:2,at:Date.now()}));const o=w.document.getElementById('kitConsent');if(o)o.remove()})()");
+  await ev("(()=>{const w=" + FW + ";w.localStorage.setItem((w.__uaplyKey||'uaply')+'.consent',JSON.stringify({v:3,at:Date.now(),agent:true}));const o=w.document.getElementById('kitConsent');if(o)o.remove()})()");
   await walk({ name: "Profile › Account (signed in)", root: "main > section:not([hidden])", open: async () => { await menu("prof", "account"); }, details: true,
     skip: /^Sign out$/, skipWhy: "pressed last, below" });
   if (sandbox) {
@@ -352,7 +354,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
     await menu("prof", "account"); await sleep(600);
     const p = JSON.parse(await ev("JSON.stringify((()=>{const d=" + F + ",b=d.querySelector('[data-auth=sout]');if(!b)return null;b.scrollIntoView({block:'center'});const f=document.querySelector('iframe').getBoundingClientRect(),r=b.getBoundingClientRect();return {x:f.left+r.left+r.width/2,y:f.top+r.top+r.height/2}})())"));
     if (p) { if (PHONE) await tapAt(p); else await clickAt(p); await sleep(1200); }
-    check("Account › Sign out (" + (PHONE ? "tap" : "click") + ") signs out", !!p && /Signed out|Create your UAply account|Log in to UAply/.test(await ev("(" + F + ").body.innerText")));
+    check("Account › Sign out (" + (PHONE ? "tap" : "click") + ") signs out", !!p && /Signed out|Create your UAply account|Sign in to UAply|Log in to UAply/.test(await ev("(" + F + ").body.innerText")));
   }
 
   // ---- the links that were noted instead of opened: the ones on this server must answer

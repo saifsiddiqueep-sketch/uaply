@@ -3,3 +3,4 @@
 *.bat text eol=crlf
 
 # UAply: LF line endings keep the workflow files and scripts working on every computer.
+*.gz binary

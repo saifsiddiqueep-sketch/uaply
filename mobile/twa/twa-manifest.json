@@ -1,0 +1,41 @@
+{
+  "packageId": "com.uaply.app",
+  "host": "uaply.net",
+  "name": "UAply",
+  "launcherName": "UAply",
+  "display": "standalone",
+  "orientation": "default",
+  "themeColor": "#FDF0F2",
+  "themeColorDark": "#190B10",
+  "navigationColor": "#FDF0F2",
+  "navigationColorDark": "#190B10",
+  "navigationDividerColor": "#00000000",
+  "navigationDividerColorDark": "#00000000",
+  "backgroundColor": "#FDF0F2",
+  "enableNotifications": false,
+  "startUrl": "/",
+  "iconUrl": "https://uaply.net/uaply-icon-512.png",
+  "maskableIconUrl": "https://uaply.net/uaply-icon-maskable-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "../android/uaply-upload-key.jks",
+    "alias": "upload"
+  },
+  "appVersion": "1.0.0",
+  "appVersionCode": 1,
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://uaply.net/uaply.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "minSdkVersion": 23,
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": []
+}

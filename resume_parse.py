@@ -219,7 +219,7 @@ try:
             out.append(page.extract_text() or "")
         except Exception:
             out.append("")
-    sys.stdout.write("T:" + "\n".join(out))
+    sys.stdout.buffer.write(("T:" + "\n".join(out)).encode("utf-8"))   # UTF-8 whatever the console's code page (bullets, accented names on Windows)
 except Exception:
     sys.stdout.write("E:unreadable")
 """
@@ -297,7 +297,10 @@ SECTIONS = {
               "volunteer", "volunteering", "volunteer experience", "community involvement", "publications", "languages", "interests",
               "hobbies", "references", "coursework", "relevant coursework", "contact", "contact information", "contact info", "links",
               "extracurricular activities", "extracurriculars", "affiliations", "memberships", "research", "research experience",
-              "conferences", "presentations", "additional information", "additional", "personal details", "details"],
+              "conferences", "presentations", "additional information", "additional", "personal details", "details",
+              # a student's clubs and offices: "Vice President, Marketing Club 2024 - Present" is not their most recent job
+              "leadership and activities", "activities and leadership", "leadership and involvement", "campus involvement",
+              "involvement", "leadership and service"],
 }
 _HEAD = {}
 for _sec, _names in SECTIONS.items():
@@ -537,11 +540,17 @@ def _contact_line(s):
                 or URL.search(s))
 
 
+def _trim(s):
+    """Spaces and separators off both ends, keeping a bracket the text itself opened: "Barista (part-time)" stays whole."""
+    s = re.sub(r"\s{2,}", " ", s).strip(" ,|·•-–—()")
+    return s + ")" if s.count("(") > s.count(")") else s
+
+
 def _strip_dates(s):
     s = DATE_RANGE.sub(" ", s)
     s = re.sub(r"\(?\s*(?:expected|anticipated|exp\.?|graduat(?:ed|ing|ion)|class of)\s*:?\s*%s\s*\)?" % _ONE, " ", s, flags=re.I)
     s = DATE_ONE.sub(" ", s)
-    return re.sub(r"\s{2,}", " ", s).strip(" ,|·•-–—()")
+    return _trim(s)
 
 
 def _strip_location(s):
@@ -549,7 +558,7 @@ def _strip_location(s):
     s = LOC_US_NAME.sub(" ", s)
     s = LOC_INTL.sub(" ", s)
     s = re.sub(r"\b(remote|hybrid|on-?site)\b", " ", s, flags=re.I)
-    return re.sub(r"\s{2,}", " ", s).strip(" ,|·•-–—()")
+    return _trim(s)
 
 
 def _has_word(s, words):
@@ -591,6 +600,9 @@ def _skills(lines, secs, inline):
         body = _plain(ln)
         if re.match(r"^[A-Za-z][A-Za-z &/]{1,30}:\s", body):              # "Languages: Python, Java" -> the list after the label
             body = body.split(":", 1)[1]
+        # "Microsoft Excel (pivot tables, VLOOKUP), SQL (basic)": the note in brackets is about the skill before it, and its commas
+        # must not split it into "Microsoft Excel (pivot tables" and "VLOOKUP"
+        body = re.sub(r"\s*\([^()]*\)", "", body)
         for part in re.split(r"\s*(?:,|;|\||•|·|/(?!\w*\b(?:IP|CD)\b)|\s{2,}|\t| and )\s*", body):
             part = part.strip(" .()[]-–")
             if not part or len(part) > 40 or len(part.split()) > 4 or re.search(r"\d{4}", part):

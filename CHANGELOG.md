@@ -6,6 +6,374 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 
+### Galaxy walk fixes (Saif, October 23): the phone keyboard, the password eye, small text, the share target, the bar colours, the location card
+- **The keyboard no longer covers the card.** The pages ask the browser to resize for it (`interactive-widget=resizes-content`); where
+  only the visual viewport shrinks (the installed app), the page around the app's frame sets the frame to the height still visible and
+  back when the keyboard goes, and the box being typed in plus the card's main button below it (Create my account, Sign in) scroll into
+  that space. `tools/ui-gate.js` proves it at 384 x 748 with the bottom 330 px covered.
+- **The password eye** keeps the focus in the box (no keyboard closing and re-opening), caret at the end, the box in view.
+- **14 px text**: the Job Tracker figures' labels and the points on each match line ("15/15"), without breaking the rows at 390.
+- **Share this job**: its tap area is exactly 44 x 44 px (was 43).
+- **Status and navigation bars**: a theme-color per light and dark mode on the app pages (the manifest keeps the light value).
+- **Location card on a phone or in the installed app**: "Allow location for UAply in your phone's settings, then tap Try again", two
+  lines and its two buttons, above the chips and never over the first job card (`tools/ui-phone.js` checks it). Laptops keep the
+  address-bar wording.
+
+### Sign-in, server side (Saif, October 22): password sign-up with names, the code to verify and to sign in, the gate, a test mode, items 12 to 23
+- **The contract** is in `docs/ACCOUNTS.md`, "The sign-in contract": every route, field and answer, the gate and the test mode, for the
+  card and the gate the front end builds.
+- **Sign-up** is email, first and last name and a password (8 to 128), with the 18+ / Terms tick: the account keeps the names
+  (`first_name`, `last_name`; `/api/auth/me` gives `first`, `last`), signs in at once, answers first and emails the verification code
+  after the answer (or says `bounced` for an address on the bounce list). An empty profile name is filled from the account's names when
+  an application is made. The emailed code is also the other way in ("Email me a code"), with its own sign-in wording (item 21).
+- **Code sign-in runs wherever the server runs** (sandbox, dev, the live site; item 0, record item 22), with its two rules (Google asks
+  the owner's own tick: `agree_owner`; Resend counts toward the day's cap). A public server without email does not offer it and its code
+  routes answer 503 `mail_off`. `UAPLY_CODE_SIGNIN=0` is the only off switch.
+- **The gate**: signed out, `/api/jobs`, the apply, plan, mark, decision, chat, feedback, resume and employer routes answer 401
+  `{"error": "Sign in first.", "code": "signin"}`; the page, help, legal, the health check, status and every sign-in route stay open.
+- **Test mode**: `UAPLY_SIGNUP_TEST=1` on a server that is not public makes sign-up verified and signed in at once with no email
+  (`providers.signupTest`); ignored on a public server.
+- **Items**: 13 the day counters are capped (20,000, the oldest first); 15 one limit sentence for sign-ups and codes, the same for every
+  address; 16 change password on an account with no password says so (Google only when linked); 17 full-width and Arabic-Indic digits
+  count; 19 an address like a@example..com is refused; 20 Forgot password answers first everywhere and writes its token after; 23
+  `/api/auth/me` says `googleLinked`. 14 and 18 were already closed (a660b4a: the last hop; the real `created` flag).
+- **Tests**: `tools/test-signin-contract.py` (new, 42, in the runner and CI); test-public (the 401s), test-signup-flow, test-public-auth,
+  test-accounts, test-google, test-google-token, test-render, test-mail-limits and the swipe walk updated for the new rules (codes arrive
+  just after the answer; dev has code sign-in; the people sign in first). `tools/live-check.py` checks the 401s and reads the job list and
+  the help chat only with a signed-in session in `UAPLY_LIVE_COOKIE`.
+
+### Share this job (Mohammed's design, version A, October 22)
+- **On the swipe page the one change is a small share icon** (36 px, "Share this job") in the top-right corner of the job card.
+  The header, the example-profile notice, the filters, the card's contents, Pass / Undo / Apply, Help and the bottom bar are as before
+  (`tools/ui-share.js` compares the page with the experiment on and off, element by element). Design: Mohammed.
+- **It shares a UAply link to that job**, not only the employer's: `?job=<id>&t=<title>&c=<company>` (public job facts, nothing about
+  the person), through the phone's share sheet, else a copied link with a "Link copied" note. The message reads "<Role> at <Company> on
+  UAply"; a job that takes applications on its own site also carries the employer's link. Example jobs are never shared by id. The Job
+  Tracker's Share buttons send the same link, and its "Not sent yet" rows get the same icon.
+- **The friend who opens the link** sees that job first, with a small "Shared with you · a free job app · no account needed" line
+  above the card; looking, passing and saving need no account. The address loses `?job=` at once, so a reload is an ordinary visit.
+  Long job ids (up to 16 digits, given to postings whose first id collides) work too, and a saved work-style filter does not hide the
+  shared job. A friend who already passed on or applied to it gets no second card, only the line with a short note saying so.
+- **A job that is no longer listed** shows "No longer listed on UAply" with the title and company from the link, then open jobs like it
+  (title words or the same company first, then the same kind of job), each with its age and where its application goes; the work-style
+  chips filter them, Pass / Undo / Apply are hidden while there is no card, and "Swipe through them" brings the deck back with those
+  jobs first. When nothing open is like it, "See other open jobs" leads back to the deck, so the friend is never stuck there.
+- **The friend never waits in silence.** From the first moment the line names the job ("Shared with you: <title> at <company>.
+  Looking for it in today's listings…"). If the job list fails to load, the line says so with **Try again**; the landing is kept for
+  this tab until it is settled, so the reload still finds the job although `?job=` has left the address. While job boards are still
+  loading and the job is not in what came so far, after 3 answers or 20 seconds the jobs like it show under "Not found yet" (not
+  "No longer listed": UAply does not know that yet), and the job moves to the front if a later answer brings it.
+- Sandbox only: `shared/uaply-share.js` (the "Share this job" experiment, on by default in the sandbox), one hook in
+  `shared/uaply-nav.js` (`shareJob`), `check.js` builds it, and `tools/ui-share.js` runs at 390x844 and 1280x720 in
+  `tools/run-all-tests.sh`.
+
+### Terms and help say what the app does (October 22)
+- **Terms of Service, section 3: "Applications on your behalf"** (the consent version 3 sentence, drafted in LEGAL-REVIEW.md;
+  Saif decided on October 21 that it goes in the Terms). **Pending the lawyer's read before launch.** The list under it names the
+  three ways a swipe right goes: sent straight to an employer that connected its hiring system or posted on UAply, sent by email to an
+  employer who agreed to that, or assisted on the employer's own site, where the person taps the employer's Submit. It used to say
+  UAply sends only to employers who agreed. Last updated October 22, 2026.
+- Help: where jobs come from (public hiring systems and employers' own careers pages, plus connected employers; no "example
+  listings, not many real openings"); on the sandbox, signing up and in is by emailed code with no password (Accounts, and "I forgot
+  my password" now says there is none to forget); the release wording keeps the password and says Sign in, not log in.
+- The empty deck says "your applications are in Job Tracker, Applied".
+
+### Release candidate review, surgical fixes (Reviewer 2, October 22)
+- **Careers sites:** every request (robots.txt, the sitemap, each page) goes through a public-only opener (`jobs_api._cp_open`): a
+  redirect is followed only to a public https address, and the name is looked up once and refused unless every address is public (not
+  private, loopback, link-local such as 169.254.169.254, shared or reserved); the connection goes to that checked address.
+- **Mark as applied** needs a verified email (403 `verify` otherwise), keeps a mark only for a job in that person's reminder (any other
+  mark writes nothing) and at most 200 per account. **Reminders** look at the account again right before sending: a deleted one gets
+  nothing and its entry goes.
+- **Help chat:** with AI answers on, the server sends a message to the AI only with `aiOk: true` (the page's Continue); otherwise the help
+  articles answer (`aiConsent: true`).
+- **Feed text:** tags are taken out after the last unescape (`jobs_api._text`).
+- **The site's share of code emails** is never below one connection's own 80 (80 at the default 500, so a campus keeps its 80), and only
+  the share groups an IPv6 /64 (`auth_api.share_key`); the per-connection limits count each address on its own again.
+- Assisted apply's field map knows `twitter`.
+- Tests: test-career-pages 45 (15 new), test-emails 78 (7 new), test-chat 6 (new), test-public-auth 109, test-swipe-e2e 328 (+1).
+
+### Launch day: the runbook, the owner's self-check, and the hosting docs as they are today (October 22)
+- **The owner's self-check** in `/api/status` (owner only: this computer, or the owner password): when a job board was last read
+  successfully, when an email last went out (kept on the disk in `mail-count.json`), the data disk's free and total room, and plain
+  warnings (no good board read in 2 hours, under 100 MB free, a data folder that is not a persistent disk). Next to the outside uptime
+  check (`docs/uptime.md`), which only knows whether the site answers. `tools/test-self-check.py` (18 checks), in the runner and CI.
+- **`docs/runbook-launch.md`**: Saturday's exact sequence: a backup, the release PR and tag, the deploy and its start-up line,
+  `live-check.py --expect all`, `ui-live.js`, the Galaxy phone walk, a real sign-up with a real code, a real Google sign-in, what to watch
+  every 2 hours, and the one-command rollback to rc.13 (`e6aced4`) through Render's API (or two clicks in Events).
+- **HANDOFF.md, DEPLOY.md and render.yaml** say what runs today: one hand-made Render service `uaply` behind Cloudflare (proxied, SSL/TLS
+  Full (strict), `CF-Connecting-IP` trusted only from Cloudflare's ranges), a private repository with no GitHub Pages, `UAPLY_PUBLIC_URL`
+  and the USAJOBS key as their own variables, manual deploys until the Render GitHub app is linked, rollback and the self-check.
+
+### Release review fixes (Reviewer 2, October 22): what an employer's page can get, the site's hour of codes, busy hiring systems
+- **Assisted apply hands a page nothing it does not ask for.** Only the hiring systems' own hosts (`hosts` in
+  `shared/assist-systems.json`) and this job's own page are ever filled; on a redirect, a tapped link, a look-alike host or http,
+  nothing goes in and nothing is read (`AssistActivity` checks the address before every call, `AssistActivity.CALL` again inside the
+  page). The script lives under a random name, new each time the screen opens, frozen and fixed: a page's own `window.UAplyAssist`
+  (which used to be handed the profile) is never called, and the old `window.__uaplyScan` / `__uaplyRep` globals are gone. The scan
+  gets stand-ins for the person's details; the fill gets only what the scan saw the form ask for (`assistShape`, `assistOnly`), and
+  fills the five mock forms exactly as the whole profile did; a saved answer whose question names another employer is not handed over
+  either (it told the page where else the person applied). The measurement tool now hands pages the same.
+- **The site's hour of code emails:** one address may use at most 5% of it (25 of 500), an IPv6 visitor counts by its /64
+  (`serve.limit_key`, for every limit), and an account's owner (known-device cookie, or signed in to that verified account) is never
+  held back by it.
+- **A busy hiring system:** a 429 from an employer's system is remembered for a minute (readiness no longer asks it again on every
+  card), and requests for the same posting at the same moment share one read (`ats_api.one_read`, also for Greenhouse's public form).
+- Tests: `tools/test-assist-hostile.js` (new, 33), test-assist 226 (12 new), ui-assist-tracker 31 (4 new), test-public-auth 107
+  (10 new), test-ats-flow 52 (10 new). Both assist tests now run in `tools/run-all-tests.sh`.
+
+### The phone walk checks the sign-up card; two fit fixes it found (October 22)
+- `tools/phone-walk.js` walks the sandbox's sign-up card by real touch: Continue with Google, email, names, the 18+ tick, the code from
+  the stand-in inbox, the two questions, sign out, sign-in by code, and Google through the stand-in Google. Not finding a sign-up form is a
+  FAIL (it used to be skipped). Taps count the keyboard's offset and are measured again when Chrome's address bar changes the page.
+- A short turned phone (667x375): the Help button scrolls with the header row instead of lying over the card's Last name box.
+- With a person's own profile, the job type buttons (All, Remote, Hybrid, On-site) are 44 px targets again on short phones (they were 39).
+- Checked on the Galaxy A17: 38 screens, 0 fit problems; `ui-phone.js` green at 440x956, 375x667, 390x844 and turned at 667x375,
+  844x390 and 832x384 (the two turned sizes are now in `tools/run-all-tests.sh`).
+
+### Employer outreach kit and "Test this connection" (the first connected employer)
+- **docs/employers/connect-kit.md**: the outreach email (a swipe right *starts* an application; it is *sent* only where the employer
+  connected), the one-page kit with the ten-minute steps for Greenhouse, Lever, Ashby, SmartRecruiters and Workable and the privacy line,
+  rendered to **connect-kit.pdf** by `node tools/cdp.js tools/render-connect-kit.js` (fails if it stops fitting one page), and the top 50
+  employers in the feed by US jobs with their careers sites, written by `python tools/employer-targets.py --write`. Nothing was sent.
+- **/setup, Connect an employer's hiring system: Test this connection** (and **Test** on each saved connection): reads the employer's
+  own open postings and reports the count, and checks the key where the system has a read for it (Ashby's job list, SmartRecruiters'
+  posting form, Workable's jobs); Greenhouse and Lever keys are checked by the first application. Nothing is sent or saved; the key is
+  never shown. On the hosted site it tests the saved keys only. `POST /api/setup/test-ats`, owner only.
+- **docs/employers/first-connection.md**: our own SmartRecruiters account as launch day's first connected employer, step by step
+  (including what to do if the free plan has no API key). SmartRecruiters' API keys give full access (its own developer page): the kit,
+  the SmartRecruiters page and /setup now say so, and that UAply uses only the Application API.
+- Tests: test-setup 65 (13 new against the stand-in systems, which now serve each system's public posting list and Ashby's job.list),
+  ui-setup, test-ats-flow 42, the per-system ATS suites, test-public 79.
+
+### Sign-in, server side (PR #49 review): the real visitor's address everywhere, one set of limits, a site-wide cap, Google asks the owner's tick
+- **The visitor's address** for every limit and lock-out is the last hop the host's proxy added (`serve.client_ip`, with Cloudflare's
+  CF-Connecting-IP when that hop is Cloudflare's), never what the sender wrote first in X-Forwarded-For. The same helper as learn-cache.
+- **One set of limits:** 40 sign-ups an hour per address, 5 per address and email; codes 3 an hour per account, 80 per address, 5 per
+  address and email, on every route that emails a code (Create my account, Email me a code, Resend).
+- **A site-wide hour:** at most 500 code emails an hour for the whole site (`UAPLY_CODE_SENDS_PER_HOUR`); past it, "UAply is sending a lot of
+  sign-in codes right now. Try again in a few minutes, or use Continue with Google."
+- **Google and an account nobody proved:** joining it now asks this person's own 18+ / Terms tick and records it (`terms_at`), on every
+  server, as the code sign-in already did. `oauth_login` says `created` only when it made the account; "made in the last 60 seconds"
+  is gone, so signing in with Google twice no longer says "Account created" twice.
+- Tests: test-public-auth 97 (forged first entries, Cloudflare, campus limits, the code routes' real address and 80 an hour, the site
+  cap, Google's tick and the created flag; 17 of them fail on 6552edf), test-accounts 144 (4 fail on 6552edf), test-signup-flow 123.
+  docs/reviews/pr49-ui-fixes.md proposes the card's two remaining fixes for Mohammed.
+
+### Data fixes from the release review (October 22): job ids, Job Tracker rows, answers per employer, the minimum to apply
+- **Job ids never collide** (`jobs_api._claim_id`). An id was 100000 plus 6 hex digits of a hash, so 20,000 postings shared an id about
+  12 times: the second posting was never shown, and a swipe saved under that id could later point at another job. Every id handed out is
+  now kept with a fingerprint of its posting (`job-ids.json` beside `jobs-cache.json` in the data folder, forgotten after 180 days
+  unused); a second posting whose 6 digits are taken gets 7, then 8 ... up to 13 digits. An id that never collided is exactly what it
+  was, so saved swipes still match. Partner employers' ids use the same rule.
+  **One-time note:** on the first start with this file, a pair of postings that already shared an id is settled by which is read first,
+  which may be the one that was hidden before. Live (uaply.net) lists 428 jobs today: about 0.005 shared ids expected, so no live swipe
+  is affected; on the sandbox (20,000) about a dozen swipes may now show the other posting of their pair.
+- **Job Tracker keeps every row** (`shared/uaply-live.js`). Each swipe carries a short copy of its row (title, company, place, link, kind);
+  a swiped job's saved copy never ages out (it used to go after 30 days); applications are kept up to 2,000, passes up to the newest 1,000
+  (the oldest pass goes first). A job in neither the list nor the saved copy comes back from its row copy as a stand-in that is never a
+  card. Older swipes get their row copy the next time their job is in the list or the saved copy.
+- **Answers about one employer stay with that employer** (`autofill.norm`, `uaply-assist.js` `akey`). A question that names the employer
+  or asks why this company or role is kept under "{at employer}": Stripe's "Why us?" is never sent to Plaid (it used to be, as
+  "why ... {co}"). Questions about the person (work authorization, start date, 18 or older) are still asked once for every employer.
+  The phone app now keys a question exactly as the server does, so one answered in either place is not asked again.
+  The filter runs on every path: the app sends a swipe or a plan only this employer's and the general answers (`answersFor`), the
+  phone app hands an employer's page only those, and the server drops any other (`autofill.clean_answers(raw, company)`), so an answer
+  written for employer A never reaches employer B's form whatever a browser sends.
+- **The server checks the minimum to apply** (`uaply_api._validate`): no phone number and no resume (file or link) is refused with a
+  plain sentence, as the app already did (READY_MIN). Reading a form (`/api/apply/plan`) is unchanged.
+- Tests: `tools/test-job-ids.py` (15: 20,000 postings with 60 forced pairs, none lost; restart in the opposite order), `tools/ui-tracker-keep.js`
+  (13: reload 31 days later and after 500 swipes; 1,000 passes and one more), `tools/test-autofill.py` (+12, one through the server's sandbox form to Plaid), `tools/test-delivery.py` (+5),
+  `tools/ui-tracker-keep.js` (+2: what a swipe sends), `tools/ui-assist-tracker.js` (+1), `tools/test-assist.js` (+1, the bridge keys as the server does);
+  the other tests' applicants now have a phone number.
+
+### The daily reminder: Mark as applied reaches the server, and swipes never wait for the reminder's email (October 22)
+- **Mark as applied** in Job Tracker now tells the server (`POST /api/apply/mark`, signed in): the day's "finish your application"
+  reminder stops listing that job, and a later hand-off of the same job is not put back (`uaply_api.mark_applied`, up to 500 job ids kept
+  per person). A swipe record that already carries the mark (`"marked": true`) is never reminded. Undo only stops skipping it.
+- **The reminder is sent outside the lock** every swipe takes (`send_finish_digests`): what each reminder lists is copied under the lock,
+  the email goes without it, and then only those jobs leave the list, so a job swiped (or marked) while the email was on its way is
+  neither lost nor sent twice. One sender at a time.
+- Tests: `tools/test-emails.py` (+9: mark, a later hand-off, a marked record, Undo, a bad job id, a swipe during a slow send, two senders),
+  `tools/test-swipe-e2e.py` (+3: the route signed in, a bad job, signed out).
+
+### Assisted apply: questions first, then the form (fill 95-98% on the Galaxy, nothing required left but agreements)
+- **The bridge.** Before the employer's form opens, the phone app reads it (`UAplyAssist.scan`, which changes nothing) and UAply asks
+  what the profile cannot answer in its own question box ("Continue to {company}'s form"); required questions must be answered,
+  optional ones may be skipped; the answers are kept like every question-box answer. Then the form opens filled with them.
+  `AssistActivity` scan mode (behind a cover), `AssistPlugin` returns the questions, `askSheet` takes optional questions and new words.
+- **The synonym map** in `shared/uaply-assist.js`: preferred names, "first and last name", phone digits and country-code lists,
+  date pickers and typed dates in the field's own pattern, graduation month and year apart, degree names (Bachelor's, BA, BS), notice
+  periods, current role (its end date is not asked), 18 or older (from the first-swipe agreement), "without sponsorship", yes/no
+  choices read by meaning, How did you hear: UAply or Other then UAply. Privacy, consent and certification questions in any form
+  (lists, radios, Yes/No buttons), pronoun "Custom" boxes and age ranges are never filled or asked.
+- **Measured on the same 80 postings** (`python tools/assist-measure.py --phone <serial>`, one command): fill Greenhouse 65% to 96%,
+  Lever 64% to 98%, Ashby 60% to 95%, Workable 50% to 96%; required left at the form, median, 0 on all four (only agreements remain).
+  With only the required questions answered: 89%, 92%, 72%, 85%. docs/assisted-apply.md has the table.
+- Tests: `tools/test-assist.js` 213 checks (every new mapping and the bridge on a mock form per system), `tools/ui-assist-tracker.js`
+  26 (the bridge in Job Tracker: asks, blocks a blank required answer, skips answered ones, Not now opens nothing, keeps a cover letter to its employer).
+### Apply wording from the job's route; learner, caching and uptime
+- **The card and the Job Tracker row read the job's `route`:** connected or email: "Applies instantly"; one-tap: "Ready, one tap on their
+  site"; assisted or ready: "Ready" (the server's labels "Ready" and "Ready, one tap" read the same). "Apply instantly" and "Opens employer
+  site" are gone from the app, the help answer, the employers page and the Play listing. tools/ui-route.js checks every route at 390 and 1280.
+- **Learns from your swipes** no longer pushes strong matches down for a new person: no reordering before 8 swipes or while every swipe
+  is a yes, an attribute counts from 2 swipes, and before 30 swipes a 90%+ match loses at most 10 points.
+- **Scripts and the legal style sheet are cached a year** under content-hashed names (uaply-nav.<hash>.js); pages, /api and the service
+  worker stay no-store; a changed file gets a new name at once.
+- **docs/uptime.md**: the UptimeRobot free monitor for https://uaply.net/healthz, for the owner to set up.
+
+### Sign-up, nothing hidden: no password, an emailed code, two questions (Mohammed's design, Oct 21)
+- **One card in the middle of the Account screen**, with the UAply mark directly above it and the two centered together on phones and
+  laptops. In Mohammed's order: Continue with Google, "or", Email, First name, Last name, the 18+ / Terms tick, Create my account, "Have an
+  account? Sign in". Google tapped before the tick: the box shakes (not with reduced motion), says "Tick the box first, then Continue with
+  Google." and scrolls into view. The email box offers "Did you mean gmail.com?" for a typo. No password, no privacy map.
+- **No password.** Create my account emails a 6-digit code (six boxes, paste, auto-advance, Resend after 30 seconds); nobody is signed in
+  until it is typed. Google skips the code for Gmail and Google-run addresses. Returning people: Google, or Email me a code, whose answer
+  never says whether an address has an account. Mohammed can flip this back to a password (today's password routes are untouched).
+- **After the account exists:** "Account created, {first}." (or "Account created." and "What should employers call you?" when the name was
+  lost to a refresh or typed on another device, and after Google), then "What kind of work are you after?" and "Where do you want to work?",
+  each with Back, Skip/Continue, Enter and Esc, beside a preview of what an employer sees. The preview counts the app's minimum to apply
+  (`READY_MIN`: name, email, a phone number or a resume). The end says "You're ready to swipe." only when that minimum is met; otherwise
+  "Almost ready" with Add a phone number / Add a resume, one tap from the field.
+- **Kept honestly:** the account (email, when the box was ticked) on the server; name, work picks and place on this device only, in the
+  app's own profile. A name saved for an earlier account on the same device is never reused. Work picks only sort jobs.
+- **Google is asked for `openid email` only**, as today (asking for the name is a question for Saif). The card says UAply keeps only the
+  email and the Google account number. A password nobody had proven, removed by a Google sign-in, is said on the card.
+- Server (sandbox only, `CODE_SIGNIN` in `serve.py`; `UAPLY_CODE_SIGNIN=0` turns it off on a sandbox, nothing turns it on elsewhere; a
+  public server with no email set up keeps today's card): `POST /api/auth/signup` with `"passwordless": true`, `POST /api/auth/code/send`,
+  `POST /api/auth/code/verify`, `codeSignin` in `/api/auth/providers`. On dev every one answers exactly as before. A code sign-in that
+  first proves an inbox shuts out a password nobody had proven and a Google login Google did not vouch for, and ends every session they
+  had, and says when it took Google off (`googleRemoved`; the card then stops offering Google to that person). Any account whose address
+  was never proven is finished only with the code typer's own 18+ tick (`needsAgree`), recorded as theirs. Limits: 3 code emails an hour
+  per address and per account (shared with Resend), 12 per connection, 6 a day per address; 15 wrong codes for one address in a day stop
+  code sign-in for it until the next day. The daily stats count a no-password sign-up when its code is typed.
+- **Sign out, then the next person:** the card starts empty (no email, no name, the box unticked). A redraw of the Account screen while
+  someone types (a late start-up answer on a slow connection) keeps them in the same box with the caret where it was. The last screen's
+  button says "Show me jobs" until a swipe right can apply, "Start swiping" once it can.
+- `shared/uaply-signup.js` (the "Sign-up, nothing hidden" experiment, on in the sandbox) and four guarded hooks in `shared/uaply-nav.js`
+  (`check.js` fails if one goes missing). The app's signed-in card says "You sign in with an emailed code or with Google" there.
+- Tests: `tools/test-signup-flow.py` (89 checks) and `tools/ui-signup.js` (58 checks in a browser at 1280x720 and 390x844, including
+  hostile text in the card's boxes, Sign out, and a redraw while typing). `tools/run-all-tests.sh` runs both, and runs the sandbox's `ui-inject.js` (unchanged) against a
+  second sandbox with the card off (18770).
+
+### Assisted apply in the phone app: UAply fills the employer's form, the person taps Submit
+- **Finish applying on their site**, in the UAply phone app, opens the employer's own page inside the app (`AssistPlugin`,
+  `AssistActivity` in `mobile/android`), fills it from the profile with `shared/uaply-assist.js` (served at `/uaply-assist.js`), attaches
+  the resume file, scrolls to Submit and says **Review and tap Submit**. Voluntary self-identification, consent boxes, follow-ups and
+  human checks are left to the person. The page's own resume box offers **Use my UAply resume** first. On the website nothing changes.
+- **Sent only on the employer's confirmation page:** the Job Tracker row becomes **Sent** ("Sent on {company}'s own page: their
+  confirmation page appeared") only then; closed earlier, it stays **Finish on their site**.
+- **The per-system switch** `shared/assist-systems.json` (served at `/assist-systems.json`): "assisted" for every system. "automatic"
+  takes the attorney's approval and a measured human-check share of 0, and the page is checked again before any submit.
+- **First-swipe agreement, version 3:** adds "You authorize UAply to complete and submit job applications on your behalf using the
+  information you provide." (recorded with the time); the Terms draft is in LEGAL-REVIEW.md section 11.
+- **Measured** on the owner's Galaxy, 20 real postings per system, nothing submitted: see `docs/assisted-apply.md`.
+- Tests: `tools/test-assist.js` (mock form per system in `tools/fixtures/assist/`), `tools/ui-assist-tracker.js` (Job Tracker with a
+  stand-in plugin), `tools/assist-measure.js` (real postings, every application-carrying request refused).
+### Five fixes from the October 22 audit
+- **Rate limits count the real visitor.** The visitor's address is the last hop the host's proxy added to X-Forwarded-For (an internal hop
+  after it is skipped), or CF-Connecting-IP when that hop is a Cloudflare server (Cloudflare's published ranges, read at start and every
+  24 hours, with a built-in copy). A script writing a new made-up first entry every try is now locked out like anyone else. The limits are
+  campus-friendly: 40 sign-ups an hour per address (was 5), 5 per address and email, codes 3 per account, 80 per address (was 12), 5 per
+  address and email; each refusal says what to do.
+- **Mark as applied.** A hand-off row in Job Tracker has Mark as applied: the row then says Sent (by you) with the date; Undo once.
+- **One reminder a day.** A hand-off swipe no longer sends its own "Finish your application" email: the jobs wait and go together, the first
+  reminder 30 minutes after the first such swipe, then at most one a day (kind "digest", held by the daily limit like other mail that can
+  wait; removed with the account). Receipts for applications UAply sends are unchanged.
+- **/.well-known/security.txt**: the company's contact address, the privacy page, and an expiry a year from now.
+- **Help chat and the outside AI.** With AI answers on, the first message shows a one-line notice that it goes to Anthropic, with Continue or
+  Not now (remembered on the device); Not now sends nothing.
+- A short message after a swipe is no longer a narrow column (phones use the screen's width; at least 320 px elsewhere).
+- Tests: tools/test-public-auth.py (forged X-Forwarded-For, Cloudflare, sign-up and code limits), tools/test-emails.py (the reminder),
+  tools/test-pages.py (security.txt), tools/ui-journey.js (Mark as applied, the chat notice); each fails on 512bf84.
+
+### Apply journey fixes (50 real swipes on the Galaxy A17 and a laptop, October 22)
+- **The card tells the truth before the swipe.** Where the server previews forms in test mode (the sandbox), a swipe right on any Greenhouse
+  posting reads its form and asks its questions; the card now asks the server for that same plan (POST /api/apply/plan) and says
+  "N answers needed" instead of "Ready". `/api/apply/config` says `formPreview`; one rule (`uaply_api.form_preview`) decides both.
+- **The question box on a phone.** It opens with no field focused (the keyboard no longer covers it before it is read), and it is fitted to
+  the screen left above the keyboard (the top page's visual viewport), with Send application pinned to its bottom.
+- **Start date.** "When can you start?" from Profile, Account goes with the application when Profile setup's start date is empty, and fills
+  the employer's start-date question (`autofill._NOTICE`).
+- **Finish applying opens the form**, not the posting: Lever `/apply`, Ashby `/application`, SmartRecruiters `?oga=true` (its own API's
+  applyUrl), added as text so nothing else in the address changes. Learns from your swipes still recognises the job.
+- **Old messages go.** A "Saved ... Undo" message whose time ran out while the tab was hidden goes when the tab is shown again.
+- **Job Tracker after a reload.** A swiped job is saved with the swipe, so its row is still there after a phone reloads the tab, even when the
+  server's list no longer has the job (job 14769135 on the Galaxy).
+- Tests: `tools/ui-journey.js` (10 checks, run by `tools/ui-questions.py`), 2 more in `tools/ui-questions.js` (phone keyboard, focus), 3 in
+  `tools/test-autofill.py`. Each fails on the code before this change.
+
+### A swipe right only sends a complete application (the front end of the readiness rule)
+- **The minimum, in one place.** `READY_MIN` in `shared/uaply-nav.js`: a name, an email employers can reply to, and a phone number or a
+  resume. The deck, the cards and every checklist read it. Below it, a swipe right (finger, Apply or the arrow key) opens **Finish your
+  profile first** with exactly what is missing, sends nothing, and the card stays on top.
+- **A checklist** on Account and at the bottom of the last setup step: name, email, phone, resume, work authorization, education, city,
+  earliest start. Each missing item is one tap from its field (the setup step opens with the field focused).
+- **Ready or not, on each card.** A connected employer's form is read ahead through the new `POST /api/apply/plan` (the same reading a
+  swipe right does, nothing recorded or sent), kept per posting until the profile or a saved answer changes: **Ready to apply** or **N
+  answers needed** (also Sign in to apply, Finish on their site). Email employers and hand-offs say **Ready**.
+- **At the swipe** the question box asks only what is missing; answered, it sends. Left for later (or a resume file to add), the job waits
+  in Job Tracker as **Not sent yet** with **Answer now** (it used to go back to the deck).
+- **Learning:** each question an employer's form asked is counted by its key and kind (no answer, no person), in the instance's own
+  `question-stats.json`; `/api/status` shows the counts to the owner only.
+- Tests: `tools/test-swipe-e2e.py` runs `tools/ui-swipe-ready.js` (every apply path with no phone, no resume, no work authorization, below
+  the minimum, and an employer's own question on four systems) and `tools/ui-ready-walk.js` (a half-finished student at 390 x 844 and
+  1280 x 800, by finger). The stand-in Greenhouse now checks every form's required questions and every stand-in records what it refused
+  (`/__rejected`, which must stay empty). Server-side refusal of incomplete applications is UAP-10.
+
+### Taps and focus: no blue tap box, a keyboard ring that matches the app
+- On Android, tapping "Try again" on the starting-up screen painted Chrome's default light-blue rectangle over the round button (the
+  owner saw it on a Galaxy A17). One rule, `shared/uaply-focus.css`, now goes word for word into every page UAply serves (the app,
+  dev's and the sandbox's outer pages, every legal page, the offline / starting-up screen, the 404 and "moved" pages, /setup, /feedback,
+  the test inbox, the phone app's "can't connect" screen): no tap highlight, no ring after a tap or a click, a 3 px ring in the accent
+  colour for keyboard users. The standalone pages also get a pressed state. Server-built pages take it from `ui_rules.py`.
+- The starting-up screen checks `/healthz` every 3 seconds for the first minute, then 1.5 times longer each try (15 seconds at most),
+  and reopens the page on the first 200 (the page is sent with `Cache-Control: no-store`, so it is never a saved copy). Its cached copy
+  in the service worker is now `uaply-shell-v2`.
+- Tests: `tools/test-focus.py` (12 checks: every copy word for word; `--sync` rewrites them after a change) and `tools/ui-focus.js`
+  (28 checks in Chrome at 390 px with touch: the computed tap highlight of every element on every page, no ring after a real touch,
+  the keyboard ring, the retries against a /healthz answering 503). Run against the code before this change, 23 of its first 25 checks failed.
+
+### Google Play listing pack
+- `mobile/store/play/`: app name, short (80) and full (3,5xx of 4,000) descriptions in the app's own honest wording, the 512 px icon, the
+  1024 x 500 feature graphic, five phone and five 7-inch tablet screenshots at 1080 x 1920 (Jobs, Dashboard, Profile setup, Filters, Help),
+  the Data safety answers, the content rating answers, the App content declarations (privacy policy, ads, app access, 18+), the closed-test
+  invite and steps, and a README mapping each Play Console screen to its file. `docs/play-store.md`: the ten steps to production.
+- `tools/make-play-assets.js` draws the pictures from the app itself (a sandbox switched to the release build's features, example jobs and
+  an example person); `tools/test-play-listing.py` (22 checks) checks every picture's exact size and format and every text's length.
+
+### "Dashboard" is now "Job Tracker"
+- The job seeker's middle tab and everything that names it say **Job Tracker**: the bottom bar, the Free and early-access plan lists
+  ("The full Job Tracker"), the empty deck's note, the help articles, the swipe-right emails ("Open UAply, then Job Tracker, then
+  Applied"), the email previews in `marketing/email-previews/` and the sandbox's feature note. The tab label stays on one line at 375 px.
+- Nothing internal changed: the ids (`nb-dash`, `pane-track`, `tab-dash`), the `dash:...` links in the help articles, saved state and
+  storage keys are the same, so saved settings and deep links keep working. "dashboard" stays a search word in the help.
+- Hiring mode has no Dashboard screen; nothing there changed.
+- Tests: `tools/ui-buttons-bar.js` checks the tab reads exactly "Job Tracker" on one line inside its tab and the bar at every size it
+  runs (375, 390, 440, 1280; dev and sandbox); the tests that named the screen follow the new word.
+
+### Google Play: an installable website and the Trusted Web Activity
+- **Installable.** `/uaply.webmanifest` (UAply, start `/`, standalone, the app's `#FDF0F2` background) with 192 and 512 px icons, ordinary and maskable (`shared/uaply-icon-*.png`, made from `mobile/assets/icon-only.png` by `tools/make-web-icons.js`), linked from dev and the sandbox. Chrome reports nothing missing to install it.
+- **Offline and "starting up" screen.** The service worker `/uaply-sw.js` saves only `/uaply-offline.html` and its icon. When a page cannot load (no connection, or the host's 502/503/504 during a deploy) it shows that screen at the same address; the screen checks `/healthz` every few seconds and reopens the page by itself. It never caches the app's code, never touches `/api/`, `/healthz`, `/.well-known/`, the owner pages or other sites. The pages' security policy adds `manifest-src 'self'; worker-src 'self'`. The hosted copies (`share/`) leave both out.
+- **`/.well-known/assetlinks.json`** for the package `com.uaply.app`, from `UAPLY_ASSETLINKS_SHA256` (the Play signing and upload key fingerprints, comma-separated): no rebuild when a key changes; a plain 404 when unset; answered on every address without a redirect.
+- **`/legal/delete-account.html`**, the account-deletion page Google Play asks for, linked from the Privacy Policy, Support and the legal index.
+- **`mobile/twa/`**: the Bubblewrap `twa-manifest.json` (host uaply.net, `fallbackType: customtabs`) and the owner's steps in its README.
+- Tests: 20 more checks in `tools/test-pages.py`; `tools/ui-installable.js` (15 checks in Chrome: installable, cache contents, server down, offline, a 502 deploy, back by itself).
+
+### A student's first visit (the October 21 walk as a Drexel junior)
+- **Fill from your resume, for students.** A club office under "Leadership & Activities" (and "Activities & Leadership", "Campus involvement" and similar headings) is no longer read as the most recent job. Skills with a note in brackets ("Microsoft Excel (pivot tables, VLOOKUP)", "SQL (basic)") stay one skill each instead of half-bracket pieces, and a job title keeps its own bracket ("Barista and Shift Lead (part-time)"). PDF text is passed on as UTF-8, so bullets and accented names arrive whole on a Windows computer too (before, "Jordan Álvarez" came out as "Jordan �lvarez" and the name was not found, and bullets were not seen as bullets).
+- **A student's part-time job is not their target title.** While the resume's graduation month is still ahead, the latest job fills Your job title there, the employer and the start month, and becomes the target title only when it is an internship or co-op. Target titles decide which jobs show, so "Barista" hid every internship.
+- **Never a plain "Applied" for an application nothing was sent for.** A job whose employer's form has questions is marked "Not sent yet ... Answer now" the moment the question box opens, so leaving the box open, going to Applied or closing the app no longer leaves a row that looks sent.
+- Help and Profile setup say "Jobs" (the bottom bar's name), not "Services".
+- **Target titles never empty a section.** "Hide roles that do not match my target titles" (on for every new profile) no longer applies to Internships and Co-op at all: a student's two marketing titles hid 99 of 105 internships and the menu read "Internships 0". On Full-time and Part-time, where no listing matches the titles, the roles are shown with "Showing all roles: none matched your target titles" and a link to Filters; where some match, the rest are still hidden. Tests: `tools/ui-title-filter.js` (13 checks, at 390x844 and 1280x800, in the runner); `tools/ui-walk.js` step 4 follows the new behaviour.
+- **Posting dates are always epoch ms.** A date given in seconds was read as January 1970 and the 60-day rule dropped the posting without a word (it emptied `tools/ui-apply-paths.py`'s public postings: 15 failures). 1 more check in `tools/test-jobs.py`.
+- **Swipes survive a reload.** The app's start-up read kept only decisions whose job was already in its list, and the saved copy of the job list kept the last 400 postings of a feed that is now over 1,000, so most of a person's Applied and Passed jobs vanished on reload, and the next save made it permanent. A swipe on a real posting is now always kept, and the saved list holds every swiped job first (`shared/uaply-live.js`).
+- **The app starts without waiting on the font site.** Its features (the agreement box, the navigation, live jobs, the learner) went on at the page's load event, which waits for Google Fonts: 10 to 27 s on a slow or blocked network. They now go on when the page is parsed, and the font stylesheet no longer blocks the page (`shared/uaply-envs.js`, `prod/index.html`). In this test this took the agreement box from about 20 s to 1 s.
+- **No job counts anywhere a person sees** (the owner's rule). The Jobs menu no longer shows how many jobs each section has (it read "Internships 0" or "Full-time 834"), the line above the deck no longer says "N jobs left" (only the person's own "N applied"), and an empty section says so in words: "No internships match your filters yet. Widen them in Filters, or pick another kind of job in the Jobs menu." with a working Filters link. Counts stay on the owner's pages and in `/api/status`; Dashboard keeps the person's own application counts. Tests: `tools/ui-title-filter.js` +5 (no number on any Jobs menu item at 390x844 and 1280x800, no "jobs left", the wordless empty state and its link; all fail on the old code); `tools/ui-walk.js` step 4 follows.
+- `tools/ui-learn.js` drags where a finger would: the part of the card in sight above Pass / Undo / Apply (a notice above the deck can push the card's upper third under that row).
+- Tests: `tools/ui-boot.js` (5 checks, dev and sandbox, in the runner; both halves fail on the old code); `tools/ui-installable.js` +3 (a slow page is never replaced by the offline screen: the service worker is network-first with no timeout); `tools/ui-swipes.js` section 9 checks the confirmation in the test inbox, since the quiet swipe (Oct 21) no longer names it in the message.
+- Tests: a seventh resume (`tools/fixtures/resumes/business.pdf`) and 4 more checks in `tools/test-resume.py`; 3 in `tools/ui-resume.js`; 2 in `tools/ui-questions.js`.
+
 ### Workable, the fifth hiring system an employer can connect
 - **Workable jobs in the feed.** Workable's public, keyless jobs list (`www.workable.com/api/accounts/{subdomain}?details=true`) is a new feed kind, `workable`, off like every other feed until the owner lists it under `feeds`. Each posting records its subdomain and shortcode, so it becomes "Apply instantly" the moment that employer connects. First board: Hugging Face.
 - **Swipe right into an employer's Workable.** With the token the employer's Admin made (scopes `r_jobs` and `w_candidates`), UAply reads the job's questions, answers them with the same rules as the other systems, and creates the candidate on that job as an applicant (`"sourced": false`), with the resume file, education, most recent job, LinkedIn and the source `UAply`. Gender, race, veteran and disability questions are never answered; a required question the profile cannot answer is asked once or left to the person; test mode never uses the token. Everything follows Workable's API reference (cited in `ats_api.py`).

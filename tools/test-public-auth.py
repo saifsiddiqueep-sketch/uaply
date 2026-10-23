@@ -1,7 +1,8 @@
 """Sign-in on a server run the way the live site runs it: public (any address but 127.0.0.1), behind Render's HTTPS proxy, which sends
 X-Forwarded-Proto: https and X-Forwarded-For, for the addresses uaply.net, www.uaply.net and the onrender.com addresses. Starts its own throwaway
-servers (a stand-in Google on PORT+1 and UAply on PORT) and stops them at the end, so it needs nothing running:
-  python tools/test-public-auth.py [port]          (default 18780; uses that port and the next one)
+servers (a stand-in Google on PORT+1, UAply on PORT, and for the sandbox's emailed-code sign-in a stand-in mail server on PORT+2 and three
+sandbox servers on PORT+3 to PORT+5) and stops them at the end, so it needs nothing running:
+  python tools/test-public-auth.py [port]          (default 18780; uses that port and the next five)
 Checks: the cookies, the same-site check for each real address, Google tokens (good, wrong and forged), linking a Google account to a
 password account, a new Google account starting empty, signing in again after a server restart, the password rules, the lock-out after
 wrong passwords (also when the attacker changes the address it claims to come from), and the 6-digit code's expiry, tries and resends.
@@ -41,7 +42,8 @@ def t(name, got, want):
 
 
 def start_server():
-    env = dict(os.environ, HOST=ADDR, UAPLY_CONFIG_FILE="none", UAPLY_DATA_DIR=DATA, OWNER_PASSWORD="ownerpw", UAPLY_CONFIG_JSON=json.dumps(CFG))
+    env = dict(os.environ, HOST=ADDR, UAPLY_CONFIG_FILE="none", UAPLY_DATA_DIR=DATA, OWNER_PASSWORD="ownerpw", UAPLY_CONFIG_JSON=json.dumps(CFG),
+               UAPLY_CF_RANGES="0")                 # Cloudflare's list: the built-in copy (no internet in tests)
     env.pop("ANTHROPIC_API_KEY", None)
     p = subprocess.Popen([sys.executable, os.path.join(ROOT, "serve.py"), str(PORT), "dev", "--api"], cwd=ROOT, env=env,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -55,7 +57,7 @@ def start_server():
     raise SystemExit("the test server did not start")
 
 
-def req(method, path, body=None, host=SITE, origin="same", cookie="", xff="203.0.113.7", headers=None):
+def req(method, path, body=None, host=SITE, origin="same", cookie="", xff="203.0.113.7", headers=None, port=None):
     """One request as Render's proxy passes it on: HTTPS outside, plain HTTP inside, with the visitor's address in X-Forwarded-For."""
     h = {"Host": host, "X-Forwarded-Proto": "https", "X-Forwarded-For": xff + ", 10.0.0.1"}
     if origin == "same":
@@ -67,7 +69,7 @@ def req(method, path, body=None, host=SITE, origin="same", cookie="", xff="203.0
     if body is not None:
         h["Content-Type"] = "application/json"
     h.update(headers or {})
-    c = http.client.HTTPConnection(ADDR, PORT, timeout=30)
+    c = http.client.HTTPConnection(ADDR, port or PORT, timeout=30)
     c.request(method, path, body=json.dumps(body) if body is not None else None, headers=h)
     r = c.getresponse()
     raw = r.read()
@@ -108,12 +110,17 @@ def db():
     return c
 
 
-def last_code(email):
-    """The newest 6-digit code in the server's test inbox (no real email is connected in this test)."""
-    with db() as c:
-        row = c.execute("SELECT subject FROM user_mail WHERE to_addr=? ORDER BY id DESC LIMIT 1", (email,)).fetchone()
-    m = re.match(r"\s*(\d{6})", row["subject"] if row else "")
-    return m.group(1) if m else ""
+def last_code(email, wait=5.0):
+    """The newest 6-digit code in the server's test inbox (no real email is connected in this test). A sign-up answers first and emails its
+    code a moment later, so this waits up to `wait` seconds for one to be there."""
+    end = time.time() + wait
+    while True:
+        with db() as c:
+            row = c.execute("SELECT subject FROM user_mail WHERE to_addr=? ORDER BY id DESC LIMIT 1", (email,)).fetchone()
+        m = re.match(r"\s*(\d{6})", row["subject"] if row else "")
+        if m or time.time() > end:
+            return m.group(1) if m else ""
+        time.sleep(0.1)
 
 
 try:
@@ -176,9 +183,16 @@ try:
     # someone signs up with another person's Gmail address and a password, and never proves the address ...
     s, out, ack, _ = req("POST", "/api/auth/signup", {"email": "owner.of.this@gmail.com", "password": "attacker pass 1", "agree": True}, xff="198.51.100.66")
     attacker = jar(ack)
-    # ... then the real owner arrives with Google
+    # ... then the real owner arrives with Google: their own 18+ / Terms tick first, since the one on record is whoever opened the account
     s, out, rck, _ = req("POST", "/api/auth/google/token", {"credential": gtoken(email="owner.of.this@gmail.com", sub="7002")})
-    t("Google with the same Gmail address signs into that existing account", (s, (out.get("user") or {}).get("email")), (200, "owner.of.this@gmail.com"))
+    t("Google joining an account whose address was never proven asks for the owner's own tick first (and signs nobody in)", (s, out.get("code"), session_of(rck)), (400, "agree_owner", ""))
+    t("...and changes nothing yet: the password is still there", (me(attacker) or {}).get("hasPassword"), True)
+    before = int(time.time())
+    s, out, rck, _ = req("POST", "/api/auth/google/token", {"credential": gtoken(email="owner.of.this@gmail.com", sub="7002"), "agree": True})
+    t("Google with the same Gmail address and the owner's tick signs into that existing account", (s, (out.get("user") or {}).get("email")), (200, "owner.of.this@gmail.com"))
+    with db() as c:
+        ta = c.execute("SELECT terms_at FROM users WHERE email='owner.of.this@gmail.com'").fetchone()["terms_at"]
+    t("...and the 18+ / Terms tick on record is now the owner's (terms_at is this sign-in's)", ta >= before, True)
     t("...the password set by someone who never proved the address is removed", (out.get("user") or {}).get("hasPassword"), False)
     t("...the page is told, so it can say so", out.get("passwordRemoved"), True)
     t("...whoever set that password is signed out", me(attacker), None)
@@ -218,10 +232,38 @@ try:
     t("five wrong passwords, then the sixth try is held back", got, [401] * 5 + [429])
     t("during the lock-out even the right password is held back", req("POST", "/api/auth/login", {"email": "lock.me@example.com", "password": "the right one 1"}, xff="192.0.2.31")[0], 429)
     t("the owner of the account, from another connection, can still log in", req("POST", "/api/auth/login", {"email": "lock.me@example.com", "password": "the right one 1"}, xff="192.0.2.32")[0], 200)
-    # an attacker who sends a made-up X-Forwarded-For with every try (Render keeps the first entry the visitor sent)
+    # the address is the hop the host's proxy added (serve.client_ip), never what the sender wrote before it (October 22 audit: the first
+    # entry used to be trusted, so a script that wrote a new made-up address every try was never locked out)
+    req("POST", "/api/auth/signup", {"email": "forged.xff@example.com", "password": "the right one 3", "agree": True}, xff="192.0.2.60")
+    forged = [req("POST", "/api/auth/login", {"email": "forged.xff@example.com", "password": "wrong %d" % i}, xff="1.2.%d.%d, 198.51.100.200" % (i, i))[0] for i in range(6)]
+    t("a script that writes a new made-up X-Forwarded-For first entry every try is still locked out after five (its real hop is the same)", forged, [401] * 5 + [429])
+    # behind Cloudflare: the last hop is a Cloudflare server, and CF-Connecting-IP names the visitor; anywhere else that header is ignored
+    cf = [req("POST", "/api/auth/login", {"email": "forged.xff@example.com", "password": "wrong cf %d" % i}, xff="9.9.%d.9, 173.245.48.%d" % (i, i + 1),
+              headers={"CF-Connecting-IP": "198.51.100.201"})[0] for i in range(6)]
+    t("behind Cloudflare the visitor is CF-Connecting-IP: one visitor through six Cloudflare servers is locked out after five", cf, [401] * 5 + [429])
+    fake_cf = [req("POST", "/api/auth/login", {"email": "forged.xff@example.com", "password": "wrong fcf %d" % i}, xff="198.51.100.202",
+                   headers={"CF-Connecting-IP": "198.51.100.%d" % (50 + i)})[0] for i in range(6)]
+    t("...and a CF-Connecting-IP sent from anywhere but Cloudflare is ignored (still locked out after five)", fake_cf, [401] * 5 + [429])
+    # many real addresses guessing one password (a botnet): the per-account cap stops it after 20 wrong tries
     req("POST", "/api/auth/signup", {"email": "target@example.com", "password": "the right one 2", "agree": True}, xff="192.0.2.40")
-    spoofed = [req("POST", "/api/auth/login", {"email": "target@example.com", "password": "guess %d" % i}, xff="10.%d.%d.9" % (i // 200, i % 200))[0] for i in range(25)]
-    t("guessing with a different made-up address every try is still stopped (after 20 wrong tries on one account)", (spoofed[:20] == [401] * 20, spoofed[20:]), (True, [429] * 5))
+    spoofed = [req("POST", "/api/auth/login", {"email": "target@example.com", "password": "guess %d" % i}, xff="10.%d.%d.9, 198.18.%d.%d" % (i // 200, i % 200, i // 200, i % 200 + 1))[0] for i in range(25)]
+    t("guessing from a different real address every try is still stopped (after 20 wrong tries on one account)", (spoofed[:20] == [401] * 20, spoofed[20:]), (True, [429] * 5))
+
+    # ---------- sign-up limits a campus can live with (October 22: 5 an hour per address turned students away) ----------
+    camp = [req("POST", "/api/auth/signup", {"email": "student%d@example.com" % i, "password": "campus pass %d" % i, "agree": True},
+                xff="5.6.%d.7, 198.51.100.220" % i) for i in range(41)]
+    t("40 sign-ups an hour from one campus address work (made-up first entries do not change the count); the 41st is refused",
+      ([c[0] for c in camp[:40]] == [200] * 40, camp[40][0], camp[40][1].get("code")), (True, 429, "signup_limit"))
+    t("...and it says what to do (wait an hour, or sign in)", "Wait an hour" in camp[40][1].get("error", "") and "sign in" in camp[40][1].get("error", ""), True)
+    same = [req("POST", "/api/auth/signup", {"email": "again@example.com", "password": "again pass 1", "agree": True}, xff="198.51.100.221") for _ in range(6)]
+    t("one email tried six times from one address: made once, then 'already has an account' four times, then refused",
+      ([c[0] for c in same], same[5][1].get("code")), ([200, 409, 409, 409, 409, 429], "signup_email_limit"))
+    t("...with what to do (the code in the inbox, or sign in)", "Check your inbox" in same[5][1].get("error", "") and "sign in" in same[5][1].get("error", ""), True)
+    t("...while a different email from that address still signs up", req("POST", "/api/auth/signup", {"email": "another@example.com", "password": "another pass 1", "agree": True}, xff="198.51.100.221")[0], 200)
+    sys.path.insert(0, ROOT)
+    import auth_api  # noqa: E402
+    t("the code limits: 3 per account, 80 per address, 5 per address and email, each an hour",
+      tuple(getattr(auth_api, k, None) for k in ("CODES_PER_IP_PER_HOUR", "PER_IP_EMAIL_PER_HOUR", "SIGNUPS_PER_HOUR")), (80, 5, 40))
     t("...and the right password is held back too while that lasts (15 minutes)", req("POST", "/api/auth/login", {"email": "target@example.com", "password": "the right one 2"}, xff="192.0.2.41")[0], 429)
     t("...but the owner can still get in with Forgot password or Google; other accounts are not affected",
       req("POST", "/api/auth/login", {"email": "lock.me@example.com", "password": "the right one 1"}, xff="192.0.2.42")[0], 200)
@@ -269,6 +311,120 @@ try:
     s, _, fck, h3 = req("GET", cb.path + "?" + cb.query, host=host, origin="", cookie=state_cookie)
     t("the callback signs the person in and goes back to the app", (s, h3.get("location")), (302, "/?signed_in=google"))
     t("...and they are signed in on www.uaply.net", (me(jar(fck), host=host) or {}).get("email"), "iphone.user@gmail.com")
+    # ---------- the sandbox's emailed-code sign-in (sign-up v2): the real visitor's address, the shared limits, a site-wide cap ----------
+    MAILPORT, SBPORT, CAPPORT, CAP2PORT = PORT + 2, PORT + 3, PORT + 4, PORT + 5
+    PROCS.append(subprocess.Popen([sys.executable, os.path.join(HERE, "fake-smtp.py"), str(MAILPORT), os.path.join(DATA, "fake-smtp.jsonl")],
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+    SBCFG = dict(CFG, smtp={"host": "127.0.0.1", "port": MAILPORT, "starttls": False, "from_addr": "uaply@example.com"})
+
+    def start_sandbox(port, data, extra=None):
+        env = dict(os.environ, HOST=ADDR, UAPLY_CONFIG_FILE="none", UAPLY_DATA_DIR=data, OWNER_PASSWORD="ownerpw", UAPLY_CONFIG_JSON=json.dumps(SBCFG),
+                   UAPLY_CF_RANGES="0", **(extra or {}))
+        for k in ("ANTHROPIC_API_KEY", "UAPLY_CODE_SIGNIN"):
+            env.pop(k, None)
+        PROCS.append(subprocess.Popen([sys.executable, os.path.join(ROOT, "serve.py"), str(port), "sandbox", "--api"], cwd=ROOT, env=env,
+                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+        for _ in range(80):
+            try:
+                if req("GET", "/healthz", port=port)[0] == 200:
+                    return
+            except OSError:
+                time.sleep(0.25)
+        raise SystemExit("the sandbox test server did not start")
+
+    start_sandbox(SBPORT, DATA + "-sb")                  # the default hour of 500 code emails (one visitor's share: 80)
+    t("the sandbox server signs in by emailed code (its mail server is set up)", (req("GET", "/api/auth/providers", port=SBPORT)[1] or {}).get("codeSignin"), True)
+    # the code routes count the host's last hop too: a made-up first X-Forwarded-For entry on every try changes nothing
+    wrong = [req("POST", "/api/auth/code/verify", {"email": "nobody.%d@example.com" % i, "code": "000000"}, xff="7.7.%d.%d, 198.51.100.230" % (i, i),
+                 port=SBPORT)[0] for i in range(21)]
+    t("code sign-in: a script writing a new made-up first entry every try is still stopped after 20 (its real hop is the same)",
+      (wrong[:20] == [400] * 20, wrong[20]), (True, 429))
+    sends = [req("POST", "/api/auth/code/send", {"email": "fresh.%d@example.com" % i}, xff="8.8.%d.%d, 198.51.100.231" % (i // 250, i % 250), port=SBPORT)
+             for i in range(81)]
+    t("code emails: 80 an hour from one real address, made-up first entries or not (the limit resend_code has), then the plain limit answer",
+      ([x[0] for x in sends[:80]] == [200] * 80, sends[80][0], (sends[80][1] or {}).get("code")), (True, 429, "code_limit"))
+    t("...while another visitor can still ask for a code", req("POST", "/api/auth/code/send", {"email": "fresh.other@example.com"}, xff="198.51.100.234", port=SBPORT)[0], 200)
+    # IPv6: each address is its own connection; the site's share counts the /64 (a campus or a carrier hands out many addresses of one)
+    six = [req("POST", "/api/auth/code/send", {"email": "six.%d@example.com" % i}, xff="2001:db8:77:1::%x" % (i + 1), port=SBPORT)[0] for i in range(60)]
+    t("IPv6: 60 different addresses of one /64 can each get a code in one hour under the default cap", six, [200] * 60)
+    more = [req("POST", "/api/auth/code/send", {"email": "six.more.%d@example.com" % i}, xff="2001:db8:77:1:ffff::%x" % (i + 1), port=SBPORT)[0] for i in range(21)]
+    t("...the /64 shares one visitor's 80 of the site's hour: the 81st code from it is held back with the plain limit answer, not 'UAply is busy'",
+      (more[:20] == [200] * 20, more[20]), (True, 429))
+    t("...while the next /64 is another visitor", req("POST", "/api/auth/code/send", {"email": "six.next@example.com"}, xff="2001:db8:77:2::1", port=SBPORT)[0], 200)
+    # Google never calls an older account new: the account was made by this sign-in or it was not (no more "made in the last 60 seconds")
+    req("POST", "/api/auth/signup", {"email": "made.before@gmail.com", "password": "made before 1", "agree": True}, xff="198.51.100.232", port=SBPORT)
+    s, out, _, _ = req("POST", "/api/auth/google/token", {"credential": gtoken(email="made.before@gmail.com", sub="8101"), "agree": True}, xff="198.51.100.232", port=SBPORT)
+    t("Google joins an account a password sign-up made seconds ago (with the owner's tick)", s, 200)
+    t("...and does not call it a new account", ((out.get("user") or {}).get("google") or {}).get("new"), False)
+    s, out, _, _ = req("POST", "/api/auth/google/token", {"credential": gtoken(email="really.new@gmail.com", sub="8102"), "agree": True}, xff="198.51.100.233", port=SBPORT)
+    t("...while an account this Google sign-in made is new", ((out.get("user") or {}).get("google") or {}).get("new"), True)
+    s, out, _, _ = req("POST", "/api/auth/google/token", {"credential": gtoken(email="really.new@gmail.com", sub="8102"), "agree": True}, xff="198.51.100.233", port=SBPORT)
+    t("...and signing in with Google again a few seconds later is a sign-in, not 'Account created' a second time",
+      (s, ((out.get("user") or {}).get("google") or {}).get("new")), (200, False))
+    # a ceiling on the code emails the whole site sends in an hour (UAPLY_CODE_SENDS_PER_HOUR; 500 by default, 3 on this server)
+    start_sandbox(CAPPORT, DATA + "-cap", {"UAPLY_CODE_SENDS_PER_HOUR": "3"})
+    caps = [req("POST", "/api/auth/code/send", {"email": "cap.%d@example.com" % i}, xff="198.51.100.%d" % (240 + i), port=CAPPORT) for i in range(4)]
+    t("site-wide: once the hour's code emails are used up, the next visitor (another address, another email) is held back",
+      ([c[0] for c in caps], (caps[3][1] or {}).get("code")), ([200, 200, 200, 429], "code_busy"))
+    t("...with a plain answer: try again in a few minutes, or use Google", "few minutes" in (caps[3][1] or {}).get("error", "") and "Google" in (caps[3][1] or {}).get("error", ""), True)
+    t("...and Create my account is held back the same way", (req("POST", "/api/auth/signup", {"email": "cap.new@example.com", "agree": True, "passwordless": True},
+                                                               xff="198.51.100.250", port=CAPPORT)[1] or {}).get("code"), "code_busy")
+
+    # ---------- the site's hour cannot be used up by a few addresses, and an account's owner always gets a code (October 22 review) ----------
+    t("one visitor may use 5% of the site's hour of code emails, never less than one connection's own 80: 80 of the default 500",
+      (getattr(auth_api, "SITE_SHARE_PERCENT", None), getattr(auth_api, "site_share", lambda: None)()), (5, 80))
+    t("...the share counts an IPv6 visitor by its /64, an IPv4 one (also written as IPv6) by its address",
+      [getattr(auth_api, "share_key", lambda x: x)(x) for x in ("2001:db8:1:2:3:4:5:6", "198.51.100.7", "::ffff:198.51.100.7")],
+      ["2001:db8:1:2::/64", "198.51.100.7", "198.51.100.7"])
+    start_sandbox(CAP2PORT, DATA + "-cap2", {"UAPLY_CODE_SENDS_PER_HOUR": "40"})          # 40 an hour, so 2 per address
+
+    def mail_code(addr, after="", wait=6.0):
+        end = time.time() + wait
+        while time.time() < end:
+            try:
+                with open(os.path.join(DATA, "fake-smtp.jsonl"), encoding="utf-8") as f:
+                    rows = [json.loads(x) for x in f if x.strip()]
+            except (OSError, ValueError):
+                rows = []
+            for r in reversed(rows):
+                m = re.search(r"([0-9]{6}) is your UAply (?:verification|sign-in) code", r.get("raw", ""))
+                if addr in json.dumps(r.get("to")) and m:
+                    if m.group(1) != after:
+                        return m.group(1)
+                    break
+            time.sleep(0.1)
+        return ""
+
+    def cookie_named(cookies, name):
+        for c in cookies:
+            m = re.match(r"(%s=[^;]+)" % re.escape(name), c)
+            if m:
+                return m.group(1)
+        return ""
+    send2 = lambda email, xff, cookie="": req("POST", "/api/auth/code/send", {"email": email}, xff=xff, cookie=cookie, port=CAP2PORT)
+    # the owner of an account signs in with a code once on their phone: it keeps the known-device cookie and a session
+    req("POST", "/api/auth/signup", {"email": "known.owner@example.com", "agree": True, "passwordless": True}, xff="198.51.100.10", port=CAP2PORT)
+    c0 = mail_code("known.owner@example.com")
+    s, out, cks, _ = req("POST", "/api/auth/code/verify", {"email": "known.owner@example.com", "code": c0, "agree": True}, xff="198.51.100.10", port=CAP2PORT)
+    known_ck, sess_ck = cookie_named(cks, "uaply_sandbox_session_known"), cookie_named(cks, "uaply_sandbox_session")
+    t("(set-up) the owner's code sign-in gives the known-device cookie and a session", (s, bool(known_ck), bool(sess_ck)), (200, True, True))
+    filled = [send2("fill.%d.%d@example.com" % (n, k), "198.51.101.%d" % (n + 1))[0] for n in range(13) for k in range(3)]
+    stranger = send2("someone.new@example.com", "198.51.102.1")[1] or {}
+    t("(set-up) 13 more addresses use up the rest of the hour (40 here); a newcomer is then told UAply is busy",
+      (filled == [200] * 39, stranger.get("code")), (True, "code_busy"))
+    t("...the owner's address from a device that never signed in is held back like anyone else", (send2("known.owner@example.com", "198.51.102.2")[1] or {}).get("code"), "code_busy")
+    s, out, _, _ = send2("known.owner@example.com", "198.51.102.2", cookie=known_ck)
+    c1 = mail_code("known.owner@example.com", after=c0)
+    t("...but the owner's known device still gets a code while the site's hour is used up", (s, bool(c1)), (200, True))
+    s, out, _, _ = send2("known.owner@example.com", "198.51.102.3", cookie=sess_ck)
+    t("...and so does a device signed in to that verified account", (s, bool(mail_code("known.owner@example.com", after=c1))), (200, True))
+    t("...while that session asks for another address's code in vain (no pass for other accounts, and nothing said about them)",
+      (send2("someone.else@example.com", "198.51.102.3", cookie=sess_ck)[1] or {}).get("code"), "code_busy")
+    s, out, ucks, _ = req("POST", "/api/auth/signup", {"email": "unproven@example.com", "password": "unproven pass 1", "agree": True}, xff="198.51.102.4", port=CAP2PORT)
+    ujar = cookie_named(ucks, "uaply_sandbox_session")
+    t("...and an account nobody proved yet (anyone can open one) gets no pass for Resend", (s, (req("POST", "/api/auth/resend", {}, xff="198.51.102.4", cookie=ujar, port=CAP2PORT)[1] or {}).get("code")),
+      (200, "code_busy"))
+
 finally:
     for p in PROCS:
         try:

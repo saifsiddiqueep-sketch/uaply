@@ -29,6 +29,10 @@ var CSS=".rsBox{border:1px dashed var(--accent);border-radius:16px;padding:14px;
 
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
 function month(v){var m=/^(\d{4})-(\d{2})$/.exec(v||"");return m?MON[+m[2]-1]+" "+m[1]:v}
+/* a month field takes "2023-09" only: a year alone or "present" is left for the person ("Leave it blank if you still work there") */
+function ym(v){return /^\d{4}-(0[1-9]|1[0-2])$/.test(v||"")}
+/* still studying: the resume's graduation (expected) month is this month or later */
+function student(F){var g=(F.grad||{}).value||"",n=new Date(),now=n.getFullYear()+"-"+("0"+(n.getMonth()+1)).slice(-2);return /^\d{4}-\d{2}$/.test(g)&&g>=now}
 function when(v){if(v==="present")return "now";var m=/^(\d{4})-(\d{2})$/.exec(v||"");return m?MON[+m[2]-1]+" "+m[1]:(v||"")}
 function norm(k,v){
   v=String(v==null?"":v).trim().toLowerCase();
@@ -49,7 +53,13 @@ function apply(w){
     {k:"email",label:"Email",id:"pEmail"},
     {k:"phone",label:"Phone",id:PX?"px-phone":"pPhone",twin:PX?"pPhone":""},
     {k:"headline",label:"Headline",id:"px-headline"},
-    {k:"job_title",label:"Current or target title",id:"pTitle",sample:true},
+    /* the target title drives which jobs show (Hide roles that do not match my target titles). A student's latest job is often a
+       part-time one ("Barista and Shift Lead"), not what they want next: it becomes the target title only for someone who has
+       graduated, or when it is an internship or co-op */
+    {k:"job_title",label:"Current or target title",id:"pTitle",sample:true,when:function(v,F){return !student(F)||/\b(intern|internship|co-?op)\b/i.test(v)}},
+    {k:"job_title",label:"Your job title there",id:"px-job_title"},
+    {k:"job_start",label:"Started",id:"px-job_start",show:month,when:ym},
+    {k:"job_end",label:"Ended",id:"px-job_end",show:month,when:ym},
     {k:"summary",label:"About you",id:PX?"px-summary":"aSummary",twin:PX?"aSummary":""},
     {k:"linkedin",label:"LinkedIn",id:PX?"px-linkedin":"aLinked",twin:PX?"aLinked":""},
     {k:"portfolio",label:"Portfolio or GitHub",id:PX?"px-portfolio":"aSite",twin:PX?"aSite":""},
@@ -114,6 +124,7 @@ function apply(w){
     var rows=[],filled=0,differ=0;
     MAP.forEach(function(m){
       var got=valueOf(m,F);if(!got)return;
+      if(m.when&&!m.when(got.v,F))return;
       var now=cur(m);if(now===null)return;   /* no place for it in this build of the profile */
       var row={m:m,v:got.v,f:got.f,state:""};
       if(m.k==="skills"){

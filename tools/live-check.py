@@ -7,6 +7,10 @@ Options:
   --google-host HOST    where "Continue with Google" must send the browser (default accounts.google.com; the test suite's stand-in Google
                         runs on 127.0.0.1)
   --no-rate-limit       leave out the six wrong logins that prove the sign-in lock-out still answers
+  --shields LISTDIR     also checks the site the way Brave Shields sees it: every UAply address the app loads (pages, scripts, /api paths,
+                        images) against the ad-block filter lists in LISTDIR (EasyList, EasyPrivacy, uBlock filters, brave/adblock-lists:
+                        plain .txt files), in Brave's standard mode (third-party only) and aggressive mode (first-party too), through
+                        `node tools/shields.js`; and that the sign-in cookie is first-party (SameSite=Lax, Path=/, Secure on https).
 Every line is PASS, FAIL or SKIP (needs ...). The exit code is 1 when any line is FAIL. Standard library only.
 
 What it never does: sign up, sign in, swipe, send email to anyone, open a payment, or read a key. The wrong logins use a made-up address
@@ -24,6 +28,13 @@ import sys
 import time
 import urllib.parse
 
+# job and company names come from thousands of boards ("Tōkyō", "Zürich"): print them as UTF-8 and never crash on a console or a pipe
+# whose code page lacks a letter (Windows' cp1252 raised UnicodeEncodeError on "ō" and "ē" in the October 21 and 22 full runs)
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except (AttributeError, ValueError):
+    pass
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
@@ -31,8 +42,11 @@ ap.add_argument("--base", required=True, help="the site's address, e.g. https://
 ap.add_argument("--expect", default="", help="comma list of features that must be on: email, google, payments, persistent (or all)")
 ap.add_argument("--google-host", default="accounts.google.com")
 ap.add_argument("--no-rate-limit", action="store_true")
+ap.add_argument("--shields", default="", help="folder of ad-block filter lists (.txt): check no UAply address is blocked (Brave Shields)")
 ap.add_argument("--branch", default="dev", help="the branch the site deploys from; its head on GitHub must be the commit the site runs (default dev)")
 ap.add_argument("--commit", default="", help="the commit the site must run, instead of asking GitHub for the head of --branch")
+ap.add_argument("--repo", default="https://github.com/saifsiddiqueep-sketch/uaply",
+                help="the GitHub repository the site deploys from; its --branch head is read there (git ls-remote), never from a local clone")
 ap.add_argument("--timeout", type=float, default=60)
 A = ap.parse_args()
 
@@ -58,7 +72,8 @@ def t(name, ok, extra=""):
 
 
 def skip(name, needs):
-    line("SKIP", name + " (needs " + needs + ")")
+    """A check that cannot run here, with its reason on the same line ("skipped: needs ..."), so a report can quote every skip."""
+    line("SKIP", name, "skipped: needs " + " ".join(str(needs).split()))
 
 
 def off(feature, name, needs):
@@ -97,8 +112,15 @@ def req(method, path, body=None, headers=None, raw=None):
         conn.close()
 
 
-def get_json(path):
-    s, h, b = req("GET", path)
+# Saif, October 22: nobody reaches site data without an account. Signed out, the job list and the help chat answer 401 "Sign in first.";
+# their contents are checked only with a signed-in session given in UAPLY_LIVE_COOKIE ("uaply_dev_session=..." from a browser that is
+# signed in: never written into a file or a chat). This check itself never signs up or signs in.
+SIGNIN_FIRST = {"error": "Sign in first.", "code": "signin"}
+LIVE_COOKIE = os.environ.get("UAPLY_LIVE_COOKIE", "").strip()
+
+
+def get_json(path, headers=None):
+    s, h, b = req("GET", path, headers=headers)
     try:
         return s, h, json.loads(b.decode("utf-8"))
     except ValueError:
@@ -168,7 +190,7 @@ def status():
     s, _, j = get_json("/api/status")
     if s == 200 and isinstance(j, dict) and j.get("ok") is True:
         STATUS.update(j, source="/api/status")
-        odd = {k: v for k, v in j.items() if not (isinstance(v, bool) or v is None or (k == "commit" and isinstance(v, str) and re.fullmatch(r"[0-9a-f]{7}", v)))}
+        odd = {k: v for k, v in j.items() if k not in ("apply", "questions", "selfCheck") and not (isinstance(v, bool) or v is None or (k == "commit" and isinstance(v, str) and re.fullmatch(r"[0-9a-f]{7}", v)))}
         t("/api/status answers with yes/no facts only (and the deployed commit's short id)", not odd, "a value that is not yes/no: %r" % odd)
         return
     # an older server (before /api/status): the same facts from the endpoints the app already reads
@@ -183,6 +205,46 @@ def status():
 
 
 safe(status, "what is switched on")
+
+
+# ---------- the apply engine (tools/test-swipe-e2e.py proves every path locally; this proves the live one is up) ----------
+def owner_questions():
+    """The question types employers' forms asked, which /api/status shows only to the owner (this computer, or OWNER_PASSWORD)."""
+    qs = STATUS.get("questions")
+    if qs is None:
+        info("question types asked: shown only to the owner (not on a public server without the owner password)")
+        return
+    ok = isinstance(qs, dict) and isinstance(qs.get("asked"), int) and isinstance(qs.get("kinds"), dict) and isinstance(qs.get("top"), list) and \
+        all(isinstance(x, dict) and set(x) <= {"key", "kind", "n", "postings", "systems"} for x in qs["top"])
+    t("/api/status questions (owner only): counts by kind and the most-asked question keys, nothing else", ok, repr(qs)[:200])
+    info("question types asked so far: %s in all, by kind %s" % (qs.get("asked"), qs.get("kinds")))
+
+
+safe(owner_questions, "the question types asked")
+
+
+def apply_engine():
+    ap = STATUS.get("apply")
+    if not isinstance(ap, dict):
+        skip("the apply engine in /api/status", "a deploy of the commit that adds /api/status apply")
+        return
+    cl, cf = ap.get("classes") or {}, ap.get("configured") or {}
+    shape = isinstance(ap.get("ok"), bool) and ap.get("mode") in ("test", "live") and all(isinstance(cl.get(k), int) for k in ("ats", "email", "webhook", "handoff")) \
+        and all(isinstance(cf.get(k), bool) for k in ("ats", "email", "webhook", "handoff"))
+    t("/api/status apply holds only a yes/no, the delivery mode and job counts (no employer, address or key)", shape and set(ap) == {"ok", "mode", "classes", "configured"}, repr(ap)[:200])
+    t("the apply engine is healthy (its records folder is writable)", ap.get("ok") is True, repr(ap)[:200])
+    info("apply: delivery %s | jobs that go straight into a hiring system %s, by email %s, by webhook %s, hand-off %s"
+         % (ap.get("mode"), cl.get("ats"), cl.get("email"), cl.get("webhook"), cl.get("handoff")))
+    names = {"ats": "straight into a connected hiring system", "email": "by email to an employer who agreed", "webhook": "by an employer's webhook",
+             "handoff": "the hand-off (finish on the employer's site)"}
+    for k in ("ats", "email", "webhook", "handoff"):
+        if cf.get(k):
+            t("at least one listed job applies %s (it is configured)" % names[k], (cl.get(k) or 0) >= 1, "0 jobs of this class are listed")
+        else:
+            skip("a listed job that applies %s" % names[k], "an employer who connected it")
+
+
+safe(apply_engine, "the apply engine")
 if STATUS:
     def yn(v):
         return "unknown" if v is None else ("on" if v else "off")
@@ -223,10 +285,12 @@ def deployed():
     want, where = (A.commit or "").strip().lower(), "--commit"
     if not want:
         try:
-            out = subprocess.run(["git", "ls-remote", "origin", "refs/heads/" + A.branch], cwd=ROOT, capture_output=True, text=True, timeout=30).stdout
-            want, where = (out.split() or [""])[0], "origin/" + A.branch
+            # GitHub itself, not this checkout's "origin": a clone of a clone has the computer's own copy as origin, whose dev can be
+            # days old (October 22: a local dev at 0b38ade while GitHub's dev and the live site were both e6aced4)
+            out = subprocess.run(["git", "ls-remote", A.repo, "refs/heads/" + A.branch], cwd=ROOT, capture_output=True, text=True, timeout=30).stdout
+            want, where = (out.split() or [""])[0], "GitHub " + A.branch
         except (OSError, subprocess.SubprocessError) as e:
-            skip("the site runs the latest push to %s" % A.branch, "git and this repository's GitHub remote (%s), or --commit SHA" % type(e).__name__)
+            skip("the site runs the latest push to %s" % A.branch, "git and the GitHub repository (%s), or --commit SHA" % type(e).__name__)
             return
     if not re.fullmatch(r"[0-9a-f]{7,40}", want):
         skip("the site runs the latest push to %s" % A.branch, "the head of %s from GitHub (git ls-remote gave nothing), or --commit SHA" % where)
@@ -242,8 +306,13 @@ safe(deployed, "the deployed commit")
 
 # ---------- the job list ----------
 def jobs():
-    t0 = time.time()
     s, _, j = get_json("/api/jobs")
+    t("signed out, /api/jobs asks for an account (401 Sign in first.)", (s, j) == (401, SIGNIN_FIRST), "%s %r" % (s, j))
+    if not LIVE_COOKIE:
+        skip("the job list's contents", "a signed-in session in UAPLY_LIVE_COOKIE")
+        return
+    t0 = time.time()
+    s, _, j = get_json("/api/jobs", headers={"Cookie": LIVE_COOKIE})
     took = time.time() - t0
     if not t("/api/jobs answers with a job list", s == 200 and isinstance(j, dict) and isinstance(j.get("jobs"), list), "%s" % s):
         return
@@ -440,8 +509,15 @@ safe(payments, "Plan and billing")
 def help_and_apply():
     s, _, b = req("POST", "/api/chat", {"messages": [{"role": "user", "content": "How do I apply?"}]})
     j = json.loads(b.decode("utf-8")) if b else {}
-    src = [x.get("id") for x in (j.get("sources") or [])]
-    t("the help assistant answers \"How do I apply?\" from its swipe-right article", s == 200 and bool(j.get("answer")) and "swipe-right" in src, "%s %r" % (s, (j.get("answer") or j.get("error") or "")[:100]))
+    t("signed out, the help chat asks for an account (401 Sign in first.)", (s, j) == (401, SIGNIN_FIRST), "%s %r" % (s, j))
+    if LIVE_COOKIE:
+        s, _, b = req("POST", "/api/chat", {"messages": [{"role": "user", "content": "How do I apply?"}]}, headers={"Cookie": LIVE_COOKIE})
+        j = json.loads(b.decode("utf-8")) if b else {}
+        src = [x.get("id") for x in (j.get("sources") or [])]
+        t("the help assistant answers \"How do I apply?\" from its swipe-right article", s == 200 and bool(j.get("answer")) and "swipe-right" in src,
+          "%s %r" % (s, (j.get("answer") or j.get("error") or "")[:100]))
+    else:
+        skip("the help assistant's answer", "a signed-in session in UAPLY_LIVE_COOKIE")
     _, _, c = get_json("/api/apply/config")
     c = c or {}
     t("/api/apply/config answers with the delivery mode", c.get("mode") in ("test", "live"), repr(c))
@@ -449,6 +525,34 @@ def help_and_apply():
 
 
 safe(help_and_apply, "help and apply settings")
+
+# ---------- Brave Shields: filter lists and the sign-in cookie ----------
+SHIELD_URLS = ["/", "/legal/terms.html", "/legal/support.html", "/prod-index.html", "/help/articles.json", "/favicon-32.png?v=2", "/favicon-192.png?v=2",
+               "/apple-touch-icon.png?v=2"] + ["/uaply-%s.js" % n for n in ("nav", "live", "profile", "chat", "learn", "envs")] + [
+               "/api/" + n for n in ("auth/me", "auth/providers", "auth/signup", "auth/login", "auth/logout", "auth/verify", "auth/google/start",
+                                     "billing/status", "billing/checkout", "billing/portal", "apply", "apply/config", "decision", "jobs", "profile",
+                                     "feedback", "chat", "chat/config", "status")] + ["/outbox", "/feedback"]
+
+
+def shields():
+    kind = lambda u: "script" if u.endswith(".js") else "image" if ".png" in u else "document" if u in ("/", "/legal/support.html", "/outbox") else \
+        "subdocument" if u.startswith("/legal/") else "xmlhttprequest"
+    lst = [[BASE + u, kind(u)] for u in SHIELD_URLS]
+    here = os.path.dirname(os.path.abspath(__file__))
+    r = subprocess.run(["node", os.path.join(here, "shields.js"), A.shields, "-", "x", BASE + "/"], input=json.dumps(lst), capture_output=True, text=True, timeout=900)
+    rows = [json.loads(x) for x in r.stdout.splitlines() if x.startswith("{")]
+    t("shields: the filter lists were read (%d addresses checked)" % len(rows), r.returncode == 0 and len(rows) == len(lst), (r.stderr or "")[-200:])
+    for mode in ("standard", "aggressive"):
+        bad = [x["url"] + " by " + x[mode] for x in rows if x[mode]]
+        t("shields (%s mode): no UAply address is blocked by any filter rule" % mode, not bad, " | ".join(bad[:4]))
+    s2, h, _ = req("POST", "/api/auth/logout", {})
+    ck = h.get("set-cookie", "")
+    t("shields: the sign-in cookie is first-party: HttpOnly, SameSite=Lax, Path=/" + (", Secure" if HTTPS else ""),
+      bool(ck) and "SameSite=Lax" in ck and "Path=/" in ck and "HttpOnly" in ck and (not HTTPS or "Secure" in ck), "%s %r" % (s2, ck[:160]))
+
+
+if A.shields:
+    safe(shields, "Brave Shields")
 
 print("\n%d passed, %d failed, %d skipped" % (COUNT["PASS"], COUNT["FAIL"], COUNT["SKIP"]))
 print("%d / %d" % (COUNT["PASS"], COUNT["PASS"] + COUNT["FAIL"]))

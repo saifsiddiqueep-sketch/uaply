@@ -2,6 +2,7 @@
 // nothing may execute and no injected element may appear.
 //   W=390 H=844 PORT=18795 node tools/cdp.js tools/ui-inject.js
 const PORT = process.env.PORT || "18795";
+const gateSignup = require("./gate-signup.js");   // the test person signs up first (Saif, October 22: no account, no data)
 module.exports = async ({ ev, sleep, nav }) => {
   const F = "document.querySelector('iframe').contentDocument";
   let bad = 0;
@@ -22,15 +23,10 @@ module.exports = async ({ ev, sleep, nav }) => {
   };
   const injected = () => ev("JSON.stringify({xss:window.top.__xss||0,imgs:" + F + ".querySelectorAll('img[src=x]').length,svgs:" + F + ".querySelectorAll('svg[onload]').length,scripts:[..." + F + ".querySelectorAll('script')].filter(s=>/__xss/.test(s.textContent)).length,handlers:[..." + F + ".querySelectorAll('*')].filter(e=>e.hasAttribute('onerror')||e.hasAttribute('onload')).length})");
 
+  // an account first, so the application is sent as a signed-in person (and, since October 22, so there is anything to see at all)
+  await gateSignup({ ev, sleep, nav }, "http://127.0.0.1:" + PORT, "inject");
   await nav("http://127.0.0.1:" + PORT + "/");
   await sleep(3500);
-
-  // an account, so the application is sent as a signed-in person
-  await goto("nb-prof", "Account");
-  await sleep(1200);
-  await set("sEmail", "inject.tester@example.com"); await set("sPw", "correct horse 99"); await set("sPw2", "correct horse 99");
-  await ev("(()=>{" + F + ".getElementById('sAgree').checked=true})()");
-  await ev(F + ".querySelector('[data-auth=ssubmit]').click()"); await sleep(2500);
 
   // hostile text in every free-text profile field
   await goto("nb-prof", "Profile setup");
@@ -64,6 +60,17 @@ module.exports = async ({ ev, sleep, nav }) => {
 
   // apply for a job with that profile, then look at Applied and at the owner's test inbox
   await goto("nb-svc", "Full-time");
+  // a resume file, as Profile setup keeps it: hiring systems' forms require one, and without it the application waits ("Not sent yet")
+  await ev("(()=>{const w=" + F + ".defaultView;w.__uaplyResume=function(){return {name:'Inject Tester Resume.pdf',size:40,data:'data:application/pdf;base64,'+btoa('%PDF-1.4 resume for tests %%EOF')}}})()");
+  // a job whose application really goes somewhere: on the sandbox a hiring-system posting (its form is filled and kept in the test inbox),
+  // not a "finish on their site" one, which sends nothing. Since feeds round 2 the top card is often a careers-site posting: pass those
+  // (dev previews no forms, __uaplyFormPreview off: its top card is sent to the test inbox as it is, so nothing is passed there)
+  for (let i = 0; i < 60; i++) {
+    const sendable = await ev("(()=>{const w=" + F + ".defaultView,c=" + F + ".querySelector('.card.top');if(!c||!w.__uaplyFormPreview)return true;const j=w.__uaply.JOBS.find(x=>x.id===+c.getAttribute('data-id'));" +
+      "return !j||!j.live||j.apply==='direct'||!!(j.ats&&/^(greenhouse|lever|ashby|smartrecruiters|workable)$/.test(j.ats.kind))})()");
+    if (sendable) break;
+    await ev(F + ".getElementById('btnNo').click()"); await sleep(250);
+  }
   const appsBefore = await ev("fetch('/api/outbox').then(r=>r.json()).then(j=>j.applications.length)");
   await ev(F + ".getElementById('btnYes').click()"); await sleep(1500);
   await ev("(()=>{const m=" + F + ".getElementById('kcYes');if(m)m.click()})()"); await sleep(3500);

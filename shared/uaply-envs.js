@@ -223,7 +223,7 @@ var FEATURES={
    if(!tips||tips.hidden||w.matchMedia("(prefers-reduced-motion: reduce)").matches)return;
    setTimeout(function(){var c=d.querySelector(".card.top");if(c&&c.animate)c.animate([{transform:"translateX(0)"},{transform:"translateX(30px) rotate(1.6deg)"},{transform:"translateX(-30px) rotate(-1.6deg)"},{transform:"translateX(0)"}],{duration:1100,easing:"ease-in-out"})},700);
  }},
- nav:{name:"Bottom navigation",note:"Bottom bar with three dropdowns: Services (Full-time, Part-time, Internships, Coop), Dashboard (Overview, Applied, Accepted, Rejected, Interviews), Profile (Profile setup, Filters, Account, Plan & billing, Data & privacy). Adds part-time, internship and co-op listings.",patch:function(s){return window.UAplyNav.patch(s)},apply:function(w,host){window.UAplyNav.apply(w,host)}},
+ nav:{name:"Bottom navigation",note:"Bottom bar with three dropdowns: Services (Full-time, Part-time, Internships, Coop), Job Tracker (Overview, Applied, Accepted, Rejected, Interviews), Profile (Profile setup, Filters, Account, Plan & billing, Data & privacy). Adds part-time, internship and co-op listings.",patch:function(s){return window.UAplyNav.patch(s)},apply:function(w,host){window.UAplyNav.apply(w,host)}},
  live:{name:"Real jobs",note:"Loads real, current postings from employers' public job boards (Greenhouse, Lever, Ashby, and any other feed switched on in the server's settings) through this server's back end, hides the made-up examples, and links each card to the original posting. Indeed and ZipRecruiter have no open API, so they are not included.",patch:function(s){return window.UAplyLive.patch(s)},apply:function(w,host){return window.UAplyLive.apply(w,host)}},
  kit:{name:"Apply assistant",note:"After a swipe right on a real posting: a ready-to-send note, Copy, an email draft (opens your mail app; you press send) and a button to the employer's application page. UAply cannot submit applications itself.",patch:function(s){return window.UAplyLive.kit.patch(s)},apply:function(w,host){window.UAplyLive.kit.apply(w,host)}},
  submit:{name:"Send applications",note:"Swipe right sends the application through this server: in test mode to a simulated recruiter inbox (nothing leaves this computer, see /outbox), in live mode by email to the recruiter after you review and press Send. Swipe left only records a pass; nothing is sent. Needs Bottom navigation, Real jobs and Apply assistant, which turn on with it.",apply:function(w,host){return window.UAplyLive.submit.apply(w,host)}},
@@ -273,18 +273,52 @@ function build(on,key){
     return {src:src,err:err};
   });
 }
+/* The bottom safe area (an iPhone's home indicator) reaches the app only through this page: inside the frame env(safe-area-inset-bottom)
+   reads 0. This page reads it with a hidden probe and hands the frame the part it does not already leave free below the frame (the
+   sandbox's app mode pads its stage), as --sab on the frame's root. 0 wherever the browser reports no inset (most pages, every computer). */
+function syncSafeArea(frame){
+  var d=document,p=d.getElementById("uaSafeProbe");
+  if(!p&&d.body){p=d.createElement("div");p.id="uaSafeProbe";p.setAttribute("aria-hidden","true");
+    p.style.cssText="position:fixed;left:0;bottom:0;width:0;height:0;overflow:hidden;visibility:hidden;pointer-events:none;padding-bottom:env(safe-area-inset-bottom,0px)";d.body.appendChild(p)}
+  function set(){
+    try{
+      var inset=p?parseFloat(getComputedStyle(p).paddingBottom)||0:0,below=Math.max(0,window.innerHeight-frame.getBoundingClientRect().bottom);
+      var root=frame.contentDocument&&frame.contentDocument.documentElement;
+      if(root)root.style.setProperty("--sab",Math.max(0,Math.round(inset-below))+"px");
+    }catch(e){}
+  }
+  set();
+  /* once per frame: a reload (the sandbox's experiment switches) reuses the same listeners, which read the new document each time */
+  if(!frame.__uaSafe){frame.__uaSafe=true;window.addEventListener("resize",set);window.addEventListener("orientationchange",set)}
+}
 /* Load the patched copy into frame. `on` = {featureKey:true}. `key` = this instance's own localStorage key. */
 function run(frame,on,key,done){
   if(on.submit)on=Object.assign({},on,{nav:true,live:true,kit:true});   /* sending applications needs these three */
   if(on.profile)on=Object.assign({},on,{nav:true});                     /* the profile fields live in the navigation's Profile sections */
   if(on.resume)on=Object.assign({},on,{nav:true});                      /* Fill from your resume sits on Profile setup's Background and links step */
+  if(on.signup)on=Object.assign({},on,{nav:true});                      /* sign-up v2: its card lives on the navigation's Account screen */
+  if(on.share)on=Object.assign({},on,{nav:true,live:true});             /* Share this job (shared/uaply-share.js): shares real postings, reads the job list */
   return build(on,key).then(function(b){
-    frame.onload=function(){
-      var w=frame.contentWindow;w.__uaplyKey=key;
+    /* the features go on as soon as the app's page is parsed (DOMContentLoaded), not at its load event: "load" also waits for every
+       font and image, and a slow fonts.googleapis.com held back the agreement box, the live jobs and the navigation for up to 20 s.
+       The load event stays as the fallback; whichever comes first applies them, once per page. A page the app reloads itself (Data &
+       privacy, Delete everything) is a new document, so its load event applies them again, as before. */
+    var old=frame.contentDocument,doneDoc=null,tries=0,token=frame.__uaplyRun=(frame.__uaplyRun||0)+1;
+    function go(){
+      if(frame.__uaplyRun!==token)return true;          /* a newer run (the sandbox's controls) owns the frame now */
+      var w=frame.contentWindow,doc=frame.contentDocument;
+      if(!w||!doc||doc===old||doc.readyState==="loading")return false;
+      if(doc===doneDoc)return true;
+      doneDoc=doc;w.__uaplyKey=key;
+      syncSafeArea(frame);
       ORDER.forEach(function(k){if(on[k]&&FEATURES[k].apply){try{FEATURES[k].apply(w,document)}catch(e){b.err+=FEATURES[k].name+": "+e.message+". "}}});
       if(done)done(b.err);
-    };
+      return true;
+    }
+    function poll(){if(go()!==false)return;if(tries++<1500)setTimeout(poll,20)}   /* up to 30 s; then the load event below */
+    frame.onload=function(){go()};
     frame.srcdoc=b.src;
+    setTimeout(poll,0);
   });
 }
 window.UAplyEnv={FEATURES:FEATURES,ORDER:ORDER,run:run};

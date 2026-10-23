@@ -49,7 +49,8 @@ cookie = h.get("set-cookie", "")
 t("session cookie is HttpOnly, Secure and SameSite=Lax", all(x in cookie for x in ("HttpOnly", "Secure", "SameSite=Lax")), True)
 t("HSTS header is sent over HTTPS", "strict-transport-security" in h, True)
 t("no-sniff and frame protection headers are sent", "x-content-type-options" in h and h.get("x-frame-options") == "SAMEORIGIN", True)
-t("CSP: only this site may frame it, no plugins, no <base> elsewhere", h.get("content-security-policy"), "frame-ancestors 'self'; object-src 'none'; base-uri 'self'")
+t("CSP: only this site may frame it, no plugins, no <base> elsewhere, and the web manifest and service worker come only from this site",
+  h.get("content-security-policy"), "frame-ancestors 'self'; object-src 'none'; base-uri 'self'; manifest-src 'self'; worker-src 'self'")
 t("Permissions-Policy switches off camera, microphone, USB and the payment API (location is left to the app's own prompt)",
   h.get("permissions-policy"), "camera=(), microphone=(), usb=(), payment=()")
 t("the Server header names no Python version (Render passes it on as x-render-origin-server)", h.get("server"), "UAply")
@@ -59,7 +60,7 @@ t("a cross-site sign-up is refused", req("POST", "/api/auth/signup", {"email": "
                                          headers={"Origin": "https://evil.example"})[0], 403)
 t("a request with no Origin is refused", req("POST", "/api/auth/login", {"email": "a@b.co", "password": "x"}, origin=False)[0], 403)
 
-for path in ("/outbox", "/api/outbox", "/feedback", "/setup"):
+for path in ("/outbox", "/api/outbox", "/feedback", "/setup", "/api/feed-health"):
     t("%s needs the owner password" % path, req("GET", path)[0], 401)
     t("%s refuses a wrong password" % path, req("GET", path, headers=auth("nope"))[0], 401)
     t("%s opens with the owner password" % path, req("GET", path, headers=auth("ownerpw"))[0], 200)
@@ -120,7 +121,9 @@ t("the server still answers after those", req("GET", "/healthz")[0], 200)
 home = req("GET", "/")[2]
 for p in ("/..%5Cserve.py", "/..%5C..%5Cserve.py/", "/%5C..%5Cuaply-config.json"):
     s, _, body = req("GET", p)
-    t("backslash path %s serves no source or settings" % p, s in (301, 404) or (s == 200 and body == home), True)
+    # the app's own page is all such a path may get (the home page as sent, or the same file with its plain script names)
+    page = re.sub(rb'(uaply-[a-z]+)\.[0-9a-f]{10}\.js', rb'\1.js', home)
+    t("backslash path %s serves no source or settings" % p, s in (301, 404) or (s == 200 and body in (home, page)), True)
 
 # a public server with no email login must say so, not promise a link it cannot send (tools/test-smtp.py covers real sending)
 s, h, body = req("POST", "/api/auth/forgot", {"email": "pub1@example.com"})
@@ -133,10 +136,60 @@ t("no reset link was created or stored", "?reset=" not in page.replace("&amp;", 
 s, _, body = req("GET", "/api/status")
 st = json.loads(body)
 t("/api/status answers with yes/no facts only (and the deployed commit's short id, or null off Render)",
-  (s, all(isinstance(v, bool) or v is None for k, v in st.items() if k != "commit"), st.get("commit") is None or bool(re.fullmatch(r"[0-9a-f]{7}", st["commit"]))),
+  (s, all(isinstance(v, bool) or v is None for k, v in st.items() if k not in ("commit", "apply")), st.get("commit") is None or bool(re.fullmatch(r"[0-9a-f]{7}", st["commit"]))),
   (200, True, True))
+ap = st.get("apply") or {}
+t("/api/status apply: only a yes/no, the delivery mode and job counts per way of applying",
+  (sorted(ap), isinstance(ap.get("ok"), bool), ap.get("mode") in ("test", "live"), all(isinstance(v, int) for v in (ap.get("classes") or {}).values()),
+   all(isinstance(v, bool) for v in (ap.get("configured") or {}).values()), sorted(ap.get("classes") or {})),
+  (["classes", "configured", "mode", "ok"], True, True, True, True, ["ats", "email", "handoff", "webhook"]))
+t("/api/status shows the question types employers asked only to the owner", ("questions" in st, "questions" in json.loads(req("GET", "/api/status", headers=auth("ownerpw"))[2])), (False, True))
 t("/api/status says what this server has on (public, owner pages on, email off)", (st.get("public"), st.get("ownerPages"), st.get("email")), (True, True, False))
 t("/api/status holds no secret or folder name", any(x in body.decode() for x in ("ownerpw", "uaply-", "/", "\\\\")), False)
+
+# the job list is sent gzip-compressed to a browser that takes it, plain otherwise; the owner's feed health lists every source
+import gzip  # noqa: E402
+# nobody reaches site data without an account (Saif, October 22): signed out, every data route answers 401 "Sign in first."
+SIGNIN = {"error": "Sign in first.", "code": "signin"}
+gated = [("GET", "/api/jobs", None), ("GET", "/api/employer/logo/1", None)] + [("POST", p_, {"x": 1}) for p_ in (
+    "/api/apply", "/api/apply/plan", "/api/apply/mark", "/api/decision", "/api/chat", "/api/feedback", "/api/profile/resume",
+    "/api/employer/company", "/api/employer/job", "/api/employer/job/status", "/api/employer/applicant", "/api/employer/import")]
+outs = [(m_, p_, req(m_, p_, b_)) for m_, p_, b_ in gated]
+t("signed out, every route with job data or a person's data answers 401 'Sign in first.' (code signin)",
+  [(m_, p_) for m_, p_, r_ in outs if (r_[0], json.loads(r_[2] or b"{}")) != (401, SIGNIN)], [])
+t("...and so does a session that is not valid", req("GET", "/api/jobs", headers={"Cookie": "uaply_dev_session=" + "x" * 43})[0], 401)
+opened = {p_: req("GET", p_)[0] for p_ in ("/", "/healthz", "/api/status", "/api/auth/me", "/api/auth/providers", "/api/apply/config", "/api/chat/config",
+                                         "/api/billing/status", "/legal/terms.html", "/help/articles.json", "/uaply-sw.js", "/uaply.webmanifest", "/uaply-offline.html")}
+t("...while the page, its files, help, legal, the health check and the sign-in routes stay open", [p_ for p_, s_ in opened.items() if s_ != 200], [])
+t("...and the sign-in itself stays open: sign-up and sign-in answer without a session",
+  (req("POST", "/api/auth/login", {"email": "nobody.here@example.com", "password": "not the one 1"})[0], req("POST", "/api/auth/forgot", {"email": "x@example.com"})[0]),
+  (401, 200))
+JAR = {"Cookie": cookie.split(";", 1)[0]}                         # the session of the sign-up at the top
+s0, _, b0 = req("GET", "/api/jobs", headers=JAR)
+t("...a session whose address is not confirmed yet answers 403 'Confirm your email first.' (code verify)", (s0, json.loads(b0 or b"{}")),
+  (403, {"error": "Confirm your email first.", "code": "verify"}))
+import time  # noqa: E402
+code_ = ""
+for _ in range(60):                     # this server sends no email: the code is in the owner's test inbox, emailed just after the answer
+    page_ = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", req("GET", "/outbox", headers=auth("ownerpw"))[2].decode("utf-8", "replace")))
+    m_ = re.search(r"([0-9]{6}) is your UAply verification code to pub1@example\.com", page_)
+    if m_:
+        code_ = m_.group(1)
+        break
+    time.sleep(0.1)
+t("...and once its code is typed, the same session reaches the job list", (req("POST", "/api/auth/verify", {"code": code_}, headers=JAR)[0],
+                                                                         req("GET", "/api/jobs", headers=JAR)[0]), (200, 200))
+s1, h1, b1 = req("GET", "/api/jobs", headers=dict(JAR, **{"Accept-Encoding": "gzip, deflate, br"}))
+s2, h2, b2 = req("GET", "/api/jobs", headers=JAR)
+plain = json.loads(b2)
+t("/api/jobs: compressed for a browser that takes gzip, the same list as the plain answer",
+  (s1, h1.get("content-encoding"), json.loads(gzip.decompress(b1))["sources"] == plain["sources"] if h1.get("content-encoding") == "gzip" else None, s2, h2.get("content-encoding")),
+  (200, "gzip", True, 200, None))
+t("/api/jobs says how many sources are still loading (the app asks again while any are)", isinstance(plain.get("pending"), int), True)
+fh = json.loads(req("GET", "/api/feed-health", headers=auth("ownerpw"))[2])
+t("/api/feed-health (owner): every source with its count, successes, failures and whether it is switched off",
+  (fh.get("count", 0) > 50, sorted(fh["sources"][0]) if fh.get("sources") else None),
+  (True, ["applyPath", "checkKinds", "checkPages", "checkSampled", "error", "failures", "formKind", "humanCheck", "inARow", "jobs", "lastError", "lastOk", "links", "ms", "name", "off", "ok", "retry", "route", "source", "status", "withCheck"]))
 
 print(sum(R), "/", len(R))
 sys.exit(0 if all(R) else 1)

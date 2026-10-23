@@ -8,16 +8,47 @@
 (function(){
 function once(src,a,b){if(src.indexOf(a)<0)throw new Error("patch target not found: "+a.slice(0,40));return src.replace(a,function(){return b})}
 var MAX_CACHE=400,MAX_AGE=30*24*3600*1000;
+/* Job Tracker keeps (October 22, 2026): every application up to MAX_APPLIED and the newest MAX_PASSED passes (the oldest passes go first:
+   such a job may come back to the deck, nothing else is lost). Each swipe carries a short copy of its row ("row": title, company, place,
+   link, kind), so the row stays in Job Tracker after the job leaves the feed or the saved copy below; a swiped job's saved copy never
+   ages out. Before, a saved copy older than MAX_AGE, or past the 400 newest swiped ones (passes counted), took its row with it. */
+var MAX_APPLIED=2000,MAX_PASSED=1000;
+function rowOf(j){return {t:String(j.role||"").slice(0,160),c:String(j.co||"").slice(0,120),l:String(j.loc||"").slice(0,120),u:/^https:\/\//.test(j.url||"")?String(j.url).slice(0,600):"",ty:String(j.type||"job").slice(0,12),m:String(j.mode||"").slice(0,10)}}
+/* the oldest passes beyond MAX_PASSED, and the oldest applications beyond MAX_APPLIED, are let go; true when something was */
+function trimDecisions(S){
+  if(!S||!S.decisions)return false;
+  var ks=Object.keys(S.decisions),gone={},n=0;
+  ["passed","applied"].forEach(function(st){
+    var cap=st==="passed"?MAX_PASSED:MAX_APPLIED,mine=ks.filter(function(k){var x=S.decisions[k];return x&&(st==="passed"?x.s==="passed":x.s!=="passed")});
+    if(mine.length<=cap)return;
+    mine.sort(function(a,b){return (+S.decisions[a].at||0)-(+S.decisions[b].at||0)}).slice(0,mine.length-cap).forEach(function(k){delete S.decisions[k];gone[k]=1;n++});
+  });
+  if(n&&Array.isArray(S.history))S.history=S.history.filter(function(id){return !gone[id]});
+  return n>0;
+}
 
 function cacheKey(){return (window.__uaplyBuildKey||"hireswipe")+".live"}
 function readCache(){
   try{
     var c=JSON.parse(localStorage.getItem(cacheKey()));
     if(!c||!Array.isArray(c.jobs))return [];
-    return c.jobs.filter(function(j){return j&&j.id>=100000&&Date.now()-(j.seen||0)<MAX_AGE});
+    /* a swiped job never ages out: marked kept when saved, or (a copy saved before October 22) found among the saved swipes */
+    var dec={};try{dec=(JSON.parse(localStorage.getItem(window.__uaplyBuildKey||"hireswipe"))||{}).decisions||{}}catch(e){}
+    return c.jobs.filter(function(j){return j&&j.id>=100000&&(j.kept||dec[j.id]||Date.now()-(j.seen||0)<MAX_AGE)});
   }catch(e){return []}
 }
-function writeCache(jobs){try{localStorage.setItem(cacheKey(),JSON.stringify({jobs:jobs.slice(-MAX_CACHE)}))}catch(e){}}
+/* the saved copy of the job list: every job the person swiped on first (their Applied and Passed rows need the job itself, even after it
+   leaves the feed), then the newest of the rest, MAX_CACHE in all. Keeping only the last MAX_CACHE of the list lost the swiped ones as
+   soon as the feed passed 400 postings (it is over 1,000 now). */
+function writeCache(jobs,decided){
+  jobs=jobs.filter(function(j){return j&&!j.stub});
+  var keep=decided?jobs.filter(function(j){return decided[j.id]}):[],rest=decided?jobs.filter(function(j){return !decided[j.id]}):jobs;
+  /* applications before passes, newest last; a full copy dropped here still has its row in the swipe itself (rowOf) */
+  var rank=function(j){var x=decided[j.id];return (x.s==="passed"?0:1e15)+(+x.at||0)};
+  keep.sort(function(a,b){return rank(a)-rank(b)});
+  keep=keep.slice(-MAX_CACHE);keep.forEach(function(j){j.kept=1});rest.forEach(function(j){if(j.kept)delete j.kept});
+  try{localStorage.setItem(cacheKey(),JSON.stringify({jobs:keep.concat(rest.slice(-Math.max(0,MAX_CACHE-keep.length)))}))}catch(e){}
+}
 
 /* ---------------- live ---------------- */
 function patch(s){
@@ -25,17 +56,29 @@ function patch(s){
   var extra=cached.length?","+JSON.stringify(cached).slice(1,-1).replace(/<\//g,"<\\/"):"";
   s=once(s,'regional cookbooks."}','regional cookbooks."}'+extra);
   s=once(s,"var JOB_BY_ID={};JOBS.forEach(function(j){JOB_BY_ID[j.id]=j});",
-    "var JOB_BY_ID={};JOBS.forEach(function(j){JOB_BY_ID[j.id]=j});\nwindow.__uaplyJobs={add:function(list){var n=0;list.forEach(function(j){if(!JOB_BY_ID[j.id]){JOBS.push(j);JOB_BY_ID[j.id]=j;n++}else{var o=JOB_BY_ID[j.id];if(j.posted)o.posted=j.posted;if(j.perks)o.perks=j.perks;if(j.type)o.type=j.type;o.comm=!!j.comm}});renderAll();return n}};\n"+
+    "var JOB_BY_ID={};JOBS.forEach(function(j){JOB_BY_ID[j.id]=j});\nwindow.__uaplyJobs={add:function(list){var n=0;list.forEach(function(j){if(!JOB_BY_ID[j.id]){JOBS.push(j);JOB_BY_ID[j.id]=j;n++}else{var o=JOB_BY_ID[j.id];if(o.stub){for(var f in j)o[f]=j[f];delete o.stub;return}if(j.posted)o.posted=j.posted;if(j.perks)o.perks=j.perks;if(j.type)o.type=j.type;if(j.jobType)o.jobType=j.jobType;o.comm=!!j.comm}});renderAll();return n}};\n"+
     /* Links open as real anchor clicks (a user gesture), which popup blockers accept; window.open can be refused silently. */
     "window.__uaplyOpen=function(u){if(!/^https:\\/\\//.test(u||\"\"))return;var a=document.createElement(\"a\");a.href=u;a.target=\"_blank\";a.rel=\"noopener noreferrer\";document.body.appendChild(a);a.click();a.remove()};");
-  s=once(s,"return !S.decisions[j.id]&&","return !S.decisions[j.id]&&(j.live||!window.__uaplyHideSamples)&&");
+  /* a swipe on a real posting is kept when the page starts, even before the job list arrives (or after the job left the feed): the start-up
+     read used to drop every decision whose job was not in the list yet, and the next save made that loss permanent */
+  s=once(s,'if(JOB_BY_ID[k]&&x&&(x.s==="applied"||x.s==="passed"))','if((JOB_BY_ID[k]||+k>=100000)&&x&&(x.s==="applied"||x.s==="passed"))');
+  s=once(s,"return !S.decisions[j.id]&&","return !S.decisions[j.id]&&!j.stub&&(j.live||!window.__uaplyHideSamples)&&");
+  /* a swipe's own copy of its row (rowOf) is kept at start-up, and a swiped job that is in neither the list nor the saved copy comes back
+     from it as a stand-in ("stub": its row in Job Tracker, never a card on the deck; the real posting replaces it when the list has it) */
+  s=once(s,"S.history=(Array.isArray(d.history)?d.history:[])",
+    'Object.keys(S.decisions).forEach(function(k){var r=d.decisions[k]&&d.decisions[k].row;if(!r||typeof r!=="object")return;'+
+    'var u=String(r.u||"");var row={t:String(r.t||"").slice(0,160),c:String(r.c||"").slice(0,120),l:String(r.l||"").slice(0,120),u:u.indexOf("https://")===0?u.slice(0,600):"",ty:String(r.ty||"job").slice(0,12),m:String(r.m||"").slice(0,10)};'+
+    'S.decisions[k].row=row;if(!JOB_BY_ID[k]&&+k>=100000&&row.t&&row.c){var sj={id:+k,co:row.c,role:row.t,loc:row.l||"Not listed",url:row.u,'+
+    'type:["job","parttime","internship","coop"].indexOf(row.ty)>-1?row.ty:"job",mode:["remote","hybrid","onsite"].indexOf(row.m)>-1?row.m:"onsite",'+
+    'sal:[0,0],yrs:0,edu:"High school",skills:[],blurb:"",live:true,stub:true,source:""};JOBS.push(sj);JOB_BY_ID[k]=sj}});\n    '+
+    "S.history=(Array.isArray(d.history)?d.history:[])");
   s=once(s,"'+money(j.sal[0])+'–'+money(j.sal[1])+'<small>per year</small>","'+(j.sal[1]>0?money(j.sal[0])+'–'+money(j.sal[1])+'<small>per year</small>':'Pay not listed')+'");
   s=once(s,"var salOk=job.sal[1]>=p.salary;","var unk=job.sal[1]<=0;var salOk=unk||job.sal[1]>=p.salary;");
   s=once(s,'s:salOk?1:(sa>=0.9?0.5:0),ask:money(job.sal[0])+" to "+money(job.sal[1])','s:unk?0.5:salOk?1:(sa>=0.9?0.5:0),ask:unk?"Not listed":money(job.sal[0])+" to "+money(job.sal[1])');
   /* every real listing names its source and links to the original; example listings say they are examples */
   s=once(s,"<p class=\"blurb\">'+esc(j.blurb)+'</p>","<p class=\"blurb\">'+esc(j.blurb)+'</p>'+(j.url?'<button type=\"button\" class=\"linkbtn\" data-open=\"'+esc(j.url)+'\">View original posting ↗</button>':'')+(j.live?'<small class=\"note\">Source: '+esc(j.source||'the employer')+'</small>':'<small class=\"note\">Example listing, not a real opening.</small>')+'");
   s=once(s,'toast(dir==="applied"?"Applied to "+job.co+" · "+m.pct+"% match":"Passed on "+job.co,"Undo",undo);',
-    'if(dir==="applied"&&(job.live||window.__uaplyMode==="test")&&window.__uaplyQuiet&&window.__uaplySubmitOn){}else if(dir==="applied"&&job.url&&!window.__uaplyOnApplied){toast("Saved "+job.co+" · "+m.pct+"% match. Finish on their site.","Open",function(){window.__uaplyOpen(job.url)})}else{toast(dir==="applied"?"Saved "+job.co+" to Applied · "+m.pct+"% match"+(window.__uaplyPreview&&window.__uaplyPreview()?". "+window.__uaplyPreviewText:""):"Passed on "+job.co,"Undo",undo)}');
+    'if(dir==="applied"&&(job.live||window.__uaplyMode==="test")&&window.__uaplyQuiet&&window.__uaplySubmitOn){}else{toast(dir==="applied"?"Saved "+job.co+" to Applied · "+m.pct+"% match"+(window.__uaplyPreview&&window.__uaplyPreview()?". "+window.__uaplyPreviewText:""):"Passed on "+job.co,"Undo",undo)}');
   return s;
 }
 
@@ -70,6 +113,9 @@ function apply(w,host){
     try{w.__uaply.renderAll()}catch(e){}
   }
   say("Loading real postings…");
+  /* On a fresh start the server answers within seconds with the boards it has read so far and says how many are still loading
+     ("pending"): the app asks again a few times and adds what came in, so the first visitor never waits for every board. */
+  function loadJobs(round){
   return fetch("/api/jobs").then(function(r){
     /* a plain web host with no UAply server (a 404, or an HTML page): a preview. Show the example jobs and say so; a 5xx stays an outage */
     if(r.status===404||(r.ok&&/text\/html/i.test(r.headers.get("content-type")||""))){var pe=new Error("preview");pe.preview=true;throw pe}
@@ -81,18 +127,32 @@ function apply(w,host){
     if(w.__uaplyRetryPending)setTimeout(w.__uaplyRetryPending,1500);   /* applications that were waiting for a connection */
     var all=readCache(),ids={};all.forEach(function(j){ids[j.id]=1});
     var byId={};fresh.forEach(function(j){byId[j.id]=j;if(!ids[j.id])all.push(j)});
-    all.forEach(function(c){var f=byId[c.id];if(f){c.posted=f.posted;c.perks=f.perks;c.type=f.type;c.comm=!!f.comm;c.via=f.via}});   /* keep saved copies current */
-    writeCache(all);
+    all.forEach(function(c){var f=byId[c.id];if(f){c.posted=f.posted;c.perks=f.perks;c.type=f.type;c.jobType=f.jobType;c.comm=!!f.comm;c.via=f.via}});   /* keep saved copies current */
+    /* swipes made before rows were copied (October 22): each gets its row as soon as its job is in the list or the saved copy */
+    try{var U=w.__uaply,fill=0;if(U&&U.S&&U.S.decisions){all.forEach(function(j){var x=U.S.decisions[j.id];if(x&&!x.row&&!j.stub){x.row=rowOf(j);fill++}});if(fill&&U.save)U.save()}}catch(e){}
+    writeCache(all,(w.__uaply&&w.__uaply.S&&w.__uaply.S.decisions)||null);
     var src=Object.keys(data.sources||{}).map(function(k){return k+": "+data.sources[k]}).join(" · ");
     say("Real postings: "+fresh.length+" loaded ("+added+" new). "+src);
-  }).catch(function(e){w.__uaplyLoadingJobs=false;
+    if(data.pending>0&&round<15){
+      setTimeout(function(){loadJobs(round+1)},round<3?5000:15000);
+      if(fresh.length<5){w.__uaplyLoadingJobs=true;try{w.__uaply.renderAll()}catch(x){}}   /* "Finding jobs for you…", not an empty deck */
+    }
+  }).catch(function(e){if(round>0)return;   /* a later round that fails changes nothing: the jobs already shown stay */
+    w.__uaplyLoadingJobs=false;
     if(e&&e.preview){w.__uaplyPreviewOn=true;w.__uaplyHideSamples=false;w.__uaplyJobsFailed=false;try{w.__uaply.renderAll()}catch(x){}say(w.__uaplyPreviewText||"Preview: example jobs only.");return}
     if(REL)w.__uaplyJobsFailed=true;if(REL){try{w.__uaply.renderAll()}catch(x){}}say(REL?"Could not load jobs ("+e.message+"). Check your connection and try again.":"Could not load real postings ("+e.message+"). Showing the example jobs.")});
+  }
+  /* the sign-in gate (shared/uaply-signup.js): no request for the job list while nobody is signed in; it is asked for once the gate lifts */
+  /* (asked again each time the gate lifts: after a code that confirmed the address, the list that answered 403 "verify" comes now) */
+  if(w.__uaplyGateUp){w.__uaplyLoadJobs=function(){loadJobs(0)};return}
+  return loadJobs(0);
 }
 
 /* ---------------- kit + submit ---------------- */
 function kitPatch(s){
   if(s.indexOf("__uaplyOnDecision")>-1)return s;
+  s=once(s,'var card=$("deck").querySelector(".card.top");if(!card)return;\n  busy=true;',
+    'var card=$("deck").querySelector(".card.top");if(!card)return;\n  if(dir==="applied"&&window.__uaplyReadyGate&&window.__uaplyReadyGate(JOB_BY_ID[+card.getAttribute("data-id")])){card.style.transition="";clearCardStyle(card);return}\n  busy=true;');
   s=once(s,"S.history.push(id);S.tips=false;save();busy=false;renderAll();",
     "S.history.push(id);S.tips=false;save();busy=false;renderAll();if(window.__uaplyOnDecision)window.__uaplyOnDecision(dir,job,m,S.profile,undo,S,save);");
   /* Undo (the button or Z) on an application that already went out: say so, because undo only takes it off the list */
@@ -206,7 +266,7 @@ function kitApply(w,host){
         else if(j.status==="failed"){setStatus(j.error||"The email could not be sent.",true);if(sendBtn)sendBtn.disabled=false;return}
         else setStatus("Done.");
         var rc=j.receipt,au=w.__uaplyAuth?w.__uaplyAuth():null;
-        if(rc)statusEl.textContent+=" "+({sent:"Confirmation emailed to "+rc.to+".",delivered_test:testInboxNote(),not_configured:(isRelease?"":"No confirmation email: email sending is not set up yet."),failed:"The confirmation email to "+rc.to+" could not be sent.",held:"Your confirmation email is queued and will arrive later (UAply's email is busy).",bounced:"No confirmation email: emails to "+rc.to+" bounce back.",unverified:"Verify your email (Profile, Account) to get confirmation emails."}[rc.status]||"");
+        if(rc)statusEl.textContent+=" "+({digest:"The steps to finish it come by email, once a day with any others.",sent:"Confirmation emailed to "+rc.to+".",delivered_test:testInboxNote(),not_configured:(isRelease?"":"No confirmation email: email sending is not set up yet."),failed:"The confirmation email to "+rc.to+" could not be sent.",held:"Your confirmation email is queued and will arrive later (UAply's email is busy).",bounced:"No confirmation email: emails to "+rc.to+" bounce back.",unverified:"Verify your email (Profile, Account) to get confirmation emails."}[rc.status]||"");
         else if(au&&au.up&&!au.user)statusEl.textContent+=" Sign in to get a confirmation email.";
         if(j.status!=="handoff")undoBtn.hidden=true;
         if(sendBtn&&(j.status==="sent"||j.status==="delivered_test"||j.status==="duplicate"))sendBtn.hidden=true;
@@ -262,11 +322,21 @@ function kitApply(w,host){
     var s=d.createElement("span");s.textContent=msg;t.appendChild(s);
     if(action){var b=d.createElement("button");b.type="button";b.textContent=action;b.onclick=fn;t.appendChild(b)}
     d.body.appendChild(t);
-    if(ms!==0)w.__kitToastT=w.setTimeout(function(){t.remove()},ms||6000);
+    if(ms!==0){t.setAttribute("data-until",String(Date.now()+(ms||6000)));w.__kitToastT=w.setTimeout(function(){t.remove()},ms||6000)}
     return {el:t,set:function(x){s.textContent=x}};
   }
+  w.__uaplyKitToast=toast;
+  /* a hidden tab runs its timers late (Chrome may hold them for minutes), so a "Saved ... Undo" stayed on screen 10 minutes after coming
+     back to the tab (apply journey, October 22): when the page is shown again, a message whose time is up goes at once */
+  function dropExpired(){var t=d.getElementById("kitToast"),u=t&&+t.getAttribute("data-until");if(u&&Date.now()>=u)t.remove()}
+  d.addEventListener("visibilitychange",function(){if(d.visibilityState==="visible")dropExpired()});
+  w.addEventListener("pageshow",dropExpired);w.addEventListener("focus",dropExpired);
   /* first application only: say plainly what a swipe right does with the person's details, and get agreement */
-  var CONSENT_V=2;   /* 2: also explains the optional hiring-manager message and that voluntary answers are never sent */
+  var CONSENT_V=3;   /* 2: also explains the optional hiring-manager message and that voluntary answers are never sent.
+                       3 (October 21, 2026, the owner's position, drafted for the Terms in LEGAL-REVIEW.md): the person authorizes UAply to
+                       complete and submit applications on their behalf; recorded with the time ({v:3,at,agent:true}), so everyone agrees again once */
+  var AGENT_CLAUSE="You authorize UAply to complete and submit job applications on your behalf using the information you provide.";
+  w.__uaplyAgentClause=AGENT_CLAUSE;
   function legalBase(){var p=(host&&host.defaultView&&host.defaultView.location.pathname)||"/";return /\/(sandbox|dev)\/(index\.html)?$/.test(p)?"../legal/":"legal/"}   /* the hosted copies live at /dev/ and /sandbox/, with legal/ beside them */
   function consentKey(){return (w.__uaplyKey||"uaply")+".consent"}
   function hasConsent(){try{var c=JSON.parse(w.localStorage.getItem(consentKey()));return !!(c&&c.v===CONSENT_V)}catch(e){return false}}
@@ -291,16 +361,17 @@ function kitApply(w,host){
     o.style.cssText="position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.45);overflow:auto";
     o.innerHTML='<div role="dialog" aria-modal="true" aria-labelledby="kcH" style="background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:20px;max-width:460px;width:100%;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:10px;font-size:14px">'+
       '<h2 id="kcH" style="margin:0;font:800 20px var(--display)">'+(consentFirst?"Before you start swiping":"Before your first application")+'</h2>'+
-      '<p style="margin:0">When you swipe right, UAply applies for you. It sends the details in your profile (your name, email, and anything else you filled in, such as phone, resume file or link, education or work authorization) to the employer, plus a short message if you turned on "Message the hiring manager", but only if that employer has agreed to receive applications through UAply. Otherwise it sends you to the employer\'s own application page. UAply never emails a company that has not agreed.</p>'+
+      '<p style="margin:0">When you swipe right, UAply applies for you at connected employers: employers that have agreed to receive applications through UAply get the details in your profile (your name, email, and anything else you filled in, such as phone, resume file or link, education or work authorization), plus a short message if you turned on "Message the hiring manager". Everywhere else, UAply sends nothing: it saves the job in Applied and takes you to the employer\'s own application page to finish there. UAply never emails a company that has not agreed.</p>'+
+      '<p style="margin:0"><b>'+AGENT_CLAUSE+'</b> Today that means two things: UAply sends your application to connected employers, and in the UAply phone app it fills in other employers\' own application forms from your profile for you to review and submit yourself.</p>'+
       '<p style="margin:0">Your voluntary answers (such as race, gender, veteran or disability status) are never sent. They stay on your device unless you copy them yourself.</p>'+
       '<p style="margin:0">The match percentage is worked out automatically from your profile to help order jobs. It never rejects you, and employers make every hiring decision. <a href="'+b+'ai-and-employment.html" target="_blank" rel="noopener noreferrer">How matching works</a></p>'+
-      '<p style="margin:0">By continuing you confirm you are 18 or older and agree to the <a href="'+b+'terms.html" target="_blank" rel="noopener noreferrer">Terms of Service</a> and <a href="'+b+'privacy.html" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.</p>'+
+      '<p style="margin:0">By continuing you agree to the <a href="'+b+'terms.html" target="_blank" rel="noopener noreferrer">Terms of Service</a> and <a href="'+b+'privacy.html" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.</p>'+
       (consentFirst?'<p style="margin:0">You only see this once. After you agree, every swipe is just a swipe.</p>':'')+
       '<div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button type="button" class="btn ghost" id="kcNo">'+(consentFirst?"Not now":"Cancel")+'</button><button type="button" class="btn" id="kcYes">'+(consentFirst?"Agree and start swiping":"Agree and continue")+'</button></div></div>';
     d.body.appendChild(o);
     d.getElementById("kcYes").focus();
     function answer(ok){o.remove();var waiting=consentWait.splice(0);(ok?go:cancel)();waiting.forEach(function(p){(ok?p[0]:p[1])()})}
-    d.getElementById("kcYes").onclick=function(){try{w.localStorage.setItem(consentKey(),JSON.stringify({v:CONSENT_V,at:Date.now()}))}catch(e){}answer(true)};
+    d.getElementById("kcYes").onclick=function(){try{w.localStorage.setItem(consentKey(),JSON.stringify({v:CONSENT_V,at:Date.now(),agent:true}))}catch(e){}answer(true)};
     d.getElementById("kcNo").onclick=function(){answer(false)};
     o.addEventListener("keydown",function(e){if(e.key==="Escape")answer(false)});
   }
@@ -315,6 +386,21 @@ function kitApply(w,host){
   function askedKey(){return (w.__uaplyKey||"uaply")+".answersAsked"}
   function readObj(k){try{var a=JSON.parse(w.localStorage.getItem(k));return a&&typeof a==="object"&&!Array.isArray(a)?a:{}}catch(e){return {}}}
   function savedAnswers(){return readObj(answersKey())}
+  /* the saved answers that may go with an application to employer `co` (October 22, 2026): an answer kept for one employer ("{at
+     <employer>}", autofill.norm) goes only to that employer; an older answer about an employer ("{co}" in its key, a "why us" question,
+     or one asked by another employer whose answer names that employer) goes to none. The server drops the same ones (clean_answers). */
+  var EMP_Q=/\bwhy\b.*\b(work|join|joining|interested|apply|applying|us|here|company|role|position|team|this)\b|\bwhat (excites|interests|draws|attracts|motivates) you\b|\bcover letter\b|\btell us (about )?why\b|\binterest(ed)? in (this|our|the) (company|role|position|team|job|opportunity)\b|\babout (this|our) (company|role|position|team|mission)\b/i;
+  function answersFor(co){
+    var a=savedAnswers(),m=savedAsked(),out={},mine="{at "+String(co||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim().slice(0,60)+"}";
+    Object.keys(a).forEach(function(k){
+      if(k.indexOf("{at ")===0){if(co&&k.indexOf(mine+" ")===0)out[k]=a[k];return}
+      if(k.indexOf("{co}")>-1||EMP_Q.test(k))return;
+      var by=String((m[k]&&m[k].co)||"");
+      if(by&&co&&by!==co&&String(a[k]).toLowerCase().indexOf(by.toLowerCase())>-1)return;
+      out[k]=a[k];
+    });
+    return out;
+  }
   function savedAsked(){return readObj(askedKey())}
   function keepAnswers(add,meta){
     var a=savedAnswers(),m=savedAsked();
@@ -451,23 +537,43 @@ function kitApply(w,host){
   }
   w.__uaplyAskField={html:fieldHtml,wire:wireField,value:fieldVal};
 
+  /* a phone or tablet (no mouse to hover with, a finger to point with) */
+  function touchFirst(){try{return !!(w.matchMedia&&w.matchMedia("(hover: none) and (pointer: coarse)").matches)}catch(e){return false}}
   /* the questions on an employer's form that the profile could not answer: asked once, then the application goes */
-  function askSheet(job,qs,filled,total,go,cancel){
+  /* how (assisted apply's bridge, shared/uaply-nav.js): {lead, yes} replace the words about sending, and a question with optional:true
+     may be left blank */
+  function askSheet(job,qs,filled,total,go,cancel,how){
     var old=d.getElementById("kitAsk");if(old)old.remove();
     kaStyle();
     var o=d.createElement("div");o.id="kitAsk";
     o.style.cssText="position:fixed;inset:0;z-index:55;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.45);overflow:auto;overscroll-behavior:contain";
     var hasFile=qs.some(function(q){return q.kind==="file"});
-    var h='<form role="dialog" aria-modal="true" aria-labelledby="kaH" novalidate style="background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:20px;max-width:520px;width:100%;box-sizing:border-box;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:14px;font-size:14px;min-width:0">'+
-      '<h2 id="kaH" style="margin:0;font:800 20px var(--display)">'+(qs.length===1?'One question':qs.length+' questions')+' from '+esc(job.co)+'</h2>'+
-      '<p style="margin:0;color:var(--muted)">UAply filled in '+filled+' of '+total+' answers on '+esc(job.co)+'\'s application. '+(hasFile?'It also needs a resume file. Answer what you can (it is saved), then upload your resume in Profile setup, under Background and links, and swipe right again.':'Answer '+(qs.length===1?'this':'these')+' and UAply sends it. Your answers are saved, so the next employer that asks the same thing gets them automatically. You can change them in Profile setup, under Eligibility and extras.')+'</p>';
-    qs.forEach(function(q,i){h+=fieldHtml(q,"kaQ"+i,"")});
+    var h='<form role="dialog" aria-modal="true" aria-labelledby="kaH" novalidate style="background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:20px 20px 0;max-width:520px;width:100%;max-height:100%;overflow:auto;overscroll-behavior:contain;box-sizing:border-box;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:14px;font-size:14px;min-width:0">'+
+      '<h2 id="kaH" tabindex="-1" style="margin:0;font:800 20px var(--display);outline:none">'+(qs.length===1?'One question':qs.length+' questions')+' from '+esc(job.co)+'</h2>'+
+      '<p style="margin:0;color:var(--muted)">'+(how&&how.lead?esc(how.lead):'UAply filled in '+filled+' of '+total+' answers on '+esc(job.co)+'\'s application. '+(hasFile?'It also needs a resume file. Answer what you can (it is saved), then upload your resume in Profile setup, under Background and links, and swipe right again.':'Answer '+(qs.length===1?'this':'these')+' and UAply sends it. Your answers are saved, so the next employer that asks the same thing gets them automatically. You can change them in Profile setup, under Eligibility and extras.'))+'</p>';
+    qs.forEach(function(q,i){h+=fieldHtml(q.optional?Object.assign({},q,{q:q.q+" (optional)"}):q,"kaQ"+i,"")});
     h+='<p id="kaMsg" role="alert" style="margin:0;font-size:13px;color:var(--no);min-height:1.2em"></p>'+
-      '<div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button type="button" class="btn ghost" id="kaNo">Not now</button><button type="submit" class="btn" id="kaYes">'+(hasFile?'Open Profile':'Send application')+'</button></div></form>';
+      '<div id="kaBtns" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;position:sticky;bottom:0;margin:0 -20px;padding:12px 20px 20px;background:var(--surface);border-top:1px solid var(--line)"><button type="button" class="btn ghost" id="kaNo">Not now</button><button type="submit" class="btn" id="kaYes">'+(hasFile?'Open Profile':how&&how.yes?esc(how.yes):'Send application')+'</button></div></form>';
     o.innerHTML=h;d.body.appendChild(o);
     var boxes=[].slice.call(o.querySelectorAll(".kaF"));
     boxes.forEach(function(b,i){wireField(b,qs[i])});
-    var first=o.querySelector(".kaF input:not([disabled]),.kaF select,.kaF textarea,.kaF .kaRead")||d.getElementById("kaYes");first.focus();
+    /* a touch screen: the box opens without a field focused, so the phone's keyboard does not cover it before the person reads it (the
+       heading takes the focus, for screen readers); a keyboard and mouse: the first field, ready to type */
+    if(touchFirst())d.getElementById("kaH").focus({preventScroll:true});
+    else(o.querySelector(".kaF input:not([disabled]),.kaF select,.kaF textarea,.kaF .kaRead")||d.getElementById("kaYes")).focus();
+    /* the phone's keyboard: the box is fitted to the part of the screen still visible (the top page's visual viewport, as the app runs in
+       a frame), so Send application, pinned to the bottom of the box, stays above the keyboard (apply journey, October 22) */
+    var tw=null;try{tw=w.top&&w.top.visualViewport?w.top:null}catch(e){tw=null}
+    var vv=tw?tw.visualViewport:w.visualViewport;
+    function fit(){
+      if(!o.isConnected){if(vv){vv.removeEventListener("resize",fit);vv.removeEventListener("scroll",fit)}return}
+      if(!vv)return;
+      var fr=null;try{fr=w.frameElement}catch(e){fr=null}
+      var top0=fr&&tw?fr.getBoundingClientRect().top:0,vis=Math.max(120,Math.min(w.innerHeight,vv.height));
+      var t=Math.max(0,(vv.offsetTop||0)-top0);
+      o.style.inset="auto 0 auto 0";o.style.top=t+"px";o.style.height=vis+"px";
+    }
+    if(vv){vv.addEventListener("resize",fit);vv.addEventListener("scroll",fit);fit()}
     o.querySelector("form").onsubmit=function(e){
       e.preventDefault();
       var add={},meta={},blank=null,why="";
@@ -475,7 +581,7 @@ function kitApply(w,host){
         var q=qs[i];if(q.kind==="file")return;
         var v=fieldVal(b,q);
         if(v&&typeof v==="object"){if(!blank){blank=b;why=v.bad}v=""}
-        else if(!v&&!blank)blank=b;
+        else if(!v&&!blank&&!q.optional)blank=b;
         add[q.key]=v;meta[q.key]=metaOf(q,job.co);
       });
       if(hasFile){keepAnswers(add,meta);o.remove();cancel();openProfile("back");return}   /* keep whatever was answered: only the resume is left next time */
@@ -489,6 +595,7 @@ function kitApply(w,host){
     d.getElementById("kaNo").onclick=function(){o.remove();cancel()};
     o.addEventListener("keydown",function(e){if(e.key==="Escape"){o.remove();cancel()}});
   }
+  w.__uaplyAskSheet=askSheet;   /* assisted apply asks the questions the employer's form has and the profile cannot answer, before the form opens */
 
   /* Profile setup, Eligibility and extras: "Answers you gave employers". Each one can be changed with the control it was asked with, or
      removed (then the next employer that asks it asks again). They stay on this device and travel only with the applications sent. */
@@ -561,6 +668,7 @@ function kitApply(w,host){
     });
   }
   w.__uaplyRetryPending=retryPending;
+  w.__uaplyAnswersFor=answersFor;   /* what a swipe to that employer would send (tools/ui-tracker-keep.js checks it) */
   /* "Try again" / "Answer now" in the Applied list: the same as swiping right on that job again */
   w.__uaplyResend=function(id){
     var A=w.__uaply;if(!A||!A.S||!A.S.decisions[id])return;
@@ -578,7 +686,12 @@ function kitApply(w,host){
       delete S.decisions[job.id];var i=S.history?S.history.lastIndexOf(job.id):-1;if(i>-1)S.history.splice(i,1);
       if(save)save();try{w.__uaply.renderAll()}catch(e){}
     }
+    /* Undo on the saved message takes back this job only (the person may have swiped on since); nothing was sent for a hand-off */
+    function undoThis(){revert()}
+    function savedToast(){toast("Saved "+job.co+" to Applied · "+m.pct+"% match","Undo",undoThis,9000)}
     function mark(status,to){var dec=S&&S.decisions&&S.decisions[job.id];if(dec){dec.sent={at:Date.now(),to:to||"",status:status};if(save)save();if(w.__uaplyTrack)w.__uaplyTrack()}}   /* the Applied list, if it is open, shows the new state at once */
+    var rdy=w.__uaplyReadiness?w.__uaplyReadiness():null;
+    if(rdy&&!rdy.min&&!retry){revert();if(w.__uaplyFinishProfile)w.__uaplyFinishProfile(job);return}
     if(!(p.name&&EMAIL.test(p.email||"")&&(!live||p.custom))){
       revert();toast("Add your name and email in Profile setup, under About you, so employers can reply. "+job.co+" is back in your deck.","Open Profile",function(){openProfile("about")},9000);return;
     }
@@ -586,7 +699,7 @@ function kitApply(w,host){
     /* what happened to the applicant's own email receipt (signed-in accounts only) */
     function receiptNote(j){
       var rc=j.receipt,au=w.__uaplyAuth?w.__uaplyAuth():null;
-      if(rc)return " "+({sent:"Confirmation emailed to "+rc.to+".",delivered_test:testInboxNote(),not_configured:(isRelease?"":"No confirmation email: email sending is not set up yet."),failed:"The confirmation email could not be sent.",held:"Your confirmation email is queued and will arrive later (UAply's email is busy).",bounced:"No confirmation email: emails to "+rc.to+" bounce back.",unverified:"Verify your email (Profile, Account) to get confirmation emails."}[rc.status]||"");
+      if(rc)return " "+({digest:"The steps to finish it come by email, once a day with any others.",sent:"Confirmation emailed to "+rc.to+".",delivered_test:testInboxNote(),not_configured:(isRelease?"":"No confirmation email: email sending is not set up yet."),failed:"The confirmation email could not be sent.",held:"Your confirmation email is queued and will arrive later (UAply's email is busy).",bounced:"No confirmation email: emails to "+rc.to+" bounce back.",unverified:"Verify your email (Profile, Account) to get confirmation emails."}[rc.status]||"");
       return au&&au.up&&!au.user?" Sign in to get a confirmation email.":"";
     }
     function deliver(){
@@ -598,7 +711,7 @@ function kitApply(w,host){
         job:{id:job.id,co:job.co,role:job.role,url:job.url||"https://example.com/example-listing",source:job.source,loc:job.loc,contact:job.contact||"",mode:job.mode,type:job.type||"job",sal:job.sal,blurb:job.blurb},
         profile:{name:p.name,email:p.email,title:p.title,years:p.years,skills:p.skills,loc:p.loc,edu:p.edu,ext:(w.__uaplyApplyExt?w.__uaplyApplyExt():(p.ext||{}))},
         resume:(w.__uaplyResume?w.__uaplyResume():null),
-        answers:savedAnswers()
+        answers:answersFor(job.co)
       }).then(function(r){
         var j=r.j||{};
         if(!r.ok){
@@ -613,12 +726,18 @@ function kitApply(w,host){
         if(j.status==="needs_answers"){
           var qs=Array.isArray(j.questions)?j.questions:[];
           if(retry||!qs.length){mark("needs_answers");return}      /* asked when the person taps Answer now in Applied */
-          askSheet(job,qs,j.filled||0,j.total||0,deliver,function(){revert();toast("Not sent. "+job.co+" is back in your deck.")});
+          /* marked before the box opens: if the person leaves it open, goes to Applied or closes the app, the job says "Not sent yet",
+             never a plain "Applied" for an application nothing was sent for. Sending replaces the mark; Not now leaves it waiting with Answer now */
+          mark("needs_answers");
+          askSheet(job,qs,j.filled||0,j.total||0,deliver,function(){
+            if(!(S&&S.decisions&&S.decisions[job.id]))return;
+            mark("needs_answers");toast("Not sent yet: "+job.co+" waits in Job Tracker. Tap Answer now there when you're ready.","","",9000);
+          });
           return;
         }
         if(j.status==="duplicate"){             /* sent before (then undone, or from another device): show what happened that time */
           if(j.was)mark(j.was,j.to);
-          if(j.was==="handoff"){toast("Already in Applied, not sent yet: "+job.co+" takes applications on its own site.",job.url?"Finish now":"",function(){if(w.__uaplyOpen)w.__uaplyOpen(job.url)},12000);return}
+          if(j.was==="handoff"){if(!retry)savedToast();return}      /* a hand-off swiped again: quiet, the Applied row has the links */
         }
         else mark(j.status,j.to);
         var cp=receiptNote(j),pl=j.plan;
@@ -626,7 +745,7 @@ function kitApply(w,host){
         if(j.status==="delivered_test")toast("Applied to "+job.co+" (test)."+auto+cp,"","",9000);
         else if(j.status==="sent")toast("Applied to "+job.co+"."+auto+cp,"","",9000);
         else if(j.status==="duplicate")toast("Already applied to "+job.co+".");
-        else if(j.status==="handoff")toast("Not sent yet: "+job.co+" takes applications on its own site. It is in Applied, ready to finish."+cp,job.url?"Finish now":"",function(){if(w.__uaplyOpen)w.__uaplyOpen(job.url)},12000);
+        else if(j.status==="handoff"){if(!retry&&!deliver.waiting)savedToast()}        /* quiet: no "finish on their site" interruption; Applied shows the links */
         else if(j.status==="failed")toast(j.error||"The application could not be sent.","Try again",deliver,9000);
         else toast("Done.");
       }).catch(function(){
@@ -653,9 +772,87 @@ function kitApply(w,host){
     timer=setInterval(tick,1000);tick();
   }
 
+
+  /* ---------- ready or not, on each card, before the swipe (the owner's rule, October 21) ----------
+     A job whose employer connected its hiring system: the posting's own form is read ahead (POST /api/apply/plan: the same reading a swipe
+     right does, nothing recorded or sent), kept per posting until the profile or a saved answer changes, and the card says "Ready to apply"
+     or "N answers needed". An employer who takes email, and every hand-off: "Ready" once the profile has READY_MIN. Below it, every card
+     says "Finish your profile", and a swipe right opens "Finish your profile first" instead of applying (__uaplyReadyGate). */
+  var RDY={},RDYQ={};
+  function rdyApplies(job){return !!(job&&w.__uaplySubmitOn&&w.__uaplyMode&&!(w.__uaplyPreview&&w.__uaplyPreview())&&(job.live||w.__uaplyMode==="test"))}
+  function rdyConnected(job){return !!(job.live&&job.instant&&!job.contact&&!job.webhook)}
+  /* whether a swipe right reads this posting's own form first (and may ask its questions): an employer who connected its hiring system,
+     or, where the server previews forms in test mode (the sandbox), any Greenhouse posting. The card then asks the server for the same
+     plan the swipe uses, so it never says "Ready" for a form that will ask questions (apply journey, October 22: 15 such cards) */
+  function rdyReadsForm(job){return rdyConnected(job)||!!(w.__uaplyFormPreview&&job.live&&!job.instant&&job.ats&&job.ats.kind==="greenhouse")}
+  function rdyPayload(job){
+    var p=(w.__uaply&&w.__uaply.S.profile)||{},res=w.__uaplyResume?w.__uaplyResume():null;
+    return {plan_only:true,match:0,job:{id:job.id,co:job.co,role:job.role,url:job.url||"https://example.com/example-listing",source:job.source,loc:job.loc,contact:job.contact||"",mode:job.mode,type:job.type||"job",sal:job.sal,blurb:job.blurb},
+      profile:{name:p.name,email:p.email,title:p.title,years:p.years,skills:p.skills,loc:p.loc,edu:p.edu,ext:(w.__uaplyApplyExt?w.__uaplyApplyExt():(p.ext||{}))},
+      resume:res&&res.name?{name:res.name,present:true}:null,answers:answersFor(job.co)};
+  }
+  function rdySig(pl){var s=JSON.stringify([pl.profile,pl.resume,pl.answers,(w.__uaplyAuth&&w.__uaplyAuth()||{}).user||null]),h=0;for(var i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return String(h)}
+  function rdyFromPlan(r){
+    var j=r.j||{};
+    if(r.ok&&j.status==="ready")return {k:"ok",t:"Ready to apply"};
+    if(r.ok&&j.status==="needs_answers"){var n=(j.questions||[]).length;return {k:"need",t:n===1?"1 answer needed":n+" answers needed",n:n}}
+    if(r.ok&&j.status==="handoff")return {k:"ext",t:"Finish on their site"};
+    if(j.code==="signin")return {k:"need",t:"Sign in to apply"};
+    if(j.code==="verify")return {k:"need",t:"Verify your email to apply"};
+    return null;                                             /* already applied, or the form could not be read: no promise either way */
+  }
+  /* the card's state now (null: nothing to show yet); a connected employer's form is read once per posting and profile */
+  function rdyState(job,then){
+    var r=w.__uaplyReadiness?w.__uaplyReadiness():{min:true};
+    if(!r.min)return {k:"need",t:"Finish your profile"};
+    if(!rdyReadsForm(job))return {k:"ok",t:"Ready"};
+    var pl=rdyPayload(job),sig=rdySig(pl),c=RDY[job.id];
+    if(c&&c.sig===sig)return c.st;
+    if(RDYQ[job.id]!==sig){
+      RDYQ[job.id]=sig;
+      post("/api/apply/plan",pl).then(function(res){RDY[job.id]={sig:sig,st:rdyFromPlan(res)};delete RDYQ[job.id];rdyPaint();if(then)then()},
+        function(){delete RDYQ[job.id];if(then)then()});
+    }
+    return undefined;                                        /* asked; the card is painted again when the answer arrives */
+  }
+  function rdyPaint(){
+    var deck=d.getElementById("deck"),A=w.__uaply;if(!deck||!A)return;
+    [].slice.call(deck.querySelectorAll(".card")).forEach(function(card){
+      var id=+card.getAttribute("data-id"),job=null;for(var i=0;i<A.JOBS.length;i++)if(A.JOBS[i].id===id){job=A.JOBS[i];break}
+      var st=job&&rdyApplies(job)?rdyState(job):null,el=card.querySelector(".facts .rdy");
+      if(!st){if(el&&st===null)el.remove();return}
+      if(!el){var f=card.querySelector(".facts");if(!f)return;el=d.createElement("span");f.appendChild(el)}
+      var cls="rdy "+st.k;if(el.className!==cls)el.className=cls;if(el.textContent!==st.t)el.textContent=st.t;
+    });
+  }
+  w.__uaplyRdyPaint=rdyPaint;
+  (function(){var deck=d.getElementById("deck");if(deck&&w.MutationObserver){var busyP=false;new w.MutationObserver(function(){if(busyP)return;busyP=true;w.setTimeout(function(){busyP=false;rdyPaint()},0)}).observe(deck,{childList:true,subtree:true})}})();
+  /* for the browser tests: the state a card for this job shows once its plan is in */
+  w.__uaplyReadyOf=function(id){
+    var A=w.__uaply,job=null;for(var i=0;i<A.JOBS.length;i++)if(A.JOBS[i].id===id){job=A.JOBS[i];break}
+    if(!job||!rdyApplies(job))return Promise.resolve(null);
+    return new Promise(function(done){var st=rdyState(job,function(){var s2=rdyState(job);done(s2===undefined?null:s2)});if(st!==undefined)done(st)});
+  };
+  /* a swipe right below READY_MIN, wherever it comes from (a finger, Apply, the arrow key): nothing happens to the card, and the box says
+     what is missing (called by prod's decide(), patched in kitPatch, before the card moves) */
+  w.__uaplyReadyGate=function(job){
+    if(!job||!rdyApplies(job))return false;
+    var r=w.__uaplyReadiness?w.__uaplyReadiness():null;
+    if(!r||r.min)return false;
+    if(w.__uaplyFinishProfile)w.__uaplyFinishProfile(job);
+    return true;
+  };
+
   w.__uaplyOnApplied=sheet;   /* tells the live patch the apply assistant is on */
   w.__uaplyOnDecision=function(dir,job,m,p,undo,S,save){
+    /* the swipe keeps a short copy of its row (Job Tracker shows it after the job leaves the feed); then the oldest passes beyond the cap go */
+    try{if(job&&S&&S.decisions[job.id]){S.decisions[job.id].row=rowOf(job);trimDecisions(S);if(save)save()}}catch(e){}
     if(w.__uaplyPreview&&w.__uaplyPreview())return;          /* a preview with no server: the swipe is only saved here, and the toast says so */
+    /* the job itself goes into the saved job list at once: its Job Tracker row needs it after the page is reloaded (a phone reloads a tab it
+       put to sleep), and the server's list may no longer have it, or not yet while that list is still loading. It used to be saved only
+       when the list loaded, so a job swiped after that was missing from Job Tracker after a reload (apply journey, October 22, job 14769135) */
+    if(job&&job.live&&job.id>=100000){try{var all=readCache();if(!all.some(function(c){return c.id===job.id})){var keep=JSON.parse(JSON.stringify(job));keep.seen=Date.now();all.push(keep)}
+      writeCache(all,(S&&S.decisions)||null)}catch(e){}}
     var ready=!!(w.__uaplySubmitOn&&w.__uaplyMode);
     if(ready){
       post("/api/decision",{session:session(),dir:dir==="applied"?"apply":"pass",jobId:job.id,co:job.co,role:job.role,pct:m.pct}).catch(function(){});
@@ -671,7 +868,9 @@ function kitApply(w,host){
      saved agreement for this build and opens the box; `done(agreed)` is called with the answer */
   w.__uaplyConsentInfo=function(){try{var c=JSON.parse(w.localStorage.getItem(consentKey()));return c&&typeof c==="object"?{at:+c.at||0,current:c.v===CONSENT_V}:null}catch(e){return null}};
   w.__uaplyConsentAgain=function(done){try{w.localStorage.removeItem(consentKey())}catch(e){}var o=d.getElementById("kitConsent");if(o)o.remove();
-    ensureConsent(function(){if(done)done(true)},function(){if(done)done(false)},true)};
+    ensureConsent(function(){if(done)done(true)},function(){if(done)done(false)},true);
+    /* shown again on request, so "You only see this once" is no longer true: that line goes */
+    var box=d.getElementById("kitConsent");if(box)[].slice.call(box.querySelectorAll("p")).forEach(function(p){if(/^You only see this once/.test(p.textContent))p.remove()})};
   if(consentFirst&&!showSheet){
     /* not while someone is in Hiring mode: employers do not swipe. Hiring mode calls this again when they switch back */
     w.__uaplyAskConsent=function(){if(!hasConsent()&&!d.body.classList.contains("hire"))ensureConsent(function(){},function(){},true)};
@@ -681,7 +880,7 @@ function kitApply(w,host){
 
 function submitApply(w){
   w.__uaplySubmitOn=true;   /* from here on a swipe right applies by itself (see quietApply) */
-  return w.fetch("/api/apply/config").then(function(r){return r.json()}).then(function(c){w.__uaplyMode=c.mode==="live"?"live":"test";w.__uaplyRedirect=c.redirect||"";w.__uaplyAuto=c.autoSend!==false;w.__uaplyTestInbox=c.testInbox||"";w.__uaplyGrace=typeof c.graceSeconds==="number"?c.graceSeconds:5}).catch(function(){});
+  return w.fetch("/api/apply/config").then(function(r){return r.json()}).then(function(c){w.__uaplyMode=c.mode==="live"?"live":"test";w.__uaplyRedirect=c.redirect||"";w.__uaplyAuto=c.autoSend!==false;w.__uaplyTestInbox=c.testInbox||"";w.__uaplyGrace=typeof c.graceSeconds==="number"?c.graceSeconds:5;w.__uaplyFormPreview=c.formPreview===true;if(w.__uaplyRdyPaint)w.__uaplyRdyPaint()}).catch(function(){});
 }
 
 window.UAplyLive={patch:patch,apply:apply,kit:{patch:kitPatch,apply:kitApply},submit:{apply:submitApply}};

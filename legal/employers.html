@@ -4,7 +4,7 @@
 <body><main>
 <nav class="docs"><a href="../" class="home">&larr; Back to UAply</a><a href="index.html">Legal</a><a href="terms.html">Terms</a><a href="privacy.html">Privacy</a><a href="support.html">Support</a></nav>
 <h1>Receiving applications from UAply</h1>
-<p class="meta">Last updated October 17, 2026.</p>
+<p class="meta">Last updated October 20, 2026.</p>
 <p>UAply sends an application to an employer only after the employer has agreed in writing and set up one way to receive it. Until then, a person who swipes right on your job finishes on your own careers page, and UAply sends you nothing.</p>
 <h2>The ways to receive applications</h2>
 <table>
@@ -25,6 +25,19 @@
 <li>You can stop at any time by revoking the key in your own system, and by telling us.</li>
 <li>You make every hiring decision.</li>
 </ul>
+<h2 id="connect">Connect in 10 minutes</h2>
+<p>Each system takes one key that you create and control. You send it to us (see Getting set up below); we enter it in the Connect box of UAply's owner setup page (<code>/setup</code>, Connect an employer's hiring system) with your board name. Your published jobs then say <b>Applies instantly</b> in UAply. In every system UAply sends the same things: the person's name, email, phone, location, links, education and work history, the resume file, and the answers to your form's questions that their profile can answer. It never sends voluntary self-identification answers.</p>
+<h3>Greenhouse</h3>
+<p>Where: Configure, Dev Center, API Credential Management. Create a <b>Job Board API</b> key. Tell us your job board name (the part after <code>boards.greenhouse.io/</code>). UAply submits applications to your published jobs through the Job Board API, answering your application form's own questions.</p>
+<h3>Lever</h3>
+<p>Where: Settings, Integrations and API, API Credentials. A Super Admin creates a <b>Postings API</b> key. Tell us your site name (the part after <code>jobs.lever.co/</code>). UAply applies to your published postings through the Postings API.</p>
+<h3>Ashby</h3>
+<p>Where: Admin, Integrations, API Keys. Create a key with <b>Candidates: write</b> and <b>Jobs: read</b>. Tell us your job board name (the part after <code>jobs.ashbyhq.com/</code>). UAply reads each posting's application form and submits it.</p>
+<h3>SmartRecruiters</h3>
+<p>Where: Settings, Admin, Credential Manager. Create an <b>Application API</b> key. Tell us your company identifier (the part after <code>jobs.smartrecruiters.com/</code>). UAply reads each posting's screening questions and submits the candidate with them.</p>
+<h3>Workable</h3>
+<p>Where: your profile icon, Settings, Integrations, Apps, API Access Tokens, Generate API token. An Admin creates it with the <b>r_jobs</b> and <b>w_candidates</b> scopes. Tell us your account subdomain (the part before <code>.workable.com</code>). UAply reads each job's questions and adds the candidate to that job.</p>
+<p>To stop, revoke the key in your system and tell us; nothing more is sent.</p>
 <h2>Getting set up</h2>
 <p>Email <a href="mailto:uaplytechnologies@uaply.net">uaplytechnologies@uaply.net</a>. We send the step-by-step page for your system (what is sent, the exact menu path, what the key can do, how to revoke it, what you see for each application) and the consent letter to sign or reply to. Nothing is sent to you before we have it.</p>
 </main></body></html>

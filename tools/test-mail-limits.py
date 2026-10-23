@@ -96,11 +96,16 @@ try:
     JOB = {"id": 424242, "co": "Acme Robotics", "role": "Software Engineering Intern", "url": "https://acme.example/jobs/42", "source": "Acme careers",
            "loc": "Philadelphia, PA", "type": "internship", "mode": "hybrid", "sal": [30000, 38000], "blurb": "Build and test the software that drives our robots."}
     n_job = [500000]
+    # the swipes here go to an employer who takes applications by email (test mode: into the test inbox), so each one has a receipt of its own
+    # (a hand-off's "finish your application" waits for the day's reminder instead: tools/test-emails.py)
+    import jobs_api
+    jobs_api.job_policy = lambda jid: "direct"
+    jobs_api.known_contact = lambda jid: "hr@acme.example"
 
     def swipe(profile=None, job=None, who=None):
         n_job[0] += 1
-        j = dict(JOB, id=n_job[0], **(job or {}))
-        p = {"consent": True, "job": j, "profile": profile or {"name": "Sam Rivera", "email": "sam@example.com", "skills": ["Python"]}, "match": 80}
+        j = dict(JOB, id=n_job[0], contact="hr@acme.example", **(job or {}))
+        p = {"consent": True, "job": j, "profile": profile or {"name": "Sam Rivera", "email": "sam@example.com", "skills": ["Python"], "ext": {"phone": "215-555-0100"}}, "match": 80}
         return uaply_api.submit(p, who or user, "https://uaply.onrender.com")
 
     # ---------- 1. what every message carries ----------
@@ -131,7 +136,7 @@ try:
     # a name, a job title or a company with line breaks or other control characters can never add a header, and never loses the email
     before = len(mails())
     nasty = "Sam Bcc: evil@attacker.example\x0b\x00 Rivera"
-    code, out = swipe(profile={"name": nasty, "email": "sam@example.com", "skills": ["Python"]},
+    code, out = swipe(profile={"ext": {"phone": "215-555-0100"}, "name": nasty, "email": "sam@example.com", "skills": ["Python"]},
                       job={"role": "Intern\x85Bcc: evil@attacker.example", "co": "Acme\x0cBcc: x@attacker.example"})
     time.sleep(0.5)
     new = [parse(m) for m in mails()[before:]]
@@ -173,7 +178,7 @@ try:
     t("at 249 sent today: the receipt still goes (250th), the owner copy is held", (out["receipt"]["status"], out["copied"], mailer.today()[0]), ("sent", False, 250))
     with Log() as lg:
         code, out = swipe()
-    t("at 250: the receipt is held, not lost, and the swipe itself worked", (code, out["status"], out["receipt"]["status"]), (200, "handoff", "held"))
+    t("at 250: the receipt is held, not lost, and the swipe itself worked", (code, out["status"], out["receipt"]["status"]), (200, "delivered_test", "held"))
     t("...one log line each for the receipt and the copy, saying why and until when",
       [bool(re.match(r"^\[uaply\] email not sent: (receipt|owner_copy) to (s|o)\*\*\*@example\.com: daily limit \(250 of 300 sent today; 50 kept for codes and applications\); held until \d{4}-\d\d-\d\d 00:00 UTC$", ln)) for ln in lg.lines],
       [True, True])
@@ -221,7 +226,7 @@ try:
                                                        "the SMTP key in UAPLY_CONFIG_JSON (smtp.password) is wrong or was revoked"])
     with Log() as lg:
         code, out = swipe()
-    t("...a receipt is held for a retry in 15 minutes, the application itself is done", (out["status"], out["receipt"]["status"], len(mailer._queue())), ("handoff", "held", 2))
+    t("...a receipt is held for a retry in 15 minutes, the application itself is done", (out["status"], out["receipt"]["status"], len(mailer._queue())), ("delivered_test", "held", 2))
     control()
     mailer.clock = lambda: real_clock() + 16 * 60
     before = len(mails())
@@ -257,7 +262,7 @@ try:
     with Log() as lg:
         code, out = swipe()
     cfg["smtp"]["port"] = good_port
-    t("the mail service cannot be reached: the application is done, the receipt held for a retry", (out["status"], out["receipt"]["status"]), ("handoff", "held"))
+    t("the mail service cannot be reached: the application is done, the receipt held for a retry", (out["status"], out["receipt"]["status"]), ("delivered_test", "held"))
     t("...one line per email, saying 'unreachable'", [("unreachable" in ln) for ln in lg.lines], [True, True])
 
     # deleting the account drops what is still held for it

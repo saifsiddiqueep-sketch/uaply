@@ -10,7 +10,10 @@ no profile can answer, 1004 a job that does not exist, 1005 an employer system t
 application (willing to relocate, expected pay, country) plus Greenhouse's location box (location with its hidden latitude and longitude), 1007 and
 1008 every kind of question the app asks on screen (long text, a long single-choice list, a multi-select, a month, a date and a number asked in
 text boxes, a yes/no, a notice to acknowledge, and a voluntary question that must stay unanswered; 1008 is the same form for a second employer),
-1009 a required file other than the resume (the app cannot ask it, so the person finishes on the employer's page).
+1009 a required file other than the resume (the app cannot ask it, so the person finishes on the employer's page), 1010 the standard fields
+with a required phone number. Every Greenhouse application is checked like a real board checks it: each required question answered (the
+resume as a file or as text), each choice one of its options, the voluntary question left empty. Every application any system refuses
+(4xx) is kept at /__rejected, so a test can prove an incomplete application never even reached an employer.
 Like Greenhouse, it also takes country_short_name and one employments[0][...] entry; it refuses a location without its map position, an
 employment entry with a missing part and a country that is not a two-letter code, so a test sees a half-sent field. Lever posting id 'slow' answers 429.
 Ashby posting ids are the forms in fixtures/ashby-forms.json; 4444... refuses the form (success false), 5555... answers with a hostile body, 6666... is
@@ -35,6 +38,7 @@ PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8795
 GH_KEY, LEVER_KEY = "gh-secret-key-123", "lever-key-456"
 ASHBY_KEY, ASHBY_READONLY, SR_KEY = "ashby-key-789", "ashby-readonly-key", "sr-smarttoken-012"
 RECEIVED = []
+REJECTED = []           # (system path, status, reason) of every application refused: an incomplete one must never get this far
 FIX = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
 ASHBY_FORMS = json.load(open(os.path.join(FIX, "ashby-forms.json"), encoding="utf-8"))["forms"]
 WK_JOBS = json.load(open(os.path.join(FIX, "workable-questions.json"), encoding="utf-8"))["jobs"]
@@ -270,6 +274,10 @@ def wk_check(job, body):
     return errs, answered
 
 
+def urlparse_path(path):
+    return urllib.parse.urlparse(path).path
+
+
 def std(required_phone=False):
     return [
         {"required": True, "label": "First Name", "fields": [{"name": "first_name", "type": "input_text", "values": []}]},
@@ -302,15 +310,23 @@ def every_kind():
     ]
 
 
-def gh_check(job_id, fields):
-    """For the every-kind forms: every required question answered, every choice one of its options, the voluntary one left empty."""
-    errs = []
+def gh_check(job_id, fields, files=None):
+    """Every form: every required question answered (the resume as a file or as text, any other required file as a file), every choice one of
+    its options, the voluntary one left empty."""
+    errs, files = [], files or {}
     for q in questions_for(job_id):
         f = q["fields"][0]
         name = f["name"] + ("[]" if f["type"] == "multi_value_multi_select" else "")
         got = fields.get(name)
-        if q["required"] and got in (None, "", []) and f["type"] != "input_file" and f["name"] not in ("resume", "cover_letter", "resume_text", "cover_letter_text", "phone"):
-            errs.append("missing required %s" % name)
+        if q["required"]:
+            if f["name"] == "resume":
+                if "resume" not in files and not (fields.get("resume_text") or "").strip():
+                    errs.append("missing required resume (a file or resume_text)")
+            elif f["type"] == "input_file":
+                if f["name"] not in files:
+                    errs.append("missing required file %s" % f["name"])
+            elif got in (None, "", []):
+                errs.append("missing required %s" % name)
         if got not in (None, "") and f["type"].startswith("multi_value"):
             ids = [str(v["value"]) for v in f["values"]]
             if any(v not in ids for v in (got if isinstance(got, list) else [got])):
@@ -321,7 +337,7 @@ def gh_check(job_id, fields):
 
 
 def questions_for(job_id):
-    q = std()
+    q = std(required_phone=job_id == "1010")
     if job_id in ("1007", "1008"):
         q += every_kind()
     if job_id == "1009":
@@ -337,6 +353,8 @@ def questions_for(job_id):
               {"required": False, "label": "Personal website", "fields": [{"name": "question_104", "type": "input_text", "values": []}]}]
     if job_id == "1003":
         q += [{"required": True, "label": "What is your favorite color and why?", "fields": [{"name": "question_200", "type": "textarea", "values": []}]}]
+    if job_id == "1011":                       # a question about this employer (autofill.norm keeps its answer for Plaid only)
+        q += [{"required": True, "label": "Why do you want to work at Plaid?", "fields": [{"name": "question_500", "type": "textarea", "values": []}]}]
     if job_id == "1006":
         q += [{"required": True, "label": "Are you willing to relocate?",
                "fields": [{"name": "question_300", "type": "multi_value_single_select", "values": [{"label": "Yes", "value": 1}, {"label": "No", "value": 0}]}]},
@@ -392,6 +410,8 @@ def parse_multipart(ctype, body):
 
 class H(http.server.BaseHTTPRequestHandler):
     def _json(self, code, obj):
+        if self.command == "POST" and 400 <= code < 500 and not self.path.startswith("/__"):
+            REJECTED.append({"path": urlparse_path(self.path), "status": code, "why": json.dumps(obj)[:300]})
         body = json.dumps(obj).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
@@ -404,9 +424,29 @@ class H(http.server.BaseHTTPRequestHandler):
         parts = u.path.strip("/").split("/")
         if u.path == "/__received":
             return self._json(200, RECEIVED)
+        if u.path == "/__rejected":
+            return self._json(200, REJECTED)
         if u.path == "/__reset":
             RECEIVED.clear()
+            REJECTED.clear()
             return self._json(200, {"ok": True})
+        # the public lists of open postings ("Test this connection" on /setup counts them): board 'acme' has postings everywhere, 'empty' none
+        if len(parts) == 4 and parts[:2] == ["v1", "boards"] and parts[3] == "jobs":            # Greenhouse
+            return self._json(200, {"jobs": [{"id": 1001}, {"id": 1002}, {"id": 1003}], "meta": {"total": 3}} if parts[2] == "acme" else {"jobs": []}) if parts[2] in ("acme", "empty") else self._json(404, {"status": 404, "error": "Job not found"})
+        if len(parts) == 3 and parts[:2] == ["v0", "postings"]:                                   # Lever
+            return self._json(200, [{"id": "p1"}, {"id": "p2"}] if parts[2] == "acme" else []) if parts[2] in ("acme", "empty") else self._json(404, {"ok": False, "error": "Document not found"})
+        if len(parts) == 3 and parts[:2] == ["posting-api", "job-board"]:                         # Ashby
+            return self._json(200, {"jobs": [{"id": "a1"}, {"id": "a2"}, {"id": "a3"}, {"id": "a4"}] if parts[2] == "acme" else []}) if parts[2] in ("acme", "empty") else self._json(404, {"success": False})
+        if len(parts) == 4 and parts[:2] == ["v1", "companies"] and parts[3] == "postings":      # SmartRecruiters
+            if parts[2] not in ("acme", "empty"):
+                return self._json(404, {"code": "RESOURCE_NOT_FOUND_ERROR", "message": "Company not found"})
+            content = [{"id": "740000000%d" % i, "uuid": "aaaaaaaa-0000-4000-8000-00000000000%d" % i, "name": "Posting %d" % i} for i in (1, 2)] if parts[2] == "acme" else []
+            lim = int((urllib.parse.parse_qs(u.query).get("limit") or ["100"])[0])
+            return self._json(200, {"offset": 0, "limit": lim, "totalFound": len(content), "content": content[:lim]})
+        if parts == ["spi", "v3", "jobs"]:                                                        # Workable: the account's jobs (scope r_jobs)
+            if self.headers.get("Authorization") not in ("Bearer " + WK_KEY, "Bearer " + WK_READONLY):
+                return self._json(401, {"error": "Not authorized"})
+            return self._json(200, {"jobs": [{"shortcode": "WK00000001"}, {"shortcode": "WK00000002"}], "paging": {}})
         if len(parts) == 5 and parts[:3] == ["spi", "v3", "jobs"] and parts[4] == "questions":   # Workable: a job's questions (scope r_jobs)
             if self.headers.get("Authorization") not in ("Bearer " + WK_KEY, "Bearer " + WK_READONLY):
                 return self._json(401, {"error": "Not authorized"})
@@ -444,7 +484,7 @@ class H(http.server.BaseHTTPRequestHandler):
             fields, files = parse_multipart(ctype, body)
             if not fields.get("first_name") or not fields.get("email"):
                 return self._json(422, {"error": "first_name and email are required"})
-            why = check_extras(fields) or "; ".join(gh_check(parts[4], fields) if parts[4] in ("1007", "1008") else [])
+            why = check_extras(fields) or "; ".join(gh_check(parts[4], fields, files))
             if why:
                 return self._json(422, {"error": why})
             RECEIVED.append({"system": "greenhouse", "board": parts[2], "job": parts[4], "fields": fields, "files": files, "employments": employments(fields)})
@@ -460,6 +500,11 @@ class H(http.server.BaseHTTPRequestHandler):
                 return self._json(400, {"ok": False, "error": "Missing name or email"})
             RECEIVED.append({"system": "lever", "site": parts[2], "posting": parts[3], "fields": fields, "files": files})
             return self._json(200, {"ok": True, "applicationId": "app-%d" % len(RECEIVED)})
+        if u.path == "/job.list":                                                              # Ashby: jobs read (the connection test)
+            auth = self.headers.get("Authorization") or ""
+            if auth not in ["Basic " + base64.b64encode((k + ":").encode()).decode() for k in (ASHBY_KEY, ASHBY_READONLY)]:
+                return self._json(401, {"success": False, "errorInfo": {"code": "invalid_api_key", "message": "Invalid API key"}})
+            return self._json(200, {"success": True, "results": [{"id": "a1"}, {"id": "a2"}], "moreDataAvailable": False})
         if u.path in ("/jobPosting.info", "/applicationForm.submit"):                         # Ashby
             auth = self.headers.get("Authorization") or ""
             keys = {"Basic " + base64.b64encode((k + ":").encode()).decode(): k for k in (ASHBY_KEY, ASHBY_READONLY)}

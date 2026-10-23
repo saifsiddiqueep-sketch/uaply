@@ -148,38 +148,133 @@ try:
     payload = {"consent": True, "job": {"id": 424242, "co": "Acme Robotics", "role": "Software Engineering Intern", "url": "https://acme.example/jobs/42",
                                          "source": "Acme careers", "loc": "Philadelphia, PA", "type": "internship", "mode": "hybrid", "sal": [30000, 38000],
                                          "blurb": "Build and test the software that drives our warehouse robots."},
-               "profile": {"name": "Sam Rivera", "email": "sam@example.com", "skills": ["Python", "SQL"]}, "match": 87}
+               "profile": {"ext": {"phone": "215-555-0100"}, "name": "Sam Rivera", "email": "sam@example.com", "skills": ["Python", "SQL"]}, "match": 87}
+    def mails():
+        return [json.loads(x) for x in open(mail_file, encoding="utf-8") if x.strip()] if os.path.exists(mail_file) else []
     code, res = uaply_api.submit(payload, user)
     time.sleep(1)
-    sent = [json.loads(x) for x in open(mail_file, encoding="utf-8")] if os.path.exists(mail_file) else []
+    sent = mails()
     t("swiping right in test mode answers ok", code, 200)
-    t("two emails went out: the receipt and the owner copy", sorted(sum((m["to"] for m in sent), [])), ["owner@example.com", "sam@example.com"])
-    rec = next((m for m in sent if m["to"] == ["sam@example.com"]), None)
-    if rec:
-        msg = email.message_from_string(rec["raw"], policy=email.policy.default)
-        t("the receipt subject says TEST and names the job", msg["Subject"].startswith("[TEST] ") and "Acme Robotics" in msg["Subject"], True)
-        t("the receipt has a plain-text and an HTML version", [p.get_content_type() for p in msg.walk() if not p.is_multipart()], ["text/plain", "text/html"])
-        body = msg.get_body(preferencelist=("plain",)).get_content()
-        t("the receipt shows the job description and what a swipe means", "warehouse robots" in body and "Swiping right means" in body, True)
-        t("the receipt is recorded in the test inbox with status sent", auth_api.mail_list(5)[0]["status"], "sent")
+    # a job that takes applications on the employer's own site: no "finish your application" email per swipe (October 22: one swipe
+    # could send two emails, 20 swipes forty); it waits for the day's reminder
+    t("a hand-off swipe sends only the owner copy now; the person's 'finish your application' waits for the day's reminder",
+      (sorted(sum((m["to"] for m in sent), [])), res.get("receipt", {}).get("status"), uaply_api.finish_waiting(user["id"])), (["owner@example.com"], "digest", 1))
     owner = next((m for m in sent if m["to"] == ["owner@example.com"]), None)
     t("the owner copy is labelled as a copy and shows the job", bool(owner) and "[UAply copy]" in owner["raw"] and "warehouse robots" in owner["raw"], True)
+    payload_b = dict(payload, job=dict(payload["job"], id=424250, co="Beta Labs", role="Data Intern", url="https://beta.example/jobs/7"))
+    uaply_api.submit(payload_b, user)
+    uaply_api.submit(payload_b, user)                                           # the same job again is listed once
+    n0 = len(mails())
+    t("before the hold is over nothing more is sent (one swiping session becomes one email)", (uaply_api.send_finish_digests(time.time() + 60), len(mails()) - n0), (0, 0))
+    t("...after it, one reminder goes, listing both jobs once each", uaply_api.send_finish_digests(time.time() + uaply_api.DIGEST_HOLD + 60), 1)
+    time.sleep(1)
+    dig = [m for m in mails()[n0:] if m["to"] == ["sam@example.com"]]
+    t("exactly one reminder reached the person", len(dig), 1)
+    if dig:
+        msg = email.message_from_string(dig[0]["raw"], policy=email.policy.default)
+        body = msg.get_body(preferencelist=("plain",)).get_content()
+        t("the reminder subject says TEST and counts the jobs", msg["Subject"], "[TEST] Finish your applications: 2 jobs waiting on the employers' sites")
+        t("the reminder has a plain-text and an HTML version", [p.get_content_type() for p in msg.walk() if not p.is_multipart()], ["text/plain", "text/html"])
+        t("the reminder lists each job once with its link", (body.count("Software Engineering Intern at Acme Robotics"), body.count("Data Intern at Beta Labs"),
+                                                             "https://acme.example/jobs/42" in body and "https://beta.example/jobs/7" in body), (1, 1, True))
+        t("the reminder is recorded in the test inbox with status sent", auth_api.mail_list(5)[0]["status"], "sent")
+    uaply_api.submit(dict(payload, job=dict(payload["job"], id=424251)), user)
+    t("another hand-off the same day waits: at most one reminder a day", uaply_api.send_finish_digests(time.time() + uaply_api.DIGEST_HOLD + 120), 0)
+    t("...and goes the next day", uaply_api.send_finish_digests(time.time() + uaply_api.DIGEST_EVERY + uaply_api.DIGEST_HOLD + 120), 1)
+    time.sleep(0.5)
     # when the person who swipes IS the owner address, one swipe sends one email (not a confirmation plus a copy)
     n_before = len([1 for x in open(mail_file, encoding="utf-8") if x.strip()])
     s2, out2, tok2 = auth_api.signup("owner@example.com", "correct horse 99", "127.0.0.2", True)
     uid2, addr2, digits2 = auth_api.issue_code_for_token(tok2)
     auth_api.verify_code(tok2, digits2, "127.0.0.2")
     user2 = auth_api.user_for(tok2)
-    payload2 = dict(payload, job=dict(payload["job"], id=424243), profile={"name": "Owner Person", "email": "owner@example.com"})
+    payload2 = dict(payload, job=dict(payload["job"], id=424243), profile={"ext": {"phone": "215-555-0100"}, "name": "Owner Person", "email": "owner@example.com"})
     code2, res2 = uaply_api.submit(payload2, user2)
     time.sleep(1)
     new = [json.loads(x) for x in open(mail_file, encoding="utf-8") if x.strip()][n_before:]
-    t("owner swipes: exactly one email, the confirmation", (len(new), new[0]["to"] if new else None, res2["copied"]), (1, ["owner@example.com"], False))
-    # with no public_url set (a fresh host), the receipt links to the https address the person is using; a plain http address is never linked
+    t("owner swipes a hand-off: one email at the swipe (the copy), and its reminder waits for the day's email", (len(new), res2["copied"], uaply_api.finish_waiting(user2["id"])), (1, True, 1))
+    sams = lambda: [m for m in auth_api.mail_list(20) if m["to_addr"] == "sam@example.com"]      # noqa: E731
+    # with no public_url set (a fresh host), the reminder links to the https address the person is using; a plain http address is never linked
+    day = time.time() + 3 * uaply_api.DIGEST_EVERY
     uaply_api.submit(dict(payload, job=dict(payload["job"], id=424244)), user, "https://uaply-dev.onrender.com")
-    t("no public_url: the receipt links to the https site the person used", "Open UAply, then Dashboard, then Applied. https://uaply-dev.onrender.com" in auth_api.mail_list(1)[0]["body"], True)
+    uaply_api.send_finish_digests(day)
+    t("no public_url: the reminder links to the https site the person used", "Mark each one as applied once you finish it. https://uaply-dev.onrender.com" in sams()[0]["body"], True)
     uaply_api.submit(dict(payload, job=dict(payload["job"], id=424245)), user, "http://127.0.0.1:8767")
-    t("...and an http address (this computer) is never put in an email", "127.0.0.1" in auth_api.mail_list(1)[0]["body"], False)
+    uaply_api.send_finish_digests(day + 2 * uaply_api.DIGEST_EVERY)
+    t("...and an http address (this computer) is never put in an email", ("127.0.0.1" in sams()[0]["body"], "Finish your application" in sams()[0]["subject"]), (False, True))
+    # a receipt for an application UAply really sends is unchanged: still one per swipe, at once (the partner email employer below)
+    t("the reminder is held by the daily limit like other mail that can wait", "digest" in __import__("mailer").DEFERRABLE, True)
+
+    # ---- Mark as applied reaches the server, and the reminder is sent outside the lock every swipe takes (October 22) ----
+    def waiting_ids(u):
+        return [i["id"] for i in (uaply_api._digest_load().get(str(u["id"])) or {}).get("items") or []]
+    job = lambda n: dict(payload["job"], id=n)                                                      # noqa: E731
+    uaply_api.send_finish_digests(day + 6 * uaply_api.DIGEST_EVERY)                                 # (nothing left waiting from above)
+    uaply_api.submit(dict(payload, job=job(424260)), user)
+    uaply_api.submit(dict(payload, job=job(424261)), user)
+    t("Mark as applied takes that job out of the waiting reminder", (uaply_api.mark_applied(user["id"], 424260), waiting_ids(user)), (1, [424261]))
+    uaply_api._queue_finish(user, {"job": job(424260), "mode": "test"})      # (submit itself sends one application per job and person)
+    t("...and a later hand-off of the same job does not put it back", waiting_ids(user), [424261])
+    uaply_api.submit(dict(payload, job=job(424262), marked=True), user)
+    t("a swipe whose record carries the mark (marked: true) is never put in a reminder", waiting_ids(user), [424261])
+    uaply_api.mark_applied(user["id"], 424260, False)
+    uaply_api._queue_finish(user, {"job": job(424260), "mode": "test"})
+    t("Undo: after it, a hand-off of that job is reminded again", waiting_ids(user), [424261, 424260])
+    t("a job id that is not a number is refused", uaply_api.mark_applied(user["id"], "x"), None)
+    import threading
+    gate, inside, got = threading.Event(), threading.Event(), []
+    real_send = uaply_api._send_receipt
+
+    def slow_send(*a, **k):
+        if k.get("kind") == "digest":                       # the mail service takes its time with the reminder
+            inside.set()
+            gate.wait(15)
+        return real_send(*a, **k)
+    uaply_api._send_receipt = slow_send
+    try:
+        th = threading.Thread(target=lambda: got.append(uaply_api.send_finish_digests(day + 9 * uaply_api.DIGEST_EVERY)))
+        th.start()
+        inside.wait(10)
+        t0 = time.time()
+        uaply_api.submit(dict(payload, job=job(424270)), user)                    # a swipe while the reminder is on its way
+        took = time.time() - t0
+        uaply_api.mark_applied(user["id"], 424261)                                 # and a mark of a job in that reminder
+        gate.set()
+        th.join(20)
+    finally:
+        uaply_api._send_receipt = real_send
+        gate.set()
+    t("a swipe made while a reminder is being sent does not wait for the mail service (%.2f s)" % took, took < 3, True)
+    t("...the reminder went", got, [1])
+    t("...and the job swiped meanwhile waits for the next one: not lost, not counted as sent", waiting_ids(user), [424270])
+    t("two senders at once: the second one sends nothing (one at a time)",
+      uaply_api._digest_send_lock.acquire(blocking=False) and (uaply_api.send_finish_digests(day + 20 * uaply_api.DIGEST_EVERY), uaply_api._digest_send_lock.release())[0] == 0, True)
+
+    # ---- marks are kept only for jobs in the person's reminder, capped; a deleted account gets no reminder (October 22 review) ----
+    before = open(uaply_api._digest_path(), encoding="utf-8").read()
+    t("a mark of a job that is not in the reminder changes nothing and writes nothing", (uaply_api.mark_applied(user["id"], 515151), open(uaply_api._digest_path(), encoding="utf-8").read() == before),
+      (len(waiting_ids(user)), True))
+    t("...an Undo of a job never marked writes nothing either", (uaply_api.mark_applied(user["id"], 515152, False), open(uaply_api._digest_path(), encoding="utf-8").read() == before),
+      (len(waiting_ids(user)), True))
+    t("...and an account with no reminder at all gets no entry", (uaply_api.mark_applied(987654, 424260), "987654" in uaply_api._digest_load()), (0, False))
+    for n in range(uaply_api.MARKED_MAX + 15):
+        uaply_api._queue_finish(user, {"job": job(600000 + n), "mode": "test"})
+        uaply_api.mark_applied(user["id"], 600000 + n)
+    kept = uaply_api._digest_load()[str(user["id"])]["marked"]
+    t("at most %d marks are kept per account, the newest" % uaply_api.MARKED_MAX, (len(kept), kept[-1]), (uaply_api.MARKED_MAX, 600000 + uaply_api.MARKED_MAX + 14))
+    s3, out3, tok3 = auth_api.signup("gone@example.com", "correct horse 99", "127.0.0.3", True)
+    uid3, addr3, digits3 = auth_api.issue_code_for_token(tok3)
+    auth_api.verify_code(tok3, digits3, "127.0.0.3")
+    user3 = auth_api.user_for(tok3)
+    t("(an account to delete, verified)", bool(user3 and user3["emailVerified"]), True)
+    st, _x, _y = auth_api.delete_account(tok3, "correct horse 99", "127.0.0.3", before_delete=lambda _uid: None)
+    uaply_api.forget_user(user3["id"])                                       # what deleting an account does
+    uaply_api._queue_finish(user3, {"job": job(424299), "mode": "test"})     # a swipe that was in flight puts the entry back afterwards
+    t("(the deleted account's entry came back from the swipe in flight)", (st, str(user3["id"]) in uaply_api._digest_load()), (200, True))
+    gone_before = len([m for m in mails() if "gone@example.com" in json.dumps(m["to"])])
+    uaply_api.send_finish_digests(day + 40 * uaply_api.DIGEST_EVERY)
+    t("the reminder looks at the account again right before sending: a deleted one gets nothing, and its entry goes",
+      (len([m for m in mails() if "gone@example.com" in json.dumps(m["to"])]) - gone_before, str(user3["id"]) in uaply_api._digest_load()), (0, False))
 finally:
     proc.terminate()
 

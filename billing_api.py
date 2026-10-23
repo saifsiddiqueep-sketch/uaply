@@ -83,6 +83,12 @@ def summary():
     return out
 
 
+def hidden():
+    """A free-only launch: UAPLY_PLANS_HIDDEN=1 (or "plans_hidden": true in the config) hides Plus and Pro. Plan and billing then shows the
+    Free plan and "Plus and Pro are coming soon", with no Choose buttons, and checkout is refused. Off by default."""
+    return os.environ.get("UAPLY_PLANS_HIDDEN", "").strip() == "1" or uaply_api.config().get("plans_hidden") is True
+
+
 def buttons(s=None):
     """Whether the page offers Choose Plus / Choose Pro (or the sandbox's Payment Links): when Stripe keys are set on this server
     (test or live), or when the server is not public (the owner's own computer, where the test checkout is tried). A public
@@ -141,6 +147,8 @@ def limit_reached(user):
         return None
     p = PLANS[plan_of(user)]
     if p["cap"] and _week_used(user["id"]) >= p["cap"]:
+        if hidden():                                   # no bigger plan can be chosen yet: say when applying works again instead
+            return "You've used your %d applications this week on %s. The limit counts the last 7 days, so you can apply again as older applications drop off. Plus and Pro are coming soon." % (p["cap"], p["name"])
         return "You've used your %d applications this week on %s. Choose a bigger plan in Profile, Plan and billing to keep applying." % (p["cap"], p["name"])
     return None
 
@@ -157,7 +165,7 @@ def _problem(r):
 
 def status(user):
     s = settings()
-    out = {"enabled": s["on"], "test": s["test"], "buttons": buttons(s), "early": not buttons(s), "plans": {k: {"name": v["name"], "price": v["price"], "cap": v["cap"]} for k, v in PLANS.items()}}
+    out = {"enabled": s["on"], "test": s["test"], "buttons": buttons(s) and not hidden(), "early": not buttons(s), "hidden": hidden(), "plans": {k: {"name": v["name"], "price": v["price"], "cap": v["cap"]} for k, v in PLANS.items()}}
     if user:
         r = auth_api.billing_row(user["id"]) or {}
         plan = plan_of(user)
@@ -170,6 +178,8 @@ def status(user):
 
 
 def checkout(user, plan, site):
+    if hidden():
+        return 403, {"error": "Plus and Pro are not open yet. They are coming soon; nothing was charged.", "code": "plans_hidden"}
     s = settings()
     if not s["on"]:
         return 503, {"error": "Payments are not switched on yet."}

@@ -41,7 +41,7 @@ module.exports = async ({ ev, sleep, nav, shot, logs }) => {
     await ev("(()=>{const c=" + F + ".getElementById('sAgree');if(c)c.checked=true})()");
     await ev(F + ".querySelector('[data-auth=ssubmit]').click()"); await sleep(3000);
     const signed = await text();
-    const code = await ev("fetch('/outbox').then(r=>r.text()).then(t=>{const m=t.match(/([0-9]{6}) is your UAply verification code/);return m?m[1]:''})");
+    const code = await ev("fetch('/outbox').then(r=>r.text()).then(t=>{const m=t.match(/([0-9]{6}) is your UAply (?:verification|sign-in) code/);return m?m[1]:''})");
     check("the verification code was delivered (test inbox, or the real inbox when email is connected)", /^[0-9]{6}$/.test(code) || /sent/i.test(signed), code ? "code found in the test inbox" : "");
     if (code) { await setVal("sCode", code); await ev(F + ".querySelector('[data-auth=sverify]').click()"); await sleep(2000); }
   }

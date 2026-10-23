@@ -1,5 +1,5 @@
 /* "nav" experiment for the sandbox and dev instances (never loaded by prod).
-   Bottom navigation with three dropdowns: Services (Full-time, Part-time, Internships, Coop), Dashboard (Overview, Applied,
+   Bottom navigation with three dropdowns: Services (Full-time, Part-time, Internships, Coop), Job Tracker (Overview, Applied,
    Accepted, Rejected, Interviews), Profile (Profile setup, Filters, Account, Plan & billing, Data & privacy).
    patch() edits an in-memory copy of index.html; apply() builds the UI. */
 (function(){
@@ -32,18 +32,28 @@ function patch(s){
            'var X=!p.custom;$("pName").value=X?"":p.name;$("pTitle").value=X?"":p.title;$("pYears").value=X?"":p.years;$("pEdu").value=p.edu;');
   s=once(s,'regional cookbooks."}','regional cookbooks."}'+EXTRA);
   s=once(s,'var busy=false,F="all";','var busy=false,F="all",TYPE="job",MINPCT=0;');
+  /* how a swipe right reaches this employer, in the job's "route" (from the server): connected or email -> "Applies instantly",
+     one-tap -> "Ready, one tap on their site", assisted or ready -> "Ready". Read by the card and by the Job Tracker row (October 22:
+     "Apply instantly" and "Opens employer site" are not used any more). The server's labels ("Ready", "Ready, one tap") read the same. */
+  s=once(s,'var busy=false,F="all",TYPE="job",MINPCT=0;','var busy=false,F="all",TYPE="job",MINPCT=0;'+
+    'window.__uaplyRouteWord=function(j){var r=String(j&&j.route||"").toLowerCase();if(r==="connected"||r==="email"||(j&&j.instant))return "Applies instantly";'+
+    'if(/one[- ]?tap/.test(r))return "Ready, one tap on their site";return "Ready"};');
+  /* the app never says how many jobs a section holds (the owner's rule; counts stay on the owner's pages and /api/status): the line
+     above the deck keeps only the person's own "N applied" */
+  s=once(s,`innerHTML='<span>'+q.length+' job'+(q.length===1?'':'s')+' left</span>`,`innerHTML='<span></span>`);
+  s=once(s,'.sort(function(a,b){return b.m.pct-a.m.pct});','.sort(window.__uaplyDeckSort?window.__uaplyDeckSort(TYPE):function(a,b){return b.m.pct-a.m.pct});');   /* the Internship and Co-op stacks: see __uaplyDeckSort */
   s=once(s,'&&(F==="all"||j.mode===F)}).map(function(j){return {j:j,m:evaluate(j,S.profile)}}).sort(',
            '&&(j.type||"job")===TYPE&&!(window.__uaplyHide&&window.__uaplyHide(j))&&(F==="all"||j.mode===F)}).map(function(j){return {j:j,m:evaluate(j,S.profile)}}).filter(function(x){return x.m.pct>=MINPCT}).sort(');
   s=once(s,'<h2>You have seen every job</h2><p>Jobs you passed on can come back, and your applications are in the Applied tab.</p>',
-    `<h2>'+(window.__uaplyLoadingJobs?"Finding jobs for you…":window.__uaplyJobsFailed?"Could not load jobs":MINPCT>0?"No jobs at "+MINPCT+"% match or higher":(JOBS.filter(function(j){return (j.type||"job")===TYPE&&(j.live||!window.__uaplyHideSamples)}).length?"You have seen every one of these":"Nothing listed here right now"))+'</h2><p>'+(window.__uaplyLoadingJobs?"Looking for current postings. This takes a few seconds.":window.__uaplyJobsFailed?"Check your internet connection, then close and reopen UAply.":MINPCT>0?"Lower the minimum match in Profile, then Filters.":(JOBS.filter(function(j){return (j.type||"job")===TYPE&&(j.live||!window.__uaplyHideSamples)}).length?"Jobs you passed on can come back, and your applications are in the Dashboard.":"New postings appear as employers publish them. Try another section or check back soon."))+'</p>`);
-  s=once(s,'title:String(x.title||"")};','title:String(x.title||""),st:(x.st==="interview"||x.st==="accepted"||x.st==="rejected")?x.st:"applied",sent:(x.sent&&typeof x.sent==="object")?{at:+x.sent.at||0,to:String(x.sent.to||"").slice(0,120),status:String(x.sent.status||"").slice(0,20)}:undefined};');
+    `<h2>'+(window.__uaplyLoadingJobs?"Finding jobs for you…":window.__uaplyJobsFailed?"Could not load jobs":MINPCT>0?"No jobs at "+MINPCT+"% match or higher":(window.__uaplyEmpty||function(){return ["You have seen every one of these"]})(JOBS,S,TYPE)[0])+'</h2><p>'+(window.__uaplyLoadingJobs?"Looking for current postings. This takes a few seconds.":window.__uaplyJobsFailed?"Check your internet connection, then close and reopen UAply.":MINPCT>0?"Lower the minimum match in Profile, then Filters.":(window.__uaplyEmpty||function(){return ["","Jobs you passed on can come back, and your applications are in the Job Tracker."]})(JOBS,S,TYPE)[1])+'</p>`);
+  s=once(s,'title:String(x.title||"")};','title:String(x.title||""),st:(x.st==="interview"||x.st==="accepted"||x.st==="rejected")?x.st:"applied",sent:(x.sent&&typeof x.sent==="object")?{at:+x.sent.at||0,to:String(x.sent.to||"").slice(0,120),status:String(x.sent.status||"").slice(0,20),prev:String(x.sent.prev||"").slice(0,20),once:x.sent.once===true}:undefined};');
   /* profile gets an email so a recruiter can reply */
   s=once(s,'salary:100000,loc:"New York",','salary:100000,loc:"New York",email:"jordan.lee@example.com",');
   s=once(s,'loc:typeof p.loc==="string"?p.loc:"",','loc:typeof p.loc==="string"?p.loc:"",email:typeof p.email==="string"?p.email.slice(0,200):"",');
   s=once(s,'salary:num($("pSalary").value,0,10000000),loc:$("pLoc").value.trim(),','salary:num($("pSalary").value,0,10000000),loc:$("pLoc").value.trim(),email:($("pEmail")?$("pEmail").value.trim():""),');
   s=once(s,'$("pSalary").value=p.salary;$("pLoc").value=p.loc;','$("pSalary").value=p.salary;$("pLoc").value=p.loc;if($("pEmail"))$("pEmail").value=X?"":(p.email||"");if(X){$("pSkills").value="";$("pSalary").value="";$("pLoc").value=""}');
   s=once(s,'title:S.profile.title||""};','title:S.profile.title||"",st:"applied"};');
-  s=once(s,"<span>'+cap(j.mode)+'</span>","<span>'+cap(j.mode)+'</span>'+(j.type&&j.type!==\"job\"?'<span>'+({internship:\"Internship\",coop:\"Co-op\",parttime:\"Part-time\"}[j.type]||\"Job\")+'</span>':'')+(j.live?(j.instant?'<span class=\"inst\">Apply instantly</span>':'<span class=\"ext\">Opens employer site</span>'):'')+(j.live&&j.via?'<span class=\"via\">via '+esc(j.via)+'</span>':'')+'");
+  s=once(s,"<span>'+cap(j.mode)+'</span>","<span>'+cap(j.mode)+'</span>'+(j.jobType?'<span>'+({\"full-time\":\"Full-time\",\"part-time\":\"Part-time\",internship:\"Internship\",\"co-op\":\"Co-op\",contract:\"Contract\",temporary:\"Temporary\"}[j.jobType]||\"\")+'</span>':(j.type&&j.type!==\"job\"?'<span>'+({internship:\"Internship\",coop:\"Co-op\",parttime:\"Part-time\"}[j.type]||\"Job\")+'</span>':''))+(j.live?'<span class=\"'+(window.__uaplyRouteWord(j)===\"Applies instantly\"?\"inst\":\"ext\")+'\">'+window.__uaplyRouteWord(j)+'</span>':'')+(j.live&&j.via?'<span class=\"via\">via '+esc(j.via)+'</span>':'')+'");
   /* target titles count toward the match score: Title 15 points, Skills 30, Experience 15 (the total stays 100) */
   s=once(s,'{k:"Skills",w:40,','{k:"Skills",w:30,');
   s=once(s,'{k:"Experience",w:20,','{k:"Experience",w:15,');
@@ -76,15 +86,24 @@ function patch(s){
 }
 
 var CSS=`
-.facts .inst{color:var(--yes);font-weight:700}.facts .ext{color:var(--muted)}
+.facts .inst{color:var(--yes);font-weight:700}.facts .ext{color:var(--muted)}.facts .rdy{font-weight:700}.facts .rdy.ok{color:var(--yes)}.facts .rdy.need{color:var(--accent)}.facts .rdy.ext{color:var(--muted)}
+.rdyList{display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:14px;padding:14px;background:var(--surface)}
+.rdyItems{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}.rdyItems li{display:flex;align-items:center;gap:10px;min-height:44px;min-width:0}
+.rdyItems .rdyL{flex:1;min-width:0;overflow-wrap:anywhere}.rdyItems em{font-style:normal;font-size:12px;color:var(--accent);font-weight:600}.rdyItems li[data-done=true]{color:var(--muted)}
+.rdyItems .rdyMark{width:18px;text-align:center;font-weight:700}.rdyItems li[data-done=true] .rdyMark{color:var(--yes)}.rdyItems .rdyOk{font-size:12px}
 .facts .via{color:var(--muted);font-size:12px;opacity:.85}   /* where a feed job came from ("via USAJOBS"): every free feed asks for credit */
 .tabs{display:none}
 #bnav{display:flex;gap:4px;justify-content:center;flex:none;max-width:1100px;width:100%;margin-inline:auto;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px;position:relative}
 .nwrap{position:relative;flex:1;display:flex;min-width:0}
 .nb{flex:1;border:0;background:none;border-radius:999px;padding:6px 8px;min-height:48px;font-weight:600;color:var(--muted);display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.15;min-width:0}
 .nb small{font:500 11px var(--mono);opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-#bnav.simple .nb small{display:none}#bnav.simple .nb{font-size:15px;min-height:44px}
-@media (max-width:700px){#bnav.simple~#legalbar{display:none}#bnav.simple~#toastHost{margin-top:-12px}body:has(#bnav.simple){padding-bottom:calc(var(--nav-lift,1px) + env(safe-area-inset-bottom,0px))}}
+.nb>span{white-space:nowrap}#bnav.simple .nb small{display:none}#bnav.simple .nb{font-size:15px;min-height:44px}
+/* the screen's bottom safe area (iPhone home indicator). The app runs in a frame: Safari gives a frame no inset, Chrome gives it the
+   whole screen's even where the page around the frame already keeps that space free (the sandbox's app mode), so the page around the
+   frame works out what is still needed and passes it as --sab (uaply-envs.js, syncSafeArea); env() is only the fallback without it */
+:root{--safe-b:var(--sab,env(safe-area-inset-bottom,0px))}
+/* phones, held upright or turned (a turned phone is wide but under 500 px tall): no fine-print bar under the tabs */
+@media (max-width:700px),(max-height:500px){#bnav.simple~#legalbar{display:none}#bnav.simple~#toastHost{margin-top:-12px}body:has(#bnav.simple){padding-bottom:calc(var(--nav-lift,1px) + var(--safe-b))}}
 .nb[aria-current="true"]{background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink)}
 .nmenu{position:absolute;bottom:calc(100% + 10px);left:50%;transform:translateX(-50%);min-width:220px;max-height:calc(100vh - 96px);overflow-y:auto;overscroll-behavior:contain;background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:6px;display:flex;flex-direction:column;gap:2px;z-index:20}
 .nwrap:first-child .nmenu{left:0;transform:none}
@@ -93,14 +112,29 @@ var CSS=`
 .nitem:hover,.nitem:focus-visible{background:var(--bg)}
 .nitem[aria-checked="true"]{color:var(--accent);background:var(--bg)}
 .nitem .c{font:500 12px var(--mono);color:var(--muted)}
-.toast{bottom:var(--toast-at,var(--above-nav,calc(88px + env(safe-area-inset-bottom,0px))));pointer-events:none}.toast button{pointer-events:auto}
-body{padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
+.toast{bottom:var(--toast-at,var(--above-nav,calc(88px + var(--safe-b))));pointer-events:none;width:max-content;max-width:min(600px,calc(100vw - 32px))}.toast button{pointer-events:auto}
+/* a phone: every message uses the screen's width (the stranger walk, October 18: a short one sat in a narrow column over the card) */
+.toast{min-width:min(320px,calc(100vw - 32px))}   /* a short message is not a narrow column either (laptop) */
+@media (max-width:520px){.toast{width:calc(100vw - 32px)}}
+body{padding-bottom:calc(12px + var(--safe-b))}
+/* laptops: the header, the screens and the bottom bar share one centred column about 960 px wide, and the Account, Plan & billing,
+   Data & privacy, Filters and Profile setup screens sit in its middle instead of against its left edge (Hiring mode keeps its own width) */
+@media (min-width:701px){
+ body:not(.hire)>header.bar,#main,#bnav{max-width:960px}
+ #acctSec,#form{margin-inline:auto}
+}
 /* Pass / Undo / Apply always in sight, just above the bottom bar. The deck scrolls inside #main, and on first open the tips, the
    example-profile notice, the location box, the filters and the card's 430 px minimum pushed the row below the bottom of #main,
    under the bar (Oct 17 audit, "Start does not work"). Sticky to the bottom of #main the row stays where it is when everything
    fits and holds the bottom edge when it does not; its own space stays in the flow, so scrolled to the end the card ends above it. */
 #pane-swipe .actions{position:sticky;bottom:0;z-index:3;background:var(--bg);box-shadow:0 -10px 12px -2px var(--bg)}
+/* while that row lies over the lower part of the card (a short phone, before the deck is scrolled to its end), the card's own
+   scrolling area gets that much room after its last line, so scrolled to its end the last line sits above Pass / Undo / Apply.
+   The height is measured each time (cardCover below); nothing is added when the row does not reach the card. */
+#deck[data-covered] .card.top::after{content:"";flex:none;height:var(--card-cover,0px)}
 #pane-track .stats{grid-template-columns:repeat(4,1fr)}
+/* four figures in a row need about 460 px for "Interviews" at 14 px; narrower, they sit two by two so no label breaks inside a word */
+@media (max-width:460px){#pane-track .stats{grid-template-columns:repeat(2,1fr)}}
 #pane-track .row{flex-wrap:wrap}
 #pane-track .acts{display:flex;gap:6px;flex-wrap:wrap;flex-basis:100%}
 #pane-track .acts .btn{padding:6px 12px;font-size:13px}
@@ -123,17 +157,22 @@ body{padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
 #paywall{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.45)}
 #paywall>div{background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:22px;max-width:400px;width:100%;box-shadow:var(--shadow)}
 #form[hidden],#acctSec[hidden]{display:none!important}
-.hdrbtn{margin-left:auto;display:flex;align-items:center;gap:8px;min-height:40px;max-width:60vw;padding:5px 14px 5px 5px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--ink);font-weight:600;font-size:14px}
+.hdrbtn{margin-left:auto;display:flex;align-items:center;gap:8px;min-height:44px;min-width:44px;justify-content:center;max-width:60vw;padding:5px 14px 5px 5px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--ink);font-weight:600;font-size:14px}
 .hdrbtn:not(:has(.av)){padding:5px 16px}
 .hdrbtn .av{width:30px;height:30px;flex:none;border-radius:50%;display:grid;place-items:center;background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);font-weight:800}
 .hdrbtn .em{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hdrbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 #pane-track .info>b{display:inline}
 #pane-track .info>small{display:block}
-.mchip{display:inline-block;margin-left:8px;padding:2px 9px;border-radius:999px;font:600 11px var(--mono,inherit);letter-spacing:.02em;vertical-align:2px;border:1px solid var(--line);white-space:nowrap}
+.mchip{display:inline-block;margin-left:8px;padding:2px 9px;border-radius:999px;font:600 14px/1.3 var(--mono,inherit);letter-spacing:.02em;vertical-align:2px;border:1px solid var(--line);white-space:nowrap}
 .mchip.m-remote{background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);border-color:transparent}
 .mchip.m-hybrid{background:color-mix(in srgb,var(--accent2) 18%,transparent);color:var(--ink);border-color:transparent}
 .mchip.m-onsite{background:var(--bg);color:var(--muted)}
+.stchip{display:inline-block;margin:4px 0 0;padding:2px 9px;border-radius:999px;font:600 11px var(--mono,inherit);white-space:nowrap;border:1px solid var(--line);background:var(--bg);color:var(--muted);width:max-content}
+.stchip.st-sent,.stchip.st-accepted{background:color-mix(in srgb,#1f9d55 16%,transparent);color:#1b7a44;border-color:transparent}
+.stchip.st-finish{background:color-mix(in srgb,var(--accent2) 18%,transparent);color:var(--ink);border-color:transparent}
+.stchip.st-interview{background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);border-color:transparent}
+.joblinks{display:flex;flex-wrap:wrap;gap:0 14px;margin-top:2px}.joblinks .linkbtn{font-size:13.5px;text-align:left}
 #aEeo{display:block;border-top:1px solid var(--line);padding-top:6px}
 #aElig{display:flex;flex-direction:column;gap:10px}
 #tBox{display:flex;flex-direction:column;gap:8px}
@@ -236,7 +275,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent);width:20px;hei
 input[type=range]{accent-color:var(--accent);min-height:44px}
 #form .checks label,#acctSec .checks label,#filtersSec .checks label{min-height:44px}
 .chip.pick{min-height:40px}
-#tChips button{min-width:36px;min-height:36px}
+#tChips button{min-width:44px;min-height:44px}
 #acctSec{padding-bottom:150px}
 #filtersSec{padding-bottom:20px}
 #aEeo>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:600;color:var(--muted)}
@@ -246,6 +285,11 @@ input[type=range]{accent-color:var(--accent);min-height:44px}
 #locAsk{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:100%;max-width:620px}
 #locAsk p{margin:0;color:var(--muted);font-size:13.5px}
 #locAsk .acts{display:flex;gap:8px;flex-wrap:wrap}
+/* on a phone: the title, at most two lines of text and the two buttons side by side, so the first job card keeps its place below */
+#locAsk.phone{padding:10px 12px;gap:6px}
+#locAsk.phone p{font-size:13px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+#locAsk.phone .acts{flex-wrap:nowrap}
+#locAsk.phone .acts .btn{flex:1}
 @media (max-height:740px){.swipecol{gap:8px}.tips{padding:6px 10px!important;font-size:12.5px!important;line-height:1.35}.banner{padding:4px 10px!important;font-size:12px!important;line-height:1.3}.banner button{padding:4px 0!important;min-height:32px}#locAsk{padding:8px 12px;gap:4px;border-radius:12px}#locAsk b{font-size:13.5px}#locAsk p{font-size:12px;line-height:1.35}#locAsk .acts .btn{min-height:34px;padding:5px 14px;font-size:13.5px}.filters button{padding:4px 2px!important;min-height:32px}}
 #fMilesWrap.nearbox{display:flex;flex-direction:column;gap:6px;margin-top:8px}
 #fMilesWrap .rngrow{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
@@ -253,6 +297,42 @@ input[type=range]{accent-color:var(--accent);min-height:44px}
 #fMilesWrap .rngrow .m{color:var(--muted);font-size:12px}
 #fLoc{display:flex;flex-direction:column;gap:6px;align-items:flex-start;margin-top:4px}
 @media (max-width:480px){.hdrbtn .em{display:none}.hdrbtn{padding:5px;max-width:none}}
+/* taps and focus: the same rule as every UAply page (shared/uaply-focus.css) */
+html{-webkit-tap-highlight-color:transparent}a,button,input,select,textarea,summary,label,[role=button],[tabindex]{-webkit-tap-highlight-color:transparent}:focus:not(:focus-visible){outline:none}:focus-visible{outline:3px solid var(--accent,#C92A55);outline-offset:2px}
+/* Phone fit (October 21 phone walk on a Galaxy A17, Chrome 138, 384x692 with the address bar):
+   - every tap target reaches 44 px. Where the short-screen layout (max-height:740px) keeps a button small on purpose (the work-style chips,
+     Enter your details, the location buttons), an invisible ::after makes the finger's target 44 px tall without moving anything; in the
+     Filters screen, where there is room, the job type buttons are simply 44 px tall
+   - the agreement's buttons stay in sight at the bottom of the box when its text is taller than the screen (Agree was 21 px below it):
+     the box scrolls inside itself with its buttons pinned to its bottom edge
+   - a message's action (Undo, OK) is a 44 px target, the account and hiring buttons in the header 44 px tall */
+@media (max-height:740px){
+ .filters button,.banner button,#locAsk .acts .btn{position:relative}
+ .filters button::after,.banner button::after,#locAsk .acts .btn::after{content:"";position:absolute;left:0;right:0;top:50%;height:46px;transform:translateY(-50%)}
+ /* with no "example profile" line above them (a person's own profile, after sign-up) the job type buttons are the first thing in the
+    scrolling area, which cuts off the target's top; the card below then took its bottom: the finger's target was 39 px (phone walk,
+    October 22, 2026). Above the card, and reaching further down, it is 44 px again */
+ .filters button{z-index:1}
+ .filters button::after{height:52px}
+ /* ...and never over the location card's or a banner's own buttons next to them (Try again, Not now: 39 px on a turned phone) */
+ .banner button,#locAsk .acts .btn{z-index:2}
+}
+#fJt button{min-height:44px}
+.toast button{position:relative}
+.toast button::after{content:"";position:absolute;left:50%;top:50%;width:max(100%,46px);height:46px;transform:translate(-50%,-50%)}
+#kitConsent [role=dialog]{max-height:calc(100dvh - 32px);overflow-y:auto;overscroll-behavior:contain}   /* the box scrolls, not the dimmed page */
+#kitConsent [role=dialog]>div:last-child{position:sticky;bottom:-20px;margin:0 -20px -20px;padding:10px 20px 20px;background:var(--surface);
+  box-shadow:0 -12px 12px -4px var(--surface)}
+/* a turned phone (under 500 px tall): the card and Pass / Undo / Apply side by side. Stacked, the 121 px left between the header and the tabs
+   held only the buttons, with the card wholly underneath them; now the buttons stay at the top of their own column while the card scrolls */
+@media (max-height:500px) and (orientation:landscape){
+ #pane-swipe .swipecol{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:16px;align-items:start;height:auto}
+ #pane-swipe .swipecol>*{grid-column:1;max-width:none}
+ #pane-swipe .actions{grid-column:2;grid-row:1 / span 20;position:sticky;top:0;bottom:auto;box-shadow:none;background:none;width:auto;gap:14px;padding-top:4px}
+ .deck{min-height:260px}
+}
+/* a touch screen wide enough for the laptop layout (a tablet): the fine-print links are 44 px tall targets */
+@media (pointer:coarse){#legalbar a{display:inline-block;padding:13px 2px}}
 `;
 
 function apply(w,host){
@@ -273,7 +353,8 @@ function apply(w,host){
   var NK=w.__uaplyKey+".nav";
   var SECS={
     svc:{label:"Services",items:[["job","Full-time"],["parttime","Part-time"],["internship","Internships"],["coop","Coop"]]},
-    dash:{label:"Dashboard",items:[["overview","Overview"],["applied","Applied"],["accepted","Accepted"],["rejected","Rejected"],["interview","Interviews"]]},
+    /* internal "dash"/"dashboard" (ids nb-dash, pane-track, the help's "dash:..." links and its "dashboard" article, saved state) = label "Job Tracker" */
+    dash:{label:"Job Tracker",items:[["overview","Overview"],["applied","Applied"],["accepted","Accepted"],["rejected","Rejected"],["interview","Interviews"]]},
     prof:{label:"Profile",items:[["settings","Profile setup"],["filters","Filters"],["account","Account"],["plan","Plan & billing"],["data","Data & privacy"]]}
   };
   /* Settings, Preferences and Resume are now one guided setup. The old names still work as shortcuts into it. */
@@ -281,7 +362,7 @@ function apply(w,host){
   /* the Plan screen is in every build: on a real server it is backed by Stripe (see billingHTML); the simulated one remains only without a server */
   var ACCT={account:1,plan:1,data:1};
   var LEADS={
-    account:"Sign in to get an email receipt for each application and to apply directly to employers that take applications through UAply. Your profile stays on this device.",   /* nothing syncs a profile between devices, so the screen must not promise it */
+    account:"Sign in to get an email receipt for each application and to apply directly to employers that take applications through UAply. Your name goes with your account; the rest of your profile stays on this device.",   /* nothing syncs a profile between devices, so the screen must not promise it */
     plan:"Choose your plan. Payments are made on Stripe's secure page; you can cancel any time.",
     data:"Back up, move or delete everything UAply keeps about you.",
     settings:"Your details. Every card is scored against them, and they fill in your application note and the email address recruiters reply to.",
@@ -290,6 +371,8 @@ function apply(w,host){
   /* a server without email (the live site until the owner adds the mail key) sends no receipts, so its Account screen must not promise
      them; the owner's computer (test inbox) and a server with email keep the line above */
   function leadOf(v){
+    /* signed in: the line above "You are signed in" must not still ask the person to sign in */
+    if(v==="account"&&SRV.up&&SRV.user)return "Your sign-in, your name, email confirmations and password. The rest of your profile stays on this device.";
     if(v==="account"&&SRV.up&&SRV.mailKnown&&!(SRV.canEmail||SRV.testInbox))return "Sign in to keep a record of your applications with your account and to apply directly to employers that take applications through UAply. Email receipts start once email is switched on for this site. Your profile stays on this device.";
     return LEADS[v];
   }
@@ -318,7 +401,7 @@ function apply(w,host){
   /* bottom nav */
   var main=d.getElementById("main"),nav=d.createElement("nav");
   nav.id="bnav";nav.setAttribute("aria-label","Main");
-  /* sandbox only: one-word tabs (Jobs, Dashboard, Profile) without the second line naming the open screen */
+  /* short tabs (Jobs, Job Tracker, Profile) without the second line naming the open screen */
   if(OPTS.simpleTabs){SECS.svc.label="Jobs";nav.className="simple";if(typeof OPTS.navLift==="number")d.documentElement.style.setProperty("--nav-lift",Math.max(0,Math.min(80,OPTS.navLift))+"px");[].slice.call(d.querySelectorAll("p.hint")).forEach(function(h){if(/^Keyboard:/.test(h.textContent.trim()))h.remove()})}
   Object.keys(SECS).forEach(function(k){
     var wrap=d.createElement("div");wrap.className="nwrap";wrap.setAttribute("data-k",k);
@@ -334,10 +417,27 @@ function apply(w,host){
      Undo link lay on the Apply button, so a tap on Apply right after a pass undid the pass). Worked out each time a message appears. */
   function toastAt(){
     var a=d.querySelector("#pane-swipe:not([hidden]) .actions"),nr=nav.getBoundingClientRect(),y=nr.height?nr.top:w.innerHeight;
-    if(a){var r=a.getBoundingClientRect();if(r.height&&r.bottom>0&&r.top<y)y=Math.min(y,r.top)}
+    /* only a row along the bottom: on a turned phone the row is a column at the top right, and the message would have jumped over the header */
+    if(a){var r=a.getBoundingClientRect();if(r.height&&r.bottom>0&&r.top<y&&r.top>w.innerHeight/2)y=Math.min(y,r.top)}
     d.documentElement.style.setProperty("--toast-at",(Math.max(0,Math.round(w.innerHeight-y))+8)+"px");
   }
   new w.MutationObserver(function(ms){for(var i=0;i<ms.length;i++)for(var j=0;j<ms[i].addedNodes.length;j++){var n=ms[i].addedNodes[j];if(n.nodeType===1&&(n.classList.contains("toast")||n.querySelector&&n.querySelector(".toast"))){toastAt();return}}}).observe(d.body,{childList:true,subtree:true});
+  /* how much of the top card lies under the sticky Pass / Undo / Apply row (see #deck[data-covered] in the CSS). Worked out again when
+     anything scrolls or changes size, when a new card comes up and when a notice above the deck opens or closes; at most once a frame. */
+  var deckEl=d.getElementById("deck"),coverQueued=false;
+  function cardCover(){
+    coverQueued=false;if(!deckEl)return;
+    var c=deckEl.querySelector(".card.top"),a=d.querySelector("#pane-swipe:not([hidden]) .actions"),v=0;
+    if(c&&a){var cr=c.getBoundingClientRect(),ar=a.getBoundingClientRect();if(cr.height&&ar.height&&ar.top<cr.bottom&&ar.bottom>cr.top)v=Math.round(Math.min(cr.bottom-ar.top,cr.height))}
+    if(v>0){deckEl.setAttribute("data-covered","");deckEl.style.setProperty("--card-cover",v+"px")}
+    else if(deckEl.hasAttribute("data-covered")){deckEl.removeAttribute("data-covered");deckEl.style.removeProperty("--card-cover")}
+  }
+  function queueCover(){if(!coverQueued){coverQueued=true;(w.requestAnimationFrame||w.setTimeout)(cardCover)}}
+  w.addEventListener("resize",queueCover);d.addEventListener("scroll",function(e){if(e.target===main||e.target===d)queueCover()},{passive:true,capture:true});
+  var swipePane=d.getElementById("pane-swipe");
+  if(swipePane)new w.MutationObserver(queueCover).observe(swipePane,{childList:true,subtree:true,attributes:true,attributeFilter:["hidden","class"]});
+  if(w.ResizeObserver&&swipePane)new w.ResizeObserver(queueCover).observe(swipePane);
+  queueCover();
   /* fine print: always one tap away (App Store and Google Play also expect a reachable privacy policy) */
   var lp=(host&&host.defaultView&&host.defaultView.location.pathname)||"/",LB=/\/(sandbox|dev)\/(index\.html)?$/.test(lp)?"../legal/":"legal/";   /* also /dev/index.html: the hosted copies have legal/ one folder up */
   var legalbar=d.createElement("div");legalbar.id="legalbar";
@@ -347,7 +447,7 @@ function apply(w,host){
 
   function count(k,v){
     var n=0;
-    if(k==="prof"||v==="overview"||(k==="svc"&&OPTS.hideServiceCounts))return "";
+    if(k==="prof"||v==="overview"||k==="svc")return "";   /* never how many jobs a section holds (Jobs menu); Job Tracker keeps the person's own counts */
     A.JOBS.forEach(function(j){
       if(w.__uaplyHideSamples&&!j.live)return;
       if(w.__uaplyHide&&w.__uaplyHide(j))return;
@@ -408,7 +508,7 @@ function apply(w,host){
   nav.addEventListener("focusout",function(e){if(e.relatedTarget&&!nav.contains(e.relatedTarget))closeMenus()});
   d.addEventListener("pointerdown",function(e){if(!e.target.closest("#bnav"))closeMenus()},true);
 
-  /* dashboard: applications by status */
+  /* Job Tracker: applications by status */
   var tp=d.createElement("section");tp.id="pane-track";tp.className="pane list";tp.setAttribute("aria-label","Applications");tp.hidden=true;main.appendChild(tp);
   var ACTS={
     applied:[["interview","Interview"],["accepted","Accepted"],["rejected","Rejected"],["withdraw","Withdraw"]],
@@ -417,13 +517,14 @@ function apply(w,host){
     interview:[["accepted","Accepted"],["rejected","Rejected"],["applied","Back to applied"],["withdraw","Withdraw"]]
   };
   var EMPTY={
-    applied:"No applications waiting. Swipe right on a job, internship or co-op to apply.",
+    applied:"No applications yet. Swipe right on a job, internship or co-op: UAply applies for you at connected employers and takes you to the employer\'s page everywhere else.",
     accepted:"Nothing here yet. Tap Accepted on an application when you get an offer.",
     rejected:"Nothing here. Tap Rejected on an application when you hear back.",
     interview:"Nothing here yet. Tap Interview on an application when a company invites you."
   };
   var TYPE_LABEL={job:"Full-time",parttime:"Part-time",internship:"Internship",coop:"Co-op"};
   function renderTrack(){
+    if(w.__uaplyGateUp){tp.innerHTML="";return}   /* the sign-in gate: no Job Tracker rows while nobody is signed in */
     var by={applied:[],accepted:[],rejected:[],interview:[],passed:[]};
     A.JOBS.forEach(function(j){
       var x=A.S.decisions[j.id];if(!x)return;
@@ -432,9 +533,13 @@ function apply(w,host){
     /* what really happened to the application: never "sent" unless the server said so */
     function sentLine(o){
       var x=o.x.sent,e=A.esc;if(!x)return "";
+      if(x.status==="sent"&&x.via==="assist")return '<small class="sent ok">Sent on '+e(o.j.co)+'\'s own page: their confirmation page appeared</small>';
       if(x.status==="sent")return '<small class="sent ok">Application sent to '+e(x.to||o.j.co)+'</small>';
       if(x.status==="delivered_test")return '<small class="sent ok">Sent to '+e((x.to||"the test inbox").replace(/ \(simulated\)$/,""))+' (test, nothing reached '+e(o.j.co)+')</small>';
-      if(x.status==="handoff")return '<small class="sent todo">Not sent yet: '+e(o.j.co)+' takes applications on its own site. '+(o.j.url?'<button type="button" class="linkbtn" data-open="'+e(o.j.url)+'">Finish on their site ↗</button>':'')+'</small>';
+      if(x.status==="handoff")return '<small class="sent todo">Not sent yet: '+e(o.j.co)+' takes applications on its own site.</small>';
+      /* the person said they finished on the employer's site ("Mark as applied"): theirs to undo once, if it was a slip of the finger */
+      if(x.status==="self")return '<small class="sent ok">You applied on '+e(o.j.co)+'\'s site · '+new Date(x.at).toLocaleDateString(undefined,{month:"short",day:"numeric"})+
+        (x.once?'':' <button type="button" class="linkbtn" data-act="unmark" data-id="'+o.j.id+'">Undo</button>')+'</small>';
       if(x.status==="pending")return '<small class="sent todo">Waiting to send: UAply sends it as soon as the connection is back.</small>';
       /* nothing reached the employer: say so, with a way to try again (the same as swiping right on it again) */
       var again='<button type="button" class="linkbtn" data-act="resend" data-id="'+o.j.id+'">';
@@ -442,12 +547,29 @@ function apply(w,host){
       if(x.status==="needs_answers")return '<small class="sent todo">Not sent yet: '+e(o.j.co)+'\'s form asks something only you can answer. '+again+'Answer now</button></small>';
       return "";
     }
+    /* what the row is at a glance: the tracking stage once the person set one, otherwise what happened to the application */
+    function isHandoff(o){var x=o.x.sent;return !x||x.status==="handoff"}     /* nothing was sent (no server said so): finish on their site */
+    function stChip(o){
+      var st=o.x.st,x=o.x.sent,k,t;
+      if(st==="interview"){k="interview";t="Interview"}else if(st==="accepted"){k="accepted";t="Accepted"}else if(st==="rejected"){k="rejected";t="Rejected"}
+      else if(x&&x.status==="sent"){k="sent";t="Sent"}else if(x&&x.status==="self"){k="sent";t="Sent (by you)"}else if(x&&x.status==="delivered_test"){k="sent";t="Sent (test)"}
+      else if(x&&x.status==="pending"){k="wait";t="Waiting to send"}else if(x&&x.status==="failed"){k="wait";t="Not sent"}
+      else if(x&&x.status==="needs_answers"){k="wait";t="Not sent yet"}else{k="finish";t="Finish on their site"}
+      return '<span class="stchip st-'+k+'">'+t+'</span>';
+    }
+    /* two separate actions on a hand-off (a later version can make "Finish applying" a prefilled link); a sent application only links the posting */
+    function jobLinks(o){
+      var e=A.esc,u=o.j.url;if(!u||!/^https:\/\//.test(u))return "";
+      return '<span class="joblinks"><button type="button" class="linkbtn" data-open="'+e(u)+'">See the job posting ↗</button>'+
+        (isHandoff(o)?'<button type="button" class="linkbtn" data-finish="'+o.j.id+'">Finish applying on their site ↗</button>'+
+          '<button type="button" class="linkbtn" data-act="markapplied" data-id="'+o.j.id+'">Mark as applied</button>':'')+'</span>';
+    }
     w.__uaplyTrack=function(){if(!tp.hidden)renderTrack()};   /* called when an application's state changes while the list is open */
     function row(o,acts,view){
       var t=A.tone(o.x.pct),e=A.esc;
-      return '<div class="row"><div class="logo" aria-hidden="true" style="background:hsl('+A.hue(o.j.id)+' 60% 46%)">'+e(o.j.co.charAt(0))+'</div><div class="info"><b>'+e(o.j.role)+'</b>'+modeChip(o.j)+'<small>'+e(o.j.co)+' · '+e(o.j.loc)+' · '+TYPE_LABEL[o.j.type||"job"]+'</small>'+
+      return '<div class="row"><div class="logo" aria-hidden="true" style="background:hsl('+A.hue(o.j.id)+' 60% 46%)">'+e(o.j.co.charAt(0))+'</div><div class="info"><b>'+e(o.j.role)+'</b>'+modeChip(o.j)+'<small>'+e(o.j.co)+' · '+e(o.j.loc)+' · '+TYPE_LABEL[o.j.type||"job"]+(o.j.live&&w.__uaplyRouteWord?'<span class="rtword"> · '+e(w.__uaplyRouteWord(o.j))+'</span>':'')+'</small>'+
         (view!=="passed"?'<small>Applied '+new Date(o.x.at).toLocaleDateString(undefined,{month:"short",day:"numeric"})+'</small>':'')+
-        detLine(o,view)+sentLine(o)+'</div><span class="pill tone-'+t+'">'+o.x.pct+'%</span>'+
+        detLine(o,view)+(view!=="passed"?stChip(o):'')+sentLine(o)+(view!=="passed"?jobLinks(o):'')+'</div><span class="pill tone-'+t+'">'+o.x.pct+'%</span>'+
         '<div class="acts">'+extraActs(o,acts,view).map(function(a,i){return '<button type="button" class="btn'+(i?' ghost':'')+'" data-act="'+a[0]+'" data-id="'+o.j.id+'" aria-label="'+a[1]+': '+e(o.j.role)+' at '+e(o.j.co)+'">'+a[1]+'</button>'}).join("")+'</div>'+(OPEN[o.j.id]&&view!=="passed"?detForm(o,view):"")+'</div>';
     }
     var v=sub.dash;
@@ -463,7 +585,96 @@ function apply(w,host){
     }
     tp.innerHTML=h;
   }
+  /* "Finish applying on their site" opens the employer's application form, not the posting (apply journey, October 22): Lever's form is the
+     posting's address plus /apply, Ashby's plus /application, SmartRecruiters' the posting with ?oga=true (the applyUrl its own API gives,
+     checked October 22); Greenhouse shows the form on the posting page. A source tag goes on Greenhouse and Lever links. All of it is added
+     as text, so the rest of the address stays exactly as the employer wrote it (nothing is re-encoded) */
+  function handoffURL(u){
+    try{
+      var url=new w.URL(u),h=url.hostname.toLowerCase(),path=url.pathname;
+      var i=u.indexOf("#"),base=i<0?u:u.slice(0,i),hash=i<0?"":u.slice(i),qi=base.indexOf("?"),where=qi<0?base:base.slice(0,qi),query=qi<0?"":base.slice(qi);
+      var UUID="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",add=[];
+      if(h==="jobs.lever.co"&&new RegExp("^/[^/]+/"+UUID+"/?$","i").test(path))where=where.replace(/\/?$/,"/apply");
+      else if(h==="jobs.ashbyhq.com"&&new RegExp("^/[^/]+/"+UUID+"/?$","i").test(path))where=where.replace(/\/?$/,"/application");
+      else if(h==="jobs.smartrecruiters.com"&&/^\/[^\/]+\/\d{6,20}(-[^\/]*)?\/?$/.test(path)&&!/[?&]oga=/.test(query))add.push("oga=true");
+      var k=/(^|\.)greenhouse\.io$/.test(h)?"gh_src":/(^|\.)lever\.co$/.test(h)?"lever-source":"";
+      if(k&&!new RegExp("[?&]"+k+"=").test(query))add.push(k+"=uaply");
+      if(add.length)query=(query?query+(/[?&]$/.test(query)?"":"&"):"?")+add.join("&");
+      return where+query+hash;
+    }catch(e){return u}
+  }
+  function prefillText(){
+    var p=A.S.profile||{},x={};
+    try{x=(w.__uaplyApplyExt?w.__uaplyApplyExt():(p.ext||{}))||{}}catch(e){x={}}
+    var rows=[["Name",p.name],["Email",p.email],["Phone",x.phone],["LinkedIn",x.linkedin],["Portfolio",x.portfolio]];   /* only these five */
+    if(!p.custom)return "";                                            /* the example profile is never copied */
+    return rows.filter(function(r){return typeof r[1]==="string"&&r[1].trim()}).map(function(r){return r[0]+": "+r[1].trim()}).join("\n");
+  }
+  w.__uaplyPrefillText=prefillText;   /* for the browser test */
+  /* assisted apply in the phone app (docs/assisted-apply.md): the employer's own page opens in the app, UAply fills it from the profile and
+     attaches the resume, and the person reviews it and taps Submit there. UAply never presses Submit and never touches a human check, unless
+     shared/assist-systems.json (the owner's lawyer sets it) allows a system and the page shows no check. The Job Tracker says Sent only when
+     the employer's confirmation page appeared; anything else stays "Finish on their site". */
+  function atsOf(u){var h="";try{h=new w.URL(u).hostname.toLowerCase()}catch(e){}
+    return /(^|\.)greenhouse\.io$/.test(h)?"greenhouse":/(^|\.)lever\.co$/.test(h)?"lever":/(^|\.)ashbyhq\.com$/.test(h)?"ashby":/(^|\.)smartrecruiters\.com$/.test(h)?"smartrecruiters":/(^|\.)workable\.com$/.test(h)?"workable":"other"}
+  function assistMode(cfg,sys){var s=cfg&&cfg.systems&&cfg.systems[sys];return s&&s.mode==="automatic"&&s.counsel_approved===true&&s.human_check_share===0?"automatic":"assisted"}
+  w.__uaplyAssistMode=assistMode;w.__uaplyAtsOf=atsOf;   /* for the browser test */
+  /* What the employer's page is given (October 22 review). The scan (the first look at the form) gets stand-ins for the person's contact
+     details, links, address, pay, texts and resume file ("a@example.com"), so it can tell which fields the profile fills without the page
+     ever holding them; it keeps what the form's lists are matched against (city, state, school, degree, dates, yes/no answers, short saved
+     answers). The fill then gets only the profile items the scan saw the form ask for, the saved answers it used and the ones just given,
+     and the resume only when the form takes one: never the whole profile. Only the hiring systems' hosts (assist-systems.json, "hosts")
+     and this job's own page are ever filled (AssistActivity checks the address before every look at the page). */
+  var ASSIST_KEEP=/^(city|state|country|school|degree|major|grad|jobStart|jobEnd|auth|sponsor|adult|start|relocate|office|former|govt|phd|heard)$/;
+  var ASSIST_STANDIN={first:"A",last:"B",name:"A B",email:"a@example.com",phone:"2155550100",linkedin:"https://www.linkedin.com/in/a",website:"https://example.com",street:"1 Main St",zip:"00000",gpa:"3.0",salary:"1"};
+  var ASSIST_NEED={first:"first name",last:"last name",name:"name first last",email:"email",phone:"phone country",phonecc:"country",linkedin:"linkedin",github:"website",twitter:"twitter",website:"website",company:"company jobEnd",title:"title jobEnd",current:"company jobEnd",school:"school",degree:"degree",major:"major",grad:"grad",gradmonth:"grad",gradyear:"grad",gpa:"gpa",start:"start",jobmonth:"jobStart",jobyear:"jobStart",endmonth:"jobEnd company",endyear:"jobEnd company",heard:"heard",salary:"salary",why:"why",summary:"summary",headline:"headline",zip:"zip",csz:"city state zip",street:"street city state zip",country:"country",state:"state",city:"city state country",auth:"auth sponsor",sponsor:"sponsor auth",nosponsor:"auth sponsor",relocate:"relocate",office:"office",former:"former",govt:"govt",phd:"phd",adult:"adult"};
+  function assistShape(p){var s={};Object.keys(p||{}).forEach(function(k){var v=p[k];if(k==="answers"){var a={};Object.keys(v||{}).forEach(function(q){var x=String(v[q]||"");a[q]=x.length<=80?x:"A"});s.answers=a}else if(k==="resume")s.resume=v?{name:"resume.pdf",type:String(v.type||"application/pdf")}:null;else if(ASSIST_KEEP.test(k))s[k]=v;else s[k]=v?(Object.prototype.hasOwnProperty.call(ASSIST_STANDIN,k)?ASSIST_STANDIN[k]:"A"):""});return s}
+  function assistOnly(p,sc,asked){var o={answers:{}},own=Object.prototype.hasOwnProperty;if(!p||!sc)return o;(sc.keys||[]).forEach(function(k){if(own.call(ASSIST_NEED,k))ASSIST_NEED[k].split(" ").forEach(function(f){if(own.call(p,f)&&f!=="answers"&&f!=="resume")o[f]=p[f]})});var want={};(sc.answerKeys||[]).concat(asked||[]).forEach(function(k){want[String(k)]=1});Object.keys(p.answers||{}).forEach(function(k){if(own.call(want,k))o.answers[k]=p.answers[k]});if(sc.resume===true&&p.resume)o.resume=p.resume;return o}
+  function assistHosts(cfg,url){var out=[],add=function(h){h=String(h||"").toLowerCase();if(/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(h)&&out.indexOf(h)<0)out.push(h)},s=cfg&&cfg.systems||{};Object.keys(s).forEach(function(k){var hs=s[k]&&s[k].hosts;if(Array.isArray(hs))hs.forEach(add)});try{var u=new w.URL(url);if(u.protocol==="https:")add(u.hostname)}catch(e){}return out}
+  w.__uaplyAssistShape=assistShape;w.__uaplyAssistOnly=assistOnly;w.__uaplyAssistHosts=assistHosts;   /* for the browser tests */
+  var assistBusy=false;
+  function assistedApply(j,AP){
+    var prof=w.__uaplyAssistProfile&&w.__uaplyAssistProfile(j);if(!prof||assistBusy)return false;
+    assistBusy=true;var sys=atsOf(j.url),url=handoffURL(j.url);
+    Promise.all([w.fetch("/uaply-assist.js").then(function(r){if(!r.ok)throw 0;return r.text()}),w.fetch("/assist-systems.json").then(function(r){return r.ok?r.json():{}}).catch(function(){return {}})]).then(function(r){
+      var base={url:url,engine:r[0],allow:assistHosts(r[1],url),job:{co:j.co,role:j.role},system:sys,mode:assistMode(r[1],sys)};
+      /* the bridge: the app reads the form first (scan, nothing changed, with stand-ins for the person's details) and returns what the
+         profile cannot answer and which profile items the form asks for; UAply asks those in its own question box (required first, then
+         the optional ones, which may be left blank), keeps the answers like every question-box answer, and only then opens the form,
+         filled with just those items and answers. No questions: the form opens filled the same way; a scan that failed: as it is. */
+      return AP.open(Object.assign({},base,{scan:true,profile:assistShape(prof)})).catch(function(){return null}).then(function(sc){
+        if(sc&&sc.questions===undefined)return {confirmed:false,cancelled:true};   /* the person closed it while the form was being read */
+        var qs=(sc&&sc.questions||[]).filter(function(q){return q&&q.q&&q.kind!=="file"}).slice(0,25);
+        var only=function(){return assistOnly(w.__uaplyAssistProfile(j)||prof,sc,qs.map(function(q){return String(q.key||q.q)}))};
+        if(!qs.length||!w.__uaplyAskSheet)return AP.open(Object.assign({},base,{profile:only()}));
+        qs.sort(function(a,b){return (b.required?1:0)-(a.required?1:0)});
+        qs=qs.map(function(q){return {q:String(q.q),key:String(q.key||q.q),kind:q.kind||"text",opts:q.opts,optional:!q.required}});
+        var nReq=qs.filter(function(q){return !q.optional}).length;
+        return new Promise(function(done){
+          w.__uaplyAskSheet(j,qs,sc.filled||0,sc.seen||0,function(){done(AP.open(Object.assign({},base,{profile:only()})))},function(){done({confirmed:false,cancelled:true})},
+            {lead:j.co+"'s form asks "+(nReq?nReq+" thing"+(nReq===1?"":"s")+" your profile does not have":"a few optional things your profile does not have")+". Answer "+(nReq?"them":"any you like")+" here and UAply puts them in the form, with everything else from your profile; you still review it and tap Submit there. Your answers are saved for the next employer that asks the same thing.",
+             yes:"Continue to "+j.co+"'s form"});
+        });
+      });
+    }).then(function(res){
+      assistBusy=false;var x=A.S.decisions[j.id];
+      if(res&&res.confirmed===true&&x){x.sent={at:Date.now(),to:j.co,status:"sent",via:"assist",page:String(res.url||"").slice(0,300)};A.save();A.renderAll();renderTrack();
+        if(w.__uaplyKitToast)w.__uaplyKitToast("Sent: "+j.co+" showed its confirmation page.","","",5000)}
+      else if(w.__uaplyKitToast)w.__uaplyKitToast("Not sent yet. Tap Finish applying when you are ready.","","",5000);
+    },function(){assistBusy=false;if(w.__uaplyOpen)w.__uaplyOpen(handoffURL(j.url))});   /* the app could not open it: the employer's page as before */
+    return true;
+  }
+  function finishOnSite(id){
+    var j=A.JOBS.filter(function(x){return x.id===id})[0];if(!j||!j.url||!/^https:\/\//.test(j.url))return;
+    var AP=plug("UAplyAssist");if(AP&&assistedApply(j,AP))return;
+    var t=prefillText();
+    if(t){try{var c=w.navigator.clipboard;if(c&&c.writeText)c.writeText(t).then(function(){if(w.__uaplyKitToast)w.__uaplyKitToast("Profile copied, paste it into their form","","",5000)},function(){})}catch(e){}}   /* blocked: say nothing */
+    if(w.__uaplyOpen)w.__uaplyOpen(handoffURL(j.url));
+  }
+  w.__uaplyHandoffURL=handoffURL;
   tp.addEventListener("click",function(e){
+    var fb=e.target.closest("[data-finish]");
+    if(fb){finishOnSite(+fb.getAttribute("data-finish"));return}
     var b=e.target.closest("[data-act]");if(!b)return;
     var id=+b.getAttribute("data-id"),act=b.getAttribute("data-act"),x=A.S.decisions[id];if(!x)return;
     if(act==="open"){
@@ -476,6 +687,14 @@ function apply(w,host){
     if(act==="ics"){exportIcs(id);return}
     if(act==="share"){var sj=A.JOBS.filter(function(j){return j.id===id})[0];if(sj)shareJob(sj);return}
     if(act==="resend"){if(w.__uaplyResend)w.__uaplyResend(id);return}
+    /* a hand-off finished on the employer's own site: the person marks it, so it no longer says "Finish on their site" (October 22).
+       Undo puts back what it said before, once; a second mark after an undo stays */
+    if(act==="markapplied"){var was=x.sent||null;x.sent={at:Date.now(),to:"",status:"self",prev:was?String(was.status||""):"",once:!!(was&&was.once)};A.save();renderTrack();
+      /* the server's daily "finish your application" reminder stops listing it (uaply_api.mark_applied); nothing to say if that fails */
+      if(SRV.user)apiPost("/api/apply/mark",{job:id,marked:true});
+      var nb=tp.querySelector('[data-act="unmark"][data-id="'+id+'"]')||tp.querySelector('.row [data-id="'+id+'"]');if(nb&&nb.focus)nb.focus();return}
+    if(act==="unmark"){if(x.sent&&x.sent.status==="self"&&!x.sent.once){x.sent={at:Date.now(),to:"",status:x.sent.prev||"handoff",prev:"",once:true};A.save();renderTrack();if(SRV.user)apiPost("/api/apply/mark",{job:id,marked:false});
+      var mb=tp.querySelector('[data-act="markapplied"][data-id="'+id+'"]');if(mb)mb.focus()}return}
     if(act==="withdraw"||act==="reconsider"){
       delete A.S.decisions[id];A.S.history=A.S.history.filter(function(i){return i!==id});delete acct.apps[id];saveA();
       if(act==="withdraw"&&w.__uaplyUndone)w.__uaplyUndone(x,A.JOBS.filter(function(j){return j.id===id})[0]);   /* an application that went out stays with the employer: say so */
@@ -536,11 +755,11 @@ function apply(w,host){
     if(isWiz)wzOpen();
   }
 
-  /* ---------- account: per-application details, preferences/filters, resume, plan, data, dashboard overview ---------- */
+  /* ---------- account: per-application details, preferences/filters, resume, plan, data, Job Tracker overview ---------- */
   var AK=w.__uaplyKey+".acct",E=A.esc,OPEN={};
   var PLANS={
     /* internal keys stay trial/starter/pro so saved choices keep working; the names and limits are the decided plan */
-    trial:{name:"Free",price:0,cap:50,perks:["50 applications a week","Full dashboard and tracking","Core filters"]},
+    trial:{name:"Free",price:0,cap:50,perks:["50 applications a week","The full Job Tracker","Core filters"]},
     starter:{name:"Plus",price:9.99,cap:250,perks:["250 applications a week","Benefits, applicant and dealbreaker filters","Message the hiring manager"]},
     pro:{name:"Pro",price:19.99,cap:0,perks:["Unlimited applications (fair use)","Everything in Plus","Priority support"]}
   };
@@ -562,10 +781,17 @@ function apply(w,host){
     gender:["","Male","Female","Non-binary","Prefer not to say"]
   };
   var MILES=["any","10","20","50","100"],POSTED=["any","24h","7d","30d"];
+  /* Job type filter (Filters screen): the six types the server gives each job as jobType; a job without one (an employer's own posting,
+     an example) counts by its older type. Picking a type also opens the service tab it lives in. */
+  var JT=[["all","All"],["full-time","Full-time"],["part-time","Part-time"],["internship","Internship"],["co-op","Co-op"],["contract","Contract"]],
+      JT_KEYS=JT.map(function(x){return x[0]}),JT_TAB={"full-time":"job",contract:"job","part-time":"parttime",internship:"internship","co-op":"coop"};
+  function jobTypeOf(j){return j.jobType||({internship:"internship",coop:"co-op",parttime:"part-time"}[j.type])||"full-time"}
+  w.__uaplyJobTypeOf=jobTypeOf;
   function cleanF(a){
     a.fPerks=Array.isArray(a.fPerks)?a.fPerks.filter(function(k){return PERK_KEYS.indexOf(k)>-1}).slice(0,PERKS.length):[];
     if(!(MILES.indexOf(String(a.fMiles))>-1||(NEAR&&/^(0|[1-9]\d?|100)$/.test(String(a.fMiles))&&+a.fMiles%5===0)))a.fMiles="any";a.fMiles=String(a.fMiles);
     if(POSTED.indexOf(a.fPosted)<0)a.fPosted="any";
+    if(JT_KEYS.indexOf(a.fJt)<0)a.fJt="all";
     a.fApp=!!a.fApp;a.fInstant=!!a.fInstant;a.fStrict=!!a.fStrict;a.fAuto=!!a.fAuto;a.fTitleOnly=!!a.fTitleOnly;a.fNoComm=!!a.fNoComm;a.fEdu=!!a.fEdu;a.fWs=a.fWs!==false;
     var seen={};
     a.titles=(Array.isArray(a.titles)?a.titles:[]).filter(function(t){return typeof t==="string"}).map(function(t){return t.trim().replace(/\s+/g," ").slice(0,60)}).filter(function(t){var k=t.toLowerCase();if(!t||seen[k])return false;seen[k]=1;return true}).slice(0,4);
@@ -579,7 +805,7 @@ function apply(w,host){
     return a;
   }
   var DAY=864e5,DATA_URL=/^data:[\w\/+.\-]+;base64,[A-Za-z0-9+\/=]+$/,URL_OK=/^https?:\/\//i;
-  function defAcct(){return {phone:"",linkedin:"",portfolio:"",summary:"",auth:"",notice:"",cover:"",resumeName:"",resumeSize:0,resumeData:"",plan:"trial",since:Date.now(),renews:0,canceled:false,enforce:false,pay:[],apps:{},fSal:false,fYrs:"any",fCo:"",fKw:"",fPosted:"any",fApp:false,fPerks:[],fMiles:"any",fStrict:false,fAuto:false,titles:[],fTitleOnly:true,fNoComm:false,fLevels:[],fEdu:false,fWs:true,eeo:{auth:"",sponsor:"",veteran:"",hisp:"",race:[],disability:"",gender:""},addr:{street:"",unit:"",state:"",zip:""},resumeUrl:""}}
+  function defAcct(){return {phone:"",linkedin:"",portfolio:"",summary:"",auth:"",notice:"",cover:"",resumeName:"",resumeSize:0,resumeData:"",plan:"trial",since:Date.now(),renews:0,canceled:false,enforce:false,pay:[],apps:{},fSal:false,fYrs:"any",fCo:"",fKw:"",fPosted:"any",fApp:false,fPerks:[],fMiles:"any",fStrict:false,fAuto:false,titles:[],fTitleOnly:true,fNoComm:false,fLevels:[],fEdu:false,fWs:true,fJt:"all",eeo:{auth:"",sponsor:"",veteran:"",hisp:"",race:[],disability:"",gender:""},addr:{street:"",unit:"",state:"",zip:""},resumeUrl:""}}
   function loadA(){
     var a=defAcct();
     try{var r=JSON.parse(w.localStorage.getItem(AK));if(r&&typeof r==="object"){Object.keys(a).forEach(function(k){if(r[k]!==undefined&&typeof r[k]===typeof a[k])a[k]=r[k]})}}catch(e){}
@@ -593,6 +819,7 @@ function apply(w,host){
     return cleanF(a);
   }
   var acct=loadA();
+  var TITLE_FREE={internship:1,coop:1},NOTITLE=false,RELAX=null;   /* the target-title filter's exceptions: see titleRelaxed below */
   function saveA(){try{w.localStorage.setItem(AK,JSON.stringify(acct));return true}catch(e){return false}}
   try{if(!w.localStorage.getItem(AK))saveA()}catch(e){}   /* fix the trial start date on first visit instead of resetting it each reload */
   function list(s){return String(s).split(",").map(function(x){return x.trim().toLowerCase()}).filter(Boolean)}
@@ -607,11 +834,15 @@ function apply(w,host){
   };
 
   /* posted date, applicant count, benefits and distance. Missing data is "unknown": shown unless "hide listings that don't say" is on. */
-  var CITIES=[["philadelphia|philly",39.9526,-75.1652],["camden",39.9259,-75.1196],["wilmington",39.7447,-75.5484],["newark,? de|newark, delaware",39.6837,-75.7497],["trenton",40.2171,-74.7429],["cherry hill",39.9348,-75.0307],["king of prussia",40.1013,-75.3836],["princeton",40.3573,-74.6672],["allentown",40.6084,-75.4902],["reading, pa",40.3356,-75.9269],["lancaster, pa",40.0379,-76.3055],["atlantic city",39.3643,-74.4229],["harrisburg",40.2732,-76.8867],["pittsburgh",40.4406,-79.9959],["new york|nyc|brooklyn|manhattan",40.7128,-74.006],["newark",40.7357,-74.1724],["jersey city",40.7178,-74.0431],["boston",42.3601,-71.0589],["washington,? d\\.?c|washington dc",38.9072,-77.0369],["baltimore",39.2904,-76.6122],["richmond, va",37.5407,-77.436],["charlotte",35.2271,-80.8431],["raleigh",35.7796,-78.6382],["atlanta",33.749,-84.388],["miami",25.7617,-80.1918],["orlando",28.5383,-81.3792],["tampa",27.9506,-82.4572],["chicago",41.8781,-87.6298],["detroit",42.3314,-83.0458],["columbus, oh|columbus, ohio",39.9612,-82.9988],["cleveland",41.4993,-81.6944],["cincinnati",39.1031,-84.512],["indianapolis",39.7684,-86.1581],["minneapolis",44.9778,-93.265],["st\\.? louis",38.627,-90.1994],["kansas city",39.0997,-94.5786],["dallas",32.7767,-96.797],["houston",29.7604,-95.3698],["austin",30.2672,-97.7431],["san antonio",29.4241,-98.4936],["denver",39.7392,-104.9903],["phoenix",33.4484,-112.074],["salt lake city",40.7608,-111.891],["las vegas",36.1699,-115.1398],["los angeles",34.0522,-118.2437],["san diego",32.7157,-117.1611],["san francisco",37.7749,-122.4194],["san jose",37.3382,-121.8863],["oakland",37.8044,-122.2712],["seattle",47.6062,-122.3321],["portland, or|portland, oregon",45.5152,-122.6784],["nashville",36.1627,-86.7816],["new orleans",29.9511,-90.0715],["providence",41.824,-71.4128],["hartford",41.7658,-72.6734],["buffalo",42.8864,-78.8784],["albany, ny",42.6526,-73.7562]].map(function(c){return [new w.RegExp("\\b(?:"+c[0]+")\\b","i"),c[1],c[2]]});
+  var CITIES=[/* places that share a name with a tri-state city come first (Wilmington NC, Newark CA, Camden SC, Dover NH) */["wilmington,? (nc|north carolina)",34.2257,-77.9447],["newark,? (ca|california)",37.5297,-122.0402],["newark,? (oh|ohio)",40.0581,-82.4013],["camden,? (sc|south carolina|me|maine|ar|arkansas)",34.2465,-80.607],["dover,? (nh|new hampshire)",43.1979,-70.8737],["dover,? (de|delaware)",39.1582,-75.5244],["middletown,? (de|delaware)",39.4496,-75.7163],["new castle,? (de|delaware)",39.662,-75.5663],["new brunswick",40.4862,-74.4518],["piscataway",40.4993,-74.399],["edison,? nj|edison, new jersey",40.5187,-74.4121],["somerset,? nj|somerset, new jersey",40.4977,-74.4885],["morristown",40.797,-74.4815],["paterson",40.9168,-74.1718],["hackensack",40.8859,-74.0435],["fort lee",40.8509,-73.9701],["englewood cliffs",40.8854,-73.9524],["hoboken",40.744,-74.0324],["lakewood,? nj|lakewood, new jersey",40.0979,-74.2176],["vineland",39.4864,-75.026],["mount laurel|mt\.? laurel",39.934,-74.891],["norristown",40.1215,-75.3399],["conshohocken",40.0793,-75.3016],["malvern",40.0362,-75.5138],["west chester",39.9607,-75.6055],["doylestown",40.3101,-75.1299],["bethlehem",40.6259,-75.3705],["scranton",41.4089,-75.6624],["philadelphia|philly",39.9526,-75.1652],["camden",39.9259,-75.1196],["wilmington",39.7447,-75.5484],["newark,? de|newark, delaware",39.6837,-75.7497],["trenton",40.2171,-74.7429],["cherry hill",39.9348,-75.0307],["king of prussia",40.1013,-75.3836],["princeton",40.3573,-74.6672],["allentown",40.6084,-75.4902],["reading, pa",40.3356,-75.9269],["lancaster, pa",40.0379,-76.3055],["atlantic city",39.3643,-74.4229],["harrisburg",40.2732,-76.8867],["pittsburgh",40.4406,-79.9959],["new york|nyc|brooklyn|manhattan",40.7128,-74.006],["newark",40.7357,-74.1724],["jersey city",40.7178,-74.0431],["boston",42.3601,-71.0589],["washington,? d\\.?c|washington dc",38.9072,-77.0369],["baltimore",39.2904,-76.6122],["richmond, va",37.5407,-77.436],["charlotte",35.2271,-80.8431],["raleigh",35.7796,-78.6382],["atlanta",33.749,-84.388],["miami",25.7617,-80.1918],["orlando",28.5383,-81.3792],["tampa",27.9506,-82.4572],["chicago",41.8781,-87.6298],["detroit",42.3314,-83.0458],["columbus, oh|columbus, ohio",39.9612,-82.9988],["cleveland",41.4993,-81.6944],["cincinnati",39.1031,-84.512],["indianapolis",39.7684,-86.1581],["minneapolis",44.9778,-93.265],["st\\.? louis",38.627,-90.1994],["kansas city",39.0997,-94.5786],["dallas",32.7767,-96.797],["houston",29.7604,-95.3698],["austin",30.2672,-97.7431],["san antonio",29.4241,-98.4936],["denver",39.7392,-104.9903],["phoenix",33.4484,-112.074],["salt lake city",40.7608,-111.891],["las vegas",36.1699,-115.1398],["los angeles",34.0522,-118.2437],["san diego",32.7157,-117.1611],["san francisco",37.7749,-122.4194],["san jose",37.3382,-121.8863],["oakland",37.8044,-122.2712],["seattle",47.6062,-122.3321],["portland, or|portland, oregon",45.5152,-122.6784],["nashville",36.1627,-86.7816],["new orleans",29.9511,-90.0715],["providence",41.824,-71.4128],["hartford",41.7658,-72.6734],["buffalo",42.8864,-78.8784],["albany, ny",42.6526,-73.7562]].map(function(c){return [new w.RegExp("\\b(?:"+c[0]+")\\b","i"),c[1],c[2]]});
   function geo(text){var s=String(text||"");for(var i=0;i<CITIES.length;i++)if(CITIES[i][0].test(s))return [CITIES[i][1],CITIES[i][2]];return null}
+  /* a job's place: the server's point for it (jobs_api.job_geo: about 44,000 US cities, towns and townships with their state), else the list above */
+  function jgeo(j){var g=j&&j.geo;return g&&g.length===2&&isFinite(g[0])&&isFinite(g[1])?[+g[0],+g[1]]:geo(j&&j.loc)}
   /* the first three digits of a ZIP code point to a metro area. Used only to find your location for the distance filter. */
-  var ZIP3=[["190 191",39.9526,-75.1652],["198",39.7447,-75.5484],["081",39.9259,-75.1196],["086",40.2171,-74.7429],["181",40.6084,-75.4902],["171",40.2732,-76.8867],["100 101 102 103 104 111 112 113 114",40.7128,-74.006],["070 071 072",40.7357,-74.1724],["073",40.7178,-74.0431],["021 022",42.3601,-71.0589],["029",41.824,-71.4128],["060 061",41.7658,-72.6734],["142",42.8864,-78.8784],["200 202 203 204 205",38.9072,-77.0369],["212",39.2904,-76.6122],["232",37.5407,-77.436],["150 151 152",40.4406,-79.9959],["276",35.7796,-78.6382],["282",35.2271,-80.8431],["303",33.749,-84.388],["331",25.7617,-80.1918],["328",28.5383,-81.3792],["336",27.9506,-82.4572],["606",41.8781,-87.6298],["482",42.3314,-83.0458],["432",39.9612,-82.9988],["441",41.4993,-81.6944],["452",39.1031,-84.512],["462",39.7684,-86.1581],["554",44.9778,-93.265],["631",38.627,-90.1994],["641",39.0997,-94.5786],["752",32.7767,-96.797],["770",29.7604,-95.3698],["787",30.2672,-97.7431],["782",29.4241,-98.4936],["802",39.7392,-104.9903],["850",33.4484,-112.074],["841",40.7608,-111.891],["891",36.1699,-115.1398],["900 901",34.0522,-118.2437],["921",32.7157,-117.1611],["941",37.7749,-122.4194],["951",37.3382,-121.8863],["946",37.8044,-122.2712],["981",47.6062,-122.3321],["972",45.5152,-122.6784],["372",36.1627,-86.7816],["701",29.9511,-90.0715]];
-  function zipGeo(z){var p=String(z||"").slice(0,3);if(!/^\d{3}$/.test(p))return null;for(var i=0;i<ZIP3.length;i++)if((" "+ZIP3[i][0]+" ").indexOf(" "+p+" ")>-1)return [ZIP3[i][1],ZIP3[i][2]];return null}
+  var ZIP3=[["190 191",39.9526,-75.1652],["189",40.3101,-75.1299],["193",39.9607,-75.6055],["194",40.1215,-75.3399],["180",40.6084,-75.4902],["176",40.0379,-76.3055],["195 196",40.3356,-75.9269],["184 185",41.4089,-75.6624],["198",39.7447,-75.5484],["197",39.6837,-75.7497],["199",39.1582,-75.5244],["080",39.934,-74.891],["081",39.9259,-75.1196],["082 084",39.3643,-74.4229],["083",39.4864,-75.026],["085 086",40.2171,-74.7429],["087",40.0979,-74.2176],["088 089",40.4862,-74.4518],["074 075",40.9168,-74.1718],["076",40.8859,-74.0435],["077",40.347,-74.0643],["078",40.8835,-74.5621],["079",40.797,-74.4815],["181",40.6084,-75.4902],["171",40.2732,-76.8867],["100 101 102 103 104 111 112 113 114",40.7128,-74.006],["070 071 072",40.7357,-74.1724],["073",40.7178,-74.0431],["021 022",42.3601,-71.0589],["029",41.824,-71.4128],["060 061",41.7658,-72.6734],["142",42.8864,-78.8784],["200 202 203 204 205",38.9072,-77.0369],["212",39.2904,-76.6122],["232",37.5407,-77.436],["150 151 152",40.4406,-79.9959],["276",35.7796,-78.6382],["282",35.2271,-80.8431],["303",33.749,-84.388],["331",25.7617,-80.1918],["328",28.5383,-81.3792],["336",27.9506,-82.4572],["606",41.8781,-87.6298],["482",42.3314,-83.0458],["432",39.9612,-82.9988],["441",41.4993,-81.6944],["452",39.1031,-84.512],["462",39.7684,-86.1581],["554",44.9778,-93.265],["631",38.627,-90.1994],["641",39.0997,-94.5786],["752",32.7767,-96.797],["770",29.7604,-95.3698],["787",30.2672,-97.7431],["782",29.4241,-98.4936],["802",39.7392,-104.9903],["850",33.4484,-112.074],["841",40.7608,-111.891],["891",36.1699,-115.1398],["900 901",34.0522,-118.2437],["921",32.7157,-117.1611],["941",37.7749,-122.4194],["951",37.3382,-121.8863],["946",37.8044,-122.2712],["981",47.6062,-122.3321],["972",45.5152,-122.6784],["372",36.1627,-86.7816],["701",29.9511,-90.0715]];
+  /* every other US ZIP code by its first three digits (US Census Bureau 2024 Gazetteer, public domain; autofill_zip3.json) */
+  var ZIP3ALL="006:18.27,-66.84;007:18.16,-66.11;008:17.94,-64.8;009:18.41,-66.09;010:42.27,-72.57;011:42.11,-72.55;012:42.34,-73.23;013:42.59,-72.57;014:42.59,-71.8;015:42.22,-71.83;016:42.27,-71.83;017:42.35,-71.45;018:42.64,-71.21;019:42.61,-70.9;020:42.15,-71.14;021:42.34,-71.07;022:42.35,-71.06;023:42.02,-70.91;024:42.35,-71.22;025:41.59,-70.54;026:41.73,-70.18;027:41.75,-71.08;028:41.68,-71.53;029:41.82,-71.43;030:42.88,-71.51;031:42.99,-71.46;032:43.52,-71.66;033:43.25,-71.55;034:42.92,-72.21;035:44.49,-71.46;036:43.18,-72.34;037:43.72,-72.12;038:43.41,-71.07;039:43.19,-70.7;040:43.75,-70.53;041:43.67,-70.25;042:44.33,-70.4;043:44.29,-69.77;044:45.15,-68.72;045:43.94,-69.57;046:44.53,-68.0;047:46.66,-68.27;048:44.09,-69.11;049:44.78,-69.67;050:43.83,-72.39;051:43.27,-72.63;052:43.04,-73.12;053:42.94,-72.78;054:44.61,-73.05;056:44.33,-72.56;057:43.65,-73.05;058:44.69,-72.14;059:44.78,-71.67;060:41.87,-72.82;061:41.76,-72.69;062:41.81,-72.1;063:41.51,-72.03;064:41.44,-72.74;065:41.34,-72.94;066:41.2,-73.19;067:41.65,-73.2;068:41.19,-73.45;069:41.09,-73.54;070:40.76,-74.23;071:40.74,-74.19;072:40.67,-74.22;073:40.72,-74.06;074:41.04,-74.3;075:40.92,-74.17;076:40.93,-74.02;077:40.32,-74.1;078:40.93,-74.76;079:40.74,-74.52;080:39.82,-74.98;081:39.93,-75.08;082:39.27,-74.67;083:39.42,-75.03;084:39.34,-74.5;085:40.26,-74.64;086:40.2,-74.7;087:39.99,-74.16;088:40.54,-74.62;089:40.48,-74.45;100:40.77,-73.97;101:40.76,-73.97;102:40.71,-74.01;103:40.59,-74.15;104:40.85,-73.88;105:41.2,-73.77;106:41.04,-73.77;107:40.95,-73.85;108:40.91,-73.78;109:41.26,-74.17;110:40.75,-73.71;111:40.76,-73.93;112:40.65,-73.96;113:40.75,-73.83;114:40.7,-73.79;115:40.71,-73.64;116:40.58,-73.83;117:40.8,-73.23;118:40.77,-73.48;119:40.93,-72.55;120:42.69,-73.95;121:42.69,-73.94;122:42.67,-73.79;123:42.81,-73.94;124:42.09,-74.21;125:41.79,-73.84;126:41.69,-73.89;127:41.69,-74.76;128:43.49,-73.73;129:44.55,-73.92;130:42.97,-76.19;131:43.07,-76.26;132:43.05,-76.15;133:43.17,-75.21;134:43.1,-75.24;135:43.11,-75.19;136:44.3,-75.52;137:42.26,-75.45;138:42.37,-75.53;139:42.12,-75.9;140:42.79,-78.63;141:42.8,-78.71;142:42.92,-78.83;143:43.1,-79.02;144:42.95,-77.61;145:42.93,-77.51;146:43.17,-77.62;147:42.2,-78.87;148:42.3,-77.14;149:42.09,-76.82;150:40.46,-80.06;151:40.42,-79.93;152:40.45,-79.98;153:40.03,-80.17;154:39.96,-79.75;155:39.97,-78.89;156:40.32,-79.54;157:40.73,-79.03;158:41.26,-78.71;159:40.36,-78.85;160:40.92,-79.89;161:41.17,-80.35;162:41.0,-79.38;163:41.55,-79.57;164:41.89,-80.05;165:42.11,-80.06;166:40.47,-78.34;167:41.81,-78.48;168:40.95,-77.98;169:41.83,-77.28;170:40.41,-77.06;171:40.28,-76.85;172:40.02,-77.77;173:39.9,-76.85;174:39.95,-76.72;175:40.04,-76.24;176:40.06,-76.3;177:41.3,-77.12;178:40.89,-76.79;179:40.71,-76.28;180:40.64,-75.47;181:40.6,-75.52;182:40.91,-75.95;183:41.09,-75.23;184:41.57,-75.39;185:41.41,-75.67;186:41.32,-76.06;187:41.24,-75.88;188:41.82,-76.1;189:40.35,-75.16;190:40.01,-75.22;191:40.0,-75.15;193:39.94,-75.73;194:40.19,-75.42;195:40.42,-75.9;196:40.34,-75.95;197:39.65,-75.65;198:39.76,-75.57;199:38.85,-75.44;200:38.91,-77.03;201:38.92,-77.6;202:38.89,-77.03;203:38.88,-77.01;204:38.9,-77.04;205:38.9,-77.03;206:38.39,-76.72;207:38.92,-76.8;208:39.11,-77.16;209:39.04,-77.01;210:39.36,-76.56;211:39.42,-76.64;212:39.32,-76.61;214:38.99,-76.5;215:39.58,-79.01;216:38.85,-76.05;217:39.48,-77.49;218:38.27,-75.62;219:39.56,-75.97;220:38.81,-77.25;221:38.77,-77.28;222:38.88,-77.1;223:38.79,-77.1;224:38.06,-76.97;225:38.05,-77.12;226:39.02,-78.23;227:38.48,-78.06;228:38.58,-78.83;229:38.02,-78.59;230:37.6,-77.16;231:37.58,-77.12;232:37.55,-77.48;233:37.4,-75.93;234:37.3,-75.99;235:36.89,-76.27;236:37.09,-76.43;237:36.84,-76.33;238:36.96,-77.41;239:37.01,-78.4;240:37.14,-80.09;241:37.09,-80.16;242:36.86,-82.47;243:36.84,-81.14;244:38.08,-79.36;245:37.15,-79.13;246:37.2,-81.78;247:37.41,-81.23;248:37.47,-81.64;249:37.86,-80.42;250:38.19,-81.48;251:38.23,-81.52;252:38.61,-81.56;253:38.36,-81.63;254:39.41,-78.07;255:38.29,-82.16;256:37.76,-82.03;257:38.39,-82.4;258:37.79,-81.22;259:37.78,-81.06;260:40.17,-80.62;261:39.21,-81.25;262:38.76,-80.05;263:39.2,-80.53;264:39.25,-80.38;265:39.58,-80.11;266:38.47,-80.81;267:39.34,-78.98;268:38.96,-79.01;270:36.25,-80.4;271:36.09,-80.26;272:35.88,-79.67;273:35.93,-79.62;274:36.08,-79.82;275:35.89,-78.57;276:35.82,-78.65;277:35.99,-78.9;278:35.92,-77.41;279:36.09,-76.19;280:35.37,-81.04;281:35.29,-80.76;282:35.21,-80.83;283:34.98,-78.97;284:34.32,-78.23;285:35.0,-77.09;286:36.09,-81.37;287:35.45,-82.72;288:35.59,-82.55;289:35.09,-83.91;290:33.96,-80.81;291:33.88,-80.89;292:34.03,-81.0;293:34.85,-81.91;294:32.96,-80.13;295:34.08,-79.42;296:34.67,-82.58;297:34.86,-80.94;298:33.55,-81.79;299:32.54,-80.94;300:33.87,-84.16;301:34.02,-84.85;302:33.32,-84.46;303:33.8,-84.38;304:32.43,-82.12;305:34.53,-83.72;306:33.88,-83.24;307:34.77,-85.11;308:33.34,-82.35;309:33.45,-82.03;310:32.59,-83.46;312:32.84,-83.66;313:31.95,-81.42;314:32.05,-81.12;315:31.34,-82.13;316:30.99,-83.2;317:31.47,-83.85;318:32.52,-84.72;319:32.47,-84.94;320:30.16,-82.22;321:29.3,-81.47;322:30.3,-81.63;323:30.32,-84.26;324:30.51,-85.54;325:30.55,-86.99;326:29.59,-82.48;327:28.78,-81.32;328:28.51,-81.32;329:28.04,-80.62;330:25.77,-80.41;331:25.77,-80.28;333:26.13,-80.24;334:26.62,-80.2;335:28.12,-82.26;336:28.0,-82.48;337:27.86,-82.73;338:27.89,-81.69;339:26.7,-81.89;341:26.13,-81.64;342:27.3,-82.41;344:29.01,-82.33;346:28.31,-82.61;347:28.48,-81.59;349:27.32,-80.41;350:33.57,-86.71;351:33.51,-86.63;352:33.51,-86.8;354:33.11,-87.79;355:33.97,-87.66;356:34.69,-87.31;357:34.74,-86.34;358:34.71,-86.61;359:34.29,-85.94;360:32.15,-86.17;361:32.37,-86.28;362:33.54,-85.7;363:31.3,-85.54;364:31.42,-87.06;365:30.89,-87.95;366:30.69,-88.13;367:32.3,-87.37;368:32.58,-85.35;369:32.15,-88.24;370:36.12,-86.86;371:36.08,-86.76;372:36.15,-86.79;373:35.26,-85.35;374:35.05,-85.28;376:36.37,-82.34;377:36.14,-83.9;378:36.1,-83.81;379:35.97,-83.98;380:35.52,-89.44;381:35.12,-89.94;382:36.28,-88.72;383:35.6,-88.51;384:35.29,-87.31;385:36.19,-85.42;386:34.59,-89.79;387:33.58,-90.81;388:34.32,-88.63;389:33.79,-89.94;390:32.48,-90.17;391:32.39,-90.2;392:32.31,-90.19;393:32.37,-88.82;394:31.35,-89.3;395:30.45,-89.02;396:31.34,-90.56;397:33.53,-88.88;398:31.34,-84.66;400:38.12,-85.32;401:37.87,-86.16;402:38.21,-85.69;403:38.06,-84.2;404:37.49,-84.42;405:38.03,-84.49;406:38.23,-84.87;407:36.94,-84.08;408:36.9,-83.27;409:36.92,-83.69;410:38.79,-84.44;411:38.37,-82.96;412:37.86,-82.72;413:37.57,-83.46;414:37.83,-83.2;415:37.46,-82.35;416:37.5,-82.74;417:37.24,-83.22;418:37.22,-82.86;420:36.9,-88.58;421:36.88,-86.03;422:36.94,-86.99;423:37.46,-87.02;424:37.48,-87.65;425:37.15,-84.72;426:36.78,-84.7;427:37.34,-85.76;430:40.17,-82.93;431:39.69,-82.9;432:39.99,-82.98;433:40.52,-83.38;434:41.46,-83.29;435:41.46,-84.14;436:41.66,-83.57;437:39.86,-81.71;438:40.26,-81.87;439:40.22,-80.86;440:41.53,-81.4;441:41.46,-81.67;442:41.11,-81.59;443:41.08,-81.53;444:41.09,-80.75;445:41.09,-80.66;446:40.67,-81.47;447:40.82,-81.38;448:41.03,-82.77;449:40.75,-82.53;450:39.39,-84.48;451:39.1,-83.92;452:39.17,-84.49;453:39.99,-84.28;454:39.75,-84.17;455:39.94,-83.82;456:38.94,-82.82;457:39.34,-81.8;458:40.82,-84.19;460:40.15,-86.05;461:39.65,-86.17;462:39.8,-86.14;463:41.44,-87.16;464:41.57,-87.33;465:41.45,-86.06;466:41.68,-86.26;467:41.19,-85.2;468:41.08,-85.14;469:40.73,-86.07;470:39.17,-85.07;471:38.39,-86.01;472:39.06,-85.73;473:40.06,-85.21;474:39.04,-86.68;475:38.42,-87.0;476:38.16,-87.47;477:38.0,-87.56;478:39.46,-87.32;479:40.43,-87.07;480:42.68,-82.91;481:42.21,-83.5;482:42.37,-83.1;483:42.63,-83.33;484:43.25,-83.28;485:43.02,-83.68;486:43.86,-84.3;487:43.94,-83.57;488:43.03,-84.69;489:42.73,-84.57;490:42.21,-85.58;491:41.89,-86.44;492:42.05,-84.33;493:43.26,-85.54;494:43.26,-86.14;495:42.94,-85.66;496:44.53,-85.64;497:45.58,-84.52;498:46.08,-87.19;499:46.75,-88.82;500:41.67,-93.77;501:41.6,-93.47;502:41.66,-93.57;503:41.6,-93.65;504:43.16,-93.36;505:42.75,-94.45;506:42.63,-92.46;507:42.48,-92.31;508:40.96,-94.55;510:42.6,-95.91;511:42.51,-96.39;512:43.27,-96.04;513:43.26,-95.13;514:42.1,-95.06;515:41.46,-95.56;516:40.73,-95.36;520:42.48,-90.97;521:43.15,-91.73;522:41.9,-91.75;523:41.91,-91.73;524:41.99,-91.67;525:40.97,-92.43;526:40.87,-91.44;527:41.65,-90.78;528:41.55,-90.6;530:43.46,-88.23;531:42.76,-88.24;532:43.05,-87.97;534:42.74,-87.83;535:42.95,-89.62;537:43.07,-89.4;538:42.84,-90.75;539:43.61,-89.52;540:45.08,-92.49;541:44.87,-88.25;542:44.57,-87.56;543:44.51,-88.02;544:44.88,-89.78;545:45.91,-89.9;546:43.86,-90.93;547:44.84,-91.58;548:46.03,-91.64;549:44.21,-88.85;550:45.03,-93.02;551:44.95,-93.1;553:44.97,-93.89;554:44.98,-93.31;556:47.56,-91.05;557:47.17,-92.78;558:46.81,-92.13;559:43.9,-92.31;560:44.0,-93.96;561:43.9,-95.66;562:45.02,-95.66;563:45.77,-94.66;564:46.56,-94.51;565:46.84,-96.13;566:47.82,-94.44;567:48.39,-96.33;570:43.49,-97.02;571:43.54,-96.74;572:45.03,-97.12;573:43.79,-98.4;574:45.35,-98.76;575:43.76,-100.44;576:45.52,-101.38;577:44.11,-103.07;580:46.67,-97.31;581:46.87,-96.83;582:48.23,-97.65;583:48.37,-99.21;584:46.95,-99.01;585:46.78,-100.92;586:46.79,-102.93;587:48.35,-101.57;588:48.26,-103.49;590:45.8,-108.71;591:45.77,-108.53;592:48.33,-105.32;593:46.3,-105.43;594:47.74,-111.22;595:48.49,-109.43;596:46.56,-111.93;597:45.66,-112.22;598:47.03,-114.29;599:48.31,-114.45;600:42.24,-88.01;601:41.97,-88.24;602:42.05,-87.69;603:41.89,-87.8;604:41.52,-87.92;605:41.73,-88.31;606:41.87,-87.67;607:41.98,-87.79;608:41.72,-87.71;609:40.82,-87.94;610:42.21,-89.52;611:42.29,-89.05;612:41.49,-90.34;613:41.35,-89.21;614:40.84,-90.42;615:40.69,-89.7;616:40.7,-89.61;617:40.5,-88.92;618:40.1,-88.11;619:39.68,-88.22;620:39.06,-89.98;622:38.43,-89.8;623:40.02,-91.05;624:39.04,-88.21;625:39.7,-89.23;626:39.83,-89.99;627:39.79,-89.65;628:38.32,-88.68;629:37.56,-88.98;630:38.44,-90.68;631:38.64,-90.3;633:38.97,-91.03;634:39.95,-91.76;635:40.2,-92.59;636:37.67,-90.64;637:37.3,-89.78;638:36.5,-89.79;639:36.86,-90.52;640:39.08,-94.21;641:39.11,-94.55;644:40.11,-94.69;645:39.76,-94.83;646:39.88,-93.56;647:38.1,-94.2;648:36.96,-94.35;650:38.45,-92.27;651:38.53,-92.2;652:39.21,-92.39;653:38.76,-93.23;654:37.67,-91.81;655:37.65,-91.93;656:37.05,-93.11;657:37.06,-93.01;658:37.19,-93.29;660:38.92,-95.12;661:39.1,-94.68;662:38.96,-94.71;664:39.39,-96.05;665:39.33,-96.09;666:39.04,-95.71;667:37.61,-95.09;668:38.35,-96.38;669:39.78,-97.72;670:37.56,-97.6;671:37.54,-97.67;672:37.69,-97.32;673:37.19,-95.76;674:38.94,-97.75;675:38.24,-98.87;676:39.32,-99.42;677:39.34,-101.08;678:37.81,-100.67;679:37.17,-101.45;680:41.47,-96.42;681:41.24,-96.03;683:40.47,-96.83;684:40.54,-96.62;685:40.82,-96.68;686:41.49,-97.53;687:42.41,-97.73;688:41.16,-98.93;689:40.34,-98.82;690:40.34,-100.89;691:41.3,-101.58;692:42.69,-100.59;693:42.18,-103.0;700:29.86,-90.18;701:29.98,-90.06;703:29.66,-90.76;704:30.58,-90.24;705:30.23,-92.17;706:30.39,-93.16;707:30.52,-91.2;708:30.45,-91.12;710:32.49,-93.48;711:32.46,-93.76;712:32.56,-92.0;713:31.29,-91.97;714:31.56,-92.84;716:33.66,-91.73;717:33.53,-92.8;718:33.67,-93.85;719:34.37,-93.56;720:34.96,-91.98;721:34.91,-92.08;722:34.74,-92.36;723:35.06,-90.57;724:36.05,-90.74;725:36.01,-91.8;726:36.15,-92.88;727:36.15,-94.16;728:35.27,-93.39;729:35.33,-94.19;730:35.33,-97.75;731:35.47,-97.52;734:34.23,-97.18;735:34.52,-98.78;736:35.51,-99.29;737:36.38,-98.13;738:36.45,-99.5;739:36.74,-101.54;740:36.25,-96.21;741:36.13,-95.94;743:36.53,-94.98;744:35.64,-95.46;745:34.64,-95.7;746:36.7,-97.15;747:34.01,-95.59;748:35.18,-96.68;749:35.21,-94.7;750:33.06,-96.78;751:32.55,-96.43;752:32.81,-96.81;753:32.81,-96.84;754:33.37,-95.8;755:33.26,-94.38;756:32.45,-94.62;757:32.24,-95.34;758:31.47,-95.71;759:31.29,-94.36;760:32.65,-97.35;761:32.76,-97.33;762:33.42,-97.29;763:33.78,-98.76;764:32.54,-98.5;765:31.09,-97.55;766:31.75,-97.03;767:31.55,-97.15;768:31.31,-99.31;769:31.36,-100.6;770:29.78,-95.42;772:29.72,-95.34;773:30.35,-95.32;774:29.45,-95.97;775:29.61,-95.03;776:30.11,-94.16;777:30.07,-94.16;778:30.66,-96.31;779:28.88,-96.91;780:28.97,-98.89;781:29.16,-97.98;782:29.47,-98.52;783:27.7,-97.88;784:27.74,-97.43;785:26.3,-98.08;786:30.25,-97.94;787:30.3,-97.77;788:29.33,-100.08;789:29.91,-96.82;790:35.34,-101.56;791:35.19,-101.85;792:34.27,-100.64;793:33.49,-102.19;794:33.56,-101.89;795:32.66,-100.18;796:32.42,-99.77;797:31.71,-102.51;798:30.77,-104.81;799:31.81,-106.4;800:39.8,-104.96;801:39.49,-104.78;802:39.75,-104.98;803:40.01,-105.26;804:39.83,-105.91;805:40.41,-105.16;806:40.34,-104.59;807:40.46,-103.07;808:39.08,-103.81;809:38.85,-104.73;810:37.88,-103.75;811:37.45,-106.19;812:38.52,-106.17;813:37.46,-108.45;814:38.4,-108.05;815:39.06,-108.64;816:39.69,-107.39;820:41.3,-105.13;821:44.52,-110.65;822:42.32,-104.55;823:41.69,-107.15;824:44.44,-108.41;825:43.1,-108.85;826:43.11,-106.63;827:44.38,-104.88;828:44.72,-106.87;829:41.76,-109.81;830:43.63,-110.7;831:42.54,-110.72;832:42.87,-112.36;833:42.81,-114.29;834:44.05,-112.13;835:46.15,-116.27;836:43.88,-116.3;837:43.64,-116.14;838:47.66,-116.53;840:40.63,-111.4;841:40.73,-111.89;843:41.7,-112.1;844:41.23,-111.98;845:38.73,-110.32;846:39.52,-111.86;847:37.83,-112.67;850:33.53,-112.08;851:33.01,-111.52;852:33.45,-111.8;853:33.47,-112.89;855:33.31,-110.3;856:31.86,-110.49;857:32.23,-110.96;859:34.21,-109.9;860:35.73,-111.18;863:34.67,-112.31;864:35.29,-114.12;865:36.05,-109.46;870:35.24,-106.78;871:35.11,-106.64;873:35.5,-108.6;874:36.68,-108.25;875:36.16,-105.89;877:36.03,-104.94;878:34.03,-107.79;879:32.96,-107.27;880:32.41,-107.59;881:34.23,-103.55;882:32.77,-103.9;883:33.25,-105.61;884:35.72,-103.79;890:36.59,-115.38;891:36.15,-115.22;893:39.29,-115.26;894:39.68,-119.06;895:39.57,-119.82;897:39.17,-119.78;898:41.11,-115.54;900:34.04,-118.31;902:33.95,-118.35;903:33.95,-118.35;904:34.02,-118.49;905:33.84,-118.33;906:33.92,-118.03;907:33.79,-118.18;908:33.79,-118.16;910:34.19,-118.12;911:34.15,-118.13;912:34.17,-118.25;913:34.27,-118.58;914:34.18,-118.46;915:34.19,-118.32;916:34.16,-118.38;917:34.08,-117.83;918:34.08,-118.14;919:32.7,-116.79;920:33.11,-117.08;921:32.77,-117.14;922:33.6,-115.91;923:34.48,-117.01;924:34.13,-117.3;925:33.76,-117.16;926:33.63,-117.78;927:33.74,-117.86;928:33.84,-117.82;930:34.26,-119.13;931:34.45,-119.78;932:35.86,-119.21;933:35.35,-119.03;934:35.22,-120.57;935:35.6,-118.14;936:36.84,-119.69;937:36.78,-119.79;939:36.48,-121.59;940:37.47,-122.27;941:37.76,-122.43;943:37.43,-122.15;944:37.55,-122.31;945:37.95,-122.06;946:37.8,-122.22;947:37.88,-122.27;948:37.95,-122.33;949:38.08,-122.68;950:37.09,-121.86;951:37.31,-121.85;952:38.12,-120.93;953:37.64,-120.67;954:38.88,-123.08;955:40.72,-123.89;956:38.65,-121.27;957:38.88,-120.89;958:38.58,-121.44;959:39.49,-121.52;960:40.88,-122.26;961:40.04,-120.29;967:20.39,-157.29;968:21.34,-157.85;969:13.81,144.98;970:45.43,-122.23;971:45.54,-123.49;972:45.52,-122.66;973:44.74,-123.19;974:43.56,-123.41;975:42.39,-123.08;976:42.45,-121.21;977:43.84,-120.57;978:45.19,-118.59;979:43.85,-117.61;980:47.56,-122.11;981:47.59,-122.33;982:48.38,-122.29;983:47.45,-122.68;984:47.2,-122.47;985:46.94,-123.24;986:45.94,-122.46;988:47.89,-119.9;989:46.68,-120.54;990:47.62,-117.45;991:47.84,-118.01;992:47.68,-117.38;993:46.36,-118.96;994:46.23,-117.3;995:60.1,-155.87;996:60.21,-157.04;997:65.87,-153.59;998:57.88,-135.06;999:55.73,-132.22";
+  function zipGeo(z){var p=String(z||"").slice(0,3);if(!/^\d{3}$/.test(p))return null;for(var i=0;i<ZIP3.length;i++)if((" "+ZIP3[i][0]+" ").indexOf(" "+p+" ")>-1)return [ZIP3[i][1],ZIP3[i][2]];var k=ZIP3ALL.indexOf(p+":");if(k<0||(k&&ZIP3ALL.charAt(k-1)!==";"))return null;var v=ZIP3ALL.slice(k+4).split(";")[0].split(",");return [+v[0],+v[1]]}
   /* where you live: your city plus state (so "Columbus" + OH works), then your ZIP code if the city is not one we know */
   function homeGeo(){var p=A.S.profile,ad=acct.addr||{};return devPos()||geo((p.loc||"")+(ad.state?", "+ad.state:""))||geo(p.loc)||zipGeo(ad.zip)}
 
@@ -641,9 +872,26 @@ function apply(w,host){
     var ask=d.getElementById("locAsk");if(ask&&(devPos()||(DEV&&DEV.skipped)))ask.remove();
     var st=d.getElementById("fLocState"),bt=d.getElementById("fLocBtn");if(!st||!bt)return;
     if(devPos()){st.textContent="Using your device location (accurate to about a mile). It stays on this device and is never sent to our server.";bt.textContent="Stop using my location";bt.setAttribute("data-mode","stop")}
-    else if(DEV&&DEV.denied){st.textContent="Location is blocked for this site. Allow it in your browser's site settings (the icon at the left of the address bar), then tap Use my location. Until then distance uses your city.";bt.textContent="Use my location";bt.setAttribute("data-mode","ask")}
+    else if(DEV&&DEV.denied){st.textContent=phoneish()?"Location is off for UAply. Allow it in your phone's settings, then tap Use my location. Until then distance uses your city.":"Location is blocked for this site. Allow it in your browser's site settings (the icon at the left of the address bar), then tap Use my location. Until then distance uses your city.";bt.textContent="Use my location";bt.setAttribute("data-mode","ask")}
     else{st.textContent="Not using your device location. Distance uses your city or ZIP code.";bt.textContent="Use my location";bt.setAttribute("data-mode","ask")}
   }
+  /* a phone, or the installed app (the Play Store app, a site added to the home screen): no address bar to point at, so the location card
+     speaks of the phone's settings and stays short (two lines and its two buttons: Galaxy walk, October 22, it pushed the first job card
+     down with laptop instructions). Laptops keep the laptop words. */
+  function phoneish(){
+    try{var t=w.top;
+      if(t.Capacitor||(t.matchMedia&&(t.matchMedia("(display-mode: standalone)").matches||t.matchMedia("(display-mode: fullscreen)").matches)))return true;
+      if(t.navigator&&t.navigator.standalone)return true;
+      if(/Android|iPhone|iPad|iPod|Mobile/i.test(t.navigator.userAgent||""))return true;
+      return !!(t.matchMedia&&t.matchMedia("(pointer: coarse)").matches&&t.innerWidth<820);
+    }catch(e){return false}
+  }
+  var LOC_PHONE={
+    ask:["See jobs near you first?","Your phone will ask to share your location. It only puts nearby jobs first and never leaves this device.","Use my location"],
+    again:["See jobs near you first?","Tap Use my location, then choose Allow. It only puts nearby jobs first.","Use my location"],
+    blocked:["Location is off for UAply","Allow location for UAply in your phone's settings, then tap Try again.","Try again"],
+    nofix:["We could not find you just now","Your phone could not tell where it is. Try again, or UAply uses your city.","Try again"]
+  };
   var LOC_TXT={
     ask:["See jobs near you first?","Your browser will ask to share your location. UAply uses it only to put nearby jobs at the top. It stays on this device and is never sent to our server. You can turn it off any time in Profile, Filters.","Use my location"],
     again:["See jobs near you first?","Tap Use my location, then choose Allow when your browser asks. UAply uses it only to put nearby jobs at the top, and it never leaves this device.","Use my location"],
@@ -664,7 +912,7 @@ function apply(w,host){
         else{DEV={asked:true,skipped:true,at:Date.now()};saveDev();c.remove();syncLocUI()}
       });
     }
-    var t=LOC_TXT[mode]||LOC_TXT.ask,yes=c.querySelector('[data-near="yes"]');
+    var T=phoneish()?LOC_PHONE:LOC_TXT,t=T[mode]||T.ask,yes=c.querySelector('[data-near="yes"]');c.classList.toggle("phone",T===LOC_PHONE);
     c.querySelector("b").textContent=t[0];c.querySelector("p").textContent=t[1];yes.textContent=t[2];yes.disabled=false;
     return c;
   }
@@ -680,12 +928,23 @@ function apply(w,host){
       var mode=why==="denied"?"blocked":why==="nofix"?"nofix":"again";
       nearBox(mode);
       /* Try again that ends the same way used to redraw the same words, so the button looked dead: say it was tried */
-      if(mode!=="again"&&was.indexOf(LOC_TXT[mode][0])===0)c.querySelector("b").textContent=LOC_TXT[mode][0]+" (still, tried again at "+new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit",second:"2-digit"})+")";
+      var TT=phoneish()?LOC_PHONE:LOC_TXT;
+      if(mode!=="again"&&was.indexOf(TT[mode][0])===0)c.querySelector("b").textContent=TT[mode][0]+" (still, tried again at "+new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit",second:"2-digit"})+")";
     });
   }
+  /* The Internship and Co-op stacks: undergraduate roles before graduate-only ones (PhD, master's, MBA; the server marks them gradOnly),
+     then on-site or hybrid roles within 50 miles of the person, then remote ones, then everything farther; the match decides within each.
+     Where the person is: the device location, else their city and state, else their ZIP code (homeGeo). Other stacks: by match only. */
+  w.__uaplyDeckSort=function(type){
+    var byPct=function(a,b){return b.m.pct-a.m.pct};
+    if(type!=="internship"&&type!=="coop")return byPct;
+    var home=homeGeo(),near=function(j){if(j.mode==="remote")return 1;var t=home&&jgeo(j);return t?(miles(home,t)<=50?0:2):(home?2:0)};
+    return function(a,b){return ((a.j.gradOnly?1:0)-(b.j.gradOnly?1:0))||(near(a.j)-near(b.j))||byPct(a,b)};
+  };
+  w.__uaplyMilesFromHome=function(loc){var h=homeGeo(),t=h&&(loc&&typeof loc==="object"?jgeo(loc):geo(loc));return t?Math.round(miles(h,t)):null};   /* for tools/ui-intern-order.js */
   if(NEAR){
-    w.__uaplyNearScore=function(job,p){var me=devPos(),there=me&&geo(job.loc);if(!there)return null;var mi=miles(me,there);return mi<=25?1:(mi<=60?0.6:(p&&p.reloc?0.6:0))};
-    w.__uaplyNearLabel=function(job){var me=devPos(),there=me&&geo(job.loc);if(!there)return "";var mi=Math.round(miles(me,there));return mi<3?"In your area":"About "+mi+" miles from you"};
+    w.__uaplyNearScore=function(job,p){var me=devPos(),there=me&&jgeo(job);if(!there)return null;var mi=miles(me,there);return mi<=25?1:(mi<=60?0.6:(p&&p.reloc?0.6:0))};
+    w.__uaplyNearLabel=function(job){var me=devPos(),there=me&&jgeo(job);if(!there)return "";var mi=Math.round(miles(me,there));return mi<3?"In your area":"About "+mi+" miles from you"};
     /* with the agreement asked first (consentFirst), the location card and the browser's own location prompt come only after Agree:
        two questions on top of each other at first open, the browser's one before the person has agreed to anything, was the audit's
        finding. Checked twice a second until this browser has agreed; a build without the agreement box (no kit) asks after 3 seconds */
@@ -728,21 +987,55 @@ function apply(w,host){
     titleList().forEach(function(t){var tk=tokens(t);if(!tk.length)return;var fr=tk.filter(function(x){return hasWord(role,x)}).length/tk.length;if(fr>best){best=fr;name=t}});
     return {fr:best,name:name};
   }
-  /* a short note above the cards when the target-title filter is what is hiding every listing */
+  /* "Hide roles that do not match my target titles" never empties a stack by itself (the October 21 student walk: a new student's two
+     marketing titles hid nearly every internship and the Jobs menu read "Internships 0"):
+     - Internships and Co-op are never filtered by title: a student takes an internship in whatever role it is.
+     - On any other stack where no listing matches a target title, the roles are shown anyway, with a one-line note (titleNote).
+     The other filters still apply. titleRelaxed is worked out once per stack per moment (the cache empties on the next tick). */
+  function titleKind(j){return !TITLE_FREE[j.type||"job"]}
+  function titleRelaxed(ty){
+    if(!RELAX){RELAX={};setTimeout(function(){RELAX=null},0)}
+    var key=ty+"\u0001"+titleList().join("\u0001");   /* titles changed and the deck redrawn in the same moment: worked out again */
+    if(Object.prototype.hasOwnProperty.call(RELAX,key))return RELAX[key];
+    RELAX[key]=false;
+    var any=false,match=false;
+    NOTITLE=true;                                   /* every other filter, without the title one */
+    try{
+      for(var i=0;i<A.JOBS.length&&!match;i++){
+        var j=A.JOBS[i];
+        if((j.type||"job")!==ty||(w.__uaplyHideSamples&&!j.live)||w.__uaplyHide(j))continue;
+        any=true;if(titleBest(j).fr>=0.6)match=true;
+      }
+    }finally{NOTITLE=false}
+    return (RELAX[key]=any&&!match);
+  }
+  /* the one-line note above the cards when target titles were set aside on this stack, with the way to Filters */
   function titleNote(){
     var pane=d.getElementById("pane-swipe");if(!pane)return;
     var n=d.getElementById("titleNote");
     if(!n){n=d.createElement("p");n.id="titleNote";n.className="note";n.setAttribute("role","status");n.style.cssText="margin:0 0 8px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface)";var deck=d.getElementById("deck");deck.parentNode.insertBefore(n,deck)}
-    var ty=A.getType(),shown=0,byTitle=0,saved=acct.fTitleOnly;
-    if(saved&&A.S.profile.custom&&titleList().length){
-      A.JOBS.forEach(function(j){
-        if((j.type||"job")!==ty||A.S.decisions[j.id]||(w.__uaplyHideSamples&&!j.live))return;
-        if(!w.__uaplyHide(j))shown++;else{acct.fTitleOnly=false;if(!w.__uaplyHide(j))byTitle++;acct.fTitleOnly=saved}
-      });
+    var ty=A.getType();
+    n.hidden=!(acct.fTitleOnly&&A.S.profile.custom&&titleList().length&&titleKind({type:ty})&&titleRelaxed(ty));
+    if(!n.hidden&&!d.getElementById("titleFilters")){
+      n.textContent="Showing all roles: none matched your target titles. ";
+      var b=d.createElement("button");b.type="button";b.className="linkbtn";b.id="titleFilters";b.textContent="Filters";
+      b.onclick=function(){w.__uaplyOpenProf("filters")};
+      n.appendChild(b);
     }
-    n.hidden=!(shown===0&&byTitle>0);
-    if(!n.hidden)n.textContent=byTitle+" listing"+(byTitle===1?" is":"s are")+" hidden because "+(byTitle===1?"it does":"they do")+" not match your target titles. Add more titles in Profile setup, under Jobs you want, or turn off \"Hide roles that do not match my target titles\" in Profile, Filters.";
   }
+  /* what an empty deck says (heading, line). "You have seen every one of these" only when the person really has: when every listing of
+     this kind is hidden by their filters or target titles (a new profile whose titles the feed does not have yet), it says so and where to
+     widen them, instead of telling someone who has seen nothing that they have seen everything. */
+  d.addEventListener("click",function(e){var b=e.target.closest&&e.target.closest("[data-open-filters]");if(b)w.__uaplyOpenProf("filters")});   /* the empty deck's Filters link */
+  w.__uaplyEmpty=function(jobs,S,type){
+    /* no numbers: the app never says how many jobs a section holds (the owner's rule), only what to do next */
+    var all=jobs.filter(function(j){return (j.type||"job")===type&&(j.live||!w.__uaplyHideSamples)}),
+        seen=all.filter(function(j){return S&&S.decisions&&S.decisions[j.id]}).length,hid=all.length-seen,
+        what={job:"full-time jobs",parttime:"part-time jobs",internship:"internships",coop:"co-ops"}[type]||"jobs";
+    if(!all.length)return ["Nothing listed here right now","New postings appear as employers publish them. Try another section or check back soon."];
+    if(hid)return [(seen?"No more ":"No ")+what+" match your filters yet",'Widen them in <button type="button" class="linkbtn" data-open-filters="1">Filters</button>, or pick another kind of job in the Jobs menu.'+(seen?" Jobs you passed on can come back.":"")];
+    return ["You have seen every one of these","Jobs you passed on can come back, and your applications are in Job Tracker, Applied."];
+  };
   /* a short note when you are looking at an opportunity type you did not pick in your profile */
   function typeNote(){
     var n=d.getElementById("typeNote");
@@ -787,6 +1080,7 @@ function apply(w,host){
       var lim={"24h":DAY,"7d":7*DAY,"30d":30*DAY}[acct.fPosted];
       if(!j.posted){if(strict)return true}else if(now-j.posted>lim)return true;
     }
+    if(acct.fJt&&acct.fJt!=="all"&&jobTypeOf(j)!==acct.fJt)return true;
     if(acct.fInstant&&!j.instant)return true;           /* only jobs where swipe right really sends the application */
     if(acct.fApp){
       if(j.applicants==null){if(strict)return true}else if(j.applicants>=10)return true;
@@ -794,7 +1088,7 @@ function apply(w,host){
     for(var i=0;i<acct.fPerks.length;i++){
       if(!j.perks){if(strict)return true}else if(j.perks.indexOf(acct.fPerks[i])<0)return true;
     }
-    if(acct.fTitleOnly&&A.S.profile.custom&&titleList().length&&titleBest(j).fr<0.6)return true;
+    if(acct.fTitleOnly&&!NOTITLE&&A.S.profile.custom&&titleList().length&&titleKind(j)&&!titleRelaxed(j.type||"job")&&titleBest(j).fr<0.6)return true;
     if(acct.fNoComm&&isSales()&&j.comm)return true;
     if(acct.fLevels.length&&acct.fLevels.indexOf(levelOf(j.yrs)[0])<0)return true;
     if(acct.fEdu){var je=LEVELS.indexOf(j.edu),pe=LEVELS.indexOf(A.S.profile.edu);if(je>-1&&pe>-1&&je>pe)return true}
@@ -803,7 +1097,7 @@ function apply(w,host){
     if(acct.fWs&&A.S.profile.custom&&(pm.remote||pm.hybrid||pm.onsite)&&!pm[j.mode])return true;
     if(acct.fMiles!=="any"&&j.mode!=="remote"&&(NEAR||pm.hybrid||pm.onsite)){
       if(NEAR&&+acct.fMiles===0)return true;   /* 0 miles means remote only */
-      var home=homeGeo(),there=geo(j.loc);
+      var home=homeGeo(),there=jgeo(j);
       if(!home||!there){if(strict)return true}else if(miles(home,there)>+acct.fMiles)return true;
     }
     return false;
@@ -846,7 +1140,7 @@ function apply(w,host){
   function paywall(why){
     if(d.getElementById("paywall"))return;
     var o=d.createElement("div");o.id="paywall";
-    o.innerHTML='<div role="dialog" aria-modal="true" aria-label="Plan required"><h2 style="margin:0 0 6px;font:800 20px var(--display)">Choose a plan to keep applying</h2><p style="margin:0 0 16px;color:var(--muted)">'+E(why)+' Passing on jobs and your dashboard still work.</p><div style="display:flex;gap:10px;justify-content:flex-end"><button class="btn ghost" id="pwNo" type="button">Not now</button><button class="btn" id="pwYes" type="button">See plans</button></div></div>';
+    o.innerHTML='<div role="dialog" aria-modal="true" aria-label="Plan required"><h2 style="margin:0 0 6px;font:800 20px var(--display)">Choose a plan to keep applying</h2><p style="margin:0 0 16px;color:var(--muted)">'+E(why)+' Passing on jobs and your Job Tracker still work.</p><div style="display:flex;gap:10px;justify-content:flex-end"><button class="btn ghost" id="pwNo" type="button">Not now</button><button class="btn" id="pwYes" type="button">See plans</button></div></div>';
     d.body.appendChild(o);
     var yes=d.getElementById("pwYes");yes.focus();
     function close(){o.remove()}
@@ -874,7 +1168,7 @@ function apply(w,host){
   /* profile completeness */
   function checklist(){
     var p=A.S.profile,a=acct,c=!!p.custom,px=PX(),x=XV();
-    /* [what is missing, done, the setup step it lives in, counts toward that step's check mark]. One list feeds the setup bar, the step marks and the Dashboard. */
+    /* [what is missing, done, the setup step it lives in, counts toward that step's check mark]. One list feeds the setup bar, the step marks and the Job Tracker. */
     var L=[["Your name",c&&!!p.name,"about",true],["An email recruiters can reply to",c&&/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(p.email||""),"about",true],["Phone number",!!phoneOf(),"about",false],
       ["Job title",c&&!!p.title,"jobs",true],["At least 3 skills",c&&p.skills.length>=3,"jobs",true]];
     if(px)L.push(["Opportunity types",Array.isArray(x.types)&&x.types.length>0,"jobs",false]);
@@ -883,6 +1177,72 @@ function apply(w,host){
     L.push(["Resume file or link",!!(a.resumeName||resumeLinkOf()),"back",true],["Short summary (40+ characters)",summaryOf().length>=40,"back",false],["LinkedIn or portfolio link",!!(linkOf("linkedin")||linkOf("portfolio")),"back",false],["Work authorization",!!authOf(),"final",true]);
     return L;
   }
+
+  /* ---------- ready to apply (the owner's rule, October 21: a right swipe never sends an incomplete application, and never pretends) ----------
+     READY_MIN is the least UAply applies with, the one definition the deck, the cards and every checklist read: a name, an email employers
+     can reply to, and a phone number or a resume (each inner list needs one of its items). READY_ITEMS are what employers' forms ask most:
+     [key, label, the setup step, the fields that fix it (the first one on the page gets the focus)]. */
+  var READY_MIN=[["name"],["email"],["phone","resume"]];
+  var READY_ITEMS=[["name","Your name","about",["pName"]],["email","An email employers can reply to","about",["pEmail"]],
+    ["phone","Phone number","about",["px-phone","pPhone"]],["resume","Resume (a file, or a link to one)","back",["pResFile","px-resume"]],
+    ["auth","Work authorization","final",["px-auth","ev-auth"]],["edu","Education (your school)","back",["px-school","pEdu"]],
+    ["loc","Your city","where",["pLoc"]],["start","Earliest start date","where",["px-start","aNotice"]]];
+  var READY_WORDS={name:"your name",email:"an email employers can reply to",phone:"a phone number",resume:"a resume"};
+  function readyHave(){
+    var p=A.S.profile||{},c=!!p.custom,x=XV();
+    return {name:c&&!!String(p.name||"").trim(),email:c&&/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(p.email||""),phone:!!phoneOf(),
+      resume:!!(acct.resumeName||resumeLinkOf()||(w.__uaplyResume&&w.__uaplyResume())),auth:!!authOf(),edu:PX()?!!x.school:(c&&!!p.edu),loc:c&&!!String(p.loc||"").trim(),start:!!startOf()};
+  }
+  function readiness(){
+    var h=readyHave(),open=READY_MIN.filter(function(g){return !g.some(function(k){return h[k]})});
+    var items=READY_ITEMS.map(function(r){return {k:r[0],label:r[1],step:r[2],done:!!h[r[0]],needed:open.some(function(g){return g.indexOf(r[0])>-1})}});
+    return {min:!open.length,missing:open.map(function(g){return g.map(function(k){return READY_WORDS[k]}).join(" or ")}),items:items,
+      done:items.filter(function(i){return i.done}).length,total:items.length};
+  }
+  function joinAnd(a){return a.length<2?(a[0]||""):a.slice(0,-1).join(", ")+" and "+a[a.length-1]}
+  w.__uaplyReadyMin=READY_MIN;w.__uaplyReadiness=readiness;
+  function readyItemsHTML(r,onlyOpen){
+    return '<ul class="rdyItems">'+r.items.filter(function(i){return !onlyOpen||!i.done}).map(function(i){
+      return '<li data-done="'+i.done+'"'+(i.needed?' data-needed="true"':'')+'><span class="rdyMark" aria-hidden="true">'+(i.done?"✓":"○")+'</span><span class="rdyL">'+E(i.label)+
+        (i.needed?' <em>needed to apply</em>':'')+'</span>'+(i.done?'<span class="rdyOk">Done</span>':'<button type="button" class="btn ghost" data-ready="'+i.k+'" aria-label="Add '+E(i.label.toLowerCase())+'">Add</button>')+'</li>'}).join("")+'</ul>';
+  }
+  /* the checklist on Account and on the last setup step */
+  function readyHTML(where){
+    var r=readiness();
+    return '<div class="plan rdyList" data-where="'+where+'"><b>'+(r.min?(r.done===r.total?"Ready to apply":"Ready to apply · "+r.done+" of "+r.total+" filled in"):"Not ready to apply yet")+'</b>'+
+      '<small>'+(r.min?(r.done===r.total?"Everything employers' forms ask most is filled in.":"A swipe right can apply. The rest is what employers' forms ask most: with it, fewer jobs need a question first."):
+        "A swipe right needs "+joinAnd(r.missing)+" before UAply can apply.")+'</small>'+readyItemsHTML(r,false)+'</div>';
+  }
+  /* one tap to fix: the setup step with the field, and the field focused */
+  function fixReady(k){
+    var r=READY_ITEMS.filter(function(x){return x[0]===k})[0];if(!r)return;
+    var box=d.getElementById("rdyBox");if(box)box.remove();
+    var ids=r[3].filter(function(i){return d.getElementById(i)}),id=ids[0]||"",el=id?d.getElementById(id):null,top=el?topOf(el):null;
+    var i=top?stepOf(top):-1;if(i<0)i=stepIndex(r[2]);if(i<0)i=0;
+    if(!form.offsetParent||!form.classList.contains("wz")){wz.want=STEPS[i].k;closeMenus();sub.prof="settings";cur="prof";go("prof")}   /* the setup is not on screen: open it on that step */
+    else if(i!==wz.i){wz.i=i;wzPaint()}
+    function focusIt(){var t=id&&d.getElementById(id);if(t&&d.activeElement!==t){if(t.scrollIntoView)t.scrollIntoView({block:"center"});if(t.focus)t.focus()}}
+    setTimeout(focusIt,60);setTimeout(focusIt,400);   /* again once the screen has settled */
+  }
+  w.__uaplyFixReady=fixReady;
+  d.addEventListener("click",function(e){var b=e.target.closest&&e.target.closest("[data-ready]");if(b){e.preventDefault();fixReady(b.getAttribute("data-ready"))}});
+  /* a swipe right below READY_MIN (uaply-live.js, __uaplyReadyGate): nothing is sent, the card stays, and this says exactly what is missing */
+  w.__uaplyFinishProfile=function(job){
+    var old=d.getElementById("rdyBox");if(old)old.remove();
+    var r=readiness(),o=d.createElement("div");o.id="rdyBox";
+    o.style.cssText="position:fixed;inset:0;z-index:58;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.45);overflow:auto;overscroll-behavior:contain";
+    o.innerHTML='<div role="dialog" aria-modal="true" aria-labelledby="rdyH" style="background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:20px;max-width:460px;width:100%;box-sizing:border-box;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:10px">'+
+      '<h2 id="rdyH" style="margin:0;font:800 20px var(--display)">Finish your profile first</h2>'+
+      '<p style="margin:0">'+(job?'To apply to '+E(job.co)+', UAply':'UAply')+' needs '+E(joinAnd(r.missing))+'. Nothing was sent, and the job is still on top of your deck.</p>'+
+      readyItemsHTML(r,true)+
+      '<div style="display:flex;justify-content:flex-end"><button type="button" class="btn ghost" id="rdyNo">Not now</button></div></div>';
+    d.body.appendChild(o);
+    function close(){o.remove()}
+    d.getElementById("rdyNo").onclick=close;
+    o.addEventListener("click",function(e){if(e.target===o)close()});
+    o.addEventListener("keydown",function(e){if(e.key==="Escape")close()});
+    var f=o.querySelector('[data-needed] [data-ready]')||o.querySelector("[data-ready]")||d.getElementById("rdyNo");if(f)f.focus();
+  };
 
   /* per-application details (interview time, offer, rejection reason, notes) */
   function modeChip(j){var m={remote:"Remote",hybrid:"Hybrid",onsite:"In person"}[j.mode];return m?'<span class="mchip m-'+j.mode+'">'+m+'</span>':""}
@@ -902,7 +1262,7 @@ function apply(w,host){
     var r=acts.slice(),id=o.j.id;
     if(v!=="passed")r.push(["details",OPEN[id]?"Hide details":"Details"]);
     if(v==="interview"&&ap(id).when)r.push(["ics","Add to calendar"]);
-    if(o.j.url)r.push(["open","Open posting"]);
+    if(o.j.url&&v==="passed")r.push(["open","Open posting"]);   /* the other lists have See the job posting on the row itself */
     r.push(["share","Share"]);
     return r;
   }
@@ -955,6 +1315,7 @@ function apply(w,host){
   }
   /* share a job: the phone's share sheet in the app, the browser's on phones that have one, else copy the link */
   function shareJob(job){
+    if(w.__uaplyShareJob)return w.__uaplyShareJob(job);   /* Share this job (shared/uaply-share.js, sandbox): the same UAply link as the card's icon */
     var url=job.url||"",text=job.role+" at "+job.co+(url?"":" (on UAply)"),SH=plug("Share");
     if(SH)return SH.share({title:text,text:text,url:url||undefined}).catch(function(){});
     if(w.navigator.share)return w.navigator.share({title:text,text:text,url:url||undefined}).catch(function(){});
@@ -992,7 +1353,7 @@ function apply(w,host){
     download("uaply-applications.csv","text/csv",rows.map(function(r){return r.map(csvCell).join(",")}).join("\r\n"));
   }
 
-  /* dashboard overview */
+  /* Job Tracker overview */
   function overviewHTML(by){
     var n=by.applied.length+by.interview.length+by.accepted.length+by.rejected.length,answered=by.interview.length+by.accepted.length+by.rejected.length,sum=0;
     ["applied","interview","accepted","rejected"].forEach(function(k){by[k].forEach(function(o){sum+=o.x.pct})});
@@ -1043,11 +1404,13 @@ function apply(w,host){
   /* filters: posted date, applicants, distance, benefits */
   (function(){
     var f=d.createElement("div");f.className="field";f.id="fMeta";
-    f.innerHTML='<label for="fPosted">Posted</label><select id="fPosted"><option value="any">Any time</option><option value="24h">Past 24 hours</option><option value="7d">Past week</option><option value="30d">Past month</option></select>'+
+    f.innerHTML='<span class="l" id="fJtL">Job type</span><div class="filters" id="fJt" role="group" aria-labelledby="fJtL" style="flex-wrap:wrap">'+
+      JT.map(function(x){return '<button type="button" data-jt="'+x[0]+'" style="flex:1 1 30%">'+x[1]+'</button>'}).join("")+'</div><small>Picking a type opens the tab it belongs to.</small>'+
+      '<label for="fPosted" style="margin-top:8px;display:block">Posted</label><select id="fPosted"><option value="any">Any time</option><option value="24h">Past 24 hours</option><option value="7d">Past week</option><option value="30d">Past month</option></select>'+
       '<div class="checks" style="margin-top:8px"><label><input type="checkbox" id="fApp"> Under 10 applicants</label><label><input type="checkbox" id="fInstant"> Only jobs I can apply to instantly</label></div><small id="fAppNote">Applicant counts come from UAply. Listings from outside feeds do not have one yet.</small>'+
       (NEAR?'<div id="fMilesWrap" class="nearbox"><label for="fMiles">Commute distance</label><input type="range" id="fMiles" min="0" max="105" step="5" value="105" aria-describedby="fMilesV"><div class="rngrow"><b id="fMilesV" aria-live="polite"></b><span class="m">Left end: remote only. Right end: any distance.</span></div><small id="fMilesNote"></small><div id="fLoc"><small id="fLocState"></small><button type="button" class="btn ghost" id="fLocBtn">Use my location</button></div></div>'
         :'<div id="fMilesWrap"><label for="fMiles">Distance from your city</label><select id="fMiles"><option value="any">Any distance</option><option value="10">Within 10 miles</option><option value="20">Within 20 miles</option><option value="50">Within 50 miles</option><option value="100">Within 100 miles</option></select><small id="fMilesNote"></small></div>')+
-      '<div class="checks" style="margin-top:8px"><label><input type="checkbox" id="fTitleOnly"> Hide roles that do not match my target titles</label></div><small>Uses your target titles in Profile setup. Off if you have not set your own details.</small>'+
+      '<div class="checks" style="margin-top:8px"><label><input type="checkbox" id="fTitleOnly"> Hide roles that do not match my target titles</label></div><small>Uses your target titles in Profile setup. Off if you have not set your own details. Internships and co-ops are never hidden by title, and when no listing in a section matches your titles, all its roles are shown.</small>'+
       '<div class="checks" style="margin-top:8px"><label><input type="checkbox" id="fWsPick"> Hide work styles I did not pick</label></div><small>Uses the work styles ticked in Profile setup, under Where and pay. If none are ticked, every style shows.</small>'+
       '<div id="fCommWrap"><div class="checks" style="margin-top:8px"><label><input type="checkbox" id="fNoComm"> Remove commission-only roles</label></div><small>Shown because your titles are in sales. Based on what the posting says.</small></div>'+
       '<span class="l" style="margin-top:8px;display:block">Experience level</span><div class="checks" id="fLevels">'+XP.map(function(x){return '<label><input type="checkbox" data-lvl="'+x[0]+'"> '+x[1]+'</label>'}).join("")+'</div><small>Pick none to see every level.</small>'+
@@ -1064,6 +1427,7 @@ function apply(w,host){
     function sync(){
       d.getElementById("fPosted").value=acct.fPosted;d.getElementById("fApp").checked=acct.fApp;d.getElementById("fInstant").checked=acct.fInstant;d.getElementById("fMiles").value=NEAR?(acct.fMiles==="any"?105:+acct.fMiles):acct.fMiles;d.getElementById("fStrict").checked=acct.fStrict;d.getElementById("fTitleOnly").checked=acct.fTitleOnly;d.getElementById("fWsPick").checked=acct.fWs;d.getElementById("fNoComm").checked=acct.fNoComm;
       d.getElementById("fCommWrap").hidden=!isSales();
+      f.querySelectorAll("[data-jt]").forEach(function(b){b.setAttribute("aria-pressed",b.getAttribute("data-jt")===(acct.fJt||"all")?"true":"false")});
       f.querySelectorAll("[data-lvl]").forEach(function(c){c.checked=acct.fLevels.indexOf(c.getAttribute("data-lvl"))>-1});
       f.querySelectorAll("[data-perk]").forEach(function(c){c.checked=acct.fPerks.indexOf(c.getAttribute("data-perk"))>-1});
       d.getElementById("fPerksSum").textContent="Benefits"+(acct.fPerks.length?" ("+acct.fPerks.length+" selected)":"");
@@ -1098,8 +1462,13 @@ function apply(w,host){
       });
     }
     f.addEventListener("change",changed);
+    f.querySelectorAll("[data-jt]").forEach(function(b){b.addEventListener("click",function(){
+      acct.fJt=b.getAttribute("data-jt");cleanF(acct);saveA();
+      var tab=JT_TAB[acct.fJt];if(tab&&label("svc",tab)&&tab!==sub.svc){sub.svc=tab;A.setType(tab);savePrefs()}
+      A.renderAll();sync();
+    })});
     d.getElementById("fClear").onclick=function(){
-      acct.fPosted="any";acct.fApp=false;acct.fInstant=false;acct.fPerks=[];acct.fMiles="any";acct.fStrict=false;acct.fTitleOnly=false;acct.fWs=false;acct.fNoComm=false;acct.fLevels=[];acct.fEdu=false;acct.fSal=false;acct.fYrs="any";acct.fCo="";acct.fKw="";
+      acct.fPosted="any";acct.fJt="all";acct.fApp=false;acct.fInstant=false;acct.fPerks=[];acct.fMiles="any";acct.fStrict=false;acct.fTitleOnly=false;acct.fWs=false;acct.fNoComm=false;acct.fLevels=[];acct.fEdu=false;acct.fSal=false;acct.fYrs="any";acct.fCo="";acct.fKw="";
       saveA();A.setMin(0);A.setFilter("all");A.renderAll();sync();if(w.__uaplySyncPrefsBase)w.__uaplySyncPrefsBase();savePrefs();syncFilters();
     };
     var base=w.__uaplySyncPrefs;w.__uaplySyncPrefsBase=base;
@@ -1345,7 +1714,17 @@ function apply(w,host){
 
   /* ---------- real plans: the server keeps the plan, Stripe takes the payment ---------- */
   var BILL={enabled:false,plan:"free",signedIn:false,plans:{free:{name:"Free",price:0,cap:50},plus:{name:"Plus",price:9.99,cap:250},pro:{name:"Pro",price:19.99,cap:0}}};
-  function loadBilling(){return w.fetch("/api/billing/status",{credentials:"same-origin"}).then(function(r){return r.ok?r.json():null}).then(function(j){if(j){j._asked=BILL._asked;j._note=BILL._note;BILL=j;if(!acctSec.hidden&&sub.prof==="plan")renderAcct("plan")}}).catch(function(){})}
+  /* OPTS.shieldsHelp: a failed read (a blocker, a deploy's 502, a dropped connection) is remembered, so the Plan screen says so and offers
+     Try again instead of looking like "Payments are not switched on yet" with nothing to press; opening the screen again retries by itself */
+  var HELP=!!OPTS.shieldsHelp;
+  function loadBilling(){
+    BILL._loading=true;
+    function done(j){
+      if(j){j._asked=BILL._asked;j._note=BILL._note;BILL=j}else if(HELP&&!preview())BILL._failed=true;
+      BILL._loading=false;if((j||HELP)&&!acctSec.hidden&&sub.prof==="plan")renderAcct("plan");
+    }
+    return w.fetch("/api/billing/status",{credentials:"same-origin"}).then(function(r){return r.ok?r.json():null}).then(done,function(){done(null)});
+  }
   loadBilling();
   var EARLY="Paid plans are coming. UAply is free during early access.";
   function earlyAccess(){return BILL.early===true}   /* the server says so: a public server with no Stripe keys (billing_api.buttons). No prices to choose, no checkout, no payment links */
@@ -1353,11 +1732,19 @@ function apply(w,host){
   function testMode(){return !!BILL.test||(!BILL.enabled&&!!BILL.buttons&&!!(PAYLINK.starter||PAYLINK.pro))}
   function billingHTML(){
     var who=SRV.user?SRV.user.id:0;
+    if(HELP&&BILL._failed){
+      if(!BILL._loading&&!BILL._retried){BILL._retried=true;setTimeout(loadBilling,0)}   /* one automatic retry per failure, when the screen opens */
+      return '<div class="plan" id="billFail" role="alert" style="display:flex;flex-direction:column;gap:8px"><b>Plans could not load just now</b>'+
+        '<small>UAply could not reach its server to read your plan. This is usually a moment of downtime, or a browser privacy shield or ad blocker stopping the request. Nothing was charged.</small>'+
+        '<div class="acts"><button type="button" class="btn" data-bill="retry">Try again</button></div>'+shieldsLine()+'</div>';
+    }
     if(!!BILL.signedIn!==!!SRV.user&&BILL._asked!==who){BILL._asked=who;loadBilling()}       /* signed in or out since the plan was last read: read it again (the screen redraws when it arrives) */
     if(earlyAccess())return '<div class="plan" data-cur="true" style="display:flex;flex-direction:column;gap:6px"><b>Current plan: Free (early access)</b>'+
-      '<ul><li>No weekly limit on applications</li><li>Full dashboard and tracking</li><li>Every filter</li><li>Message the hiring manager</li></ul>'+
-      '<small>Nothing is charged and no card is ever asked for. Before any paid plan starts, you will see its price here first.</small></div>';
+      '<ul><li>No weekly limit on applications</li><li>The full Job Tracker</li><li>Every filter</li><li>Message the hiring manager</li></ul>'+
+      '<small>Nothing is charged and no card is ever asked for. Before any paid plan starts, you will see its price here first.</small>'+(BILL.hidden?'<small id="plansSoon"><b>Plus and Pro are coming soon.</b></small>':'')+'</div>';
     var keys=["free","plus","pro"],cur=BILL.plan||"free",P=BILL.plans;
+    /* a free-only launch (billing_api.hidden): only Free, and an existing paid plan's own card so Manage billing stays reachable; no Choose buttons */
+    if(BILL.hidden)keys=cur==="free"?["free"]:["free",cur];
     var h='<div class="plan" style="display:flex;flex-direction:column;gap:6px">'+(testMode()?'<span class="tag">Test mode: no real charges</span>':'')+'<b>Current plan: '+E(P[cur].name)+(BILL.canceling?' (ends '+new Date(BILL.renews*1000).toLocaleDateString()+')':'')+'</b>'+
       (BILL.signedIn?'<small>'+(P[cur].cap?(BILL.used||0)+' of '+P[cur].cap+' applications used this week':(BILL.used||0)+' applications this week, no limit')+(cur!=="free"&&BILL.renews&&!BILL.canceling?' · renews '+new Date(BILL.renews*1000).toLocaleDateString():'')+'</small>'+(P[cur].cap?'<div class="bar"><i style="width:'+Math.min(100,Math.round((BILL.used||0)/P[cur].cap*100))+'%"></i></div>':''):'<small>Sign in to choose a plan. Your plan is saved to your account.</small>')+
       /* a renewal failed (billing_api._problem): Stripe retries the card; after the third failed try the plan is paused until a payment works */
@@ -1374,6 +1761,9 @@ function apply(w,host){
           (cur!=="free"||BILL.problem?'<button type="button" class="btn ghost" data-bill="portal">Switch in Manage billing</button>':'<button type="button" class="btn" data-bill="'+k+'">Choose '+p.name+'</button>'))));
       h+='<div class="plan" data-cur="'+isCur+'"><b>'+p.name+'</b><span class="pr">'+(p.price?"$"+p.price.toFixed(2)+'<small>/month</small>':"$0")+'</span><ul>'+p.perks.map(function(x){return '<li>'+E(x)+'</li>'}).join("")+'</ul>'+btn+'</div>';
     });
+    /* hidden: a past subscriber (a Stripe customer now on Free) keeps Manage billing for invoices; a paid plan's own card already has it */
+    if(BILL.hidden)return h+'</div><p class="note" id="plansSoon"><b>Plus and Pro are coming soon.</b> You will see their prices here before anything can be bought.'+(cur==="free"&&!BILL.hasCustomer?' Nothing is charged and no card is asked for.':'')+'</p>'+
+      (cur==="free"&&BILL.hasCustomer?'<div class="acts"><button type="button" class="btn ghost" data-bill="portal">Manage billing</button></div>':'');
     return h+'</div><p class="note">Payments are handled by Stripe on its own secure page. UAply never sees or stores your card number. Cancel any time in Manage billing; the plan stays until the end of the paid month.</p>';
   }
   /* Data and privacy: "You agreed to the Terms and Privacy Policy on <date>" (the date this browser said yes) */
@@ -1385,6 +1775,7 @@ function apply(w,host){
   }
   function billingAction(k,btn){
     if(k==="signin"){sub.prof="account";renderAcct("account");return}
+    if(k==="retry"){btn.disabled=true;btn.textContent="Loading…";BILL._retried=true;loadBilling().then(function(){if(BILL._failed!==false&&!BILL.plans){renderAcct("plan")}});return}
     if(!BILL.enabled&&PAYLINK[LINKOF[k]]){   /* no keys on this server: Stripe's own test Payment Link (test mode, no real money) */
       var u=PAYLINK[LINKOF[k]],em=(d.getElementById("pEmail")||{}).value||"";
       if(/^[^@\s]{1,64}@[^@\s]+\.[A-Za-z]{2,}$/.test(em))u+="?prefilled_email="+encodeURIComponent(em);
@@ -1397,6 +1788,19 @@ function apply(w,host){
       msg((r.j&&r.j.error)||"Could not open the payment page. Try again.");
     });
   }
+  /* ?moved=1: the person came from the old address's "UAply has moved" page (serve.py MOVED_PAGE) after saving a backup there. Open
+     Data & privacy at Restore, once per browser, and drop the hint from the address so a reload or a shared link does not do it again */
+  (function movedReturn(){
+    var q=null;try{q=new w.URLSearchParams(w.top.location.search)}catch(e){return}
+    if(q.get("moved")!=="1")return;
+    try{q.delete("moved");var s=q.toString();w.top.history.replaceState(null,"",w.top.location.pathname+(s?"?"+s:""))}catch(e){}
+    var MK=w.__uaplyKey+".moved";try{if(w.localStorage.getItem(MK))return;w.localStorage.setItem(MK,String(Date.now()))}catch(e){}
+    setTimeout(function(){
+      sub.prof="data";cur="prof";go("prof");renderAcct("data");
+      var f=d.getElementById("aImp");if(f&&f.scrollIntoView)f.scrollIntoView({block:"center"});
+      msg("Welcome to the new address. If you saved a backup at the old one, choose that file under Restore to bring your profile and swipes here.");
+    },300);
+  })();
   (function billingReturn(){
     var q=null;try{q=new w.URLSearchParams(w.top.location.search)}catch(e){return}
     var b=q.get("billing");if(!b)return;
@@ -1430,8 +1834,38 @@ function apply(w,host){
   function autoAllowed(){if(REL||(typeof SRV!=="undefined"&&SRV&&SRV.up))return BILL.plan!=="free"||!BILL.enabled;var s=planState();return s.plan!==PLANS.trial&&s.ok}
   w.__uaplyAutoMsg=function(){return autoAllowed()&&!!acct.fAuto};
   /* what the application sends besides the profile: the details saved in Profile setup, Background and links (phone, LinkedIn, portfolio, About you, resume link) win over the optional profile form */
-  w.__uaplyApplyExt=function(){var x=Object.assign({},XV());var ph=phoneOf(),li=linkOf("linkedin"),pf=linkOf("portfolio"),su=summaryOf(),rs=resumeLinkOf();if(ph)x.phone=ph;if(li)x.linkedin=li;if(pf)x.portfolio=pf;if(su)x.summary=su;if(rs)x.resume=rs;var ad=acct.addr||{};if(ad.zip)x.zip=ad.zip;if(A.S.profile&&A.S.profile.reloc&&x.relocate!=="no")x.relocate="yes";if(ad.state)x.state=ad.state;x.ack=x.ack==="yes";return x};
+  w.__uaplyApplyExt=function(){var x=Object.assign({},XV());var ph=phoneOf(),li=linkOf("linkedin"),pf=linkOf("portfolio"),su=summaryOf(),rs=resumeLinkOf();if(ph)x.phone=ph;if(!x.start&&acct.notice)x.notice=acct.notice;if(li)x.linkedin=li;if(pf)x.portfolio=pf;if(su)x.summary=su;if(rs)x.resume=rs;var ad=acct.addr||{};if(ad.zip)x.zip=ad.zip;if(A.S.profile&&A.S.profile.reloc&&x.relocate!=="no")x.relocate="yes";if(ad.state)x.state=ad.state;x.ack=x.ack==="yes";return x};
   w.__uaplyResume=function(){return acct.resumeData&&DATA_URL.test(acct.resumeData)?{name:acct.resumeName,size:acct.resumeSize,data:acct.resumeData}:null};   /* the file uploaded in Profile setup, Background and links */
+  /* assisted apply (phone app, docs/assisted-apply.md): the profile shared/uaply-assist.js fills an employer's form with. Only what the
+     person saved in UAply; never the voluntary self-identification answers (acct.eeo holds them next to work authorization, and only
+     authorization and sponsorship are read from it), never pronouns. The example profile is never used. adult is "yes": the person
+     confirmed they are 18 or older in the first-swipe agreement, which every application goes through. heard is "UAply". */
+  w.__uaplyAssistProfile=function(job){
+    var p=A.S.profile||{},x=XV(),ad=acct.addr||{};if(!p.custom)return null;
+    var nm=String(p.name||"").trim().split(/\s+/),loc=String(p.loc||"").split(",").map(function(s){return s.trim()});
+    var au=x.auth||"",sp=x.sponsor||"",ea=String(authOf()),es=String(sponsorOf());
+    var res=w.__uaplyResume(),m=res&&/^data:([^;]+);base64,(.*)$/.exec(res.data);
+    var ans={};try{ans=JSON.parse(w.localStorage.getItem((w.__uaplyKey||"uaply")+".answers"))||{}}catch(e){ans={}}
+    /* an answer written for one employer (a cover letter, "why us", anything naming that company, or a question that names it: it can
+       never match another employer's form, and would tell that page where else the person applied) is not handed to another one's
+       form: the bridge asks it again there */
+    var asked={};try{asked=JSON.parse(w.localStorage.getItem((w.__uaplyKey||"uaply")+".answersAsked"))||{}}catch(e){asked={}}
+    /* an answer kept for one employer ("{at <employer>}", autofill.norm) goes only into that employer's page, and an older one about an
+       employer ("{co}" in its key) into none: the profile handed to an employer's page never carries another employer's answer */
+    if(job&&ans&&typeof ans==="object"){var mine="{at "+String(job.co||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim().slice(0,60)+"} ";
+      Object.keys(ans).forEach(function(k){if((k.indexOf("{at ")===0&&!(job.co&&k.indexOf(mine)===0))||(k.indexOf("{at ")!==0&&k.indexOf("{co}")>-1))delete ans[k]})}
+    if(job&&job.co&&ans&&typeof ans==="object")Object.keys(ans).forEach(function(k){var m=asked[k]||{},co=String(m.co||"");if(!co||co===job.co)return;
+      if(/cover letter|^why\b|why (do|would) you (want|like)|interested in (working|joining)|what (makes|draws|attracts) you/i.test(k)||String(ans[k]).toLowerCase().indexOf(co.toLowerCase())>-1||k.toLowerCase().indexOf(co.toLowerCase())>-1)delete ans[k]});
+    return {first:nm[0]||"",last:nm.slice(1).join(" "),name:p.name||"",email:p.email||"",phone:phoneOf(),linkedin:linkOf("linkedin"),website:linkOf("portfolio"),
+      city:loc[0]||"",state:ad.state||loc[1]||"",zip:ad.zip||"",street:ad.street?ad.street+(ad.unit?" "+ad.unit:""):"",country:x.country||"US",
+      company:x.job_end?"":(x.employer||""),title:x.job_end?"":(x.job_title||""),jobStart:x.job_start||"",jobEnd:x.job_end||"",
+      school:x.school||"",degree:p.edu||"",major:x.major||"",grad:x.grad||"",gpa:x.gpa||"",
+      auth:au==="citizen"||au==="authorized"||/citizen|authorized to work/i.test(ea)&&!/not/i.test(ea)?"yes":au==="none"||/not currently/i.test(ea)?"no":"",
+      sponsor:sp==="yes"||/^yes/i.test(es)?"yes":sp==="no"||/^no/i.test(es)?"no":"",
+      start:x.start||acct.notice||"",relocate:x.relocate||"",office:x.office||"",former:x.former||"",govt:x.govt||"",phd:x.phd||"",salary:x.salary||"",
+      summary:summaryOf(),headline:x.headline||"",why:x.why||"",heard:"UAply",adult:"yes",answers:ans&&typeof ans==="object"?ans:{},
+      resume:m?{name:res.name||"resume.pdf",type:m[1],b64:m[2]}:null};
+  };
   w.__uaplyMessage=function(job,m,p){
     var skills=(m.matched||[]).slice(0,3),name=p.name||"[Your name]",sumv=summaryOf();
     var fit=skills.length?"My experience with "+skills.join(", ")+" lines up with what the role asks for":"My background lines up well with what the role asks for";
@@ -1501,7 +1935,9 @@ function apply(w,host){
   function renderAcct(v){
     var h='<h3>'+label("prof",v)+'</h3><p class="lead">'+(v==="plan"&&earlyAccess()?EARLY:leadOf(v))+'</p>';
     /* preview: the release build shows only the preview note; the sandbox keeps its simulated sign-in below it */
-    if(v==="account"){acctSec.innerHTML=h+(preview()?previewHTML()+(REL?"":accountHTML()):accountHTML())+'<p class="note" id="aMsg" role="status"></p>';paintHeader();setTimeout(mountGoogle,0);return}
+    /* sign-up v2 (shared/uaply-signup.js): when that file is loaded and the server signs in by emailed code, its card replaces the signed-out Account screen and its two questions run here just after sign-up; it answers false to keep the card below. Without that file nothing changes */
+    acctSec.classList.remove("sgnOn");if(v==="account"&&(SRV.up||(w.__uaplyGated&&w.__uaplyGated()))&&!AUI.reset&&!preview()&&w.__uaplySignCard){acctSec.innerHTML=h+(typeof shieldsLine==="function"?shieldsLine():"")+'<div id="sgnHost"></div><p class="note" id="aMsg" role="status"></p>';if(w.__uaplySignCard(d.getElementById("sgnHost"),SRV.user)!==false){acctSec.classList.add("sgnOn");paintHeader();return}}
+    if(v==="account"){acctSec.innerHTML=h+shieldsLine()+readyHTML("account")+(preview()?previewHTML()+(REL?"":accountHTML()):accountHTML())+'<p class="note" id="aMsg" role="status"></p>';paintHeader();setTimeout(mountGoogle,0);return}
     if(v==="plan"&&preview()&&REL){
       h+=previewHTML();
     }else if(v==="plan"&&(SRV.up||REL)){
@@ -1540,7 +1976,7 @@ function apply(w,host){
     if(t.id==="aEnf"){acct.enforce=t.checked;saveA();msg(acct.enforce?"Limits are now enforced.":"Limits are off.")}
     else if(t.id==="aImp"&&t.files[0]){
       var g=t.files[0];if(g.size>3145728){msg("That file is too large.");return}
-      readFile(g,true,function(txt){var r=importBackup(txt);msg(r===true?"Restored.":r);if(r===true)renderAcct("data")});
+      readFile(g,true,function(txt){var r=importBackup(txt);if(r===true)renderAcct("data");msg(r===true?"Restored. Your profile, applications and details from the file are on this device now.":r)});   /* the screen is redrawn first: drawing it after the message wiped the message, so a restore looked like nothing happened */
     }
   });
   acctSec.addEventListener("input",function(e){
@@ -1650,10 +2086,27 @@ function apply(w,host){
     renderAcct("account");msg("Signed in with "+VIA[via]+".");
   }
   /* ---------- real accounts on this server (auth_api.py). Used whenever the back end is running. ---------- */
+  var BUSY="UAply is restarting for a moment. Wait a minute, then try again.";
+  /* privacy shields (Brave Shields, strict tracking protection, "block all cookies"): the browser may refuse this site's storage or its
+     sign-in cookie. Seen as: localStorage throws, or the server just signed someone in but the next /api/auth/me says nobody is */
+  var SHIELD={storage:false,cookie:false};
+  if(HELP){try{w.localStorage.setItem("uaply.probe","1");w.localStorage.removeItem("uaply.probe")}catch(e){SHIELD.storage=true}}
+  function shieldsLine(){
+    if(!HELP||!(SHIELD.storage||SHIELD.cookie))return "";
+    return '<p class="note" id="shieldsNote" role="alert" style="margin:0;padding:10px 12px;border:1px solid var(--accent);border-radius:12px">Your browser\'s privacy shields are blocking sign-in on this site. Allow cookies for uaply.net and reload. <a href="/legal/support.html#cookies" target="_blank" rel="noopener noreferrer">How to allow them</a></p>';
+  }
+  function checkCookie(){
+    if(!HELP)return;
+    w.fetch("/api/auth/me",{credentials:"same-origin"}).then(function(r){return r.ok?r.json():null}).then(function(j){
+      if(j&&!j.user&&SRV.user){SHIELD.cookie=true;SRV.user=null;paintHeader();if(!acctSec.hidden&&sub.prof==="account")renderAcct("account")}
+    }).catch(function(){});
+  }
   function apiPost(path,body){
     if(preview())return Promise.resolve({ok:false,j:{error:PREVIEW_TEXT,code:"preview"}});   /* nothing to send it to: say so, never "could not reach" */
     return w.fetch(path,{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
-      .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j}},function(){return {ok:false,j:{error:"The server sent an unexpected reply."}}})})
+      /* 502, 503 and 504 come from the host while UAply restarts (each deploy takes it away for a few seconds): say that, not "unexpected reply".
+         Any other error without a JSON answer (413 too large, 500...) is a real failure: say so plainly, never "restarting" */
+      .then(function(r){if(r.status>=502&&r.status<=504)return {ok:false,j:{error:BUSY,code:"busy"}};return r.json().then(function(j){return {ok:r.ok,j:j}},function(){return {ok:false,j:{error:r.ok?"The server sent an unexpected reply.":r.status===413?"That is too large for the server to accept.":"The server could not do that (error "+r.status+"). Try again, or ask for help if it keeps happening.",code:""}}})})
       .catch(function(){return {ok:false,j:{error:"Could not reach the server."}}});
   }
   var hb=d.createElement("button");hb.type="button";hb.id="hdrAcct";hb.className="hdrbtn";
@@ -1667,6 +2120,7 @@ function apply(w,host){
     var e=signedWho();
     hb.innerHTML=e?'<span class="av" aria-hidden="true">'+E(e.charAt(0).toUpperCase())+'</span><span class="em">'+E(e)+'</span>':'Sign in';
     hb.setAttribute("aria-label",e?"Account: "+e:"Sign in or create an account");
+    if(w.__uaplyGateSync)w.__uaplyGateSync();   /* the sign-in gate (shared/uaply-signup.js): every change of who is signed in passes here */
   }
   hb.onclick=function(){sub.prof="account";cur="prof";go("prof")};
   function afterServerSignIn(){
@@ -1690,7 +2144,8 @@ function apply(w,host){
     SRV.google=!!(j&&j.google);SRV.googleClientId=(j&&j.googleClientId)||"";SRV.googleRedirect=!!(j&&j.googleRedirect);SRV.canEmail=!!(j&&j.canEmail);SRV.mailKnown=!!j;
     if((SRV.google||!SRV.canEmail)&&!acctSec.hidden&&sub.prof==="account")redrawAcct();
   }).catch(function(){});
-  var GERR={agree:"Tick the box to confirm you are 18 or older and agree to the Terms and Privacy Policy, then try Google again.",cancelled:"Google sign-in was cancelled.",expired:"That Google sign-in expired or could not be checked. Try again.",failed:"Google sign-in did not work. Try again, or use your email and password.",unverified:"Google says that email address is not verified, so UAply cannot use it.",off:"Google sign-in is not switched on.",email_in_use:"That email already has a UAply account. Log in with your email and password instead.",disposable:"Please use an email address you'll keep — temporary addresses can't be used for job applications."};
+  var GSTART="uaply.gstart";   /* sessionStorage of the top page: set when this tab leaves for Google, read once when it comes back */
+  var GERR={agree:"Tick the box to confirm you are 18 or older and agree to the Terms and Privacy Policy, then try Google again.",cancelled:"Google sign-in was cancelled.",expired:"That Google sign-in expired or could not be checked. Try again.",failed:"Google sign-in did not work. Try again, or use your email and password.",unverified:"Google says that email address is not verified, so UAply cannot use it.",off:"Google sign-in is not switched on.",email_in_use:"That email already has a UAply account. Sign in with your email and password instead.",disposable:"Please use an email address you'll keep — temporary addresses can't be used for job applications."};
   function googleReturn(){
     var tp=null,q=null;
     try{tp=w.top;q=new w.URLSearchParams(tp.location.search)}catch(e){return}
@@ -1703,11 +2158,24 @@ function apply(w,host){
       return;
     }
     if(!er&&!ok)return;
+    var st=0;try{st=+tp.sessionStorage.getItem(GSTART)||0;tp.sessionStorage.removeItem(GSTART)}catch(e){}
+    var real=st>0&&Date.now()-st<15*60e3;                                  /* this tab pressed Continue with Google in the last 15 minutes */
     try{tp.history.replaceState(null,"",tp.location.pathname)}catch(e){}
     sub.prof="account";cur="prof";go("prof");renderAcct("account");
+    if(!er&&!SRV.user){                                                     /* Google said yes but no session cookie arrived */
+      if(real){if(HELP){SHIELD.cookie=true;renderAcct("account")}msg(GERR.failed)}   /* only after a real round trip: a bare ?signed_in= link claims nothing */
+      return;
+    }
+    if(w.__uaplySignReturn&&w.__uaplySignReturn(er,!!SRV.user,!!q.get("password_removed")))return;   /* sign-up v2: its card says it in its own place */
     msg(er?(GERR[er]||GERR.failed):(q.get("password_removed")?PW_GONE:"Signed in with Google."));
   }
   w.__uaplyAuth=function(){return {up:SRV.up,user:SRV.user}};
+  /* sign-up v2: what shared/uaply-signup.js may use from this screen (nothing reads it when that file is not loaded) */
+  w.__uaplyAuthApi={post:apiPost,msg:msg,srv:function(){return {up:SRV.up,user:SRV.user,google:!!SRV.google,hideGoogle:noGoogle(),redirect:!!SRV.googleRedirect,clientId:SRV.googleClientId||"",canEmail:!!SRV.canEmail,mailKnown:!!SRV.mailKnown,testInbox:SRV.testInbox||"",near:NEAR}},
+    signedIn:function(u){SRV.user=u;afterServerSignIn();if(typeof checkCookie==="function")checkCookie()},mountGoogle:mountGoogle,redraw:function(){if(!acctSec.hidden&&sub.prof==="account")renderAcct("account")},
+    acct:function(fn){fn(acct);saveA();A.renderAll()},askDevice:askDevice,cards:function(){cur="svc";go("svc")},
+    /* the sign-in gate: the Account screen open (only once: an open one is left as it is, so nothing typed is redrawn away) */
+    account:function(){if(cur==="prof"&&sub.prof==="account"&&!acctSec.hidden&&!d.getElementById("pane-profile").hidden)return;sub.prof="account";cur="prof";go("prof")}};
   /* Apple (App Store guideline 4.8) requires Sign in with Apple wherever an iPhone app offers Google, so inside the iPhone app Google stays hidden until Apple sign-in exists */
   function iosShell(){try{var c=w.top.Capacitor;return !!(c&&c.getPlatform&&c.getPlatform()==="ios"&&!SRV.apple)}catch(e){return false}}
   /* Google refuses to sign anyone in inside an app's built-in web view (Android and iPhone alike: "Error 403: disallowed_useragent"),
@@ -1720,17 +2188,17 @@ function apply(w,host){
   var GBTN='<button type="button" class="btn" data-auth="gsign" style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;background:#fff;color:#1f1f1f;border:1px solid #747775">'+
     '<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>'+
     '<span>Continue with Google</span></button>';
-  var PW_GONE="Signed in with Google. This account had a password that was never confirmed by email, so it was removed to keep the account yours. To also sign in with a password, log out and use Forgot password.";
+  var PW_GONE="Signed in with Google. This account had a password that was never confirmed by email, so it was removed to keep the account yours. To also sign in with a password, sign out and use Forgot password.";
   /* proving the email is theirs: a 6-digit code (shown to anyone signed in with a password who has not entered it yet) */
   /* what to tell the person after a code was requested: emailed, could not be sent, or (this computer, no real email connected) saved in the test inbox */
   function codeNote(dl,em){
     em=em||"your email";
-    if(dl==="sent")return "We emailed a 6-digit code to "+em+". Check your inbox (and spam), then enter it below.";
+    if(dl==="sent")return "We emailed a 6-digit code to "+em+". Check your inbox (and spam), then type it in the 6-digit code box.";
     if(dl==="failed")return "We could not send the code to "+em+". Check that the address is right, then press Send a new code.";
     if(dl==="busy")return "We could not send the code just now: the problem is on our side, not your address. Your account is saved. Press Send a new code in a few minutes.";
     if(dl==="bounced")return "Emails to "+em+" bounce back, so we did not send a code. Check the address, or sign up with another one. Help, then Talk to a person, if this address is right.";
     if(dl==="delivered_test")return SRV.testInbox?"No real email is connected on this computer, so the code is in the test inbox.":"Email is not switched on for this site yet, so no code was sent. Your account works and you can swipe; verify once email is on.";
-    return SRV.canEmail?"We emailed you a 6-digit code: enter it below to verify your email.":"";
+    return SRV.canEmail?"We emailed you a 6-digit code: type it in the 6-digit code box to verify your email.":"";
   }
   function verifyHTML(){
     if(!SRV.user||SRV.user.emailVerified!==false)return "";
@@ -1746,6 +2214,7 @@ function apply(w,host){
     var ga=(d.getElementById("gAgree")||{}).checked;
     msg("Signing in with Google…");
     apiPost("/api/auth/google/token",{credential:resp&&resp.credential,agree:!!ga}).then(function(r){
+      if(!r.ok&&r.j&&(r.j.code==="agree_owner"||r.j.code==="agree")&&w.__uaplySignReturn&&w.__uaplySignReturn.call(w,r.j.code,false,false))return;   /* the card asks for the owner's own tick (the same hook as googleReturn's) */
       if(!r.ok||!r.j.user){msg((r.j&&r.j.error)||"Google sign-in did not work. Try again.");return}
       SRV.user=r.j.user;afterServerSignIn();renderAcct("account");msg(r.j.passwordRemoved?PW_GONE:"Signed in with Google.");
     });
@@ -1776,9 +2245,9 @@ function apply(w,host){
     var box='<div class="plan" style="display:flex;flex-direction:column;gap:10px">';
     if(AUI.forgotSent)return box+'<b>Check your email</b><p class="note" style="margin:0">If that email has an account, a reset link is on its way. It works for one hour.</p>'+
       (SRV.canEmail?'':'<p class="note" style="margin:0">Test mode: no real email is sent. The link is in the <a href="/outbox" target="_blank" rel="noopener noreferrer">test inbox</a>.</p>')+
-      '<div class="acts"><button type="button" class="btn ghost" data-auth="sforgotback">Back to log in</button></div></div>';
+      '<div class="acts"><button type="button" class="btn ghost" data-auth="sforgotback">Back to sign in</button></div></div>';
     return box+'<b>Reset your password</b><div class="field"><label for="sFEmail">Email</label><input type="text" id="sFEmail" inputmode="email" autocomplete="email" maxlength="200" placeholder="you@gmail.com"><small>We email you a link that works for one hour.</small></div>'+
-      '<div class="acts"><button type="button" class="btn" data-auth="sforgotgo">Email me a reset link</button><button type="button" class="btn ghost" data-auth="sforgotback">Back to log in</button></div></div>';
+      '<div class="acts"><button type="button" class="btn" data-auth="sforgotgo">Email me a reset link</button><button type="button" class="btn ghost" data-auth="sforgotback">Back to sign in</button></div></div>';
   }
   function resetHTML(){
     return '<div class="plan" style="display:flex;flex-direction:column;gap:10px"><b>Choose a new password</b>'+
@@ -1787,7 +2256,8 @@ function apply(w,host){
       '<div class="acts"><button type="button" class="btn" data-auth="sresetgo">Save new password</button><button type="button" class="btn ghost" data-auth="sresetno">Cancel</button></div></div>';
   }
   function changeHTML(){
-    if(!SRV.user||SRV.user.hasPassword===false)return '<p class="note" style="margin:0">You sign in with Google. To also sign in with a password, log out and use Forgot password with this email.</p>';
+    /* sign-up v2: with shared/uaply-signup.js on a server that signs in by emailed code, it says how this person signs in; otherwise as before */
+    if(!SRV.user||SRV.user.hasPassword===false)return (w.__uaplyNoPwNote&&w.__uaplyNoPwNote(SRV.user))||'<p class="note" style="margin:0">You sign in with Google. To also sign in with a password, sign out and use Forgot password with this email.</p>';
     if(!AUI.chgOpen)return '<div class="acts"><button type="button" class="btn ghost" data-auth="schg">Change password</button></div>';
     return '<div class="field"><label for="sCur">Current password</label><input type="password" id="sCur" autocomplete="current-password" maxlength="128"></div>'+
       '<div class="field"><label for="sNew">New password</label><input type="password" id="sNew" autocomplete="new-password" maxlength="128"><small>At least 8 characters. Your other devices are signed out.</small></div>'+
@@ -1828,21 +2298,21 @@ function apply(w,host){
   function serverHTML(){
     if(!SRV.user&&AUI.reset)return resetHTML();
     if(!SRV.user&&AUI.forgot&&AUI.sMode==="in")return forgotHTML();
-    if(SRV.user)return '<div class="plan" style="display:flex;flex-direction:column;gap:8px"><span class="tag" style="background:var(--accent);color:var(--accent-ink)">ACCOUNT</span><b>You are signed in</b><small>'+E(SRV.user.email)+(SRV.user.emailVerified===false?' · email not verified yet':' · email verified')+'</small>'+verifyHTML()+
+    if(SRV.user)return '<div class="plan" style="display:flex;flex-direction:column;gap:8px"><b>You are signed in</b><small>'+E(SRV.user.email)+(SRV.user.emailVerified===false?' · email not verified yet':' · email verified')+'</small>'+verifyHTML()+
       '<p class="note" style="margin:0">'+(SRV.user.emailVerified===false?'Once your email is verified, each swipe right sends a confirmation to it':'Every time you swipe right, a confirmation goes to this email')+(SRV.canEmail?'':SRV.testInbox?' (no real email is connected here yet, so it is saved in the <a href="/outbox" target="_blank" rel="noopener noreferrer">test inbox</a>; <a href="/setup#gmail" target="_blank" rel="noopener noreferrer">connect Gmail</a> to send real ones)':' (email is not switched on for this site yet, so no confirmation goes out for now)')+'.</p>'+
       (AUI.survey||AUI.delOpen?'':'<div class="acts"><button type="button" class="btn ghost" data-auth="sout">Sign out</button></div>'+changeHTML())+
       deleteHTML()+
       '</div>';
     var up=AUI.sMode!=="in";
-    return '<div class="plan" style="display:flex;flex-direction:column;gap:10px"><b>'+(up?"Create your UAply account":"Log in to UAply")+'</b>'+
+    return '<div class="plan" style="display:flex;flex-direction:column;gap:10px"><b>'+(up?"Create your UAply account":"Sign in to UAply")+'</b>'+
       '<div class="field"><label for="sEmail">Email</label><input type="text" id="sEmail" inputmode="email" autocomplete="email" maxlength="200" placeholder="you@gmail.com">'+(up?'<small id="sEmailNote" hidden>Each address is its own UAply account: one with a +tag is a separate account from the plain address, even though the mail lands in the same inbox. Use the address you want to sign in with.</small>':'')+'</div>'+
       '<div class="field"><label for="sPw">Password</label><input type="password" id="sPw" autocomplete="'+(up?"new-password":"current-password")+'" maxlength="128">'+(up?'<small>At least 8 characters.</small>':'')+'</div>'+
       (up?'<div class="field"><label for="sPw2">Confirm password</label><input type="password" id="sPw2" autocomplete="new-password" maxlength="128"></div>'+
-        '<div class="checks"><label><input type="checkbox" id="sAgree"> I am 18 or older and agree to the <a href="'+LB+'terms.html" target="_blank" rel="noopener noreferrer">Terms</a> and <a href="'+LB+'privacy.html" target="_blank" rel="noopener noreferrer">Privacy Policy</a></label></div>':'')+
-      '<div class="acts"><button type="button" class="btn" data-auth="ssubmit">'+(up?"Create account":"Log in")+'</button><button type="button" class="btn ghost" data-auth="smode">'+(up?"I already have an account":"Create an account")+'</button>'+(up?'':'<button type="button" class="btn ghost" data-auth="sforgot">Forgot password?</button>')+'</div>'+
+        '<div class="checks"><label><input type="checkbox" id="sAgree"> <span>I am 18 or older and agree to the <a href="'+LB+'terms.html" target="_blank" rel="noopener noreferrer">Terms</a> and <a href="'+LB+'privacy.html" target="_blank" rel="noopener noreferrer">Privacy Policy</a></span></label></div>':'')+
+      '<div class="acts"><button type="button" class="btn" data-auth="ssubmit">'+(up?"Create account":"Sign in")+'</button><button type="button" class="btn ghost" data-auth="smode">'+(up?"I already have an account":"Create an account")+'</button>'+(up?'':'<button type="button" class="btn ghost" data-auth="sforgot">Forgot password?</button>')+'</div>'+
       '<small>Your account is stored on UAply\'s server. Passwords are scrambled (hashed) and never stored as typed. '+(SRV.canEmail||SRV.testInbox?'Once you are signed in, each swipe right emails you a receipt.':'Email is not switched on for this site yet, so receipts start once it is; your account and swipes work now.')+'</small>'+
       (SRV.testInbox&&!SRV.canEmail&&up?'<small>No real email is connected on this computer yet, so the verification code and receipts go to the <a href="/outbox" target="_blank" rel="noopener noreferrer">test inbox</a>. <a href="/setup#gmail" target="_blank" rel="noopener noreferrer">Connect Gmail</a> to send real ones.</small>':'')+
-      (SRV.google&&!noGoogle()?'<p class="note" style="text-align:center;margin:0">or</p><div class="checks"><label><input type="checkbox" id="gAgree"> I am 18 or older and agree to the <a href="'+LB+'terms.html" target="_blank" rel="noopener noreferrer">Terms</a> and <a href="'+LB+'privacy.html" target="_blank" rel="noopener noreferrer">Privacy Policy</a> (needed the first time)</label></div><div id="gBtn" style="min-height:44px"></div><small>Google handles the sign-in. UAply never sees your Google password, only your verified email.</small>'
+      (SRV.google&&!noGoogle()?'<p class="note" style="text-align:center;margin:0">or</p><div class="checks"><label><input type="checkbox" id="gAgree"> <span>I am 18 or older and agree to the <a href="'+LB+'terms.html" target="_blank" rel="noopener noreferrer">Terms</a> and <a href="'+LB+'privacy.html" target="_blank" rel="noopener noreferrer">Privacy Policy</a> (needed the first time)</span></label></div><div id="gBtn" style="min-height:44px"></div><small>Google handles the sign-in. UAply never sees your Google password, only your verified email.</small>'
         :(SRV.testInbox&&!noGoogle()?'<p class="note" style="text-align:center;margin:0">or</p><button type="button" class="btn" data-auth="gsetup" style="width:100%">Continue with Google</button><small>Google sign-in is not connected on this computer yet. Press the button to open setup (about 5 minutes). Only you see this button until it is connected; visitors never do.</small>':''))+'</div>';
   }
   function accountHTML(){
@@ -1890,16 +2360,19 @@ function apply(w,host){
         if(spw!==((d.getElementById("sPw2")||{}).value||"")){msg("The passwords do not match.");return}
         if(!(d.getElementById("sAgree")||{}).checked){msg("Confirm you are 18 or older and agree to the Terms and Privacy Policy.");return}
       }else if(!spw){msg("Enter your password.");return}
-      b.disabled=true;msg(sup?"Creating your account…":"Logging in…");
+      b.disabled=true;msg(sup?"Creating your account…":"Signing in…");
       apiPost(sup?"/api/auth/signup":"/api/auth/login",sup?{email:sem,password:spw,agree:true}:{email:sem,password:spw}).then(function(r){
         b.disabled=false;
         if(!r.ok||!r.j.user){msg((r.j&&r.j.error)||"Something went wrong. Try again.");return}
         SRV.user=r.j.user;afterServerSignIn();renderAcct("account");
-        msg(sup?"Account created. "+codeNote(r.j.delivery,sem):"You are logged in.");
+        msg(sup?"Account created. "+codeNote(r.j.delivery,sem):"You are signed in.");
+        checkCookie();   /* the cookie the server just set must come back; if it does not, the browser is blocking it */
       });
       return;
     }
-    if(a==="sout"){apiPost("/api/auth/logout",{}).then(function(){SRV.user=null;AUI.delOpen=false;AUI.survey=false;paintHeader();renderAcct("account");msg("Signed out.")});return}
+    /* "Signed out" only once the server ended the session: when the request failed (the server restarting) the session cookie was still
+       good, so a reload signed the person straight back in, on what may be a shared computer */
+    if(a==="sout"){apiPost("/api/auth/logout",{}).then(function(r){if(!r.ok){msg("You are still signed in. "+(r.j&&r.j.error||"Could not reach UAply."));return}SRV.user=null;AUI.delOpen=false;AUI.survey=false;paintHeader();renderAcct("account");msg("Signed out.")});return}
     if(a==="sdel"){loadBilling();AUI.survey=true;AUI.delOpen=false;renderAcct("account");var f1=d.querySelector("#acctSec .svform input");if(f1)f1.focus();return}
     if(a==="sdelno"){AUI.delOpen=false;AUI.survey=false;renderAcct("account");return}
     if(a==="sdelskip"){AUI.survey=false;AUI.delOpen=true;renderAcct("account");var dp=d.getElementById("sDelPw");if(dp)dp.focus();return}
@@ -1975,7 +2448,7 @@ function apply(w,host){
         b.disabled=false;
         if(!r.ok){msg((r.j&&r.j.error)||"Could not reset the password. Ask for a new link.");return}
         AUI.reset="";AUI.forgot=false;AUI.sMode="in";SRV.user=null;paintHeader();renderAcct("account");
-        msg("Password changed. Log in with your new password.");
+        msg("Password changed. Sign in with your new password.");
       });
       return;
     }
@@ -1999,6 +2472,7 @@ function apply(w,host){
       var ga=(d.getElementById("gAgree")||{}).checked;
       b.disabled=true;msg("Opening Google…");
       var gu="/api/auth/google/start"+(ga?"?agree=1":"");
+      try{w.top.sessionStorage.setItem(GSTART,String(Date.now()))}catch(e){}   /* so the return can tell a real round trip from a typed ?signed_in= link */
       try{w.top.location.assign(gu)}catch(e){w.location.assign(gu)}
       return;
     }
@@ -2054,13 +2528,14 @@ function apply(w,host){
      built above and by the Application profile experiment; each is assigned to a step by the ids listed in `anchors`. */
   var STEPS=[
     {k:"about",t:"About you",s:"About you",q:"Who should employers contact?",use:"These details go on every application you send, so an employer can reply to you.",anchors:["pName","pEmail","pPhone","px-phone","px-headline"]},
-    {k:"jobs",t:"Jobs you want",s:"Jobs",q:"What kind of work are you looking for?",use:"This is the core of your matches. Titles, skills, experience and education change every score and decide which jobs show. The opportunity types you pick open first in Services.",anchors:["pTitle","px-types-fulltime","pSkills","pYears","pEdu"]},
+    {k:"jobs",t:"Jobs you want",s:"Jobs",q:"What kind of work are you looking for?",use:"This is the core of your matches. Titles, skills, experience and education change every score and decide which jobs show. The opportunity types you pick open first in the Jobs menu at the bottom.",anchors:["pTitle","px-types-fulltime","pSkills","pYears","pEdu"]},
     {k:"where",t:"Where and pay",s:"Where and pay",q:"Where, how, and for how much?",use:"City, work style, distance, willingness to relocate and minimum pay all change your match score and which jobs show. Your state, ZIP code and country also fill in employer forms, and your state and ZIP code help find your location for distance. Your street stays on this device.",anchors:["aAddr","pm-remote","aMilesF","pSalary","px-start","aNoticeF"]},
     {k:"back",t:"Background and links",s:"Background",q:"Show employers who you are.",use:"Sent with your applications. Your headline, summary and major also count as skills when a job asks for them. GPA is optional and never changes a match.",anchors:["px-school","px-major","px-grad","px-gpa","px-employer","px-job_title","px-job_start","px-job_end","px-summary","px-resume","px-linkedin","px-portfolio","aResF","aSummaryF","aLinkedF","aSiteF","aCoverF"]},
     {k:"final",t:"Eligibility and extras",s:"Eligibility",q:"Last details.",use:"Work authorization is added to applications only. It never changes a match or hides a job. The optional section at the bottom is yours to skip.",anchors:["px-auth","px-sponsor","aElig","aAutoF","aKept","aEeo"]}
   ];
   var wz={i:0,want:null,opened:false,dirty:false,pending:null};
   var wzGrid=form.querySelector(".grid");
+  var wzReady=d.createElement("div");wzReady.id="wzReady";wzReady.className="field full";if(wzGrid)wzGrid.appendChild(wzReady);
   function stepIndex(k){for(var i=0;i<STEPS.length;i++)if(STEPS[i].k===k)return i;return -1}
   function topOf(el){while(el&&el.parentElement!==wzGrid)el=el.parentElement;return el}
   function stepOf(el){
@@ -2079,7 +2554,8 @@ function apply(w,host){
   wzGrid.after(wzFoot);
   var wzMsgEl=d.createElement("p");wzMsgEl.id="wzMsg";wzMsgEl.className="note";wzMsgEl.setAttribute("role","status");wzFoot.after(wzMsgEl);
   var wzPrev=d.createElement("aside");wzPrev.id="wzPrev";wzPrev.setAttribute("aria-label","What employers see");form.appendChild(wzPrev);
-  function wzMsg(t){wzMsgEl.textContent=t;if(t&&wzMsgEl.scrollIntoView)wzMsgEl.scrollIntoView({block:"nearest",behavior:"smooth"})}
+  /* stay: the next step just opened at its top, so "Saved." is written without scrolling down to it (it used to pull every step to its last field) */
+  function wzMsg(t,stay){wzMsgEl.textContent=t;if(t&&!stay&&wzMsgEl.scrollIntoView)wzMsgEl.scrollIntoView({block:"nearest",behavior:"smooth"})}
   function fv(id){var e=d.getElementById(id);return e?String(e.value||"").trim():""}
   function selText(id){var e=d.getElementById(id);return e&&e.value&&e.selectedIndex>-1?e.options[e.selectedIndex].text:""}
   /* the card mirrors what the server puts in an application (uaply_api.py, _detail_text): nothing more, nothing less */
@@ -2116,6 +2592,8 @@ function apply(w,host){
     d.getElementById("wzBack").hidden=wz.i===0;
     d.getElementById("wzNext").textContent=wz.i===STEPS.length-1?"Finish and see matches":"Save and continue";
     wzPrevPaint();
+    if(wzGrid.lastElementChild!==wzReady)wzGrid.appendChild(wzReady);   /* the last thing on the last step, above Finish */
+    wzReady.innerHTML=readyHTML("setup");
   }
   function wzOpen(){
     if(wz.want!=null){var k=stepIndex(wz.want);if(k>-1)wz.i=k;wz.want=null;wz.opened=true}
@@ -2140,7 +2618,7 @@ function apply(w,host){
     if(form.hidden||!form.classList.contains("wz"))return false;
     var p=wz.pending;wz.pending=null;wz.dirty=false;
     if(w.__uaplyAutoSave)return true;
-    if(p==="next"){wzSet(wz.i+1,true);wzMsg("Saved.")}
+    if(p==="next"){wzSet(wz.i+1,true);wzMsg("Saved.",true)}
     else if(p==="finish"){
       var tc=typesChosen();if(tc.length&&tc.indexOf(sub.svc)<0)sub.svc=tc[0];
       setTimeout(function(){cur="svc";go("svc")},0);
@@ -2170,6 +2648,8 @@ function apply(w,host){
 
   /* routing */
   function go(k){
+    /* the sign-in gate (shared/uaply-signup.js): with no account signed in, every way of moving (a tab, a menu, a key) opens Account */
+    if(w.__uaplyGated&&w.__uaplyGated()){sub.prof="account";cur="prof";k="prof"}
     going=true;
     if(k==="svc"){A.setType(sub.svc);A.show("swipe");savePrefs()}
     else if(k==="dash"){A.show("apps");d.getElementById("pane-apps").hidden=true;renderTrack();tp.hidden=false}
@@ -2182,6 +2662,7 @@ function apply(w,host){
     going=false;refresh();main.scrollTop=0;
   }
   w.__uaplyOnShow=function(t){
+    if(t!=="profile"&&w.__uaplyGated&&w.__uaplyGated()){A.show("profile");return}   /* the sign-in gate: only Account behind the card */
     tp.hidden=true;
     /* leaving Profile setup with unsaved answers saves them quietly (if they are valid) instead of losing them */
     if(t!=="profile"&&wz.dirty&&!form.hidden&&form.classList.contains("wz")){w.__uaplyAutoSave=true;try{wzSave("quiet")}finally{w.__uaplyAutoSave=false;wz.dirty=false}}

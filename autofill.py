@@ -45,32 +45,45 @@ TTL = 6 * 3600
 MAX_CACHED = 600
 
 _START = {"now": "Immediately", "2w": "Within 2 weeks", "1m": "Within a month", "grad": "After graduation", "flex": "Flexible"}
+# the "When can you start?" answer in Profile, Account (the free-choice notice): the start date used when Profile setup's coded one is empty
+_NOTICE = {"Immediately": "Immediately", "2 weeks": "Within 2 weeks", "1 month": "Within a month", "2 months or more": "In 2 months or more"}
 _MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
 _EDU = {"High school": "High School", "Associate": "Associate's Degree", "Bachelor": "Bachelor's Degree", "Master": "Master's Degree", "Doctorate": "Doctorate"}
 
 
 def read_form(board, job_id):
     """(form, HTTP status) for the job's public Greenhouse application form; form is None when it could not be read.
-    Cached for six hours; a failed read is remembered for five minutes so a missing posting is not asked for on every swipe."""
+    Cached for six hours; a failed read is remembered for five minutes (a 429, "too many requests", for a minute) so a missing posting is
+    not asked for on every swipe, and requests for the same posting at the same moment share one read (ats_api.one_read)."""
     if not (isinstance(board, str) and ats_api.TOKEN_RE.match(board) and isinstance(job_id, str) and ats_api.ID_RE.match(job_id)):
         return None, 0
     key = (ats_api._base("greenhouse"), board, job_id)
-    now = time.time()
-    with _LOCK:
-        hit = _CACHE.get(key)
-        if hit and now - hit[0] < (TTL if hit[1] is not None else 300):
-            return hit[1], hit[2]
-    status, form = ats_api._call(urllib.request.Request("%s/v1/boards/%s/jobs/%s?questions=true" % (key[0], board, job_id),
-                                                        headers={"Accept": "application/json", "User-Agent": "UAply/1.0"}), timeout=8)
-    form = form if status == 200 and isinstance(form, dict) else None
-    if form:                                       # keep only what the plan needs (the posting text is large and not used here)
-        form = {k: form.get(k) for k in ("questions", "location_questions", "company_name", "title", "absolute_url")}
-    with _LOCK:
-        if len(_CACHE) >= MAX_CACHED:
-            for k in sorted(_CACHE, key=lambda k: _CACHE[k][0])[:MAX_CACHED // 4]:
-                _CACHE.pop(k, None)
-        _CACHE[key] = (now, form, status)
-    return form, status
+
+    def kept():
+        with _LOCK:
+            hit = _CACHE.get(key)
+            return hit[1:] if hit and time.time() - hit[0] < (TTL if hit[1] is not None else ats_api.BUSY_SECONDS if hit[2] == 429 else 300) else None
+    hit = kept()
+    if hit:
+        return hit
+
+    def read_and_keep():
+        again = kept()                     # a read that ended between the look above and this one: its answer, not a second read
+        if again:
+            return again
+        status, form = ats_api._call(urllib.request.Request("%s/v1/boards/%s/jobs/%s?questions=true" % (key[0], board, job_id),
+                                                            headers={"Accept": "application/json", "User-Agent": "UAply/1.0"}), timeout=8)
+        form = form if status == 200 and isinstance(form, dict) else None
+        if form:                                   # keep only what the plan needs (the posting text is large and not used here)
+            form = {k: form.get(k) for k in ("questions", "location_questions", "company_name", "title", "absolute_url")}
+        with _LOCK:
+            if len(_CACHE) >= MAX_CACHED:
+                for k in sorted(_CACHE, key=lambda k: _CACHE[k][0])[:MAX_CACHED // 4]:
+                    _CACHE.pop(k, None)
+            _CACHE[key] = (time.time(), form, status)
+        return form, status
+    out = ats_api.one_read(("greenhouse-public",) + key, read_and_keep)
+    return out if out is not None else (None, 0)
 
 
 def fetch_form(board, job_id):
@@ -79,14 +92,30 @@ def fetch_form(board, job_id):
 
 
 def norm(label, company=""):
-    """The key a saved answer is stored under: lower case, the company's name replaced, punctuation and extra spaces removed."""
+    """The key a saved answer is stored under: lower case, the company's name replaced, punctuation and extra spaces removed.
+    A question about this employer (it names the employer, or asks why this company or role: EMPLOYER_Q) is kept for this employer only:
+    its key starts with "{at <employer>}", so "Why do you want to work at Stripe?" answered for Stripe is never sent to Plaid. Before
+    October 22, 2026 the name became "{co}" and the answer went to every employer that asked the same words. shared/uaply-assist.js
+    (akey) makes the same key in the phone app, so a question answered in either place is asked once."""
     s = (label or "").lower()
     if company:
         s = re.sub(re.escape(company.lower()), " {co} ", s)
     s = re.sub(r"[^a-z0-9{} ]+", " ", s)
     # cut to 160 first, then trim: a long question cut right after a word used to end in a space, the browser saved the answer
     # under that key, clean_answers() trimmed it, the two never matched, and the person was asked the same question forever
-    return re.sub(r"\s+", " ", s).strip()[:160].strip()
+    s = re.sub(r"\s+", " ", s).strip()[:160].strip()
+    if company and s and not s.startswith("{at ") and ("{co}" in s or EMPLOYER_Q.search(s)):
+        slug = re.sub(r"[^a-z0-9]+", " ", company.lower()).strip()[:60]
+        if slug:
+            s = ("{at %s} %s" % (slug, s))[:160].strip()
+    return s
+
+
+# a question about this employer even when its name is not in it (matched on the key's words): kept per employer by norm()
+EMPLOYER_Q = re.compile(r"\bwhy\b.*\b(work|join|joining|interested|apply|applying|us|here|company|role|position|team|this)\b|"
+                        r"\bwhat (excites|interests|draws|attracts|motivates) you\b|\bcover letter\b|\btell us (about )?why\b|"
+                        r"\binterest(ed)? in (this|our|the) (company|role|position|team|job|opportunity)\b|"
+                        r"\babout (this|our) (company|role|position|team|mission)\b")
 
 
 # ------------------------------------------------------------------------------------------------------------------------------- rules
@@ -290,7 +319,7 @@ def _rules(cand, ext, job):
         (r"(current|most recent) (job )?title|current role|title (at|with) (your )?(current|most recent)", lambda: ext.get("job_title") or cand.get("title") or None),
         (r"(current|most recent|previous|last) (position|job|employment)\b", lambda: _job_text(ext)),
         (r"years of (relevant |professional )?experience|how many years", lambda: str(cand["years"]) if cand.get("years") else None),
-        (r"start date|earliest start|when (can|could) you start|availability|notice period", lambda: _START.get(ext.get("start") or "") or None),
+        (r"start date|earliest start|when (can|could) you start|availability|notice period", lambda: _START.get(ext.get("start") or "") or _NOTICE.get(ext.get("notice") or "") or None),
         (r"(how|where) did you (first )?(hear|find|learn)|where have you (heard|learned)|influenced your decision", lambda: "uaply"),
         (r"why .*(work|join|interested|apply)|what (excites|interests) you|cover letter|tell us (about )?why", lambda: _fill_template(ext.get("why"), job)),
     ]
@@ -675,11 +704,22 @@ def public_plan(plan):
             "missing": [{k: i[k] for k in ("q", "key", "req", "kind", "opts", "unit", "consent", "agree", "link") if k in i} for i in plan["missing"]]}
 
 
-def clean_answers(raw):
-    """Saved answers sent by the browser: at most 80, short keys and values, plain text only."""
+def clean_answers(raw, company=None):
+    """Saved answers sent by the browser: at most 80, short keys and values, plain text only.
+    company (the employer this application goes to): an answer kept for another employer ("{at <employer>}", see norm) is dropped, and
+    so is an older answer about an employer ("{co}" in its key, or a "why us" question: EMPLOYER_Q), so what a person wrote for one
+    employer never reaches another's form, whatever the browser sends (October 22, 2026). The app filters the same way before sending."""
     out = {}
+    mine = ("{at %s} " % re.sub(r"[^a-z0-9]+", " ", company.lower()).strip()[:60]) if company else None
     if isinstance(raw, dict):
         for k, v in list(raw.items())[:80]:
             if isinstance(k, str) and isinstance(v, str) and k.strip() and v.strip():
-                out[norm(k)] = re.sub(r"[\r\t]+", " ", v).strip()[:2000]
+                key = norm(k)
+                if company is not None:
+                    if key.startswith("{at "):
+                        if not (mine and key.startswith(mine)):
+                            continue
+                    elif "{co}" in key or EMPLOYER_Q.search(key):
+                        continue
+                out[key] = re.sub(r"[\r\t]+", " ", v).strip()[:2000]
     return out

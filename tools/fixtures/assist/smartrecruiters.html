@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mock SmartRecruiters application</title>
+<!-- SmartRecruiters' hosted form could not be measured: jobs.smartrecruiters.com answered every automated visit, the real phone's Chrome
+     included, with "Access is temporarily restricted" (docs/assisted-apply.md). This mock is built from SmartRecruiters' published
+     Application API configuration (questions[] of RADIO, SINGLE_SELECT, TEXT fields, compliance questions, consent scopes; the same shape
+     as tools/fixtures/smartrecruiters-configurations.json), drawn as a plain labelled form. Its human check, if any, is unknown. -->
+<style>body{font:16px system-ui;margin:16px}.f{margin:14px 0}label{display:block;font-weight:700}input,select,textarea{width:100%;font:inherit}input[type=radio],input[type=checkbox]{width:auto}</style>
+</head><body>
+<h1>Clerk at Example City</h1>
+<form id="oneclick">
+  <div class="f"><label for="firstName">First name *</label><input id="firstName" name="firstName" required></div>
+  <div class="f"><label for="lastName">Last name *</label><input id="lastName" name="lastName" required></div>
+  <div class="f"><label for="email">Email *</label><input id="email" name="email" type="email" required></div>
+  <div class="f"><label for="confirmEmail">Confirm your email *</label><input id="confirmEmail" name="confirmEmail" type="email" required></div>
+  <div class="f"><label for="phoneNumber">Phone number</label><input id="phoneNumber" name="phoneNumber" type="tel"></div>
+  <div class="f"><label for="mobile">Mobile number (10 digits)</label><input id="mobile" name="mobile" maxlength="10"></div>
+  <div class="f"><label for="state">State</label><select id="state" name="state"><option value="">Select</option><option>New Jersey</option><option>Pennsylvania</option></select></div>
+  <div class="f"><label for="country">Country</label><select id="country" name="country"><option value="">Select</option><option>Canada</option><option>United States</option></select></div>
+  <div class="f"><label for="degree">Highest degree completed</label><select id="degree" name="degree"><option value="">Select</option><option>High School</option><option>Associate's Degree</option><option>Bachelor's Degree</option><option>Master's Degree</option></select></div>
+  <div class="f"><label for="gradm">Graduation month</label><select id="gradm" name="gradm"><option value="">Select</option><option>January</option><option>February</option><option>March</option><option>April</option><option>May</option><option>June</option></select></div>
+  <div class="f"><label for="grady">Graduation year</label><select id="grady" name="grady"><option value="">Select</option><option>2025</option><option>2026</option><option>2027</option></select></div>
+  <div class="f"><label for="shift">Which shift do you prefer? *</label><select id="shift" name="shift" required><option value="">Select</option><option>Day</option><option>Night</option></select></div>
+  <div class="f"><label for="city">City *</label><input id="city" name="city" required></div>
+  <div class="f"><label for="resume">Resume *</label><input id="resume" name="resume" type="file" required></div>
+  <div class="f"><label for="linkedin">LinkedIn profile</label><input id="linkedin" name="linkedin"></div>
+  <fieldset class="f"><legend>Are you legally authorized to work in the United States? *</legend>
+    <label><input type="radio" name="q-auth" value="v-yes" required> Yes</label><label><input type="radio" name="q-auth" value="v-no"> No</label></fieldset>
+  <div class="f"><label for="q-spon">Will you now or in the future require sponsorship for employment visa status? *</label>
+    <select id="q-spon" name="q-spon" required><option value="">Select</option><option value="s-yes">Yes</option><option value="s-no">No</option></select></div>
+  <div class="f"><label for="msg">Message to the hiring team</label><textarea id="msg" name="msg"></textarea></div>
+  <div class="f"><label for="eeo-gender">Gender (voluntary)</label><select id="eeo-gender" name="eeo-gender"><option value="">Select</option><option>Male</option><option>Female</option><option>I don't wish to answer</option></select></div>
+  <div class="f"><label><input type="checkbox" name="consent" required> I agree to the processing of my personal data as described in the privacy policy *</label></div>
+  <button type="submit" data-submit>Submit</button>
+</form>
+<script src="mock.js"></script>
+<script>mockSubmit(document.getElementById("oneclick"), "Thank you for applying!");</script>
+</body></html>

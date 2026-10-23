@@ -1,4 +1,4 @@
-// The public hosted copies (GitHub Pages: /uaply/dev/ and /uaply/sandbox/) have no server. Builds them with share/build-share.js, serves
+// The public hosted copies (GitHub Pages: /uaply/sandbox.html, /uaply/dev.html, and /uaply/dev/ and /uaply/sandbox/) have no server. Builds them with share/build-share.js, serves
 // them from a plain static server laid out like GitHub Pages (anything else, /api/* included, is a 404 HTML page), and checks at phone size
 // that Account, Plan & billing, a swipe right and the help assistant say plainly that this is a preview, never "Cannot reach UAply" or
 // "check your internet", and that no script error happens.
@@ -17,6 +17,10 @@ function site() {   // the same steps as .github/workflows/pages.yml
     fs.mkdirSync(path.join(top, k), { recursive: true });
     fs.copyFileSync(path.join(ROOT, "share", src), path.join(top, k, "index.html"));
     for (const icon of ["favicon-32.png", "favicon-192.png", "apple-touch-icon.png"]) fs.copyFileSync(path.join(ROOT, k, icon), path.join(top, k, icon));
+    // and the names published since October 22: /uaply/sandbox.html, /uaply/dev.html (and .full.html), with the icons beside them
+    fs.copyFileSync(path.join(ROOT, "share", src), path.join(top, k + ".html"));
+    fs.copyFileSync(path.join(ROOT, "share", src), path.join(top, k + ".full.html"));
+    for (const icon of ["favicon-32.png", "favicon-192.png", "apple-touch-icon.png"]) fs.copyFileSync(path.join(ROOT, k, icon), path.join(top, icon));
   }
   fs.cpSync(path.join(ROOT, "legal"), path.join(top, "legal"), { recursive: true });
   return dir;
@@ -45,9 +49,10 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
   const text = (sel) => ev("(()=>{const e=" + F + ".querySelector(" + JSON.stringify(sel) + ");return e?e.innerText.split(/\\s+/).join(' '):''})()");
   const dir = site(), srv = await serve(dir);
   try {
-    for (const copy of ["dev", "sandbox"]) {
+    for (const [copy, at] of [["dev", "dev/"], ["sandbox", "sandbox/"], ["dev", "dev.html"], ["sandbox", "sandbox.html"]]) {
       const before = logs.length;
-      await nav("http://127.0.0.1:" + PORT + "/uaply/" + copy + "/"); await sleep(3500);
+      console.log("   -- /uaply/" + at);
+      await nav("http://127.0.0.1:" + PORT + "/uaply/" + at); await sleep(3500);
       await ev("(()=>{const y=" + F + ".getElementById('kcYes');if(y)y.click()})()");          // a first-visit box, if any
       // Account: the header's Sign in button, then Sign in / Create account
       await ev(F + ".getElementById('hdrAcct').click()"); await sleep(700);

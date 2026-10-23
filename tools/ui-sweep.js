@@ -2,6 +2,7 @@
 // node tools/cdp.js tools/ui-sweep.js
 const PORT = process.env.PORT || "8766";
 const REL = process.env.REL === "1";      // the release build (dev): no Plan screen, real jobs only (covered by tools/ui-release.js)
+const gateSignup = require("./gate-signup.js");   // the test person signs up first (Saif, October 22: no account, no data)
 module.exports = async ({ ev, sleep, nav, logs }) => {
   const F = "document.querySelector('iframe').contentDocument";
   const W = "document.querySelector('iframe').contentWindow";
@@ -10,6 +11,7 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
   const clickText = (txt, scope = "button,a,[role=tab]") => ev("(()=>{const e=[...(" + F + ").querySelectorAll('" + scope + "')].find(b=>b.innerText.split(/\\s+/).join(' ').trim().startsWith(" + JSON.stringify(txt) + "));if(!e)return false;e.click();return true})()");
   const visibleText = () => ev("(" + F + ").body.innerText.split(/\\s+/).join(' ')");
 
+  await gateSignup({ ev, sleep, nav }, "http://127.0.0.1:" + PORT, "sweep");
   await nav("http://127.0.0.1:" + PORT + "/");
   await sleep(1500);
   check("page loads with job cards", (await ev(F + ".querySelectorAll('.card').length")) >= 1);
@@ -40,6 +42,8 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
   const setVal = (id, v) => ev("(()=>{const e=" + F + ".getElementById('" + id + "');if(!e)return false;e.value=" + JSON.stringify(v) + ";e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));return true})()");
   check("profile name field", await setVal("pName", "Test User"));
   check("profile email field", await setVal("pEmail", "sweep.tester@example.com"));
+  // a phone number too: a swipe right needs a name, an email and a phone number or a resume before it can apply (October 21)
+  check("profile phone field", await setVal((await ev("!!" + F + ".getElementById('px-phone')")) ? "px-phone" : "pPhone", "+1 215 555 0100"));
   await setVal("pSkills", "Python, SQL, Git");
   await ev("(()=>{const f=" + F + ".getElementById('wzNext');f.click();return true})()");
   await sleep(800);
@@ -59,11 +63,11 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
   const newest = await ev("fetch('/api/outbox').then(r=>r.json()).then(j=>(j.applications[0]||{}).status||'')");
   check(REL ? "swipe right on a real job is recorded as a hand-off to the employer's own page" : "swipe right created an application in the test inbox",
         REL ? after > before && newest === "handoff" : (after > before || needsFile), "(newest status: " + newest + (needsFile ? "; the employer needs a resume file first" : "") + ")");
-  // dashboard
+  // Job Tracker (the nb-dash menu)
   await ev(F + ".getElementById('nb-dash').click()");
   await sleep(500);
   for (const t of ["Overview", "Applied", "Accepted", "Rejected", "Interviews"]) {
-    check("Dashboard: " + t, await clickText(t));
+    check("Job Tracker: " + t, await clickText(t));
     await sleep(250);
   }
   // profile sections

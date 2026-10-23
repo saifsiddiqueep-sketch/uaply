@@ -3,9 +3,11 @@
 // else, Filters must have a Reset that clears it, and nothing may throw a script error.
 //   W=390 H=844 PORT=19801 node tools/cdp.js tools/ui-learn.js        (SHOTS=<folder> also saves screenshots)
 // The test shows only its own 80 made-up jobs (on-site ones match the profile better than remote ones), and turns off the apply step
-// after a swipe right (sending is tested elsewhere): it checks what the learner does with the swipes, nothing else.
+// after a swipe right and the "Finish your profile first" gate before it (both are tested elsewhere): it checks what the learner does with
+// the swipes, nothing else.
 const PORT = process.env.PORT || "18766";
 const path = require("path");
+const gateSignup = require("./gate-signup.js");   // the test person signs up first (Saif, October 22: no account, no data)
 module.exports = async ({ ev, sleep, nav, send, logs, shot }) => {
   const F = "document.querySelector('iframe').contentDocument";
   const FW = "document.querySelector('iframe').contentWindow";
@@ -19,7 +21,11 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot }) => {
     "return {id:id,mode:j&&j.mode,ring:c.querySelector('.ring b').textContent,line:l?l.textContent:'',explore:!!(l&&l.getAttribute('data-explore'))}})()");
   // a finger drag across the top card (the same as tools/ui-swipes.js)
   const drag = async (dx) => {
-    const r = await J("(()=>{const c=" + F + ".querySelector('.card.top');const f=document.querySelector('iframe').getBoundingClientRect();const b=c.getBoundingClientRect();return {x:f.left+b.left+b.width/2,y:f.top+b.top+b.height/3}})()");
+    // where a finger would touch: the middle of the part of the card that is in sight, above Pass / Undo / Apply (notices above the deck,
+    // such as the location box, can push most of the card below that row; the deck scrolls, the buttons stay)
+    const r = await J("(()=>{const d=" + F + ",c=d.querySelector('.card.top');const f=document.querySelector('iframe').getBoundingClientRect();const b=c.getBoundingClientRect();" +
+      "const bar=d.getElementById('btnNo'),lim=bar?bar.getBoundingClientRect().top-8:b.bottom,top=Math.max(b.top,0),bot=Math.min(b.bottom,lim);" +
+      "return {x:f.left+b.left+b.width/2,y:f.top+(bot>top+40?Math.min(b.top+b.height/3,(top+bot)/2):b.top+b.height/3)}})()");
     const pt = (x) => [{ x: Math.round(x), y: Math.round(r.y), id: 1 }];
     await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: pt(r.x) });
     for (let i = 1; i <= 8; i++) { await send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: pt(r.x + (dx * i) / 8) }); await sleep(30); }
@@ -28,6 +34,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot }) => {
   };
   const decided = () => ev("Object.keys(" + FW + ".__uaply.S.decisions).length");
 
+  await gateSignup({ ev, sleep, nav }, "http://127.0.0.1:" + PORT, "learn");
   await nav("http://127.0.0.1:" + PORT + "/?app=1");
   await sleep(3500);
   if (await ev("!!" + F + ".getElementById('kcYes')")) { await ev(F + ".getElementById('kcYes').click()"); await sleep(400); }
@@ -40,7 +47,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot }) => {
   await ev(FW + ".__uaplyLearn.state().seed=20261016");
 
   // 80 made-up jobs: 40 on-site in New York asking for skills the example profile has (they match best), 40 remote asking for half of them
-  await ev("(()=>{const w=" + FW + ",A=w.__uaply;w.__uaplyOnDecision=null;w.__uaplyHideSamples=true;const h0=w.__uaplyHide;" +
+  await ev("(()=>{const w=" + FW + ",A=w.__uaply;w.__uaplyOnDecision=null;w.__uaplyReadyGate=function(){return false};w.__uaplyHideSamples=true;const h0=w.__uaplyHide;" +
     "w.__uaplyHide=function(j){return !(j.id>900000&&j.id<901000)||(h0?h0(j):false)};" +
     "A.S.profile.modes={remote:true,hybrid:true,onsite:true};A.S.profile.loc='New York';" +
     "const roles=['Software Engineer','Frontend Developer','Data Analyst','Product Designer'],mine=['JavaScript','React','TypeScript','CSS','HTML','SQL'],other=['Go','Rust','Kotlin','Elixir','Scala','Haskell'],list=[];" +

@@ -257,6 +257,28 @@ def main():
         t("...and a lookalike that is not on the list is not caught by accident (notyopmail.com is its own domain)", auth_api.is_disposable("a@notyopmail.com"), False)
         t("Google cannot make a new account with a throwaway address either",
           auth_api.oauth_login("google", "disp-1", "someone@mailinator.com", True, False)[0], "disposable")
+
+        # Google and an account whose address was never proven: the owner's own 18+ / Terms tick first; and a real "created" flag
+        err, gu, _ = auth_api.oauth_login("google", "made-1", "made.by.google@gmail.com", True, True)
+        t("Google making a new account says so: created", (err, (gu or {}).get("created")), (None, True))
+        err, gu, _ = auth_api.oauth_login("google", "made-1", "made.by.google@gmail.com", True, True)
+        t("...and the next Google sign-in to it (seconds later) does not: no created flag", (err, "created" in (gu or {})), (None, False))
+        s, out, _ = auth_api.signup("opened.by.someone@gmail.com", "someone else 1", next(ips), True)
+        with sqlite3.connect(auth_api._path) as c:
+            c.execute("UPDATE users SET terms_at=? WHERE email=?", (int(time.time()) - 3600, "opened.by.someone@gmail.com"))
+        err, gu, gt = auth_api.oauth_login("google", "owner-1", "opened.by.someone@gmail.com", False, True)
+        t("Google joining an account nobody proved the address for, without the owner's tick: asks for it, signs nobody in", (err, gt), ("agree", None))
+        with sqlite3.connect(auth_api._path) as c:
+            has_pw = c.execute("SELECT has_password FROM users WHERE email=?", ("opened.by.someone@gmail.com",)).fetchone()[0]
+        t("...and changes nothing (the password is still there until the owner ticks)", has_pw, 1)
+        before = int(time.time())
+        err, gu, gt = auth_api.oauth_login("google", "owner-1", "opened.by.someone@gmail.com", True, True)
+        with sqlite3.connect(auth_api._path) as c:
+            ta = c.execute("SELECT terms_at FROM users WHERE email=?", ("opened.by.someone@gmail.com",)).fetchone()[0]
+        t("...with the tick: joined, the unproven password removed, not called created, and the tick on record is the owner's",
+          (err, bool(gt), (gu or {}).get("passwordRemoved"), "created" in (gu or {}), ta >= before), (None, True, True, False, True))
+        err, gu, gt = auth_api.oauth_login("google", "owner-1", "opened.by.someone@gmail.com", False, True)
+        t("...after that the same Google account signs in with no tick (the address is proven now)", (err, bool(gt)), (None, True))
         dash = chr(0x2014)
         t("the refusal is the one kind sentence", auth_api.KEEP_MSG,
           "Please use an email address you'll keep " + dash + " temporary addresses can't be used for job applications.")
@@ -421,11 +443,16 @@ def main():
             with sqlite3.connect(HDB) as c:
                 return [r[0] for r in c.execute("SELECT user_id FROM identities WHERE provider='google' AND subject=?", (sub,))]
 
-        def code_for(email):
-            with sqlite3.connect(HDB) as c:
-                row = c.execute("SELECT subject FROM user_mail WHERE to_addr=? ORDER BY id DESC LIMIT 1", (email,)).fetchone()
-            m = re.match(r"\s*(\d{6})", row[0] if row else "")
-            return m.group(1) if m else ""
+        def code_for(email, wait=5.0):
+            # a sign-up answers first and emails its code a moment later: wait up to `wait` seconds for it
+            end = time.time() + wait
+            while True:
+                with sqlite3.connect(HDB) as c:
+                    row = c.execute("SELECT subject FROM user_mail WHERE to_addr=? ORDER BY id DESC LIMIT 1", (email,)).fetchone()
+                m = re.match(r"\s*(\d{6})", row[0] if row else "")
+                if m or time.time() > end:
+                    return m.group(1) if m else ""
+                time.sleep(0.1)
 
         # 6 over HTTP
         s, out, ck = signup("Hal@Example.com")
@@ -553,11 +580,13 @@ def main():
         t("HTTP: Gmail, Yahoo, Outlook, school and work addresses all pass",
           [signup(v)[0] for v in ("pat.doe@gmail.com", "pat@yahoo.com", "pat@outlook.com", "pdoe@temple.edu", "pat@acme-robotics.co.uk")], [200] * 5)
 
-        # 4 again: at most five new accounts an hour from one visitor address (the first X-Forwarded-For entry, as for the lock-out)
+        # 4 again: at most SIGNUPS_PER_HOUR (40: a campus shares one address) sign-up tries an hour from one visitor address (the host's last
+        # hop, serve.client_ip, as for the lock-out); tools/test-public-auth.py checks forged headers and the per-email cap
+        n = auth_api.SIGNUPS_PER_HOUR
         burst = [req("POST", "/api/auth/signup", {"email": "limit%d@gmail.com" % i, "password": "limit pass 123", "agree": True}, xff="203.0.113.50")
-                 for i in range(6)]
-        t("HTTP: six sign-ups from one visitor address in an hour: five accounts, then a kind refusal",
-          ([b[0] for b in burst], burst[-1][1].get("error")), ([200] * 5 + [429], auth_api.SIGNUP_LIMIT_MSG))
+                 for i in range(n + 1)]
+        t("HTTP: %d sign-ups from one visitor address in an hour work, then a kind refusal" % n,
+          ([b[0] for b in burst], burst[-1][1].get("error")), ([200] * n + [429], auth_api.SIGNUP_LIMIT_MSG))
         t("HTTP: ...another visitor is not affected", signup("limit.other@gmail.com")[0], 200)
         log.flush()
         crashes = open(log_path, encoding="utf-8", errors="replace").read().count("Traceback")

@@ -28,6 +28,9 @@ for v in ("UAPLY_FEEDS", "UAPLY_FEEDS_OFF"):
     os.environ.pop(v, None)
 
 import jobs_api as J  # noqa: E402
+# The recorded answers in tools/fixtures/ are fixed in time, so the 60-day rule would drop more of them every week and these counts would
+# drift. It is switched off here; tools/test-jobs.py tests the rule itself against a fixed clock.
+J.MAX_AGE_DAYS = 10 ** 6
 import setup_api  # noqa: E402
 import uaply_api  # noqa: E402
 import emails  # noqa: E402
@@ -82,15 +85,23 @@ t("USAJOBS without a key is skipped with the status 'no key'", J._fetch_source(U
 t("...and nothing was requested or cached", (len(CALLS), USA_PHL in J._cache), (0, False))
 cfg(feeds=["usajobs"])
 summ = J.get_jobs()["sources"]
-t("the job list names both USAJOBS searches as 'no key'", (summ.get("USAJOBS/philadelphia"), summ.get("USAJOBS/students")), ("no key", "no key"))
+t("the job list names all 15 USAJOBS searches as 'no key'", sorted({v for k, v in summ.items() if k.startswith("USAJOBS/")}) + [len([k for k in summ if k.startswith("USAJOBS/")])],
+  ["no key", 15])
+want_areas = {"philadelphia": ("Philadelphia, Pennsylvania", "50"), "wilmington": ("Wilmington, Delaware", "40"), "trenton": ("Trenton, New Jersey", "40"),
+              "newark": ("Newark, New Jersey", "40"), "camden": ("Camden, New Jersey", "25")}
+t("USAJOBS covers the tri-state: five places and radii, each also for Pathways and part-time schedules",
+  sorted((k, q["LocationName"], q["Radius"], q.get("HiringPath", ""), q.get("PositionScheduleTypeCode", "")) for k, q in J.USAJOBS_QUERIES.items() if k not in ("students", "parttime")),
+  sorted([(a, n, r, "", "") for a, (n, r) in want_areas.items()] + [(a + "-students", n, r, "student;graduates", "") for a, (n, r) in want_areas.items()] +
+         [(a + "-parttime", n, r, "", "2") for a, (n, r) in want_areas.items()]))
+t("15 searches every 3 hours: 120 USAJOBS requests a day", (len([x for x in J.SOURCES if x[0] == "usajobs"]), 24 // (J.TTL["usajobs"] // 3600) * 15), (15, 120))
 
 cfg(feed_keys={"usajobs": KEY})
 CALLS.clear()
 jobs, status = J._fetch_source(USA_PHL)
 url, hdr = CALLS[0]
 t("with a key: one search, answered", (len(CALLS), status), (1, "3 jobs"))
-t("the search is Philadelphia, 25 miles, 500 a page, full fields",
-  url, "https://data.usajobs.gov/api/search?LocationName=Philadelphia,%20Pennsylvania&Radius=25&ResultsPerPage=500&Fields=Full")
+t("the search is Philadelphia, 50 miles, 500 a page, full fields",
+  url, "https://data.usajobs.gov/api/search?LocationName=Philadelphia,%20Pennsylvania&Radius=50&ResultsPerPage=500&Fields=Full")
 t("the headers are the ones USAJOBS documents (Host, User-Agent = email, Authorization-Key)",
   (hdr.get("Host"), hdr.get("User-Agent"), hdr.get("Authorization-Key")), ("data.usajobs.gov", "uaplytechnologies@gmail.com", KEY))
 by = {j["role"]: j for j in jobs}
@@ -214,18 +225,39 @@ many = [dict(base[i % len(base)], id=str(900000000000 + i)) for i in range(150)]
 def paged(url, headers=None):
     CALLS.append((url, {}))
     if "?" in url:
-        off = int(url.split("offset=")[1])
-        return {"offset": off, "limit": 100, "totalFound": 150, "content": many[off:off + 100]}
+        off = int(url.split("offset=")[1].split("&")[0])
+        rows = [m for m in many if ((m.get("location") or {}).get("country") or "us") == "us"] if "country=us" in url else many   # the API's own filter
+        return {"offset": off, "limit": 100, "totalFound": len(rows), "content": rows[off:off + 100]}
     raise OSError("no description")
 
 
 J._get = paged
 J._sr_desc.clear()
 CALLS.clear()
+real_whole, J.SR_WHOLE = J.SR_WHOLE, ("BigCo",)                    # a public body's whole list (the City's rule)
 jobs, status = J._fetch_source(("smartrecruiters", "BigCo", "BigCo"))
 lists = [u.split("?")[1] for u, _ in CALLS if "?" in u]
 t("pages are read 100 at a time by offset", lists, ["limit=100&offset=0", "limit=100&offset=100"])
 t("no more than 120 postings are kept, and no more than 120 descriptions read", (len(jobs), len([1 for u, _ in CALLS if "?" not in u])), (120, 120))
+J.SR_WHOLE = real_whole
+# a company that is not a public body (Equinox, Red Bull): US postings only, tri-state ones first, at most SR_BOARD_READ (24) descriptions, 14 + tri-state extras
+mixed = [dict(m, location=dict(m.get("location") or {}, country="de", region="BY", city="Munich")) if i % 3 == 0 else
+         dict(m, location=dict(m.get("location") or {}, country="us", region="TX" if i % 3 == 1 else "NJ", city="Austin" if i % 3 == 1 else "Trenton"))
+         for i, m in enumerate(many)]
+many_saved, many[:] = list(many), mixed
+J._sr_desc.clear()
+CALLS.clear()
+J._cache.pop(("smartrecruiters", "GymCo", "GymCo"), None)
+jobs, status = J._fetch_source(("smartrecruiters", "GymCo", "GymCo"))
+read = [u.rsplit("/", 1)[1] for u, _ in CALLS if "?" not in u]
+by_id = {m["id"]: m for m in mixed}
+t("an employer's SmartRecruiters board: at most 24 descriptions read, none for a posting outside the US",
+  (len(read), sum(1 for i in read if by_id[i]["location"]["country"] != "us")), (J.SR_BOARD_READ, 0))
+t("...New Jersey postings are read first", sum(1 for i in read if by_id[i]["location"]["region"] == "NJ"), J.SR_BOARD_READ)
+t("...with one request for its US postings only (country=us); the City's whole list is read without it",
+  [u.split("?")[1] for u, _ in CALLS if "?" in u], ["limit=100&offset=0&country=us"])
+t("...and it keeps 14 plus up to 10 tri-state extras, never a German one", (len(jobs) <= 24, any("Munich" in j["loc"] for j in jobs)), (True, False))
+many[:] = many_saved
 
 
 def one(**over):
@@ -281,7 +313,7 @@ J._sr_desc.clear()
 city_jobs, _ = J._fetch_source(CITY)
 J._cache[CITY] = {"at": time.time(), "jobs": city_jobs, "status": "67 jobs"}
 job = city_jobs[0]
-code, out = uaply_api.submit({"consent": True, "profile": {"name": "Feed Tester", "email": "feed.tester@example.com"},
+code, out = uaply_api.submit({"consent": True, "profile": {"ext": {"phone": "215-555-0100"}, "name": "Feed Tester", "email": "feed.tester@example.com"},
                               "job": dict({k: job[k] for k in ("id", "co", "role", "url", "loc")}, via="via a site the browser made up", credit="made up")})
 rec = uaply_api.APPS[-1]
 t("a swipe right on a City job is a hand-off (finish on the City's site)", (code, out.get("status")), (200, "handoff"))
@@ -289,7 +321,7 @@ t("the record keeps the server's own credit, not what the browser sent", rec["jo
 subject, text, page = emails.applicant_receipt(uaply_api._mail_ctx(uaply_api.config(), rec, "", "feed.tester@example.com"))
 t("the applicant's receipt names the source", ("Source: via City of Philadelphia on SmartRecruiters" in text, "via City of Philadelphia on SmartRecruiters" in page), (True, True))
 J._cache[USA_PHL] = {"at": time.time(), "jobs": [it], "status": "1 jobs"}
-code, out = uaply_api.submit({"consent": True, "profile": {"name": "Feed Tester", "email": "feed.tester@example.com"}, "job": {k: it[k] for k in ("id", "co", "role", "url", "loc")}})
+code, out = uaply_api.submit({"consent": True, "profile": {"ext": {"phone": "215-555-0100"}, "name": "Feed Tester", "email": "feed.tester@example.com"}, "job": {k: it[k] for k in ("id", "co", "role", "url", "loc")}})
 rec = uaply_api.APPS[-1]
 subject, text, page = emails.applicant_receipt(uaply_api._mail_ctx(uaply_api.config(), rec, "", "feed.tester@example.com"))
 t("a federal job's receipt says 'via USAJOBS; apply on the official announcement' and links the announcement",
@@ -319,6 +351,31 @@ t("Remove drops one key and keeps the other", (s, sorted(json.load(open(uaply_ap
 t("...and the page says so", setup_api.page("localhost:8767", "http").decode("utf-8").count("not added yet") >= 1, True)
 uaply_api.CONFIG_PATH = uaply_api.REAL_CONFIG_PATH
 
+# ---------------- UAPLY_USAJOBS_KEY / UAPLY_USAJOBS_EMAIL: the key as its own host variable ----------------
+ENV_KEY = "FAKEenvUsajobsKey9876543210zyxwvuZYXWVU+/="
+cfg(feed_keys={"usajobs": KEY, "usajobs_email": "config.mail@example.com"})
+os.environ["UAPLY_USAJOBS_KEY"], os.environ["UAPLY_USAJOBS_EMAIL"] = ENV_KEY, "env.mail@example.com"
+try:
+    k = J.feed_keys()
+    t("UAPLY_USAJOBS_KEY and UAPLY_USAJOBS_EMAIL win over feed_keys", (k["usajobs"], k["usajobs_email"]), (ENV_KEY, "env.mail@example.com"))
+    os.environ["UAPLY_USAJOBS_KEY"], os.environ["UAPLY_USAJOBS_EMAIL"] = "not a key!", "not-an-address"
+    k = J.feed_keys()
+    t("a malformed variable is ignored and feed_keys is used", (k["usajobs"], k["usajobs_email"]), (KEY, "config.mail@example.com"))
+    cfg()
+    os.environ["UAPLY_USAJOBS_KEY"], os.environ["UAPLY_USAJOBS_EMAIL"] = " " + ENV_KEY + "\n", "env.mail@example.com"
+    t("the variable alone switches USAJOBS on (trimmed)", J.feed_keys().get("usajobs"), ENV_KEY)
+    t("...and the setup page counts it as saved", setup_api.feed_status()["usajobs"], True)
+    CALLS.clear()
+    J._fetch_source(USA_PHL)
+    t("the USAJOBS request carries the variable's key and email", [(h.get("Authorization-Key"), h.get("User-Agent")) for u, h in CALLS][:1],
+      [(ENV_KEY, "env.mail@example.com")])
+    t("the variable's key is scrubbed from error text like any other key", J._scrub("HTTP 401 for key " + ENV_KEY), "HTTP 401 for key [key]")
+finally:
+    os.environ.pop("UAPLY_USAJOBS_KEY", None)
+    os.environ.pop("UAPLY_USAJOBS_EMAIL", None)
+    cfg()
+t("without the variable or feed_keys USAJOBS is skipped again", J._fetch_source(USA_PHL), ([], "no key"))
+
 
 # ---------------- over HTTP, on a throwaway copy of the server ----------------
 def http_checks(port):
@@ -328,18 +385,25 @@ def http_checks(port):
     os.makedirs(data)
     # the job list starts from a saved copy of the recorded City jobs, so the server needs no network
     with open(os.path.join(data, "jobs-cache.json"), "w", encoding="utf-8") as f:
-        json.dump({"|".join(CITY): {"at": time.time(), "jobs": city_jobs, "status": "67 jobs"}, "_version": J.CACHE_VERSION}, f)
+        # the server applies the real 60-day rule: 40 of the recorded jobs are dated five days ago, the other 27 ninety days ago
+        now_ms = int(time.time() * 1000)
+        dated = [dict(x, posted=now_ms - (5 if i < 40 else 90) * J.DAY_MS) for i, x in enumerate(city_jobs)]
+        dated = [{k: v for k, v in x.items() if k != "updated"} for x in dated]
+        json.dump({"|".join(CITY): {"at": time.time(), "jobs": dated, "status": "67 jobs"}, "_version": J.CACHE_VERSION}, f)
     env = dict(os.environ, UAPLY_CONFIG_FILE="none", UAPLY_DATA_DIR=data, HOST="127.0.0.1",
-               UAPLY_CONFIG_JSON=json.dumps({"feeds": ["smartrecruiters", "usajobs"], "delivery": "test", "smtp": {}, "google": {}, "owner_copy": ""}))
+               UAPLY_CONFIG_JSON=json.dumps({"feeds": ["smartrecruiters", "usajobs"], "delivery": "test", "smtp": {}, "google": {}, "owner_copy": ""}),
+               UAPLY_SIGNUP_TEST="1")          # sign-up test mode (never public): the sign-in gate's test person is confirmed at once
     env.pop("OWNER_PASSWORD", None)
     log = open(os.path.join(TMP, "server.log"), "w")
     srv = subprocess.Popen([sys.executable, os.path.join(copy, "serve.py"), str(port), os.path.join(copy, "dev"), "--api"], env=env, stdout=log, stderr=log)
     base = "http://127.0.0.1:%d" % port
 
-    def call(method, path, body=None, origin=base):
+    def call(method, path, body=None, origin=base, cookie=""):
         h = {"Content-Type": "application/json"}
         if origin:
             h["Origin"] = origin
+        if cookie:
+            h["Cookie"] = cookie
         rq = urllib.request.Request(base + path, data=json.dumps(body).encode() if body is not None else None, headers=h, method=method)
         try:
             with urllib.request.urlopen(rq, timeout=30) as r:
@@ -366,10 +430,13 @@ def http_checks(port):
             t("HTTP: the keys landed in the throwaway copy's settings file", json.load(f).get("feed_keys"), {"usajobs": KEY, "muse": MUSE})
         s, page = call("GET", "/setup")
         t("HTTP: /setup has the Job feed keys box and never the keys", (s, 'id="feeds"' in page, KEY in page, MUSE in page), (200, True, False, False))
-        s, body = call("GET", "/api/jobs")
+        sys.path.insert(0, HERE)
+        import gate_session                    # the sign-in gate: the job list needs a signed-in, confirmed person
+        s, body = call("GET", "/api/jobs", cookie=gate_session.cookie(base))
         data_out = json.loads(body)
         city = [j for j in data_out["jobs"] if j.get("via") == "City of Philadelphia on SmartRecruiters"]
-        t("HTTP: the job list serves the City's 67 jobs, each with its via label", len(city), 67)
+        t("HTTP: the job list serves the City's 40 jobs from the last 60 days (not the 27 older ones; two postings with one title stay two), each with its via label and postedDays",
+          (len(city), sorted({j["postedDays"] for j in city}), data_out.get("aged_out"), data_out.get("merged")), (40, [5], 27, 0))
         t("HTTP: USAJOBS is listed as skipped (this server reads no settings file)", data_out["sources"].get("USAJOBS/philadelphia"), "no key")
         t("HTTP: the job list never contains a key", (KEY in body, MUSE in body), (False, False))
         with open(os.path.join(TMP, "server.log"), encoding="utf-8", errors="replace") as f:
@@ -384,7 +451,7 @@ def http_checks(port):
             r = subprocess.run(["node", os.path.join(HERE, "cdp.js"), os.path.join(HERE, "ui-via.js")], env=dict(os.environ, PORT=str(port), W="390", H="844"),
                                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
             print(r.stdout.strip())
-            t("browser: the card shows 'via ...' next to 'Opens employer site' (tools/ui-via.js)", r.returncode == 0 and "FAIL" not in r.stdout and "PASS" in r.stdout, True)
+            t("browser: the card shows 'via ...' next to its apply wording (tools/ui-via.js)", r.returncode == 0 and "FAIL" not in r.stdout and "PASS" in r.stdout, True)
         else:
             print("SKIP browser check: Chrome or node not found")
     finally:

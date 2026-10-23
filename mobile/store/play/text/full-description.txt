@@ -1,0 +1,32 @@
+UAply shows you one job at a time. Swipe right (or tap Apply) to apply, swipe left (or tap Pass) to skip. Set up your profile once, and every card tells you how well the job fits it before you decide.
+
+REAL JOBS, FROM THE SOURCE
+The listings come from employers' own public hiring systems and career pages (Greenhouse, Lever, Ashby, SmartRecruiters and Workable), federal jobs from USAJOBS, and well-known internship lists. Each card says where the job came from. Postings older than 60 days are left out, and the same job listed twice is shown once. Full-time jobs, part-time work, internships and co-ops each have their own list, with the most listings in Pennsylvania, New Jersey and Delaware and remote roles from across the United States.
+
+WHAT A RIGHT SWIPE DOES, HONESTLY
+- At a connected employer (the card says Applies instantly), UAply fills in that employer's real application form from your profile and sends it into their hiring system. If their form asks something your profile does not answer yet, UAply asks you for it right there.
+- Everywhere else (the card says Ready), UAply takes you to the door: the job is saved in your Job Tracker as Finish on their site, and one tap opens the employer's own page and copies your name, email, phone and links so you can paste them into their form. Nothing is sent for you.
+- You can undo a swipe right after you make it. A left swipe only hides the job.
+
+A MATCH SCORE YOU CAN READ
+The match percentage is a fixed formula, not a judgment about you: skills, experience, pay, job title, work style, location and education, with the points for each part listed on the card. It only orders jobs for you. It never rejects you and never makes a hiring decision.
+
+YOUR PROFILE, ONCE
+Five short steps: about you, the jobs you want, your skills, background and links, and eligibility. Attach your resume once and it goes with the applications UAply sends. Optional answers employers often ask (work authorization, start date, expected pay) are kept with your profile so a connected employer's form can be completed without retyping. Voluntary self-identification answers stay on your device and are never sent for you.
+
+JOB TRACKER
+Every application in one place: move it to Interview, Accepted or Rejected, add an interview time, an offer or notes, add interviews to your calendar, and export everything as a spreadsheet.
+
+FILTERS THAT MATTER
+Job type, how recently it was posted, work style (remote, hybrid or on-site), commute distance from where you are, minimum match, and target titles. Your device location, if you choose to use it, stays on your device.
+
+HELP WHEN YOU NEED IT
+The UAply Assistant answers questions from UAply's help articles, and Talk to a person reaches the team. Report a problem or give feedback from Help at any time.
+
+FREE DURING EARLY ACCESS
+UAply is free during early access: nothing is charged, there is no weekly limit on applications, and no card is asked for. There are no ads.
+
+PRIVACY
+UAply does not sell your information or use it for advertising. You sign up once (email and password with a 6-digit code sent to your email, or Continue with Google); your profile and swipes are saved on your device, and an application's details go to an employer only when you apply to that employer. You get a receipt for each application and can delete your account at any time in Profile, Account. Privacy Policy: https://uaply.net/legal/privacy.html
+
+UAply is for people 18 and older. It is the same as the website at uaply.net: sign in with the same account on both.

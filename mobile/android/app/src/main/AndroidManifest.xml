@@ -20,6 +20,14 @@
             </intent-filter>
         </activity>
 
+        <!-- assisted apply: an employer's own application page, filled from the profile, the person taps Submit (docs/assisted-apply.md) -->
+        <activity
+            android:name=".AssistActivity"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:theme="@style/AppTheme.NoActionBar"
+            android:windowSoftInputMode="adjustResize"
+            android:exported="false" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

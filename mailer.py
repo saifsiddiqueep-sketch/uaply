@@ -45,8 +45,8 @@ from email.utils import formatdate, make_msgid, parseaddr
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 PRIORITY = ("code", "reset", "application")
-DEFERRABLE = ("receipt", "owner_copy", "support", "ack")
-AUTOMATIC = ("code", "reset", "receipt", "owner_copy", "ack")       # sent by a machine: auto-responders must not answer them (RFC 3834)
+DEFERRABLE = ("receipt", "owner_copy", "support", "ack", "digest")   # digest: the day's "finish your application" reminder
+AUTOMATIC = ("code", "reset", "receipt", "owner_copy", "ack", "digest")       # sent by a machine: auto-responders must not answer them (RFC 3834)
 RETRY_SECONDS = 2
 HOLD_RETRY_SECONDS = 900
 MAX_TRIES = 8
@@ -146,10 +146,23 @@ def today():
 def _bump(full=False):
     with _lock:
         n, was_full = today()
-        st = {"day": day(), "sent": n + (0 if full else 1), "full": was_full or full}
+        prev = _read_json(_count_path(), {}) or _count_mem
+        st = {"day": day(), "sent": n + (0 if full else 1), "full": was_full or full,
+              # when an email last went out (kept across days and restarts): the owner's self-check in /api/status
+              "last_sent": time.time() if not full else float(prev.get("last_sent") or 0)}
         _count_mem.clear()
         _count_mem.update(st)
         _write_json(_count_path(), st)
+
+
+def last_sent():
+    """When an email last went out through the mail service (Unix seconds), or 0 when none has."""
+    with _lock:
+        st = _read_json(_count_path(), {}) or _count_mem
+        try:
+            return float(st.get("last_sent") or 0)
+        except (TypeError, ValueError):
+            return 0.0
 
 
 def usage(cfg):

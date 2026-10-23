@@ -30,7 +30,7 @@ NEXT_STEPS = [
     "The employer reviews applications in its own time, and many employers get a lot of them, so you may not hear from every one.",
     "A sensible pace: wait one to two weeks; if you have heard nothing after two to three weeks, send a short, polite follow-up; "
     "after three to four weeks it is reasonable to move on to other jobs.",
-    "Keep track in UAply: open Dashboard, then Applied, and mark the application Interview, Accepted or Rejected as things happen.",
+    "Keep track in UAply: open Job Tracker, then Applied, and mark the application Interview, Accepted or Rejected as things happen.",
     "An application cannot be edited after it is sent. To correct something, contact the employer directly.",
 ]
 
@@ -154,7 +154,7 @@ def applicant_receipt(ctx):
     t += ["  %s: %s" % kv for kv in rows] or ["  Your name and email."]
     t += ["  " + NOT_SHARED]
     t += ["", "WHAT HAPPENS NEXT"] + ["  - " + x for x in NEXT_STEPS]
-    t += ["", "TRACK IT", "  Open UAply, then Dashboard, then Applied." + ((" %s" % track) if track else "")]
+    t += ["", "TRACK IT", "  Open UAply, then Job Tracker, then Applied." + ((" %s" % track) if track else "")]
     t += ["", "--", "UAply", "You get this email because you are signed in to UAply as %s." % ctx.get("user_email", "")]
     if ctx.get("support_email"):
         t += ["Questions: %s" % ctx["support_email"]]
@@ -190,7 +190,7 @@ def applicant_receipt(ctx):
     parts.append('<p style="margin:8px 0 0;color:#7B5560;font-size:13px">%s</p>' % e(NOT_SHARED))
     parts.append(h("WHAT HAPPENS NEXT") + '<ul style="margin:0;padding-left:20px;color:#2A1218">%s</ul>' % "".join('<li style="margin:4px 0">%s</li>' % e(x) for x in NEXT_STEPS))
     track_html = ('<a href="%s" style="color:%s">%s</a>' % (e(track, quote=True), BRAND, e(track))) if _https(track) else ""
-    parts.append(h("TRACK IT") + '<p style="margin:0;color:#2A1218">Open UAply, then <b>Dashboard</b>, then <b>Applied</b>. %s</p>' % track_html)
+    parts.append(h("TRACK IT") + '<p style="margin:0;color:#2A1218">Open UAply, then <b>Job Tracker</b>, then <b>Applied</b>. %s</p>' % track_html)
     foot = "You get this email because you are signed in to UAply as %s." % ctx.get("user_email", "")
     if ctx.get("support_email"):
         foot += " Questions: %s." % ctx["support_email"]
@@ -199,6 +199,62 @@ def applicant_receipt(ctx):
     page = ('<!doctype html><html><body style="margin:0;padding:20px;background:#FDF0F2;font:15px/1.5 Arial,Helvetica,sans-serif">'
             '<div style="max-width:600px;margin:0 auto;background:#fff;border-radius:16px;padding:24px 26px">'
             '<p style="margin:0 0 14px;font:800 20px Arial,sans-serif;color:%s">UAply</p>%s</div></body></html>' % (BRAND, body))
+    return subject, text, page
+
+
+def finish_digest(ctx):
+    """The day's reminder of the jobs a person swiped right on that take applications on the employer's own site (at most one a day, instead
+    of an email per swipe). ctx keys: items [{co, role, url, at}], test, base_url, user_email, support_email. Returns (subject, text, html)."""
+    items, test = ctx.get("items") or [], bool(ctx.get("test"))
+    n = len(items)
+    if n == 1:
+        subject = "Finish your application: %s at %s" % (items[0].get("role", ""), items[0].get("co", ""))
+    else:
+        subject = "Finish your applications: %d jobs waiting on the employers' sites" % n
+    subject = ("[TEST] " if test else "") + subject[:190]
+    head = "One more step for %s" % ("this job" if n == 1 else "%d jobs" % n)
+    lead = ("You swiped right on %s. %s takes applications on %s own site, so UAply could not send %s for you. Finish %s there; your "
+            "details are in UAply, ready to copy." % ("this job" if n == 1 else "these jobs", "The employer" if n == 1 else "Each employer",
+                                                      "its", "it" if n == 1 else "them", "it" if n == 1 else "each one"))
+    track = (ctx.get("base_url") or "").rstrip("/")
+    t = []
+    if test:
+        t += ["*** TEST EMAIL ***", "This is a test email. It is sent because this copy of UAply is in test mode.", ""]
+    t += [head, "", lead, ""]
+    for i in items:
+        t += ["- %s at %s (swiped %s)" % (i.get("role", ""), i.get("co", ""), _when(i.get("at") or time.time()))]
+        if _https(i.get("url")):
+            t += ["  Finish: %s" % _https(i.get("url"))]
+    t += ["", "TRACK IT", "  Open UAply, then Job Tracker, then Applied. Mark each one as applied once you finish it." + ((" %s" % track) if track else "")]
+    t += ["", "--", "UAply", "You get this at most once a day, only when a job you swiped right on is waiting on the employer's site. "
+          "You are signed in to UAply as %s." % ctx.get("user_email", "")]
+    if ctx.get("support_email"):
+        t += ["Questions: %s" % ctx["support_email"]]
+    text = "\n".join(t) + "\n"
+    e = html.escape
+    parts = []
+    if test:
+        parts.append('<div style="background:#FFF4D6;border:1px solid #F0D58A;border-radius:10px;padding:12px 14px;margin-bottom:16px;color:#5A4300">'
+                     '<b>TEST EMAIL.</b> This is a test email. It is sent because this copy of UAply is in test mode.</div>')
+    parts.append('<h1 style="margin:0 0 8px;font:700 22px/1.25 Arial,sans-serif;color:#2A1218">%s</h1>' % e(head))
+    parts.append('<p style="margin:0 0 12px;color:#2A1218">%s</p>' % e(lead))
+    rows = []
+    for i in items:
+        link = _https(i.get("url"))
+        rows.append('<li style="margin:8px 0;color:#2A1218"><b>%s</b> at %s<br><span style="color:#7B5560;font-size:13px">Swiped %s</span>%s</li>' % (
+            e(i.get("role", "")), e(i.get("co", "")), e(_when(i.get("at") or time.time())),
+            ('<br><a href="%s" style="color:%s;font-weight:700">Finish on their site</a>' % (e(link, quote=True), BRAND)) if link else ""))
+    parts.append('<ul style="margin:0;padding-left:20px">%s</ul>' % "".join(rows))
+    track_html = ('<a href="%s" style="color:%s">%s</a>' % (e(track, quote=True), BRAND, e(track))) if _https(track) else ""
+    parts.append('<p style="margin:18px 0 0;color:#2A1218">Open UAply, then <b>Job Tracker</b>, then <b>Applied</b>. Mark each one as applied once you finish it. %s</p>' % track_html)
+    foot = ("You get this at most once a day, only when a job you swiped right on is waiting on the employer's site. You are signed in to UAply as %s."
+            % ctx.get("user_email", ""))
+    if ctx.get("support_email"):
+        foot += " Questions: %s." % ctx["support_email"]
+    parts.append('<p style="margin:26px 0 0;padding-top:12px;border-top:1px solid #F3DADF;color:#7B5560;font-size:12px">%s</p>' % e(foot))
+    page = ('<!doctype html><html><body style="margin:0;padding:20px;background:#FDF0F2;font:15px/1.5 Arial,Helvetica,sans-serif">'
+            '<div style="max-width:600px;margin:0 auto;background:#fff;border-radius:16px;padding:24px 26px">'
+            '<p style="margin:0 0 14px;font:800 20px Arial,sans-serif;color:%s">UAply</p>%s</div></body></html>' % (BRAND, "".join(parts)))
     return subject, text, page
 
 
@@ -219,6 +275,27 @@ def verification_email(digits):
             '<p style="margin:0 0 14px;padding:14px;background:#FDF0F2;border-radius:10px;text-align:center;font:800 32px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.3em">%s</p>'
             '<p style="margin:0 0 8px;color:#7B5560;font-size:13px">The code works for 10 minutes. After 5 wrong tries you will need a new one.</p>'
             '<p style="margin:0;color:#7B5560;font-size:13px">If you did not create a UAply account, ignore this email. Nobody can use your address without this code.</p>'
+            '</div></body></html>') % (BRAND, e(code))
+    return subject, text, page
+
+
+def signin_code_email(digits):
+    """The email with the 6-digit code that signs in to an existing account (Email me a code), not the "Confirm your email" one (item
+    21): it says what the code does, that UAply never asks for it, and what to do if the person did not ask. Returns (subject, text, html)."""
+    code = "".join(ch for ch in str(digits) if ch.isdigit())[:6]
+    subject = "%s is your UAply sign-in code" % code
+    text = ("Your UAply sign-in code is:\n\n    %s\n\n"
+            "This code signs in to your UAply account. It works for 10 minutes. UAply will never ask you for it.\n\n"
+            "If it was not you, ignore this email. Nobody can sign in without this code.\n\n--\nUAply\n") % code
+    e = html.escape
+    page = ('<!doctype html><html><body style="margin:0;padding:20px;background:#FDF0F2;font:15px/1.5 Arial,sans-serif;color:#2A1218">'
+            '<div style="max-width:480px;margin:0 auto;background:#fff;border:1px solid #F3DADF;border-radius:14px;padding:22px">'
+            '<p style="margin:0 0 14px;color:%s;font-weight:800;font-size:18px">UAply</p>'
+            '<h1 style="margin:0 0 8px;font-size:20px">Your sign-in code</h1>'
+            '<p style="margin:0 0 14px">This code signs in to your UAply account. UAply will never ask you for it.</p>'
+            '<p style="margin:0 0 14px;padding:14px;background:#FDF0F2;border-radius:10px;text-align:center;font:800 32px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.3em">%s</p>'
+            '<p style="margin:0 0 8px;color:#7B5560;font-size:13px">The code works for 10 minutes. After 5 wrong tries you will need a new one.</p>'
+            '<p style="margin:0;color:#7B5560;font-size:13px">If it was not you, ignore this email. Nobody can sign in without this code.</p>'
             '</div></body></html>') % (BRAND, e(code))
     return subject, text, page
 

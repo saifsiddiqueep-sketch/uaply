@@ -380,7 +380,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot }) => {
     const LP = process.env.LIMIT_PORT, EM = "limit." + Date.now() + "@example.com";
     await nav("http://127.0.0.1:" + LP + "/"); await sleep(4000);
     const su = await ev("fetch('/api/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'" + EM + "',password:'limit test 12345',agree:true})}).then(r=>r.status)");
-    const code = await ev("fetch('/outbox').then(r=>r.text()).then(t=>{const m=t.match(/([0-9]{6}) is your UAply verification code/);return m?m[1]:''})");
+    const code = await ev("fetch('/outbox').then(r=>r.text()).then(t=>{const m=t.match(/([0-9]{6}) is your UAply (?:verification|sign-in) code/);return m?m[1]:''})");
     const vf = await ev("fetch('/api/auth/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:'" + code + "'})}).then(r=>r.status)");
     check("limit server: a test account is signed up and verified", su === 200 && vf === 200, su + "/" + vf);
     // use up the 50 applications of the Free plan with example jobs (40 a minute is the server's swipe limit, so in two batches)

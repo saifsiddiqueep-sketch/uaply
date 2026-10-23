@@ -3,6 +3,8 @@
 //   W=390 H=844 PORT=8767 node tools/cdp.js tools/ui-release.js
 const PORT = process.env.PORT || "8767";
 module.exports = async ({ ev, sleep, nav, logs }) => {
+  // the sign-in gate (October 22, Saif): nobody reaches the jobs without an account, so a fresh test person signs up first (tools/gate-signup.js)
+  const gateWho = await require("./gate-signup.js")({ ev, sleep, nav }, "http://127.0.0.1:" + (process.env.PORT || "8767"), "release");
   const F = "document.querySelector('iframe').contentDocument";
   let bad = 0;
   const check = (name, ok, extra) => { if (!ok) bad++; console.log((ok ? "PASS " : "FAIL ") + name + (extra ? "  " + extra : "")); };
@@ -22,7 +24,7 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
   const BILL = JSON.parse(await (async () => { try { return JSON.stringify(await (await fetch("http://127.0.0.1:" + PORT + "/api/billing/status")).json()); } catch (e) { return "{}"; } })());
   const TESTY = /TEST MODE|Choose Plus|Choose Pro/i;
   const scan = async (where) => {
-    const t = (await pageText()).split("Test mode: no real charges").join(" ");   // the one allowed test-mode label (Plan and billing)
+    const t = (await pageText()).split("Test mode: no real charges").join(" ").split(gateWho.email).join(" ");   // the test person's own address (signed in through the gate) is theirs, not developer wording   // the one allowed test-mode label (Plan and billing)
     const m = t.match(BANNED) || t.match(NEVER) || (!owner && t.match(OWNER_ONLY)) || (!BILL.buttons && t.match(TESTY));
     check("no test or developer wording on " + where, !m, m ? "found: " + m[0] : "");
   };
@@ -53,7 +55,7 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
     await scan("Services > " + tab);
   }
   await ev(F + ".getElementById('nb-dash').click()"); await sleep(400);
-  for (const s of ["Overview", "Applied", "Accepted", "Rejected", "Interviews"]) { await sub(s); await sleep(300); await scan("Dashboard > " + s); }
+  for (const s of ["Overview", "Applied", "Accepted", "Rejected", "Interviews"]) { await sub(s); await sleep(300); await scan("Job Tracker > " + s); }
 
   await ev(F + ".getElementById('nb-prof').click()"); await sleep(500);
   const items = await ev("[...(" + F + ").querySelectorAll('button')].filter(b=>b.offsetParent).map(b=>b.innerText.trim().split(" + nl + ")[0]).join('|')");
@@ -68,7 +70,8 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
     }
     if (s === "Account") {
       await sleep(600);
-      check("account area shows the real sign-up form", !!(await ev("!!" + F + ".getElementById('sAgree')")), (await pageText()).slice(0, 140));
+      // signed in through the gate (the signed-out sign-up card is checked by tools/ui-gate.js): the real account card, the address and Sign out
+      check("account area shows the real account card (signed in as the test person, with Sign out)", (await pageText()).includes(gateWho.email) && !!(await ev("!!" + F + ".querySelector('[data-auth=sout]')")), (await pageText()).slice(0, 140));
       check("no simulated sign-in buttons", !(await ev("!!" + F + ".querySelector('[data-auth=google],[data-auth=apple],[data-auth=sendlink],[data-auth=sendcode]')")));
     }
     if (s === "Data") {
@@ -156,14 +159,24 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
 
   // swiping right on a real job: consent once, then the hand-off to the employer's own page, and it appears under Applied
   await pick("nb-svc", "Internships"); await sleep(800);
+  // first with the example profile: the release build never applies with it; "Finish your profile first" says what is missing, the card stays
+  const top0 = await ev("(()=>{const c=" + F + ".querySelector('.card.top');return c?+c.getAttribute('data-id'):0})()");
+  await ev(F + ".getElementById('btnYes').click()"); await sleep(1200);
+  const fin = await ev("(()=>{const b=" + F + ".getElementById('rdyBox');return b?b.innerText.split(/\\s+/).join(' '):''})()");
+  check("a swipe right with the example profile opens Finish your profile first, and the card stays", /^Finish your profile first/.test(fin) &&
+    (await ev("(()=>{const c=" + F + ".querySelector('.card.top');return c?+c.getAttribute('data-id'):0})()")) === top0, fin.slice(0, 120));
+  await ev("(()=>{const b=" + F + ".getElementById('rdyNo');if(b)b.click()})()"); await sleep(300);
+  // then with the least a swipe needs: a name, an email and a phone number
+  await ev("(()=>{const A=document.querySelector('iframe').contentWindow.__uaply;Object.assign(A.S.profile,{name:'Release Tester',email:'release.tester@example.com',custom:true});A.S.profile.ext=Object.assign({},A.S.profile.ext,{phone:'+1 215 555 0100'});A.save();A.renderAll()})()");
+  await sleep(600);
   await ev(F + ".getElementById('btnYes').click()"); await sleep(1200);
   check("no agreement box at the first swipe right (it was answered at first open)", !(await ev("!!" + F + ".getElementById('kcYes')")));
   await ev("(()=>{const m=" + F + ".getElementById('kcYes');if(m)m.click()})()"); await sleep(2200);
   const after = await pageText();
-  check("swiping right on a real job says plainly what happened (applied, or finish at the employer)", /Saved\. Finish applying at|Not sent yet: .* takes applications on its own site|Applied to/i.test(after), after.slice(-160));
+  check("swiping right on a real job says only that it was saved (or applied), never 'Finish on their site'", /Saved .+ to Applied · \d+% match|Applied to/.test(after) && !/finish on their site|not sent yet|finish now/i.test(after.slice(-200)), after.slice(-160));
   await ev(F + ".getElementById('nb-dash').click()"); await sleep(400);
   await sub("Applied"); await sleep(600);
-  check("the swiped job appears under Dashboard > Applied", (await ev(F + ".querySelectorAll('.app,.appitem,[data-app],article,.row').length")) > 0 || /intern/i.test(await pageText()));
+  check("the swiped job appears under Job Tracker > Applied", (await ev(F + ".querySelectorAll('.app,.appitem,[data-app],article,.row').length")) > 0 || /intern/i.test(await pageText()));
   // Learns from your swipes is in dev: after a few swipes the learner holds them, and a card carries the "Learned from your swipes" line
   await ev(F + ".getElementById('nb-svc').click()"); await sleep(300); await sub("Full-time"); await sleep(800);
   for (let i = 0; i < 8; i++) { await ev("(()=>{const b=" + F + ".getElementById('btnNo');if(b)b.click()})()"); await sleep(700); }

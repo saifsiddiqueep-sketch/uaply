@@ -1,0 +1,269 @@
+# Employers to look for on Workday (tools/find-boards.py --workday): each name is tried as a tenant on the wd1, wd3, wd5 and wd12 data
+# centers; robots.txt names the careers site's sitemap. Delaware, dental and real estate first (the round-2 weak spots), then the region.
+# Delaware
+ChristianaCare
+Bayhealth
+Beebe Healthcare
+Nemours
+TidalHealth
+DuPont
+Chemours
+Incyte
+WSFS
+Exelon
+AstraZeneca
+Barclays
+Capital One
+M&T Bank
+Corteva
+Agilent
+University of Delaware
+Delaware State University
+Delaware Technical Community College
+Sallie Mae
+Navient
+Discover
+Chase
+Siemens Healthineers
+W. L. Gore
+Gore
+Ashland
+Delmarva Power
+Perdue Farms
+Mountaire
+# dental
+Heartland Dental
+Pacific Dental Services
+Aspen Dental
+Smile Brands
+Western Dental
+MB2 Dental
+Dentsply Sirona
+Henry Schein
+Patterson Companies
+Align Technology
+Envista
+Benco Dental
+Delta Dental
+Great Expressions Dental
+Affordable Care
+Mortenson Dental
+Tend
+Smile Doctors
+Coast Dental
+Dental Dreams
+Guardian Life
+# real estate
+CBRE
+JLL
+Cushman Wakefield
+Colliers
+Newmark
+Greystar
+Equity Residential
+AvalonBay
+Brookfield Properties
+Prologis
+Simon Property Group
+Zillow
+Redfin
+Anywhere Real Estate
+Lennar
+Toll Brothers
+PulteGroup
+NVR
+DR Horton
+Taylor Morrison
+KB Home
+Hines
+Lincoln Property Company
+FirstService Residential
+Brandywine Realty Trust
+Morgan Properties
+Bozzuto
+Cortland
+Camden Property Trust
+MAA
+UDR
+Essex Property Trust
+Invitation Homes
+American Homes 4 Rent
+Realty Income
+Public Storage
+Extra Space Storage
+CubeSmart
+Iron Mountain
+Equinix
+Digital Realty
+Ventas
+Welltower
+BXP
+Vornado
+SL Green
+Kimco Realty
+Regency Centers
+Federal Realty
+Howard Hanna
+Fannie Mae
+Freddie Mac
+First American
+Fidelity National Financial
+Stewart Title
+Cotality
+RealPage
+Yardi
+AppFolio
+Entrata
+Asset Living
+Lendlease
+Tishman Speyer
+Related Companies
+# Pennsylvania, New Jersey and the region
+Penn Medicine
+UPHS
+Jefferson Health
+Main Line Health
+Temple Health
+CHOP
+Geisinger
+UPMC
+Penn State Health
+Lehigh Valley Health Network
+Virtua Health
+Cooper University Health Care
+RWJBarnabas Health
+Atlantic Health
+AtlantiCare
+Inspira Health
+Comcast
+Aramark
+Vanguard
+Wawa
+Lincoln Financial
+Cigna
+Independence Blue Cross
+GSK
+Merck
+MSD
+Johnson & Johnson
+JJ
+Bristol Myers Squibb
+Campbell Soup
+Prudential
+Honeywell
+ADP
+Siemens
+Burlington
+Five Below
+Urban Outfitters
+Dicks Sporting Goods
+Hershey
+PPL
+Penn State University
+Drexel University
+Temple University
+Villanova University
+Rutgers
+Princeton University
+University of Pennsylvania
+Crown Holdings
+Unisys
+SEI
+Day and Zimmermann
+Teleflex
+AmerisourceBergen
+Cencora
+Universal Health Services
+Elwyn
+Thomas Jefferson University
+Brandywine Health
+WellSpan Health
+Highmark Health
+Allegheny Health Network
+PNC
+BNY
+Citizens
+TD Bank
+Santander
+Fulton Bank
+Customers Bank
+Subaru of America
+Johnson Matthey
+Sanofi
+Novo Nordisk
+Bayer
+BD
+Becton Dickinson
+Quest Diagnostics
+Labcorp
+Horizon Blue Cross
+NJ Transit
+Public Service Enterprise Group
+PSEG
+Verizon
+Mondelez
+Unilever
+Colgate
+L'Oreal
+Pfizer
+Zoetis
+Organon
+Bausch
+Cognizant
+Hartford HealthCare
+# Philadelphia-area co-op employers (Drexel, Temple, Villanova and Penn State co-op partners): co-ops within 50 miles of Philadelphia
+Lockheed Martin
+Boeing
+CSL Behring
+Arkema
+FMC Corporation
+AMETEK
+Johnson Controls
+Burns & McDonnell
+AECOM
+Jacobs
+Gilbane
+Turner Construction
+Skanska
+Pennoni
+Urban Engineers
+McCormick Taylor
+SEPTA
+PECO
+Susquehanna International Group
+Comcast
+Lincoln Financial Group
+Unisys
+Teleflex
+Cencora
+Crown Holdings
+Day & Zimmermann
+Jefferson
+Children's Hospital of Philadelphia
+Penn Medicine
+Main Line Health
+Siemens Healthineers
+Johnson Matthey
+GSK
+Merck
+Vanguard
+SEI Investments
+Aramark
+Independence Blue Cross
+Chubb
+Cigna
+Subaru
+Campbell Soup Company
+Saint-Gobain
+Air Products
+Olympus
+Fox Chase Cancer Center
+Wistar
+Thermo Fisher Scientific
+Spark Therapeutics
+Iovance
+Almac
+West Pharmaceutical Services
+Bentley Systems
+Ricoh
+Victaulic

@@ -21,7 +21,7 @@ feed_keys = {k: v for k, v in (cfg.get("feed_keys") or {}).items() if v}
 
 line = {
     "delivery": "live",
-    "public_url": "https://uaply.onrender.com",
+    "public_url": "https://uaply.net",
     "owner_copy": "uaplytechnologies@gmail.com",
     "support_email": "uaplytechnologies@gmail.com",
     "smtp": {

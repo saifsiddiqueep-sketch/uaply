@@ -55,9 +55,12 @@ A push to `sandbox` or `dev` also republishes that hosted page (see below). Noth
 
 ## Hosted copies
 
-`.github/workflows/pages.yml` publishes `/sandbox/` and `/dev/` on GitHub Pages after each push to those branches.
-A static host cannot run the Python back end, so the hosted copies use the example jobs only.
-Real jobs and application sending need `serve.py --api` running somewhere.
+The previews are back (October 22, 2026, while the repository is public until launch). `.github/workflows/pages.yml` builds them
+with `node share/build-share.js --full` after each push to `sandbox` or `dev` and publishes them on GitHub Pages:
+https://saifsiddiqueep-sketch.github.io/uaply/sandbox.html and https://saifsiddiqueep-sketch.github.io/uaply/dev.html (also the
+`.full.html` names and the older `/sandbox/` and `/dev/` addresses). The second copy is the Render preview,
+https://uaply-sandbox-preview.onrender.com/sandbox.html. A static host cannot run the Python back end, so the hosted copies use the
+example jobs only and say they are previews; real jobs and application sending need `serve.py --api` running somewhere.
 
 ## One-time repository setup (owner)
 

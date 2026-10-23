@@ -22,6 +22,29 @@ simulated payments (paid plans appear only once live Stripe keys are set, sectio
    "Job feed keys" box at `/setup`; on Render put them in `UAPLY_CONFIG_JSON`, e.g.
    `{"feeds":["smartrecruiters","usajobs","muse","jobicy"],"feed_keys":{"usajobs":"","usajobs_email":"","muse":""}}`.
    To switch one source off by name without touching the rest: `"feeds_off":["remotive"]` (or `UAPLY_FEEDS_OFF=remotive`).
+   **USAJOBS key as its own variable (simplest on Render):** request the key at https://developer.usajobs.gov/APIRequest/ with the
+   company address `uaplytechnologies@gmail.com`; it arrives by email. Then in Render, service `uaply`, **Environment**, **Add Environment
+   Variable**: `UAPLY_USAJOBS_KEY` = the key, and `UAPLY_USAJOBS_EMAIL` = the address the key was requested with (USAJOBS checks it;
+   without it `feed_keys.usajobs_email`, then `owner_copy`, then `uaplytechnologies@gmail.com` is used). **Save** restarts the service
+   (a few seconds offline). A well-formed `UAPLY_USAJOBS_KEY` wins over `feed_keys.usajobs`; a malformed one is ignored. `usajobs` must
+   also be switched on (in `UAPLY_FEEDS` or `"feeds"`). Check: `/setup` shows "USAJOBS key: saved", and the job list's sources show
+   "USAJOBS/philadelphia: N jobs" instead of "no key".
+   **Freshness and duplicates:** a posting whose newest date (posted, or updated where the board gives one) is more than 60 days old is
+   not shown (`jobs_api.MAX_AGE_DAYS`); every job carries `postedDays` (and `updatedDays` when the board gives an update date). The same
+   job reached through two different feeds (same company, title and place, ignoring case, punctuation and Inc/LLC/Corp) is shown once, the
+   employer's own board winning. Each employer board keeps up to 14 roles plus up to 10 more in Pennsylvania (`LOCAL_PER_SOURCE`).
+   **Job types and more sources:** every job carries `jobType` (full-time, part-time, internship, co-op, contract, temporary; the
+   Filters screen has a Job type row). More kinds, each off until named in `UAPLY_FEEDS`: `simplify` (the Simplify / Pitt CSC
+   internship and co-op lists, each row checked on the employer's own board), `himalayas` and `remoteok` (remote jobs, credited and
+   linked back). The full list of sources, their terms, and the free keys to request: `docs/job-sources.md`.
+   **Tri-state and the whole US:** USAJOBS searches around Philadelphia (50 mi), Wilmington DE, Trenton NJ, Newark NJ (40) and Camden NJ
+   (25), each also for Pathways and part-time (15 searches, 120 requests a day). `careeronestop` (the National Labor Exchange, the PA, NJ
+   and DE state job banks' jobs) needs `UAPLY_COS_USER_ID` and `UAPLY_COS_TOKEN` in Render, Environment; until then it shows "no key".
+   How to request them and the text to paste: `docs/job-sources.md`, Keys. Employer boards keep up to 10 PA, NJ or DE roles beyond their 14.
+   **Many boards:** `job-boards.json` holds the employer boards found and checked with `tools/find-boards.py` (docs/job-sources.md).
+   `https://uaply.net/api/feed-health` (owner password) shows every source's jobs, successes and failures; a source that fails 3
+   refreshes in a row is switched off for a day by itself. After a deploy that changes the job rules, the first visitors get the boards
+   read so far within seconds and the app fills in the rest as they arrive.
 6. **Legal pages:** fill every yellow blank in `legal/` (company legal name, street address, contact and privacy email, launch date,
    DMCA agent, liability amount, governing state and county, how long records are kept, host, response time) and have a lawyer
    review them. They say "draft, not reviewed by a lawyer" until you do.
@@ -30,10 +53,20 @@ simulated payments (paid plans appear only once live Stripe keys are set, sectio
    (reminders, vibration, share sheet).
 8. **Name:** a pending trademark filing for APLY (recruitment app) overlaps "UAply". Get a clearance search before spending on
    branding. See `LEGAL-REVIEW.md`.
+9. **Before every release: the phone walk** on a real Android phone (USB debugging on, Chrome on it, plugged into this computer):
+   `node tools/phone-walk.js sandbox`, then `dev`, then `live` (set `ADB=` to adb's path if it is not on PATH). It opens one Chrome tab,
+   walks every screen a student uses with real touches (agreement, swipes, Undo, Filters, every Profile setup step with the keyboard
+   open, sign-up with a code from a stand-in inbox, Plan, Applied, Help, the legal pages with the address bar shown and hidden, and the
+   offline screen with the server stopped), takes a screenshot of each into `phone-walk/<target>-<time>/`, and checks each screen's fit
+   (44 px targets, nothing off the edge or under the keyboard, Help covering nothing, dialogs that fit). The live walk is read only. It
+   installs nothing and changes no phone setting; it reports which way the phone was held for each screenshot. Any FAIL line is a
+   release blocker until fixed or written down with its cause.
 
 
 ## 1. Website (Render)
 1. Push this repository to GitHub (the `sandbox` and `dev` branches). Render reads `render.yaml` from the branch you pick for the Blueprint.
+   The repository is private (since October 21; its GitHub Pages previews stopped then), so Render can read it only through its GitHub
+   app: install it for this repository first ("Auto-deploy" below, step 1).
 2. At render.com: sign up, then **New > Blueprint** and pick this repository. It reads `render.yaml` and creates
    `uaply-dev` and `uaply-sandbox` in Virginia (US East), each on the **Starter** plan (0.5 CPU, 512 MB; Render now also calls it `0.5c-512mb`)
    with a 1 GB disk at `/var/data` for accounts, sessions, applications, feedback and the saved job list. The free plan cannot be used: it has
@@ -54,6 +87,25 @@ simulated payments (paid plans appear only once live Stripe keys are set, sectio
      sign-up codes and receipts only appear in the test inbox.
    - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_PLUS`, `STRIPE_PRICE_PRO`: `none` until you set up Stripe (section 4).
      Sandbox: test-mode keys. Dev (the real site): live keys only.
+   - `UAPLY_PUBLIC_URL` (dev, the real site, once `uaply.net` opens the site): `https://uaply.net`. It must be a bare `https://` address (no
+     path, no spaces; a trailing `/` is dropped), otherwise it is ignored and the log says so. It wins over `public_url` in
+     `UAPLY_CONFIG_JSON`. With it set, a page opened on any other address (`www.uaply.net`, `uaply-dev.onrender.com`) is answered with a
+     301 to the same page and query on `https://uaply.net`, for GET and HEAD only. Addresses under `/api/` and `/healthz` are never moved,
+     so the Stripe webhook, the Google sign-in callback and Render's health check keep working on every address. The home page and the
+     legal and support pages then carry a canonical link, the home page names the site for search results, `/sitemap.xml` lists them,
+     and `robots.txt` points to it. Leave it unset on the sandbox: nothing is redirected or added there.
+     A browser keeps each address's data apart, so the home page of an old address is not moved blindly: it shows "UAply has moved to
+     uaply.net". If that browser holds a UAply profile or swipes, the page offers **Save a backup** (the same file as Profile, Data &
+     privacy, Back up, made in the browser) and **Continue to uaply.net**, which opens Data & privacy at Restore once. With nothing to keep
+     it goes straight on to `uaply.net`. Every other page still gets the 301. People are signed out once (the sign-in cookie belongs to the
+     old address); their account and applications stay on the server and they sign in again at `uaply.net`.
+   - `UAPLY_PLANS_HIDDEN` (optional): `1` for a free-only launch. Plan and billing shows only the Free plan and "Plus and Pro are coming
+     soon", with no Choose buttons; `/api/billing/checkout` answers 403; the assistant never says to tap Choose Plus. The same switch in
+     `UAPLY_CONFIG_JSON` is `"plans_hidden": true`. Remove it (or set `0`) when paid plans start.
+   - `UAPLY_ASSETLINKS_SHA256` (dev, once the Play Store app exists): the two SHA-256 certificate fingerprints from Play Console, Test and
+     release, Setup, App signing (the app signing key and the upload key), comma-separated as Play shows them (`AB:CD:...`). The server
+     then answers `/.well-known/assetlinks.json` for the package `com.uaply.app`, which lets the Play app open uaply.net full screen.
+     Without it that address is a plain 404. Entries that are not a fingerprint are ignored and the log says how many. See `mobile/twa/README.md`.
 4. Your sites: `https://uaply-dev.onrender.com` and `https://uaply-sandbox.onrender.com` (Render shows the exact names).
 5. Check each one: `/healthz` answers `{"ok": true}`, and the service's **Logs** show one line starting `[uaply] dev on 0.0.0.0:10000 (public)`.
    It must say `data: /var/data (persistent disk)`, `email: on` and `UAPLY_CONFIG_JSON: valid` (and, once set up, `Google sign-in: on (full-page
@@ -62,10 +114,16 @@ simulated payments (paid plans appear only once live Stripe keys are set, sectio
    `commit: <7 letters>`, the commit Render deployed. On the very first start (an empty disk) the job list takes about a minute to fill (the
    server reads every employer's board once); after that it is saved on the disk and every restart or redeploy shows the saved jobs at once
    while the boards refresh behind them (`tools/test-render.py` proves it answers in under 3 seconds even when the network hangs).
-6. Your address (Cloudflare): in Render, uaply-dev, Settings, Custom Domains, add `uaply.net` (Render adds `www` and redirects it). In Cloudflare,
-   DNS: delete any AAAA record for `uaply.net`, add CNAME `@` and CNAME `www`, both to `uaply-dev.onrender.com` with Proxy status **DNS only**,
-   and set SSL/TLS to **Full**. Back in Render press Verify; https://uaply.net works once the certificate shows as issued. Leave the MX and TXT
-   (email) records alone. Add `https://uaply.net` to the Google client ID's Authorized JavaScript origins.
+6. Your address (Cloudflare), as the live site runs today: in Render, the service, Settings, Custom Domains, add `uaply.net` (Render adds
+   `www` and redirects it). In Cloudflare, DNS: delete any AAAA record for `uaply.net`, add CNAME `@` and CNAME `www`, both to the service's
+   `onrender.com` address (the live one: `uaply.onrender.com`). Set them **DNS only** (grey cloud) first, press Verify in Render and wait
+   until the certificate shows as issued; then switch both to **Proxied** (orange cloud) and set SSL/TLS to **Full (strict)**. Full
+   (strict) makes Cloudflare check Render's certificate; plain Full accepts any certificate between the two, and Flexible sends the traffic
+   to Render unencrypted and loops on Render's own https redirect. Render renews its certificate through the proxied records by itself.
+   Leave the MX and TXT (email) records alone. Add `https://uaply.net` to the Google client ID's Authorized JavaScript origins, and set
+   `UAPLY_PUBLIC_URL` (step 3). Behind the proxy every visit arrives from a Cloudflare address: the server takes the visitor's address from
+   `CF-Connecting-IP`, but only when the hop before it is one of Cloudflare's published ranges (read at start and every 24 hours;
+   `UAPLY_CF_RANGES=0` keeps the built-in copy), so a header someone sends straight to `uaply.onrender.com` is ignored.
 
 How deploys behave: every push to `dev` (or `sandbox`) redeploys that service, once auto-deploy works (it did not on October 17: see
 "Auto-deploy" below). Because it has a disk, Render stops the old copy before starting the new one (Render offers no zero-downtime deploy for a
@@ -81,9 +139,11 @@ dashboard; no code changes. `python tools/test-render.py` starts the server the 
 
 Before real users: fill the blanks in `legal/`, and keep `delivery` in test mode until partner employers have agreed.
 
-### Running the live site: health check, auto-deploy, backups, logs, capacity
-The live service is `uaply` (`srv-db9i3i6q1p3s738b5b4g`, https://uaply.onrender.com). It was made by hand, not from this Blueprint, so
-`render.yaml` does not change it: each setting below is typed into the dashboard once.
+### Running the live site: health check, auto-deploy, backups, rollback, self-check, logs, capacity
+The live service is `uaply` (`srv-db9i3i6q1p3s738b5b4g`, https://uaply.onrender.com, reached as https://uaply.net through Cloudflare). It
+was made by hand, not from this Blueprint, so `render.yaml` does not change it: each setting below is typed into the dashboard once. Its
+Environment today (names only): `OWNER_PASSWORD`, `UAPLY_CONFIG_JSON`, `UAPLY_PUBLIC_URL`, `UAPLY_USAJOBS_KEY`, `UAPLY_USAJOBS_EMAIL`,
+`UAPLY_DATA_DIR=/var/data`, `MALLOC_ARENA_MAX`, `UAPLY_FEEDS` and the Stripe test keys. Launch day, step by step: `docs/runbook-launch.md`.
 
 **Health check (dashboard only).** uaply → **Settings** → **Health Checks** → **Edit** → Health Check Path `/healthz` → **Save Changes**.
 Without it Render only checks that the port accepts a connection, so a server that is stuck would stay "live". With it Render asks every few
@@ -94,8 +154,9 @@ disk, no job boards), answers in milliseconds, works with HEAD too, and says 503
 **Environment (dashboard only).** uaply → **Environment** → **Add Environment Variable**: `MALLOC_ARENA_MAX` = `2` → **Save, rebuild, and
 deploy**. It keeps memory down while the job boards are read (see Capacity). `render.yaml` has it for services made from the Blueprint.
 
-**Auto-deploy.** The service says Auto-Deploy "On Commit", yet on October 17 every deploy was started by hand or through the API: a push to
-`dev` never started one. The service was created from the repository's address, and Render hears about pushes only through its GitHub app.
+**Auto-deploy.** The service says Auto-Deploy "On Commit", yet since October 17 every deploy has been started by hand or through the API: a
+push to `dev` never started one. Until the steps below are done, after each merge into `dev` press uaply → **Manual Deploy** → **Deploy latest
+commit** (or use the Render connector's trigger deploy). The service was created from the repository's address, and Render hears about pushes only through its GitHub app.
 To fix it, once:
 1. GitHub: open https://github.com/apps/render/installations/new, pick the account `saifsiddiqueep-sketch`, and under **Repository access**
    choose **Only select repositories** with `uaply` ticked (or All repositories) → **Install** (or **Save** if it is already installed). To check
@@ -133,6 +194,23 @@ against the manifest first and saves the current state as a backup before changi
 **Restart service** so the server reads the restored files. The backups hold password hashes, email addresses and applications: never a public
 place, a chat or this repository (`tools/audit-files.py` refuses a committed one). `python tools/test-backup.py` tests all of it.
 
+**Rolling back (one command).** To put an earlier release back, deploy its commit. With a Render API key (your picture → Account
+Settings → API Keys; type it into that one terminal window only, never a file or a chat), in PowerShell:
+`Invoke-RestMethod -Method Post -Uri https://api.render.com/v1/services/srv-db9i3i6q1p3s738b5b4g/deploys -Headers @{Authorization = "Bearer $env:RENDER_API_KEY"} -ContentType "application/json" -Body '{"commitId": "<the full commit id>"}'`
+(`git rev-parse "v1.0.0-rc.13^{commit}"` gives the id: rc.13 is `e6aced4d950d7b83f5c1c803462205c32e55b227`). Without a key: uaply →
+**Events** → that release's deploy → **Rollback**. Then `python tools/live-check.py --base https://uaply.net --expect all --commit <7
+letters>`. A deploy of a chosen commit leaves auto-deploy as it was, so the next merge into `dev` deploys `dev` again: fix forward on
+`sandbox` and release that. The disk is not touched; restoring data is "Backups" above. The full launch-day version, with when to roll
+back, is `docs/runbook-launch.md` section 9.
+
+**The owner's self-check.** `/api/status` answers everyone with yes/no facts; for the owner (open `/setup` first with the owner
+password, then `/api/status` in the same browser, or `curl.exe -u owner https://uaply.net/api/status`, which asks for the password) it
+also carries `selfCheck`: when a job board was last read successfully (`feeds.lastOk`, `minutesAgo`; null since this copy started),
+when an email last went out (`email.lastSent`, kept on the disk across restarts), the data disk's `freeMB`, `totalMB` and
+`usedPercent`, and `warnings` in plain words (no good board read in 2 hours, under 100 MB free, a data folder that is not a persistent
+disk) with `ok: true` when there are none. The outside uptime check (`docs/uptime.md`) only knows whether the site answers; this says
+whether it is working. `python tools/test-self-check.py` tests it.
+
 **Logs (uaply → Logs).** Search box: plain text, `*` wildcards or `/regex/`; time range at the top right (Live tail to watch). What to search:
 - `[uaply] dev on`: the start-up line (what is switched on, the disk, the commit). `stopping` / `stopped`: a deploy's stop.
 - `[uaply] daily`: one line of JSON per day at midnight UTC (and at each stop, for the part of the day before it): requests, `2xx` to `5xx`,
@@ -167,6 +245,12 @@ cookies with `HttpOnly; Secure; SameSite=Lax`, and `Server: UAply` (it used to n
 rules in the CSP (the pages carry their own inline code). `tools/test-public.py` and `tools/live-check.py` check these.
 
 ## 2. App Store and Google Play (Capacitor, in `mobile/`)
+**Google Play: use the Trusted Web Activity in `mobile/twa/` instead** (real Chrome, so Google sign-in and Stripe work in the app; owner
+steps in `mobile/twa/README.md`). The website is installable for it: `/uaply.webmanifest`, the icons `shared/uaply-icon-*.png` (made by
+`node tools/cdp.js tools/make-web-icons.js` from `mobile/assets/icon-only.png`), the service worker `/uaply-sw.js` (it saves only the
+offline and "starting up" screen `/uaply-offline.html` and its icon; never the app's code and never `/api/`), and the account-deletion page
+Google Play asks for, `https://uaply.net/legal/delete-account.html`. The Capacitor project below stays for the iPhone app.
+
 The apps open https://uaply.net (`mobile/capacitor.config.json`, `server.url`). If the address changes, edit it there and
 in `mobile/www/index.html` (`SITE`, the "can't connect" screen), then run `npx cap sync` in `mobile/`.
 - **What the apps have:** the UAply icon and splash screens; interview reminders (local notifications), a vibration on each

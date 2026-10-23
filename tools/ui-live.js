@@ -7,6 +7,11 @@
 // (with email off it must say email is not switched on yet, never "Cannot reach UAply"), the Continue with Google button only when Google is
 // configured (and that it leads to Google's sign-in page; it never signs in to a Google account), Plan & billing ("free during early access"
 // without Stripe keys, real buttons with keys) and the help assistant.
+// The sign-in gate (October 22): when the site shows the sign-up card to a signed-out visitor, each size first checks that the card is
+// the whole first screen and nothing is drawn behind it. Then, to walk on: a test-mode server (providers.signupTest) is signed up
+// through the card with made-up details (Uilive Tester, a fresh example.com address, a random password kept in memory); a public
+// server is signed in with --email ADDRESS and --password (or UAPLY_LIVE_PASSWORD in the terminal; neither is printed or saved);
+// with neither, the walk stops at the card and says "gate on, signed-out walk only" (a pass, the rest SKIP).
 // --email ADDRESS     signs that address up once (one sign-up per run per address), then waits for the 6-digit code: --code 123456, or
 //                     --code-file PATH, which is read every 2 seconds for 3 minutes (type the code from the email into that file). Verifies
 //                     it, swipes right on one card (only when the server is in test delivery mode, so nothing reaches an employer) and checks
@@ -17,6 +22,14 @@
 //                     a server with live keys: this tool never uses a real card. If Stripe shows a captcha the tool stops: it never solves one.
 //                     The card fields are found in Stripe's page or inside its iframes and typed as keystrokes (tools/stripe-checkout.js, tried
 //                     against a stand-in by tools/ui-stripe-form.js); after the 4242 card the plan must read Plus within 60 s (the webhook).
+// --shields          runs as Brave Shields would: third-party cookies blocked (cdp.js starts Chrome with --test-third-party-cookie-phaseout)
+//                     and every request checked against the ad-block filter lists in --lists DIR (EasyList, EasyPrivacy, uBlock filters,
+//                     brave/adblock-lists: plain .txt files you download), first-party requests too (Brave's "aggressive" setting). A blocked
+//                     UAply request, an app frame that is not same-origin, or storage that throws fails the run. Run it with and without.
+// --read-only        never changes anything on the site (tools/launch-smoke.sh uses it on the live site): every request the app would
+//                     send to it that is not a GET is answered here in the browser and never leaves it (the Pass swipe's record, the
+//                     read-ahead of an employer's form, feedback), except the help assistant's question, which the site answers from its
+//                     articles and does not store (chat_api.py). The run lists what it held back. Not with --email or --stripe-test.
 // --out DIR           also saves a screenshot of each step there.   --google-host HOST   where Google's page must be (default accounts.google.com).
 const fs = require("fs");
 const path = require("path");
@@ -30,6 +43,9 @@ const EMAIL = (arg("email", "") || "").trim().toLowerCase();
 const STRIPE = flag("stripe-test");
 const OUT = arg("out", "");
 const GHOST = arg("google-host", "accounts.google.com");
+const SHIELDS = flag("shields"), LISTS = arg("lists", "");
+const READONLY = flag("read-only");
+const PASSWORD = arg("password", "") || process.env.UAPLY_LIVE_PASSWORD || "";   // only for signing in through the gate; never printed
 function secondAddress(a) {                         // you+tag@gmail.com -> you+tag2@gmail.com; you@gmail.com -> you+uaply2@gmail.com
   const [user, dom] = a.split("@");
   return (user.includes("+") ? user + "2" : user + "+uaply2") + "@" + dom;
@@ -73,7 +89,7 @@ async function main(api) {
     await send("Network.clearBrowserCookies");
     await send("Storage.clearDataForOrigin", { origin: BASE, storageTypes: "all" });
     await nav(BASE + "/");
-    await waitFor(() => has("#nb-prof"), 15000);
+    await waitFor(() => has("#nb-prof"), 60000);         // patient: a cold server can take a while to answer the first page
     await sleep(1500);
   };
   const agree = async () => {
@@ -83,8 +99,50 @@ async function main(api) {
     await click("#tipsClose"); await sleep(300);
   };
 
-  console.log("UAply browser check of " + BASE + " at " + new Date().toISOString().slice(0, 19).replace("T", " ") + " UTC");
+  const blocked = [], held = [];
+  if (READONLY && ((EMAIL && !PASSWORD) || STRIPE)) { console.log("TEST SCRIPT FAILED: --read-only cannot sign up or buy: leave out --email and --stripe-test"); return; }
+  // --read-only: a request to the site that could change something is answered here and never sent (see the top of this file)
+  let authOpen = false;                               // while signing up or in through the gate, its own /api/auth/ requests go through
+  const hold = (p) => {
+    if (!READONLY || /^(GET|HEAD|OPTIONS)$/.test(p.request.method)) return false;
+    let u; try { u = new URL(p.request.url); } catch (e) { return false; }
+    if (u.origin !== new URL(BASE).origin || u.pathname === "/api/chat") return false;
+    if (authOpen && u.pathname.indexOf("/api/auth/") === 0) return false;
+    held.push(p.request.method + " " + u.pathname);
+    const ok = u.pathname === "/api/decision" || u.pathname === "/api/feedback";
+    const body = ok ? '{"ok":true}' : '{"error":"Held back by ui-live --read-only: nothing was sent to the site.","code":"read_only"}';
+    send("Fetch.fulfillRequest", { requestId: p.requestId, responseCode: ok ? 200 : 503, responseHeaders: [{ name: "Content-Type", value: "application/json" }],
+      body: Buffer.from(body).toString("base64") });
+    return true;
+  };
+  let eng = null, sh = null;
+  if (SHIELDS) {
+    if (!LISTS || !fs.existsSync(LISTS)) { console.log("TEST SCRIPT FAILED: --shields needs --lists DIR with the filter lists (.txt)"); return; }
+    sh = require("./shields.js"); eng = sh.create(LISTS);
+    info("shields mode: third-party cookies blocked, " + eng.size + " filter rules from " + LISTS + ", applied to first-party requests too");
+  }
+  if (READONLY) info("read-only: requests that could change the site are answered in the browser and never sent (the help question is sent: it is not stored)");
+  if (SHIELDS || READONLY) {
+    await send("Fetch.enable", { patterns: [{ urlPattern: "*", requestStage: "Request" }] });
+    on("Fetch.requestPaused", (p) => {
+      if (hold(p)) return;
+      if (!SHIELDS) { send("Fetch.continueRequest", { requestId: p.requestId }); return; }
+      let rule = null;
+      try { if (/^https?:/.test(p.request.url)) rule = eng.match(p.request.url, sh.CDP_TYPES[p.resourceType] || "other", BASE + "/", true); } catch (e) {}
+      if (rule) { blocked.push(p.request.url + "  by " + rule); send("Fetch.failRequest", { requestId: p.requestId, errorReason: "BlockedByClient" }); }
+      else send("Fetch.continueRequest", { requestId: p.requestId });
+    });
+  }
+  console.log("UAply browser check of " + BASE + (SHIELDS ? " (shields mode)" : "") + " at " + new Date().toISOString().slice(0, 19).replace("T", " ") + " UTC");
   await send("Network.enable");
+  // one timed health probe first, so a slow (cold) server is named here instead of looking like a fault of the site further down
+  {
+    const t0 = Date.now();
+    let hs = "no answer";
+    try { const r = await fetch(BASE + "/healthz", { signal: AbortSignal.timeout(60000) }); hs = "HTTP " + r.status; } catch (e) { hs = "no answer (" + (e.name || "error") + ")"; }
+    const secs = (Date.now() - t0) / 1000;
+    info("healthz: " + hs + " in " + secs.toFixed(2) + " s" + (secs > 2 ? " (a slow server: the waits below are patient, up to 60 s for the first job card)" : ""));
+  }
   await nav(BASE + "/healthz");
   // what the server says is on (/api/status, or the older endpoints the app itself reads)
   let st = await json("/api/status");
@@ -103,6 +161,51 @@ async function main(api) {
     await send("Emulation.setTouchEmulationEnabled", { enabled: phone });
     const before = logs.length;
     await fresh();
+    if (SHIELDS) {
+      const fr = await ev("(()=>{const w=document.querySelector('iframe').contentWindow;let ls='ok';try{w.localStorage.setItem('uaply.t','1');w.localStorage.removeItem('uaply.t')}catch(e){ls=e.name}return JSON.stringify({origin:w.origin,ls})})()");
+      const o = JSON.parse(fr || "{}");
+      check(tag + "shields: the app frame is same-origin with the site (its cookies and storage are first-party)", o.origin === new URL(BASE).origin, fr);
+      check(tag + "shields: the app's storage works", o.ls === "ok", fr);
+    }
+    // 0. the sign-in gate: signed out, the sign-up card is the whole first screen; then sign up (test server) or in (--password)
+    let signedIn = false;
+    const gate = JSON.parse(await waitFor(() => ev("(()=>{try{const d=" + F + ";if(!d||!d.body||!(d.defaultView.__uaply))return '';const w=d.defaultView;" +
+      "const drawn=(s)=>[...d.querySelectorAll(s)].filter(e=>e.getClientRects().length&&w.getComputedStyle(e).visibility!=='hidden').length;" +
+      "const g=d.body.classList.contains('sgGated');if(g&&!d.querySelector('.sg-card'))return '';" +
+      "return JSON.stringify({gated:g,card:!!d.querySelector('.sg-card'),behind:{header:drawn('header.bar'),nav:drawn('#bnav'),deck:drawn('#pane-swipe'),cards:drawn('.card'),help:drawn('#uaChatBtn')}})}catch(e){return ''}})()"), 20000) || "{}");
+    if (gate.gated) {
+      const b = gate.behind || {};
+      check(tag + "gate on: signed out, the first screen is the sign-up card and nothing else (no header, bottom bar, deck, job card, Help)",
+        gate.card && !b.header && !b.nav && !b.deck && !b.cards && !b.help, JSON.stringify(gate));
+      await snap(W + "-0-gate");
+      const prov = (await json("/api/auth/providers")).j || {};
+      const typeIn = (sel, v) => ev("(()=>{const e=" + F + ".querySelector(" + JSON.stringify(sel) + ");if(!e)return false;e.focus();e.value=" + JSON.stringify(v) + ";e.dispatchEvent(new Event('input',{bubbles:true}));return true})()");
+      authOpen = true;
+      if (prov.signupTest) {
+        const who = "ui-live." + Date.now().toString(36) + "@example.com", pw = "Ul-" + crypto.randomBytes(9).toString("base64url") + "-pw";   // in memory only
+        await typeIn(".sg-su [data-email] input", who); await typeIn(".sg-su .sg-fn input", "Uilive"); await typeIn(".sg-su .sg-ln input", "Tester");
+        await typeIn(".sg-su .sg-pw input", pw); await click(".sg-su .sg-ag"); await click(".sg-su [type=submit]");
+        const q1 = await waitFor(() => has(".sg-next"), 15000);
+        check(tag + "test-mode server: Create my account on the card (made-up details) reaches the two questions", !!q1, (await secText("#acctSec")).slice(0, 160));
+        for (let i = 0; i < 4 && (await has(".sg-next")); i++) { await click(".sg-next"); await sleep(600); }
+      } else if (EMAIL && PASSWORD) {
+        await click(".sg-to-in"); await waitFor(() => has(".sg-si"), 8000);
+        await typeIn(".sg-si [data-email] input", EMAIL); await typeIn(".sg-si .sg-pw input", PASSWORD); await click(".sg-si [type=submit]");
+      } else {
+        authOpen = false;
+        check(tag + "gate on, signed-out walk only (no test-mode sign-up on this server and no --email and --password to sign in with)", true);
+        skip(tag + "the walk past the sign-up card (the agreement, a swipe, Account, Plan and billing, the help assistant)",
+          "a test-mode server (providers.signupTest) or --email and --password of an existing account (the password from UAPLY_LIVE_PASSWORD, never on screen)");
+        continue;
+      }
+      const lifted = await waitFor(() => ev("!" + F + ".body.classList.contains('sgGated')"), 20000);
+      authOpen = false;
+      check(tag + (prov.signupTest ? "...and after the two questions the gate lifts: the app is on screen" : "signing in with the given account lifts the gate: the app is on screen"),
+        !!lifted, (await secText("#acctSec")).slice(0, 160));
+      if (!lifted) continue;
+      signedIn = true;
+      await sleep(800);
+    }
     // 1. the agreement, at first open
     const box = await waitFor(() => secText("#kitConsent"), 8000);
     check(tag + "a clean browser is asked for the agreement at first open", /Before you start swiping/.test(box || ""), (box || "no box").slice(0, 80));
@@ -114,9 +217,14 @@ async function main(api) {
     // 2. Got it
     const tipsShown = await ev("(()=>{const t=" + F + ".getElementById('tips');return !!(t&&t.offsetParent)})()");
     await click("#tipsClose"); await sleep(400);
-    check(tag + "the tips line shows and Got it closes it", tipsShown && !(await ev("(()=>{const t=" + F + ".getElementById('tips');return !!(t&&t.offsetParent)})()")), "shown " + tipsShown);
-    // 3. a swipe (left: Pass, which sends nothing to anyone)
-    const top1 = await ev("(()=>{const c=" + F + ".querySelector('.card.top h2');return c?c.textContent.trim():''})()");
+    // signed in through the gate with one account at both sizes, the account remembers that Got it was pressed at the first size
+    if (signedIn && !tipsShown && W !== SIZES[0][0]) skip(tag + "the tips line shows and Got it closes it", "this account's first visit (Got it was pressed at " + SIZES[0][0] + " px, and the account keeps that)");
+    else check(tag + "the tips line shows and Got it closes it", tipsShown && !(await ev("(()=>{const t=" + F + ".getElementById('tips');return !!(t&&t.offsetParent)})()")), "shown " + tipsShown);
+    // 3. a swipe (left: Pass, which sends nothing to anyone). The first job card is waited for patiently: a cold server can take many
+    // seconds to send the job list (the October 22 dry run: healthz 6 s, no card yet after the old short wait, 6 of 31 checks failed)
+    const cardAt = Date.now();
+    const top1 = await waitFor(() => ev("(()=>{const c=" + F + ".querySelector('.card.top h2');return c?c.textContent.trim():''})()"), 60000);
+    info(tag + "the first job card was there after " + ((Date.now() - cardAt) / 1000).toFixed(1) + " s" + (top1 ? "" : " (none within 60 s)"));
     check(tag + "the deck shows a real job card", !!top1, "no card");
     await click("#btnNo"); await sleep(1200);
     const top2 = await ev("(()=>{const c=" + F + ".querySelector('.card.top h2');return c?c.textContent.trim():''})()");
@@ -126,14 +234,17 @@ async function main(api) {
     let opened = await menu("nb-prof", "account");
     if (!(await has("#sEmail"))) { await click("#hdrAcct"); await sleep(900); opened = true; }
     const acct = await secText("#acctSec");
-    check(tag + "Account shows the real sign-up form", opened && (await has("#sEmail")) && (await has("#sAgree")), acct.slice(0, 100));
+    if (signedIn) check(tag + "signed in through the gate: Account says so", opened && /You are signed in|Sign out/.test(acct), acct.slice(0, 100));
+    else check(tag + "Account shows the real sign-up form", opened && (await has("#sEmail")) && (await has("#sAgree")), acct.slice(0, 100));
     check(tag + "Account never says 'Cannot reach UAply' or 'check your internet'", !WRONG.test(acct), (acct.match(WRONG) || [""])[0]);
-    if (S.email) check(tag + "email is on: Account promises a receipt for each swipe right", /each swipe right emails you a receipt/.test(acct) && !/Email is not switched on/.test(acct), acct.slice(0, 160));
+    if (signedIn) skip(tag + "Account's wording about email receipts and Continue with Google", "a signed-out Account screen (this walk signed in through the gate; the card had them)");
+    else if (S.email) check(tag + "email is on: Account promises a receipt for each swipe right", /each swipe right emails you a receipt/.test(acct) && !/Email is not switched on/.test(acct), acct.slice(0, 160));
     else check(tag + "email is off: Account says email is not switched on yet (and promises no receipt)", /Email is not switched on for this site yet/.test(acct),
       (acct.match(/[^.]*each swipe right emails you a receipt[^.]*\./) || [""])[0].trim() ? "it promises instead: \"" + acct.match(/[^.]*each swipe right emails you a receipt[^.]*\./)[0].trim() + "\"" : acct.slice(0, 160));
     // 5. Continue with Google: present only when the server has the client ID and secret
     const gArea = await has("#gBtn"), gButton = await has("[data-auth=gsign]");
-    if (S.google) {
+    if (signedIn) { /* signed in: no Continue with Google on Account (skipped above) */ }
+    else if (S.google) {
       check(tag + "Google is configured: Continue with Google and its 18+ box are there", gArea && gButton && (await has("#gAgree")), "area " + gArea + ", button " + gButton);
     } else {
       check(tag + "Google is not configured: no Continue with Google anywhere", !gArea && !/Continue with Google/.test(acct), acct.match(/.{0,40}Google.{0,40}/) ? acct.match(/.{0,40}Google.{0,40}/)[0] : "");
@@ -156,7 +267,8 @@ async function main(api) {
     await snap(W + "-4-help");
     await click("#uaChatX"); await sleep(300);
     // 8. Continue with Google leads to Google's own page (checked once, at phone size; it never signs in)
-    if (S.google && phone) {
+    if (S.google && phone && signedIn) skip(tag + "Continue with Google leads to Google's sign-in page", "a signed-out visitor (this walk signed in through the gate)");
+    else if (S.google && phone) {
       await menu("nb-prof", "account");
       await tick("gAgree");
       const seen = [];
@@ -196,9 +308,13 @@ async function main(api) {
       try {
         const stt = fs.statSync(file);
         if (stt.mtimeMs >= startedAt - 1000) {
-          const t = fs.readFileSync(file, "utf8");
+          let t = fs.readFileSync(file, "utf8");
+          // a stand-in mail server's file holds one JSON line per email: the newest one to this address first, so an older run's code
+          // (to another address in the same file) is never typed by mistake
+          const mine = t.split("\n").filter((l) => l.includes('"' + addr + '"')).reverse();
+          if (mine.length) t = mine.join("\n");
           // the 6 digits typed by a person, or (the test suite) a stand-in mail server's file: "123456 is your UAply verification code"
-          const found = [...t.matchAll(/([0-9]{6}) is your UAply verification code/g)].map((m) => m[1]);
+          const found = [...t.matchAll(/([0-9]{6}) is your UAply (?:verification|sign-in) code/g)].map((m) => m[1]);
           if (!found.length) found.push(...[...t.matchAll(/(?:^|[^0-9])([0-9]{3}[ -]?[0-9]{3})(?![0-9])/g)].map((m) => m[1].replace(/[ -]/g, "")));
           const c = found.find((x) => !used.has(x));
           if (c) { used.add(c); return c; }
@@ -208,32 +324,54 @@ async function main(api) {
     }
     return "";
   }
+  // sign-up on the sign-in gate's card (October 22, Saif: signed out, the card is the whole screen): email, first and last name, a password,
+  // the 18+ tick, Create my account; then the 6-digit code (from --code or the --code-file), unless the server is in sign-up test mode
+  // (providers.testMode: never a public server), where the account is confirmed at once and no code is asked; then the two questions
   async function signUp(addr, given, label) {
-    await fresh(); await agree();
-    await menu("nb-prof", "account");
-    if (!(await has("#sEmail"))) { await click("#hdrAcct"); await sleep(900); }
+    await fresh();
+    const prov = (await json("/api/auth/providers")).j || {};
+    const typeIn = (sel, v) => ev("(()=>{const e=" + F + ".querySelector(" + JSON.stringify(sel) + ");if(!e)return false;e.focus();e.value=" + JSON.stringify(v) + ";e.dispatchEvent(new Event('input',{bubbles:true}));return true})()");
+    if (!check(label + "signed out, the sign-up card is on screen", !!(await waitFor(() => has(".sg-su"), 15000)), (await secText("#acctSec")).slice(0, 120))) return false;
     const pw = "Live-" + crypto.randomBytes(12).toString("base64url");       // kept in memory only, never printed or saved
-    await setVal("sEmail", addr); await setVal("sPw", pw); await setVal("sPw2", pw); await tick("sAgree");
+    authOpen = true;
+    await typeIn(".sg-su [data-email] input", addr); await typeIn(".sg-su .sg-fn input", "Live"); await typeIn(".sg-su .sg-ln input", "Check");
+    await typeIn(".sg-su .sg-pw input", pw);
+    if (!(await ev("!!(" + F + ".querySelector('.sg-su .sg-ag')||{}).checked"))) await click(".sg-su .sg-ag");
     const startedAt = Date.now();
-    await click("[data-auth=ssubmit]");
-    const t1 = await waitFor(async () => { const t = await secText("#acctSec"); return /Verify your email|already has an account|Too many/.test(t) ? t : ""; }, 15000);
-    if (!check(label + "sign-up of " + addr + " creates the account and asks for the 6-digit code", /Verify your email/.test(t1 || "") && (await has("#sCode")), (t1 || await secText("#acctSec")).slice(0, 160))) return false;
-    check(label + "it says the code was emailed", /We emailed (you )?a 6-digit code/.test(t1 + " " + await secText("#aMsg")), (await secText("#aMsg")).slice(0, 120));
-    await snap("signup-" + label.replace(/\W+/g, "") + "-1-code");
-    const code = await getCode(addr, given, startedAt);
-    if (!check(label + "a 6-digit code was given (--code, or typed into the --code-file within 3 minutes)", /^[0-9]{6}$/.test(code), code ? "not 6 digits" : "no code arrived")) return false;
-    await setVal("sCode", code); await click("[data-auth=sverify]");
-    const t2 = await waitFor(async () => { const t = await secText("#acctSec"); return /email verified/.test(t) && !(await has("#sCode")) ? t : ""; }, 15000);
-    return check(label + "the code verifies the email", !!t2, (await secText("#aMsg")).slice(0, 120));
+    await click(".sg-su [type=submit]");
+    if (prov.testMode || prov.signupTest) {
+      const q1 = await waitFor(() => has(".sg-next"), 15000);
+      const u = ((await json("/api/auth/me")).j || {}).user || {};
+      check(label + "sign-up of " + addr + " on a test-mode server: the account is made and confirmed at once, no code asked", !!q1 && u.email === addr && u.emailVerified === true, JSON.stringify({ email: u.email, verified: u.emailVerified }));
+    } else {
+      const t1 = await waitFor(async () => { const t = await secText("#acctSec"); return /Check your email|already has an account|Too many/.test(t) ? t : ""; }, 15000);
+      if (!check(label + "sign-up of " + addr + " creates the account and asks for the 6-digit code", /Check your email/.test(t1 || "") && (await ev("(" + F + ").querySelectorAll('.sg-code input').length")) === 6, (t1 || await secText("#acctSec")).slice(0, 160))) { authOpen = false; return false; }
+      check(label + "it says the code was emailed", /We sent a 6-digit code to/.test(t1) && t1.includes(addr), t1.slice(0, 160));
+      await snap("signup-" + label.replace(/\W+/g, "") + "-1-code");
+      const code = await getCode(addr, given, startedAt);
+      if (!check(label + "a 6-digit code was given (--code, or typed into the --code-file within 3 minutes)", /^[0-9]{6}$/.test(code), code ? "not 6 digits" : "no code arrived")) { authOpen = false; return false; }
+      await ev("(()=>{const b=(" + F + ").querySelector('.sg-code input');b.focus();b.value=" + JSON.stringify(code) + ";b.dispatchEvent(new Event('input',{bubbles:true}))})()");
+      const ok = await waitFor(async () => { const u = ((await json("/api/auth/me")).j || {}).user; return u && u.emailVerified ? u : null; }, 15000);
+      check(label + "the code verifies the email", !!ok, (await secText("#acctSec")).slice(0, 120));
+      if (!ok) { authOpen = false; return false; }
+    }
+    for (let i = 0; i < 4 && (await waitFor(() => has(".sg-next"), 3000)); i++) { await click(".sg-next"); await sleep(700); }
+    const lifted = await waitFor(() => ev("!" + F + ".body.classList.contains('sgGated')"), 20000);
+    authOpen = false;
+    if (!check(label + "after the two questions the gate lifts: the app is on screen", !!lifted, (await secText("#acctSec")).slice(0, 160))) return false;
+    await sleep(800); await agree();
+    return true;
   }
 
   if (!EMAIL) skip("sign-up by email code", "--email you+tag@gmail.com and --code-file or --code (a real inbox)");
+  else if (PASSWORD) skip("sign-up by email code", "a run without --password (with --password the address signs in through the gate)");
   else if (!S.email) skip("sign-up of " + EMAIL + " by email code", "email on the server (the Brevo SMTP key): with email off no code is sent, so the address is not used");
   else if (await signUp(EMAIL, arg("code", ""), "[account 1] ")) {
     // a swipe right, then the Applied list
     if (cfg.mode !== "test") skip("[account 1] a swipe right appears under Applied", "delivery mode 'test' on the server (it is " + cfg.mode + "): this tool never sends an application to an employer");
     else {
       await menu("nb-svc", "job");
+      await waitFor(() => has(".card.top h2"), 60000);   // the job list is asked for once the gate lifts (a cold server can be slow)
       const role = await ev("(()=>{const c=" + F + ".querySelector('.card.top h2');return c?c.textContent.trim():''})()");
       await click("#btnYes"); await sleep(1500);
       if (await has("#kcYes")) await click("#kcYes");
@@ -244,7 +382,7 @@ async function main(api) {
       if (!(await secText("body")).includes(role)) await ev("(()=>{const e=[...(" + F + ").querySelectorAll('button,a,[role=tab]')].find(b=>b.offsetParent&&b.innerText.trim().startsWith('Applied'));if(e)e.click()})()");
       await sleep(800);
       const page = await appText();
-      check("[account 1] the job swiped right appears under Dashboard > Applied", !!role && page.includes(role), role);
+      check("[account 1] the job swiped right appears under Job Tracker > Applied", !!role && page.includes(role), role);
       await snap("signup-account1-2-applied");
     }
     // ---------- Stripe test cards ----------
@@ -313,6 +451,12 @@ async function main(api) {
       !!said && /stripe\.com$/.test(await ev("location.host")), String(await ev("location.href")).slice(0, 100) + " | " + (await F.text()).slice(0, 160));
   }
 
+  if (SHIELDS) {
+    const own = blocked.filter((u) => u.startsWith(BASE));
+    check("shields: no UAply request was blocked by the filter lists", !own.length, own.slice(0, 5).join(" | "));
+    info("shields: requests blocked in all: " + blocked.length + (blocked.length ? " (" + blocked.slice(0, 6).join(" | ") + ")" : ""));
+  }
+  if (READONLY) info("read-only: held back " + held.length + " request(s) that could have changed the site" + (held.length ? ": " + [...new Set(held)].join(", ") : ""));
   console.log("\n" + count.PASS + " passed, " + count.FAIL + " failed, " + count.SKIP + " skipped");
   console.log(count.PASS + " / " + (count.PASS + count.FAIL));
 }

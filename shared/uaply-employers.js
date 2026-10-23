@@ -252,7 +252,7 @@ window.UAplyJobImport=IMP;
 
 var CSS=[
 /* header pill, Fiverr-style */
-".modesw{margin-left:auto;display:inline-flex;align-items:center;gap:7px;min-height:40px;padding:6px 15px;border-radius:999px;border:1.5px solid color-mix(in srgb,var(--accent) 45%,var(--line));background:var(--surface);color:var(--ink);font:700 13.5px var(--body);cursor:pointer;white-space:nowrap}",
+".modesw{margin-left:auto;display:inline-flex;align-items:center;gap:7px;min-height:44px;padding:6px 15px;border-radius:999px;border:1.5px solid color-mix(in srgb,var(--accent) 45%,var(--line));background:var(--surface);color:var(--ink);font:700 13.5px var(--body);cursor:pointer;white-space:nowrap}",
 ".modesw:hover{border-color:var(--accent)}.modesw:focus-visible{outline:3px solid var(--accent);outline-offset:2px}.modesw svg{width:16px;height:16px;flex:none;stroke:var(--accent);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}",
 ".modesw+.hdrbtn{margin-left:8px}.modetag{font:700 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;padding:4px 9px;border-radius:7px;background:var(--ink);color:var(--surface)}",
 "@media (max-width:520px){.modesw .lg{display:none}.modesw{padding:6px 11px}}",
@@ -432,6 +432,15 @@ function apply(w,host){
     return w.fetch(path,o).then(function(r){return r.json().then(function(j){return {ok:r.ok,status:r.status,j:j||{}}},function(){return {ok:false,status:r.status,j:{}}})},function(){return {ok:false,status:0,j:{}}});
   }
   function load(){
+    /* a signed-out visitor is never asked about a company: /api/employer/me would answer 401, which the browser prints in the console
+       as a failed request on every page load (testers read it as an error). /api/auth/me answers 200 either way; without a server
+       (a static copy) it fails and the company question below finds that out as before. */
+    return api("/api/auth/me").then(function(a){
+      if(a.ok&&a.j&&a.j.user===null){H.mode="signedout";return}
+      return loadMe();
+    });
+  }
+  function loadMe(){
     return api("/api/employer/me").then(function(r){
       if(r.ok){H.mode="server";H.company=r.j.company;H.jobs=r.j.jobs||[];H.apps=r.j.applicants||[];H.verified=!!r.j.verified;H.email=r.j.email||""}
       else if(r.status===401)H.mode="signedout";

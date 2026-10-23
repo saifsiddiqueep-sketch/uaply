@@ -7,7 +7,7 @@
    Nothing here sees or sends the person's profile: only what they type into the chat. */
 (function(){
 var CSS=`
-#uaChatBtn{position:fixed;right:16px;bottom:var(--above-nav,calc(96px + env(safe-area-inset-bottom,0px)));z-index:40;display:flex;align-items:center;gap:8px;min-height:48px;padding:0 18px 0 14px;border:0;border-radius:999px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);font-weight:700;font-size:14.5px;box-shadow:var(--shadow);cursor:pointer}
+#uaChatBtn{position:fixed;right:16px;bottom:var(--above-nav,calc(96px + var(--safe-b,env(safe-area-inset-bottom,0px))));z-index:40;display:flex;align-items:center;gap:8px;min-height:48px;padding:0 18px 0 14px;border:0;border-radius:999px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);font-weight:700;font-size:14.5px;box-shadow:var(--shadow);cursor:pointer}
 #uaChatBtn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 #uaChatBtn:focus-visible,#uaChat button:focus-visible,#uaChat input:focus-visible,#uaNudge button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 #uaChat{position:fixed;right:16px;bottom:calc(var(--above-nav,96px) + 60px);z-index:45;width:min(390px,calc(100vw - 24px));height:min(580px,calc(100vh - 190px));display:flex;flex-direction:column;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);overflow:hidden}
@@ -15,7 +15,7 @@ var CSS=`
 #uaChat .hd{display:flex;align-items:center;gap:10px;padding:12px 12px 12px 16px;border-bottom:1px solid var(--line)}
 #uaChat .hd b{font:800 16px var(--display,inherit)}
 #uaChat .tag{font:700 10.5px var(--mono,ui-monospace,monospace);letter-spacing:.06em;padding:3px 8px;border-radius:6px;background:var(--bg);color:var(--accent);border:1px solid var(--line)}
-#uaChat .x{margin-left:auto;border:0;background:none;color:var(--muted);min-width:40px;min-height:40px;border-radius:10px;font-size:22px;cursor:pointer}
+#uaChat .x{margin-left:auto;border:0;background:none;color:var(--muted);min-width:44px;min-height:44px;border-radius:10px;font-size:22px;cursor:pointer}
 #uaChat .x:hover{background:var(--bg)}
 #uaChat .log{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--bg)}
 #uaChat .msg{max-width:88%;padding:10px 13px;border-radius:16px;font-size:14.5px;line-height:1.45;white-space:normal;overflow-wrap:anywhere}
@@ -23,7 +23,7 @@ var CSS=`
 #uaChat .me{align-self:flex-end;background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);border-bottom-right-radius:6px}
 #uaChat .src{display:block;margin-top:6px;font-size:12px;color:var(--muted)}
 #uaChat .chips{display:flex;flex-wrap:wrap;gap:6px;align-self:flex-start;max-width:100%}
-#uaChat .chips button{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:7px 13px;min-height:38px;font:600 13.5px inherit;cursor:pointer}
+#uaChat .chips button{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:7px 13px;min-height:44px;font:600 13.5px inherit;cursor:pointer}
 #uaChat .chips button:hover{border-color:var(--accent)}
 #uaChat .chips button.pri{background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);border-color:transparent}
 #uaChat .chips.rate button{min-width:44px;padding:7px 10px}
@@ -33,13 +33,29 @@ var CSS=`
 #uaChat form button{min-width:44px;min-height:44px;border:0;border-radius:999px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);font-weight:700;padding:0 16px;cursor:pointer}
 #uaChat .ft{padding:0 14px 10px;font-size:11.5px;color:var(--muted);background:var(--surface)}
 #uaNudge{position:fixed;right:16px;bottom:calc(var(--above-nav,96px) + 60px);z-index:44;width:min(330px,calc(100vw - 24px));background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:14px;display:flex;flex-direction:column;gap:10px}
-#uaNudge p{margin:0;font-weight:700;padding-right:30px}
+#uaNudge p{margin:0;font-weight:700;padding-right:44px}
 #uaNudge small{color:var(--muted)}
-#uaNudge .x{position:absolute;top:6px;right:6px;border:0;background:none;color:var(--muted);min-width:36px;min-height:36px;font-size:20px;cursor:pointer}
+#uaNudge .x{position:absolute;top:4px;right:4px;border:0;background:none;color:var(--muted);min-width:44px;min-height:44px;font-size:20px;cursor:pointer}
 #uaNudge .row{display:flex;gap:6px}
 #uaNudge .row button{flex:1;min-height:44px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:12px;font-weight:700;cursor:pointer}
 #uaNudge .row button:hover{border-color:var(--accent)}
 @media (max-width:520px){#uaChat{left:12px;right:12px;width:auto;bottom:calc(var(--above-nav,96px) + 54px)}#uaChatBtn span{display:none}#uaChatBtn{padding:0 13px}}
+/* phones: the Help button sits at the right end of the header row instead of in the thumb's path to Apply (it lay 17 px from the
+   Apply button at 390x844). The header keeps room for it, the panel and the rating question open under the header, and the bottom
+   corner belongs to Pass / Undo / Apply and the tabs again. Hiring mode hides the button, so the header keeps its full width there. */
+@media (max-width:700px),(max-height:500px){
+ #uaChatBtn{top:10px;bottom:auto;min-height:44px;height:44px}
+ body:not(.hire):has(>#uaChatBtn)>header.bar{padding-right:106px}
+ #uaChat{top:62px;bottom:var(--above-nav,96px);height:auto}
+ #uaNudge{top:62px;bottom:auto}
+}
+@media (max-width:520px){#uaChatBtn{padding:0 11px}body:not(.hire):has(>#uaChatBtn)>header.bar{padding-right:56px;column-gap:8px}}
+/* a short turned phone (667x375): the page itself scrolls a little, and a fixed button stayed put while the header row went up, so it lay
+   over the top of the card (the sign-up card's Last name box). There it scrolls with the header row it belongs to (October 22, 2026). */
+@media (max-height:500px) and (orientation:landscape){#uaChatBtn{position:absolute}}
+/* the account button shows the email from 481 px (below that only the initial, uaply-nav.js): there it gives up the Help button's room */
+@media (min-width:481px) and (max-width:520px){.hdrbtn{max-width:min(60vw,calc(100vw - 190px))}}
+@media (min-width:521px) and (max-width:700px){.hdrbtn{max-width:min(60vw,calc(100vw - 240px))}}
 @media (prefers-reduced-motion:no-preference){#uaChat:not([hidden]),#uaNudge:not([hidden]){animation:uaUp .18s ease-out}@keyframes uaUp{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}}
 `;
 
@@ -150,10 +166,19 @@ function apply(w,host){
   function ask(q){
     if(busy)return;
     if(isPreview()){clearChips();previewSay();starters();return}
+    /* AI answers on: the first time, say in one line that the message goes to an outside AI, and send it only on Continue (remembered on
+       this device). Not now sends nothing (October 22: the Help chat went to the AI provider without asking) */
+    if(CFG.ai&&!load().aiOk){
+      clearChips();
+      botSay("AI answers are on: your message goes to our AI provider, Anthropic, to write the reply (it is not kept). Send it?");
+      chips([{label:"Continue",pri:true,run:function(){var s=load();s.aiOk=Date.now();store(s);meSay("Continue");ask(q)}},
+        {label:"Not now",run:function(){meSay("Not now");botSay("Nothing was sent. You can still talk to a person, report a problem or give feedback.");starters()}}]);
+      return;
+    }
     busy=true;clearChips();
     hist.push({role:"user",content:q});hist=hist.slice(-10);
     typing(true);
-    post("/api/chat",{messages:hist}).then(function(r){
+    post("/api/chat",{messages:hist,aiOk:!!load().aiOk}).then(function(r){   /* aiOk: the person said Continue to the AI notice; the server checks it too */
       typing(false);busy=false;
       if(!r.ok){botSay((r.j&&r.j.error)||"Something went wrong on my side.");chips([{label:"Try again",run:function(){hist.pop();meSay(q);ask(q)}},{label:"Talk to a person",run:function(){meSay("Talk to a person");startHuman()}}]);return}
       var j=r.j||{};
@@ -174,7 +199,9 @@ function apply(w,host){
     botSay("Sorry about that. What were you looking for? Your answer goes to the team so we can fix it.");
     flow={kind:"answer",step:"text",data:{topic:"answer",helpful:false,articles:ids}};
     hint("What were you looking for?");
-    chips([{label:"Skip",run:function(){meSay("Skip");finish({topic:"answer",helpful:false,articles:ids})}}]);
+    /* an answer that did not help is the moment people want a person: offer it here, not two taps later behind Skip */
+    chips([{label:"Talk to a person",pri:true,run:function(){meSay("Talk to a person");flow=null;hint();post("/api/feedback",{topic:"answer",helpful:false,articles:ids,page:where(),source:"chat"});startHuman()}},
+      {label:"Skip",run:function(){meSay("Skip");finish({topic:"answer",helpful:false,articles:ids})}}]);
   }
 
   /* ---------- feedback: one question at a time ---------- */
@@ -277,6 +304,9 @@ function apply(w,host){
   d.body.appendChild(nudge);
   function hideNudge(remember){if(!nudge.hidden){nudge.hidden=true;if(remember){var s=load();s.nudged=Date.now();store(s)}}}
   nudge.querySelector(".x").onclick=function(){hideNudge(true);btn.focus()};
+  /* a tap anywhere else means "not now": the question floats where the bottom-bar menus open, so a tap meant for Applied landed on
+     the "3" and sent a rating nobody chose */
+  d.addEventListener("pointerdown",function(e){if(!nudge.hidden&&!nudge.contains(e.target))hideNudge(false)},true);
   nudge.addEventListener("click",function(e){
     var b=e.target.closest("[data-r]");if(!b)return;
     var n=+b.getAttribute("data-r");hideNudge(true);

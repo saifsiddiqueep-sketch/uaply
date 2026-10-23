@@ -29,6 +29,7 @@ import re
 import sys
 import threading
 import time
+import ui_rules
 import urllib.error
 import urllib.request
 import uuid
@@ -83,6 +84,8 @@ def config():
 
 
 def _smtp_ready(cfg):
+    if NO_MAIL:                                         # test mode: every message goes to the test inbox, even with real email settings
+        return False
     s = cfg.get("smtp") or {}
     pw = s.get("password") if isinstance(s.get("password"), str) else ""
     if s.get("user") and (not pw.strip() or pw.strip().lower().startswith("a gmail app password")):
@@ -96,6 +99,13 @@ def _redirect(cfg):
     return r.strip() if isinstance(r, str) and EMAIL_RE.match(r.strip()) else ""
 
 
+def form_preview(cfg=None):
+    """Whether a swipe right on any Greenhouse posting reads its form and asks its questions in test mode (the sandbox by default, or
+    "autofill_preview": true), sending the filled form to the test inbox. The card's readiness reads the same plan (POST /api/apply/plan)."""
+    cfg = cfg or config()
+    return cfg["delivery"] == "test" and (cfg.get("autofill_preview") is True or (INSTANCE == "sandbox" and cfg.get("autofill_preview") is not False))
+
+
 def public_config():
     cfg = config()
     try:
@@ -103,7 +113,7 @@ def public_config():
     except (TypeError, ValueError):
         grace = 5
     return {"mode": cfg["delivery"], "canEmail": _smtp_ready(cfg), "redirect": _redirect(cfg), "ownerCopy": bool(_owner_copy(cfg)),
-            "autoSend": cfg.get("auto_send", True) is not False, "graceSeconds": grace}
+            "autoSend": cfg.get("auto_send", True) is not False, "graceSeconds": grace, "formPreview": form_preview(cfg) and not _redirect(cfg)}
 
 
 def append_line(path, text):
@@ -152,6 +162,7 @@ def _load():
 
 
 PUBLIC = False             # serve.py sets this on a hosted server (the live site): see _mail_ctx
+NO_MAIL = False            # serve.py sets this in test mode (UAPLY_SIGNUP_TEST, never public): no email leaves, whatever the settings say
 hide_errors = False        # serve.py sets this on a hosted server: visitors then see a plain sentence, never a mail server's or an employer's raw error text
 
 
@@ -166,6 +177,7 @@ def init(instance):
     mailer.init(DATA)                                      # mail held for later (quota, a mail service that is down) is kept per instance
     APPS.clear()
     DECISIONS.clear()
+    _QSTATS.update(loaded=False, data=None)               # read again from this instance's own folder
     _load()
 
 
@@ -240,6 +252,8 @@ def _ext(raw):
             "employer": _s(x.get("employer"), 100), "job_title": _s(x.get("job_title"), 100), "job_start": job_start, "job_end": job_end,
             "auth": _pick(x.get("auth"), _AUTH),
             "sponsor": _pick(x.get("sponsor"), ("yes", "no")), "start": _pick(x.get("start"), _START), "types": types,
+            # the notice from Profile, Account ("When can you start?"): the start date when the one in Profile setup is not chosen
+            "notice": _pick(x.get("notice"), tuple(autofill._NOTICE)),
             # the common questions employers' own forms ask (used by autofill.py to fill those forms; none of them is shown to a recruiter otherwise)
             "zip": zipc if re.match(r"^\d{5}(-\d{4})?$", zipc) else "", "state": state if re.match(r"^[A-Za-z .]{2,30}$", state) else "",
             "country": _pick(x.get("country"), _COUNTRIES), "salary": salary,     # expected yearly pay: kept only when a form asked for it (see submit)
@@ -265,7 +279,7 @@ def _detail_rows(c, note=""):
             ("LinkedIn", x.get("linkedin")), ("Portfolio", x.get("portfolio")), ("Education", edu),
             ("Most recent employer", x.get("employer")), ("Job title there", x.get("job_title")), ("Dates there", dates),
             ("Work authorization", _AUTH.get(x.get("auth"), "") + ("; needs sponsorship" if x.get("sponsor") == "yes" else "; no sponsorship needed" if x.get("sponsor") == "no" else "") if x.get("auth") else ""),
-            ("Earliest start", _START.get(x.get("start"), "")),
+            ("Earliest start", _START.get(x.get("start"), "") or autofill._NOTICE.get(x.get("notice"), "")),
             ("Willing to relocate", {"yes": "Yes", "no": "No"}.get(x.get("relocate"), "")),
             # expected pay is in the record only when the employer's own form asked for it (submit() leaves it out otherwise)
             ("Expected yearly pay", ("$%s" % format(x["salary"], ",")) if isinstance(x.get("salary"), int) and x["salary"] > 0 else ""),
@@ -285,8 +299,12 @@ def _application_text(c, job, note=""):
     return body + _detail_text(c, note)
 
 
-def _validate(p):
-    if p.get("consent") is not True:
+NEEDS_PHONE_OR_RESUME = ("Add a phone number or a resume in Profile setup first. Employers need one of them to reach you, so UAply does not send "
+                         "an application without it.")
+
+
+def _validate(p, plan_only=False):
+    if p.get("consent") is not True and not plan_only:
         return "Consent is required to send an application."
     job, prof = p.get("job"), p.get("profile")
     if not isinstance(job, dict) or not isinstance(prof, dict):
@@ -303,10 +321,81 @@ def _validate(p):
         return "Add your name in Profile setup, under About you, first."
     if not EMAIL_RE.match(_s(prof.get("email"), 200)):
         return "Add a valid email in Profile setup, under About you, so the recruiter can reply."
+    # the app's minimum to apply (READY_MIN in shared/uaply-nav.js): a name, an email, and a phone number or a resume. The app checks it
+    # before a swipe sends anything; the server checks it too (October 22, 2026), so an older page or a direct call cannot send less.
+    # A plan (plan_only) only reads the form, so it may be asked without them.
+    if not plan_only:
+        ext = _ext(prof.get("ext"))
+        rz = p.get("resume")
+        has_resume = bool(ext.get("resume")) or (isinstance(rz, dict) and isinstance(rz.get("data"), str) and rz["data"].startswith("data:"))
+        if not ext.get("phone") and not has_resume:
+            return NEEDS_PHONE_OR_RESUME
     note = p.get("note", "")                       # optional: the application is the profile, not a message
     if note is not None and (not isinstance(note, str) or len(note) > 4000):
         return "The note must be at most 4000 characters."
     return None
+
+
+_QSTATS = {"loaded": False, "data": None}
+_QSTATS_LOCK = threading.Lock()
+
+
+def _qstats_load():
+    if not _QSTATS["loaded"]:
+        try:
+            with open(os.path.join(DATA, "question-stats.json"), encoding="utf-8") as f:
+                d = json.load(f)
+            _QSTATS["data"] = d if isinstance(d, dict) and isinstance(d.get("questions"), dict) else None
+        except Exception:
+            _QSTATS["data"] = None
+        _QSTATS["loaded"] = True
+    if _QSTATS["data"] is None:
+        _QSTATS["data"] = {"since": int(time.time()), "asked": 0, "kinds": {}, "questions": {}}
+    return _QSTATS["data"]
+
+
+def note_questions(missing, system, job_id=0):
+    """Remember which questions employers' forms asked that the profile could not answer: the question's key (the employer's own wording,
+    lower case, the company's name taken out), its kind and the hiring system, with a count. No answer, no person, no company. Profile setup
+    can grow to cover the most-asked ones (owner-only in /api/status)."""
+    try:
+        with _QSTATS_LOCK:
+            d = _qstats_load()
+            for m in missing[:20]:
+                key = _s(m.get("key"), 160)
+                kind = _s(m.get("kind"), 20) or "text"
+                if not key:
+                    continue
+                d["asked"] = int(d.get("asked") or 0) + 1
+                d["kinds"][kind] = int(d["kinds"].get(kind) or 0) + 1
+                q = d["questions"].get(key) or {"kind": kind, "n": 0, "systems": {}, "jobs": []}
+                q["n"] = int(q.get("n") or 0) + 1                  # times asked (the same person asked again counts again)
+                q["kind"] = kind
+                jobs = q.get("jobs") if isinstance(q.get("jobs"), list) else []
+                if job_id and job_id not in jobs:
+                    jobs = (jobs + [job_id])[-200:]                 # the postings that asked it (UAply's own job numbers, nothing about a person)
+                q["jobs"] = jobs
+                q["systems"][system] = int(q["systems"].get(system) or 0) + 1
+                d["questions"][key] = q
+            if len(d["questions"]) > 400:                   # keep the most asked
+                for k in sorted(d["questions"], key=lambda k: d["questions"][k]["n"])[:len(d["questions"]) - 400]:
+                    d["questions"].pop(k, None)
+            os.makedirs(DATA, exist_ok=True)
+            tmp = os.path.join(DATA, "question-stats.json.tmp")
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(d, f)
+            os.replace(tmp, os.path.join(DATA, "question-stats.json"))
+    except Exception as e:                                  # never let counting break a swipe
+        sys.stderr.write("[uaply] question stats not saved: %s\n" % type(e).__name__)
+
+
+def question_stats(top=25):
+    """For the owner: how many questions were asked, by kind, and the most-asked ones."""
+    with _QSTATS_LOCK:
+        d = _qstats_load()
+        qs = sorted(d["questions"].items(), key=lambda kv: -kv[1]["n"])[:top]
+        return {"since": d.get("since"), "asked": d.get("asked", 0), "kinds": dict(d["kinds"]),
+                "top": [{"key": k, "kind": v["kind"], "n": v["n"], "postings": len(v.get("jobs") or []), "systems": dict(v["systems"])} for k, v in qs]}
 
 
 def _simulated_recipient(co):
@@ -361,7 +450,7 @@ def _webhook_body(rec, resume_bytes, c, j, x):
                           "years_experience": c.get("years", 0), "skills": c.get("skills", []), "headline": x.get("headline", ""), "summary": x.get("summary", ""),
                           "education": {"level": c.get("edu", ""), "school": x.get("school", ""), "major": x.get("major", ""), "graduation": x.get("grad", ""), "gpa": x.get("gpa", "")},
                           "links": {"resume": x.get("resume", ""), "linkedin": x.get("linkedin", ""), "portfolio": x.get("portfolio", "")},
-                          "work_authorization": x.get("auth", ""), "needs_sponsorship": x.get("sponsor", ""), "earliest_start": x.get("start", ""),
+                          "work_authorization": x.get("auth", ""), "needs_sponsorship": x.get("sponsor", ""), "earliest_start": x.get("start", "") or x.get("notice", ""),
                           "country": x.get("country", ""), "willing_to_relocate": x.get("relocate", ""),
                           "most_recent_employer": x.get("employer", ""),
                           "most_recent_job": {"employer": x.get("employer", ""), "title": x.get("job_title", ""), "start": x.get("job_start", ""),
@@ -478,12 +567,23 @@ def _owner_copy(cfg):
     return r.strip() if isinstance(r, str) and EMAIL_RE.match(r.strip()) else ""
 
 
+PUBLIC_URL_RE = re.compile(r"^https://([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+)(:\d{1,5})?$")
+
+
+def public_url_env():
+    """UAPLY_PUBLIC_URL (e.g. https://uaply.net): the one public address of the live site, set on the host. It wins over public_url in
+    UAPLY_CONFIG_JSON, and serve.py sends visitors on any other address to it. Only a bare https address is taken (no path, no spaces,
+    no user name), lower-cased, without the trailing /. '' when unset or not valid (the server log says so at start)."""
+    v = (os.environ.get("UAPLY_PUBLIC_URL") or "").strip().lower().rstrip("/")
+    return v if PUBLIC_URL_RE.match(v) else ""
+
+
 def _site_base(cfg, site=""):
-    """The public address of this site for links in emails ('' when it only runs on this computer). The configured public_url wins;
-    otherwise the address the person is using (serve.py passes it), so a host such as Render gets its link without extra settings.
-    Only an https address is ever put in an email."""
+    """The public address of this site for links in emails ('' when it only runs on this computer). UAPLY_PUBLIC_URL wins, then the
+    configured public_url; otherwise the address the person is using (serve.py passes it), so a host such as Render gets its link without
+    extra settings. Only an https address is ever put in an email."""
     g = cfg.get("google") if isinstance(cfg.get("google"), dict) else {}
-    for v in (cfg.get("public_url"), g.get("public_url"), site):
+    for v in (public_url_env(), cfg.get("public_url"), g.get("public_url"), site):
         if isinstance(v, str) and v.startswith("https://") and " " not in v:
             return v.rstrip("/")
     return ""
@@ -625,12 +725,18 @@ def send_support_ticket(rec, user=None):
     return "emailed" if sent == "sent" else "held"         # held: near the daily limit or the mail service is down; it is sent later
 
 
-def send_verification_mail(user_id, to, digits):
-    """Email the 6-digit code that proves an email address is the person's own (plain text and a branded HTML version). The code is never
-    kept in the stored copy once emailed."""
-    subject, text, page = emails.verification_email(digits)
+def send_verification_mail(user_id, to, digits, purpose="confirm"):
+    """Email a 6-digit code (plain text and a branded HTML version). purpose "confirm": it proves the address is the person's own (after
+    sign-up); "signin": it signs in to an existing account (Email me a code), with its own wording (item 21). The code is never kept in
+    the stored copy once emailed."""
+    if purpose == "signin":
+        subject, text, page = emails.signin_code_email(digits)
+        stored = "Your UAply sign-in code"
+    else:
+        subject, text, page = emails.verification_email(digits)
+        stored = "Your UAply verification code"
     return send_system_mail(user_id, to, subject, text, secret=True, page=page,
-                            stored_subject="Your UAply verification code", redacted="(the code was emailed and is not kept here)", kind="code")
+                            stored_subject=stored, redacted="(the code was emailed and is not kept here)", kind="code")
 
 
 def mail_ready():
@@ -638,9 +744,180 @@ def mail_ready():
     return _smtp_ready(config())
 
 
+# ---- the "finish your application" reminder: one email a day at most, not one per swipe ----
+# A swipe right on a job that takes applications on the employer's own site used to send its own "Finish your application" email, so a
+# person swiping through 20 jobs got 20 emails (plus the owner's copies) and the 300-a-day mail allowance went fast (October 22). Those
+# jobs are now kept per person and sent together: the first reminder DIGEST_HOLD after the first such swipe (so one swiping session is
+# one email), then at most one every DIGEST_EVERY. Receipts for applications UAply really sent are unchanged. It goes through mailer.py
+# as kind "digest", so the daily limit can hold it like any other email that can wait.
+DIGEST_HOLD = 30 * 60
+DIGEST_EVERY = 24 * 3600
+DIGEST_MAX = 50                                # the most jobs one reminder lists (the newest)
+_digest_lock = threading.Lock()
+
+
+def _digest_path():
+    return os.path.join(DATA, "finish-digest.json") if DATA else ""
+
+
+def _digest_load():
+    try:
+        with open(_digest_path(), encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _digest_save(d):
+    p = _digest_path()
+    if not p:
+        return
+    try:
+        tmp = p + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(d, f)
+        os.replace(tmp, p)
+    except OSError as e:
+        sys.stderr.write("[uaply] the finish-your-application reminders could not be saved: %s\n" % type(e).__name__)
+
+
+MARKED_MAX = 200                               # job ids a person marked as applied, kept so a later swipe of the same job is not reminded
+
+
+def _queue_finish(user, rec, site=""):
+    """Keep one hand-off job for this person's next reminder (once per job). A job the person already marked as applied (Job Tracker's
+    "Mark as applied": the swipe record carries rec["marked"], or mark_applied() kept its id) is never put in a reminder."""
+    j = rec.get("job") or {}
+    with _digest_lock:
+        d = _digest_load()
+        e = d.setdefault(str(user["id"]), {"to": user["email"], "items": [], "last": 0})
+        e["to"] = user["email"]
+        if rec.get("marked") or j.get("id") in (e.get("marked") or []):
+            _digest_save(d)
+            return
+        if not any(i.get("id") == j.get("id") for i in e["items"]):
+            e["items"].append({"id": j.get("id"), "co": _s(j.get("co"), 120), "role": _s(j.get("role"), 160), "url": _https(j.get("url")) or "",
+                               "at": int(time.time()), "site": site if isinstance(site, str) and site.startswith("https://") else "",
+                               "test": rec.get("mode") == "test"})
+            e["items"] = e["items"][-DIGEST_MAX:]
+        _digest_save(d)
+
+
+def finish_waiting(user_id):
+    """How many jobs wait for this person's next reminder (for the browser checks and the owner)."""
+    with _digest_lock:
+        return len((_digest_load().get(str(user_id)) or {}).get("items") or [])
+
+
+def mark_applied(user_id, job_id, marked=True):
+    """Job Tracker's "Mark as applied" (POST /api/apply/mark): the person finished this job on the employer's site, so the reminder no
+    longer lists it, now or after a later swipe of it. Undo (marked False) only stops skipping it; it is not put back in a waiting reminder.
+    Returns how many jobs still wait for this person's reminder.
+    A mark is kept only for a job that is in this person's reminder (October 22 review): any other mark changes nothing and writes nothing,
+    so marks cannot grow the reminder file, and at most MARKED_MAX are kept per account (the oldest go first)."""
+    try:
+        job_id = int(job_id)
+    except (TypeError, ValueError):
+        return None
+    with _digest_lock:
+        d = _digest_load()
+        e = d.get(str(user_id))
+        if e is None:
+            return 0
+        items = e.get("items") or []
+        was = e.get("marked") or []
+        if marked and not any(i.get("id") == job_id for i in items):
+            return len(items)                        # not in the reminder: nothing to take out, nothing kept
+        if not marked and job_id not in was:
+            return len(items)
+        e["items"] = [i for i in items if i.get("id") != job_id] if marked else items
+        m = [x for x in was if x != job_id]
+        e["marked"] = (m + [job_id])[-MARKED_MAX:] if marked else m
+        _digest_save(d)
+        return len(e["items"])
+
+
+_digest_send_lock = threading.Lock()           # one sender at a time (the mail worker every 5 minutes, a test, an owner's tool)
+
+
+def send_finish_digests(now=None):
+    """Send each person whose reminder is due one email listing every job waiting on an employer's site. Returns how many were sent (or
+    held by the daily limit, which sends them later). Called every few minutes by the mail worker.
+    The email is sent outside _digest_lock (October 22, 2026): every swipe's receipt takes that lock, so holding it through each mail
+    service round trip made swipes wait for the whole round of reminders. What each reminder lists is copied under the lock; afterwards only
+    those jobs leave the list, so a job swiped (or marked as applied) while the email was on its way is neither lost nor sent twice."""
+    now = time.time() if now is None else now
+    cfg = config()
+    if not _smtp_ready(cfg):
+        return 0
+    if not _digest_send_lock.acquire(blocking=False):
+        return 0
+    try:
+        with _digest_lock:
+            d = _digest_load()
+            due = []
+            for uid, e in d.items():
+                items = e.get("items") or []
+                if not items or not e.get("to") or now - (e.get("last") or 0) < DIGEST_EVERY or now - min(i.get("at") or now for i in items) < DIGEST_HOLD:
+                    continue
+                due.append((uid, e["to"], [dict(i) for i in items]))
+        done = 0
+        for uid, to, items in due:
+            # the account is looked at again right before its email (October 22 review): one deleted meanwhile (a swipe in flight can put
+            # its entry back after the deletion dropped it) gets nothing, and its entry goes
+            acct = auth_api.user_by_id(uid)
+            if not acct or not acct.get("emailVerified") or acct["email"].lower() != str(to).lower():
+                if not acct:
+                    _forget_digest(uid)
+                continue
+            site = next((i.get("site") for i in reversed(items) if i.get("site")), "")
+            subject, body, page = emails.finish_digest({"items": items, "test": any(i.get("test") for i in items),
+                                                        "base_url": _site_base(cfg, site), "user_email": to,
+                                                        "support_email": cfg.get("support_email") or os.environ.get("SUPPORT_EMAIL", "")})
+            try:
+                status = _send_receipt(cfg, to, subject, body, page, kind="digest", user=int(uid))
+            except MailNotSent as x:
+                status = "bounced" if x.status == "suppressed" else "failed"
+            except Exception as x:
+                status = "failed"
+                sys.stderr.write("[uaply] a finish-your-application reminder was not sent: %s\n" % type(x).__name__)
+            if status in ("sent", "held", "bounced"):     # sent, kept for later by the daily limit, or an address that bounces: not tried again
+                sent_ids = set(i.get("id") for i in items)
+                with _digest_lock:
+                    d = _digest_load()
+                    e = d.get(uid)
+                    if e is not None:                     # (the account may have been deleted meanwhile: then nothing is kept)
+                        e["items"] = [i for i in e.get("items") or [] if i.get("id") not in sent_ids]
+                        e["last"] = now
+                        _digest_save(d)
+                done += status != "bounced"
+                try:
+                    auth_api.add_mail(int(uid), to, subject, (HELD_NOTE + "\n\n" + body) if status == "held" else body, status)
+                except Exception:
+                    pass
+        return done
+    finally:
+        _digest_send_lock.release()
+
+
+def _forget_digest(user_id):
+    with _digest_lock:
+        d = _digest_load()
+        if d.pop(str(user_id), None) is not None:
+            _digest_save(d)
+
+
 def _receipt(cfg, user, cand, job, note, rec, site=""):
-    """Email the signed-in applicant a copy of what happened. Never raises: a receipt problem must not undo an application."""
+    """Email the signed-in applicant a copy of what happened. Never raises: a receipt problem must not undo an application.
+    A hand-off waits for the day's reminder instead (see DIGEST_HOLD)."""
     to = user["email"]
+    if rec.get("status") == "handoff" and _smtp_ready(cfg):
+        try:
+            _queue_finish(user, rec, site)
+            return {"to": to, "status": "digest"}
+        except Exception as e:
+            sys.stderr.write("[uaply] a hand-off could not be kept for the reminder: %s\n" % type(e).__name__)
     subject, body, page = emails.applicant_receipt(_mail_ctx(cfg, rec, note, user["email"], site))
     status = "delivered_test"
     if _smtp_ready(cfg):                      # the receipt goes only to the applicant's own address, so it is safe to send in test mode too
@@ -683,6 +960,14 @@ def flush_mail():
 
 
 def start_mail_worker():
+    def digests():
+        while True:
+            time.sleep(300)
+            try:
+                send_finish_digests()
+            except Exception as e:
+                sys.stderr.write("[uaply] sending the finish-your-application reminders failed: %s\n" % type(e).__name__)
+    threading.Thread(target=digests, daemon=True, name="uaply-digest").start()
     return mailer.start_worker(lambda: config() if _smtp_ready(config()) else {}, _mail_sent_later)
 
 
@@ -744,7 +1029,14 @@ def email_events(body, authorization):
 def submit(p, user=None, site=""):
     """Returns (http_status, dict). `user` is the signed-in account ({id, email}) or None. `site` is the address the person is using
     (for the link in their receipt)."""
-    err = _validate(p)
+    # plan_only (POST /api/apply/plan): read the posting's own form the way a swipe right does and say what it would ask, without recording
+    # or sending anything. The card shows "Ready to apply" or "N answers needed" from it, before the swipe (uaply-live.js, readiness).
+    plan_only = p.get("plan_only") is True
+    # the names given at sign-up (Saif, October 22) stand in for an empty profile name
+    acct_name = " ".join(x for x in ((user or {}).get("first", ""), (user or {}).get("last", "")) if x)
+    if acct_name and isinstance(p.get("profile"), dict) and not _s(p["profile"].get("name"), 100):
+        p = dict(p, profile=dict(p["profile"], name=acct_name))
+    err = _validate(p, plan_only)
     if err:
         return 400, {"error": err}
     cfg = config()
@@ -774,7 +1066,13 @@ def submit(p, user=None, site=""):
     cand["skills"] = [_s(x, 40) for x in (skills if isinstance(skills, list) else [])[:30] if isinstance(x, str)]
     cand["ext"] = _ext(prof.get("ext"))
     try:
-        resume_meta, resume_bytes = _resume(p.get("resume"))
+        rz = p.get("resume")
+        if plan_only and isinstance(rz, dict) and rz.get("present") is True:
+            # a plan only needs to know there is a resume (the file itself stays on the device until a real swipe sends it)
+            resume_meta = {"name": re.sub(r"[^\w. -]", "_", _s(rz.get("name"), 120)).strip() or "resume.pdf", "size": 0, "type": "application/octet-stream"}
+            resume_bytes = b"(the resume this person has; a plan does not carry it)"
+        else:
+            resume_meta, resume_bytes = _resume(rz)
     except (ValueError, TypeError):
         return 400, {"error": "Your resume file could not be used. Replace it in Profile setup, under Background and links, with a PDF, Word or text file under 1 MB."}
     if resume_meta:
@@ -795,7 +1093,7 @@ def submit(p, user=None, site=""):
         policy = "link"
     hook = jobs_api.known_webhook(job["id"]) if policy == "direct" else None      # the HTTPS address the employer registered, if any
     ats = jobs_api.known_ats(job["id"]) if policy == "direct" else None           # the employer's own hiring system and key, if they connected
-    answers = autofill.clean_answers(p.get("answers"))      # the person's own answers to questions employers' forms asked before
+    answers = autofill.clean_answers(p.get("answers"), job.get("co") or "")      # the person's own answers to questions employers' forms asked before
 
     def dup():
         for a in APPS:
@@ -816,7 +1114,7 @@ def submit(p, user=None, site=""):
             return 403, {"error": "Verify your email first (Profile, Account) so the employer can trust your address.", "code": "verify"}
         if cand["email"] != user["email"].lower():
             return 400, {"error": "Use your account email in Profile setup, under About you, so the employer replies to an address you verified."}
-        if p.get("confirm_real") is not True:
+        if p.get("confirm_real") is not True and not plan_only:
             return 400, {"error": "Live sending needs the user to review and press Send."}
 
     # Autofill: read the job's real application form (Greenhouse publishes it) and answer it from the profile and saved answers.
@@ -826,8 +1124,7 @@ def submit(p, user=None, site=""):
     #   - an employer that connected its Ashby, SmartRecruiters or Workable: the same as Greenhouse, but read with their key, and only for a live send
     ref = known.get("ats") if isinstance(known.get("ats"), dict) else None
     gh = ats if (ats and ats.get("kind") == "greenhouse") else (ref if ref and ref.get("kind") == "greenhouse" else None)
-    preview = (mode == "test" and policy == "link" and gh is not None and
-               (cfg.get("autofill_preview") is True or (INSTANCE == "sandbox" and cfg.get("autofill_preview") is not False)))
+    preview = policy == "link" and gh is not None and form_preview(cfg)
     plan = None
     if gh and (policy in ("direct", "link") or preview) and not _redirect(cfg):
         form = autofill.fetch_form(gh["board"], gh["id"])
@@ -837,14 +1134,24 @@ def submit(p, user=None, site=""):
         # connected (never in test mode, which must not use an employer's key). A question the app cannot ask (a file other than the resume, a
         # type UAply cannot fill) is not asked: the send then reports it and the person finishes on the employer's page.
         plan = ats_api.plan(ats["kind"], ats["id"], ats["key"], cand, job, note, resume_meta if resume_bytes else None, answers, ats.get("board") or "")
-    if plan and any(m.get("kind") == "other" for m in plan["missing"]):
+    cannot = bool(plan and any(m.get("kind") == "other" for m in plan["missing"]))
+    if cannot:
         # a required question the app cannot ask on screen (a file other than the resume, a field type UAply does not know): nothing is
         # asked, the send reports it, and the person finishes on the employer's page (for every hiring system)
         plan = dict(plan, missing=[])
         preview = False                                    # the sandbox's simulated send would claim a form that cannot be finished here
     if plan and plan["missing"] and (preview or (policy == "direct" and ats)):
         pub = autofill.public_plan(plan)
+        if not plan_only:
+            note_questions(pub["missing"], (ats or gh or {}).get("kind") or "greenhouse", job["id"])
         return 200, {"status": "needs_answers", "mode": mode, "questions": pub["missing"], "filled": pub["filled"], "total": pub["total"]}
+    if plan_only:
+        # what the swipe would do now: send (ready), finish on the employer's page (handoff: an employer who did not connect, or a required
+        # question UAply cannot ask on screen). "known" says whether the posting's own form was read.
+        out = {"status": "handoff" if (cannot and ats) or (policy != "direct" and not preview) else "ready", "mode": mode, "known": bool(plan)}
+        if plan:
+            out.update(filled=plan["filled"], total=plan["total"])
+        return 200, out
     summary = ({"filled": plan["filled"], "total": plan["total"],
                 "items": [{"q": i["q"][:160], "a": i["a"][:200]} for i in plan["items"] if i["a"] and not i.get("skip")][:40]} if plan else None)
     if cand["ext"]["salary"] and not (plan and plan.get("salary_sent")):
@@ -859,6 +1166,8 @@ def submit(p, user=None, site=""):
         rec = {"id": uuid.uuid4().hex[:12], "at": int(time.time()), "mode": mode, "job": job, "candidate": cand,
                "note": note, "match": int(p.get("match") or 0), "to": "", "simulated": False, "status": "",
                "user": user["id"] if user else None, "resume": resume_meta, "channels": []}
+        if p.get("marked") is True:              # the swipe was already marked as applied on the device (a retry): never reminded (_queue_finish)
+            rec["marked"] = True
         if summary:
             rec["autofill"] = summary
         if preview and plan:
@@ -955,6 +1264,7 @@ def forget_user(user_id):
     """Remove every application record made while signed in as this account (used when the account is deleted)."""
     if not user_id:
         return 0
+    _forget_digest(user_id)                        # the reminder waiting for this account goes too
     with _lock:
         keep = [a for a in APPS if a.get("user") != user_id]
         gone = len(APPS) - len(keep)
@@ -1042,7 +1352,7 @@ def outbox_html():
             e(mail_badge.get(m["status"], m["status"].upper())), e(m["subject"]), e(m["to_addr"]),
             time.strftime("%b %d, %H:%M", time.localtime(m["at"])), e(m["body"])) for m in mails)
         or "<p class='m'>No receipts yet. Sign in to UAply, then swipe right on a job.</p>")
-    return ("""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    return ui_rules.with_focus("""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>UAply test inbox</title><style>
 :root{--bg:#FDF0F2;--surface:#FFFFFF;--ink:#2A1218;--muted:#7B5560;--line:#F3DADF;--accent:#C92A55}
 @media (prefers-color-scheme: dark){:root{--bg:#190B10;--surface:#26131A;--ink:#FBE9EE;--muted:#C79BA6;--line:#40222B;--accent:#FF7A98}}

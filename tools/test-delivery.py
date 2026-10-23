@@ -162,7 +162,7 @@ reset()
 open(mail_file, "w").close()
 j = jobs["Email Only Co"]
 hostile = {"consent": True, "confirm_real": True, "job": {"id": j["id"], "co": j["co"], "role": j["role"], "url": j["url"], "loc": j["loc"], "contact": j["contact"]},
-           "profile": {"name": "Sam <attacker@evil.example>", "email": "sam.h@example.com"}}
+           "profile": {"ext": {"phone": "215-555-0100"}, "name": "Sam <attacker@evil.example>", "email": "sam.h@example.com"}}
 code, out = uaply_api.submit(hostile, {"id": 3, "email": "sam.h@example.com", "emailVerified": True})
 time.sleep(1)
 got = [email.message_from_string(json.loads(x)["raw"], policy=email.policy.default) for x in open(mail_file, encoding="utf-8") if x.strip()]
@@ -203,7 +203,7 @@ t("a 400 answer is final: one try, reported as failed", (out["status"], len(Empl
 # an application whose fields have the wrong type must be tolerated, never crash the handler (the fuzz test found skills sent as a number or a dictionary)
 for label, skills in (("a dictionary", {"a": 1}), ("a number", 7), ("a boolean", True), ("text", "python")):
     shape = {"consent": True, "job": {"id": 1, "co": "Acme", "role": "Intern", "url": "https://acme.example/j"},
-             "profile": {"name": "Pat Doe", "email": "shape@example.com", "skills": skills, "ext": "zzz"}}
+             "profile": {"name": "Pat Doe", "email": "shape@example.com", "skills": skills, "ext": "zzz"}, "resume": RESUME}
     try:
         code, out = uaply_api.submit(shape, None)
         crashed = False
@@ -296,7 +296,7 @@ for label, bad in [("wrong content for a PDF", {"name": "x.pdf", "data": "data:a
 reset()
 jh = jobs["Hook Only Co"]
 base_payload = {"consent": True, "confirm_real": True, "job": {"id": jh["id"], "co": jh["co"], "role": jh["role"], "url": "https://hook.example/careers", "loc": "", "contact": ""},
-                "profile": {"name": "Pat Doe", "email": "pat@example.com"}}
+                "profile": {"ext": {"phone": "215-555-0100"}, "name": "Pat Doe", "email": "pat@example.com"}}
 code, out = uaply_api.submit(base_payload, {"id": 7, "email": "pat@example.com", "emailVerified": False})
 t("an unverified account cannot send directly to an employer", (code, out.get("code"), len(Employer.calls)), (403, "verify", 0))
 code, out = uaply_api.submit(base_payload, None)
@@ -313,22 +313,38 @@ fid = 123456789
 with jobs_api._lock:
     jobs_api._cache[("greenhouse", "x", "X")] = {"at": time.time(), "status": "1 jobs", "jobs": [{"id": fid, "co": "Feed Co", "role": "Engineer", "contact": "recruiter@feed.example", "apply": "link"}]}
 payload = {"consent": True, "confirm_real": True, "job": {"id": fid, "co": "Feed Co", "role": "Engineer", "url": "https://feed.example/j/1", "loc": "Austin, TX", "contact": "recruiter@feed.example"},
-           "profile": {"name": "Sam Rivera", "email": "sam@example.com"}, "resume": RESUME}
+           "profile": {"ext": {"phone": "215-555-0100"}, "name": "Sam Rivera", "email": "sam@example.com"}, "resume": RESUME}
 code, out = uaply_api.submit(payload, None)
 time.sleep(0.5)
 t("a feed job (employer never opted in) is a hand-off: nothing is emailed or posted", (out["status"], len(Employer.calls), len([x for x in open(mail_file) if x.strip()])), ("handoff", 0, 0))
 
 # 11. a real posting that this server no longer lists (it left the employer's board): a hand-off in both modes, never "delivered"
 gone = {"consent": True, "confirm_real": True, "job": {"id": 4242424, "co": "Vanished Co", "role": "Gone Intern", "url": "https://boards.greenhouse.io/vanished/jobs/1"},
-        "profile": {"name": "Sam Rivera", "email": "gone@example.com"}}
+        "profile": {"ext": {"phone": "215-555-0100"}, "name": "Sam Rivera", "email": "gone@example.com"}}
 for mode in ("live", "test"):
     cfg["delivery"] = mode
     code, out = uaply_api.submit(dict(gone, profile=dict(gone["profile"], email="gone-%s@example.com" % mode)), None)
     t("%s mode: a posting no longer listed is a hand-off, sent to no one" % mode, (out["status"], out["to"]), ("handoff", ""))
 cfg["delivery"] = "live"
 code, out = uaply_api.submit({"consent": True, "job": {"id": 7, "co": "Example Co", "role": "Example", "url": "https://example.com/x"},
-                              "profile": {"name": "Sam Rivera", "email": "example@example.com"}}, None)
+                              "profile": {"ext": {"phone": "215-555-0100"}, "name": "Sam Rivera", "email": "example@example.com"}}, None)
 t("an example listing (small number) in live mode is still only a hand-off", out["status"], "handoff")
+
+# 9c. the app's minimum to apply, on the server too (October 22): a phone number or a resume, else nothing is sent or recorded
+reset()
+n_apps = len(uaply_api.APPS)
+bare = dict(base_payload, profile={"name": "Pat Doe", "email": "pat@example.com"})
+code, out = uaply_api.submit(bare, {"id": 7, "email": "pat@example.com", "emailVerified": True})
+t("no phone and no resume: refused with a plain sentence, nothing sent or recorded",
+  (code, out.get("error"), len(Employer.calls), len(uaply_api.APPS) - n_apps), (400, uaply_api.NEEDS_PHONE_OR_RESUME, 0, 0))
+code, out = uaply_api.submit(dict(bare, profile=dict(bare["profile"], ext={"phone": "12"})), None)
+t("...a phone that is not a phone number counts as none", (code, out.get("error")), (400, uaply_api.NEEDS_PHONE_OR_RESUME))
+code, out = uaply_api.submit(dict(bare, profile=dict(bare["profile"], ext={"resume": "https://example.com/pat-cv.pdf"})), None)
+t("a resume link is enough", code, 200)
+code, out = uaply_api.submit(dict(bare, resume=RESUME), None)
+t("a resume file is enough", code, 200)
+code, out = uaply_api.submit(dict(bare, plan_only=True), None)
+t("a plan (reading the form, nothing sent) may still be asked without them", code, 200)
 
 proc.terminate()
 srv.shutdown()

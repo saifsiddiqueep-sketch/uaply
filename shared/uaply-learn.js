@@ -21,6 +21,12 @@ var K={
   early:30,capEarly:25,capLate:40,    /* the learned part of a score: at most 25 points either way before 30 swipes, 40 after */
   every:5,                            /* one card in every five comes from outside the top of the learned ranking */
   priorN:8,                           /* the card draw (Thompson sampling) counts the match score as 8 swipes of evidence, so a weak job is not over-explored */
+  minN:8,                             /* no reordering before 8 swipes, nor while every swipe is a yes (nothing to compare it with): a new
+                                         person's first right swipes used to push a 95% match out of the top 10 (October 22) */
+  minA:2,                             /* an attribute counts once at least 2 swipes carried it: one swipe is a coincidence, not a taste */
+  strong:90,strongDrop:10,            /* before 30 swipes (early), a match of 90% or more never loses more than 10 points to learning and is
+                                         ranked by at least that number, so the best matches stay near the top whatever the draw; from 30
+                                         swipes on, a clear taste may move them like any other card */
   center:true                         /* each attribute is measured against how often this person says yes overall (naive Bayes). Without it,
                                          someone who passes more than they apply pushes every attribute down, even "full-time" that every job has,
                                          every card hits the -40 limit and the deck never changes (seen in tools/ui-learn.js). With an even
@@ -107,11 +113,13 @@ function score(j,fit,E){
   fit=Math.max(0,Math.min(100,+fit||0));
   var p0=Math.min(0.99,Math.max(0.01,fit/100)),z=logit(p0),parts=[],mass=0,base=K.center?Math.log(((E.L||0)+1)/((E.D||0)+1)):0;
   attrs(j).forEach(function(a){
-    var l=E.like[a]||0,d=E.dis[a]||0;if(!l&&!d)return;
+    var l=E.like[a]||0,d=E.dis[a]||0,c0=E.cnt[a];if(!l&&!d)return;
+    if(c0&&c0.yes+c0.no<K.minA)return;                                    /* per attribute: too little evidence yet (see minA) */
     var raw=Math.log((l+1)/(d+1))-base,c=Math.max(-K.cap,Math.min(K.cap,raw));
     z+=c;mass+=l+d;parts.push({a:a,raw:raw,c:c});
   });
   var p=sig(z),lim=E.n<K.early?K.capEarly:K.capLate,pts=Math.max(-lim,Math.min(lim,100*(p-p0)));
+  if(fit>=K.strong&&E.n<K.early)pts=Math.max(pts,-K.strongDrop);                     /* the floor for strong matches (see strong) */
   var shown=Math.max(0,Math.min(100,Math.round(fit+pts)));
   return {fit:fit,p0:p0,z:z,p:p,pts:pts,lim:lim,shown:shown,delta:shown-fit,parts:parts,mass:mass};
 }
@@ -155,10 +163,13 @@ function draw(s,key){
 function order(items,st,now,pin){
   var E=evidence(st&&st.ev,now);
   if(!E.n||!items||!items.length)return items;
+  if(E.n<K.minN||!(E.D>0))return items;                          /* not enough to learn from yet: the match order, untouched */
   var list=items.map(function(x){
     var s=score(x.j,x.m.pct,E);
     if(x.m.capped&&s.shown>45){s.shown=Math.max(45,s.fit);s.delta=s.shown-s.fit}   /* "Capped at 45%" stays true */
-    return {x:x,s:s,d:draw(s,st.seed+":"+st.ver+":"+x.j.id)};
+    var dr=draw(s,st.seed+":"+st.ver+":"+x.j.id);
+    if(s.fit>=K.strong&&E.n<K.early)dr=Math.max(dr,s.shown/100);                     /* a strong match is ranked by at least its own number */
+    return {x:x,s:s,d:dr};
   });
   var ranked=list.slice().sort(function(a,b){return b.d-a.d||b.s.shown-a.s.shown});
   /* the explore card: from the bottom half of the learned ranking, the one UAply knows least about (least evidence), then the best match */
@@ -254,7 +265,7 @@ function apply(w){
   /* went to the employer's site after a swipe right (Finish on their site, Open, Finish now): the strongest yes */
   var open0=w.__uaplyOpen;
   if(typeof open0==="function")w.__uaplyOpen=function(u){
-    try{var hit=false;A.JOBS.forEach(function(j){if(u&&j.url===u&&finish(st,j.id))hit=true});if(hit){A.save();summary()}}catch(e){}
+    try{var hit=false,bare=String(u||"").replace(/([?&])(gh_src|lever-source)=uaply(&|$)/,function(m,p1,k,p3){return p3?p1:""});A.JOBS.forEach(function(j){if(u&&(j.url===u||j.url===bare||(w.__uaplyHandoffURL&&j.url&&w.__uaplyHandoffURL(j.url)===u))&&finish(st,j.id))hit=true});if(hit){A.save();summary()}}catch(e){}
     return open0.apply(this,arguments);
   };
 

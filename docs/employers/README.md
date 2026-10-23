@@ -17,6 +17,9 @@ and what you see for each application.
 
 Before UAply sends anything, you sign or reply to the [consent letter](consent-letter.md). It records what you agreed to and how to stop.
 
+For UAply's own team: the outreach email, the one-page kit ([connect-kit.pdf](connect-kit.pdf)) and the first employers to ask are in
+[connect-kit.md](connect-kit.md); our own first connection, step by step, is [first-connection.md](first-connection.md).
+
 ## The same for every system
 - **Only people who chose to apply.** Each application is one person who swiped right on your job, reviewed what would be sent, and agreed.
 - **Never voluntary self-identification.** UAply never sends gender, race or ethnicity, veteran status or disability status, even when

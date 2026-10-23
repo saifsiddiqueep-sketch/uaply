@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>UAply</title><meta name="robots" content="noindex"><meta name="theme-color" content="#FDF0F2">
+<link rel="icon" type="image/png" href="/uaply-icon-192.png">
+<!-- The screen the service worker (uaply-sw.js) shows in place of a page that could not load: offline, or the server restarting (a
+     deploy). It is shown at the address the person asked for, so "Try again" and the automatic retry simply reload that page. -->
+<style>
+:root{--bg:#FDF0F2;--surface:#FFFFFF;--ink:#2A1218;--muted:#7B5560;--line:#F3DADF;--accent:#C92A55;--accent2:#F0663B;--accent-ink:#FFFFFF}
+@media (prefers-color-scheme: dark){:root{--bg:#190B10;--surface:#26131A;--ink:#FBE9EE;--muted:#C79BA6;--line:#40222B;--accent:#FF7A98;--accent2:#FFA86B;--accent-ink:#1A0A0F}}
+*{box-sizing:border-box}
+html,body{min-height:100%;margin:0}
+body{min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:max(24px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom));background:var(--bg);color:var(--ink);font:16px/1.5 'DM Sans','Segoe UI',system-ui,sans-serif;text-align:center}
+main{max-width:420px;width:100%;background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:28px 24px}
+img{width:72px;height:72px;border-radius:18px;display:block;margin:0 auto 14px}
+h1{margin:0 0 8px;font-size:22px}p{margin:0 0 20px;color:var(--muted)}
+button{min-height:48px;padding:0 26px;border:0;border-radius:999px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);font:inherit;font-weight:700;cursor:pointer}
+button:disabled{opacity:.7;cursor:default}
+html{-webkit-tap-highlight-color:transparent}a,button,input,select,textarea,summary,label,[role=button],[tabindex]{-webkit-tap-highlight-color:transparent}:focus:not(:focus-visible){outline:none}:focus-visible{outline:3px solid var(--accent,#C92A55);outline-offset:2px}
+button:not(:disabled):active,.btn:active{transform:translateY(1px);filter:brightness(.95)}
+small{display:block;margin-top:14px;color:var(--muted);min-height:1.5em}
+</style></head>
+<body><main>
+<img src="/uaply-icon-192.png" alt="">
+<h1 id="t">UAply is starting up</h1>
+<p id="m">This usually takes less than a minute. This page keeps trying and opens UAply as soon as it is ready.</p>
+<button type="button" id="b">Try again</button>
+<small id="s" role="status" aria-live="polite"></small>
+</main>
+<script>
+(function(){
+  var t=document.getElementById("t"),m=document.getElementById("m"),b=document.getElementById("b"),s=document.getElementById("s"),busy=false,timer=0;
+  /* how long to wait before the next automatic check: every 3 seconds for the first minute, then half as often again each time, never
+     more than 15 seconds apart (a deploy takes seconds; a longer outage should not be hammered) */
+  var FIRST=3000,MAX=15000,started=Date.now(),wait=FIRST;
+  function nextWait(w,elapsed){return elapsed<60000?FIRST:Math.min(MAX,Math.round(w*1.5))}
+  window.__uaplyRetryWait=function(){return wait};                 /* for the browser test (tools/ui-focus.js) */
+  window.__uaplyNextWait=nextWait;
+  function words(){
+    if(navigator.onLine===false){t.textContent="You're offline";m.textContent="UAply needs the internet to show jobs. Connect to Wi-Fi or mobile data; this page opens UAply again as soon as you're back online."}
+    else{t.textContent="UAply is starting up";m.textContent="This usually takes less than a minute. This page keeps trying and opens UAply as soon as it is ready."}
+  }
+  function next(){
+    clearTimeout(timer);
+    timer=setTimeout(function(){if(navigator.onLine===false)next();else check(false)},wait);
+    wait=nextWait(wait,Date.now()-started);
+  }
+  /* the health check answers in milliseconds once the server is up (and is never handled by the service worker). The first 200 opens
+     the page that was asked for; the server sends every page with Cache-Control: no-store, so the reload is a fresh copy, never a saved one */
+  function check(byHand){
+    if(busy)return;busy=true;clearTimeout(timer);
+    if(byHand){b.disabled=true;s.textContent="Checking…"}
+    fetch("/healthz",{cache:"no-store"}).then(function(r){
+      if(r.ok){s.textContent="Opening UAply…";location.reload();return}
+      throw new Error("not yet");
+    }).catch(function(){
+      busy=false;b.disabled=false;words();
+      s.textContent=byHand?"Not yet. Still trying by itself.":"";
+      next();
+    });
+  }
+  words();
+  b.onclick=function(){check(true)};
+  window.addEventListener("online",function(){words();check(false)});
+  window.addEventListener("offline",words);
+  next();
+})();
+</script>
+</body></html>
