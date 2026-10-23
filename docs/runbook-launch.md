@@ -57,20 +57,27 @@ can run the commands that need no secret. Nothing here needs a secret typed into
    ashby), and `commit: <the 7 letters>`. Anything else: stop and fix it before going on (a typo in Environment is the
    usual cause; each save restarts the service, so batch the changes).
 
-## 3. Live check from outside (coordinator, 3 minutes)
-`python tools/live-check.py --base https://uaply.net --expect all`
-Good: no FAIL line, and "the site runs the latest push" names the new commit (it reads `dev` from GitHub itself, so any checkout will
-do). Every SKIP line says on that line what it needs. It signs nobody up and sends no email: its only writes are ones the site must
-refuse (a sign-in from another site, six wrong passwords for a made-up `@example.com` address, a webhook without a signature). `--expect all` turns email, Google, payments and the
-persistent disk from SKIP into FAIL when one is off, so a missing setting cannot pass quietly. A FAIL on "latest push": the deploy did
-not happen; go back to step 2.
-
-## 4. A stranger's first visit in a browser (coordinator, 5 minutes)
-`node tools/cdp.js tools/ui-live.js --base https://uaply.net --out ui-live-shots`
-Its first lines time `/healthz` and say how long the first job card took (a cold server can take many seconds; it waits up to 60 s),
-so a slow start is named instead of failing. Good: no FAIL line (the SKIP for sign-up by email code is expected; step 6 covers it) at
-phone size (390x844) and computer size (1280x800): the agreement box, tips, a swipe, the Account wording,
-Continue with Google leading to Google's page (it never signs in), Plan and billing, the help assistant.
+## 3 and 4. The launch smoke check: live check from outside and a stranger's first visit (coordinator, 5 minutes, one command)
+Git Bash: `bash tools/launch-smoke.sh https://uaply.net`   PowerShell: `powershell -File tools\launch-smoke.ps1 https://uaply.net`
+(add a folder as the second argument to choose where its report goes; otherwise the temp folder). Read only: it signs nobody up,
+sends no email and changes nothing on the site. In order it runs:
+1. one timed `/healthz`, so a slow (cold) server is named in the report instead of looking like a fault of the site;
+2. `tools/live-check.py --expect all --no-rate-limit`: `--expect all` turns email, Google, payments and the persistent disk from SKIP
+   into FAIL when one is off, so a missing setting cannot pass quietly; "the site runs the latest push" reads `dev` from GitHub itself
+   and must name the commit from step 1.4. Its only writes are ones the site must refuse (a sign-in from another site, webhooks
+   without their signature, a checkout with no account, Forgot password for a made-up address with no account); `--no-rate-limit`
+   leaves out the six wrong passwords;
+3. `tools/ui-live.js --read-only` at phone size (390x844) and computer size (1280x800): the agreement box, tips, a swipe, the Account
+   wording, Continue with Google leading to Google's page (it never signs in), Plan and billing, the help assistant. It waits up to
+   60 s for the first job card and says how long it took. `--read-only` answers every request that could change the site in the
+   browser instead of sending it (the Pass swipe's record, for one) and lists them.
+It ends with one summary block (counts per tool, healthz time, the commit the site runs, the local time, every SKIP with its reason)
+and writes it, with both tools' full output, to `launch-smoke-<time>.txt`. With the owner password in that terminal only
+(`UAPLY_OWNER_PASSWORD`, never on the command line) it also reads `/api/status`'s self-check.
+Good: `result  no FAIL` and `site runs` is the new commit. The skips that are expected: the sign-in lock-out (left out on purpose),
+sign-up by email code and a real Google sign-in (steps 6 and 7 are those, by a person), Brevo bounce events until their secret is
+set, and a test purchase. A FAIL on "latest push": the deploy did not happen; go back to step 2. Any other FAIL: the summary names
+it; the full output in the file says why.
 
 ## 5. The phone walk on the Galaxy (owner plugs it in; coordinator runs it, 10 minutes)
 USB debugging on, Chrome on the phone, the phone awake and unlocked. adb is not on this computer's PATH, so name it:
