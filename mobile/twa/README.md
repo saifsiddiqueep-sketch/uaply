@@ -13,6 +13,16 @@ What the website already provides (nothing to do): the web manifest (`/uaply.web
 "starting up" screen, HTTPS, the account-deletion page (`/legal/delete-account.html`) and `/.well-known/assetlinks.json`, which lists
 the keys from the `UAPLY_ASSETLINKS_SHA256` setting on Render.
 
+## The one command
+
+    powershell -ExecutionPolicy Bypass -File mobile\twa\build-bundle.ps1
+
+`build-bundle.ps1` does steps 1 to 3 below in order and stops only where the owner must act in that window: Google's Android SDK
+licence (the first time), the upload key's password (chosen the first time, typed to sign each build; never saved), and nothing else.
+Until the next release puts the icons on uaply.net it serves them from this computer for the build; if Bubblewrap's template still
+targets an Android level below 36 it raises the generated `app/build.gradle` to 36 for that build. At the end it prints the upload
+key's SHA-256 for step 4. (Written October 23, 2026; not yet run end to end, as the computer it was written on had no Android SDK.)
+
 ## Owner steps
 
 ### 1. Tools (once, on your computer)
@@ -34,8 +44,10 @@ this folder). Without both you cannot upload updates (Google can reset a lost up
 
 ### 3. Build the app bundle
 1. In `mobile\twa`: `bubblewrap update --skipVersionUpgrade` (generates the Android project from `twa-manifest.json`).
-2. Check `app\build.gradle`: `targetSdkVersion` must be **36 or higher** (Google Play's rule since August 31, 2026). If it is lower,
-   run `npm install -g @bubblewrap/cli@latest` and step 1 again; do not edit the generated files by hand (`update` overwrites them).
+2. Check `app\build.gradle`: `targetSdkVersion` must be **36 or higher** (Google Play's rule for new apps since August 31, 2026). In
+   July 2026 Bubblewrap's template still had 35 (https://github.com/pwa-builder/pwabuilder/issues/6160): run
+   `npm install -g @bubblewrap/cli@latest` and step 1 again, and if it is still lower, set it to 36 in `app\build.gradle` after
+   `update` and before `build` (`build-bundle.ps1` does this; `update` writes the file again each time).
 3. `bubblewrap build`. It asks for the key's passwords and writes `app-release-bundle.aab` (for Play) and `app-release-signed.apk`
    (to try on your own phone: `bubblewrap install`).
 4. For every later upload: raise `appVersionCode` (and `appVersion`) in `twa-manifest.json`, run `bubblewrap update --skipVersionUpgrade`,

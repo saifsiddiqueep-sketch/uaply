@@ -4,7 +4,7 @@
 |---|---|
 | Privacy policy | **https://uaply.net/legal/privacy.html** (fill its highlighted blanks first: company name, launch date, privacy email, retention, host) |
 | Ads | **No, my app does not contain ads** |
-| App access | **All or some functionality is restricted**: swiping, applying and the Job Tracker work without an account; Account, receipts and account deletion need one. Instructions for the reviewer: "Open the app and swipe; no sign-in needed. To review account features, tap Sign in, create an account with any email address you can read (a 6-digit code is emailed), or use the demo account below." Demo account: create `review@uaply.net` (or another inbox the team reads) before submitting and paste its email and password into the Console fields; never commit the password |
+| App access | **All or some functionality is restricted**: the whole app is behind sign-in (the sign-up card is the first screen). Instructions for the reviewer: "Sign in with the demo account below (Sign in, email and password). Everything else opens after that: the job cards, Job Tracker, Profile, Filters, Help, and Profile > Account > More account options > Delete my account." Demo account: the owner creates `review@uaply.net` (or another inbox the team reads) and verifies it with its emailed code before submitting, then pastes its email and password into the Console's App access fields; never commit or send the password anywhere else |
 | Content rating | See `content-rating.md` |
 | Target audience and content | Target age group: **18 and over** only. Does the app appeal to children? **No**. No ads, so no ad-related follow-ups |
 | News app | **No** |

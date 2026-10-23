@@ -1,7 +1,7 @@
 # Data safety form (Play Console > Policy > App content > Data safety)
 
 Answers for the UAply Android app (the Trusted Web Activity of uaply.net), checked against `legal/privacy.html` (October 16, 2026) and the
-code on October 21, 2026. Google counts data as **collected** when it leaves the device to UAply's server, and as **shared** when it goes
+code on October 21, 2026; the account answers updated on October 23 for the sign-in gate (nobody reaches anything without an account). Google counts data as **collected** when it leaves the device to UAply's server, and as **shared** when it goes
 to another company. Data kept only on the phone (the street address, voluntary self-identification, device location, the resume file
 between applications) is **not collected**. Re-check this table whenever `legal/privacy.html` changes, and before paid plans open.
 
@@ -11,7 +11,7 @@ between applications) is **not collected**. Re-check this table whenever `legal/
 |---|---|
 | Does your app collect or share any of the required user data types? | **Yes** |
 | Is all of the user data collected by your app encrypted in transit? | **Yes** (HTTPS only; HSTS on uaply.net) |
-| Which of the following methods of account creation does your app support? | **Username and password** (email and password, with a 6-digit email code) and **OAuth** (Continue with Google). An account is optional: swiping and applying work without one |
+| Which of the following methods of account creation does your app support? | **Username and password** (email and password, with a 6-digit email code) and **OAuth** (Continue with Google). An account is required: with the sign-in gate, the sign-up card is the first screen and nothing else opens without an account |
 | Do you provide a way for users to request that their data is deleted? | **Yes** |
 | Delete account URL | **https://uaply.net/legal/delete-account.html** |
 | Do you allow users to request deletion of some or all data without deleting their account? | **Yes**: on the device, Profile > Data & privacy > Delete all my data; on the server, by email (support address on the deletion page) |
@@ -28,7 +28,7 @@ email delivery, Anthropic for the help assistant's AI answers, Stripe once paid 
 |---|---|---|---|---|---|---|---|
 | Personal info | Name | Yes | Yes, with employers you apply to | No | Required to apply | App functionality | Profile setup; sent with each application |
 | Personal info | Email address | Yes | Yes, with employers you apply to | No | Required to apply; required for an account | App functionality, Account management, Developer communications (receipts, codes) | Profile; account sign-up; Google sign-in |
-| Personal info | User IDs | Yes | No | No | Optional (only with an account) | Account management | The account number, and the Google account number if Continue with Google is used |
+| Personal info | User IDs | Yes | No | No | Required (every user has an account) | Account management | The account number, and the Google account number if Continue with Google is used |
 | Personal info | Address | Yes | Yes, with employers you apply to | No | Optional | App functionality | State, ZIP code and country only, sent with applications to fill the employer's form. The street stays on the device |
 | Personal info | Phone number | Yes | Yes, with employers you apply to | No | Optional | App functionality | Profile setup |
 | Personal info | Race and ethnicity | **No** | No | | | | Voluntary self-identification stays on the device and is never sent |
