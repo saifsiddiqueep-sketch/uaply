@@ -50,6 +50,13 @@ General first moves for any live problem:
 **Symptom:** the deck is empty; Pass is disabled; the self-check warns "no good board read in 2 hours"; `/api/feed-health` shows many sources off.
 
 **Check:**
+- Signed out? Then an empty deck is the sign-in gate, not a feed problem: the card is the whole screen and no job card is drawn, and
+  `/api/jobs` answers `401` `{"code": "signin"}` without a session (runbook 5). Check the feeds signed in, or with the owner checks
+  below.
+- Signed in and still empty: the deck reads the job list a page at a time. `GET /api/jobs?size=200&page=1` is the first page (then
+  `?cursor=<the next of the page before>`, and `&type=internship,coop` for a stack's own pages); `GET /api/jobs` with no query is the
+  whole list as before; `GET /api/jobs/<id>` is one job (a shared job opens this way; `404` `gone` when it is no longer listed).
+  Compare the first page's jobs with the whole list (`serve.py`, `jobs_api.get_page`, `jobs_api.job_full`).
 - First start on an empty disk takes about a minute to fill. After that, saved jobs show at once while boards refresh.
 - Logs: search `job feed` (a board that could not be read).
 - `selfCheck.feeds.lastOk` and `minutesAgo` in `/api/status` (owner).
@@ -86,12 +93,17 @@ General first moves for any live problem:
 **Symptom:** after sign-up the app shows nothing; data routes answer 401 `signin` or 403 `verify`; people say they are locked out.
 
 **Check:**
-- Since October 22 the gate is on: signed out, data routes answer `401` `{"code": "signin"}`. An unverified address gets `403` `verify` where a verified email is needed. That is expected; the app should show the sign-up card or the code step.
-- Is email working (runbook 6)? A sign-up needs its 6-digit code to verify.
+- The gate is on the live site since the October 23 release (`9b76822`; on `sandbox` since October 22): signed out, data routes
+  answer `401` `{"code": "signin"}`. An unverified address gets `403` `verify` where a verified email is needed. That is expected; the app should show the sign-up card or the code step.
+- Is email working (runbook 6)? A sign-up needs its 6-digit code to verify. On a live server without email, sign-up still works but
+  no code can arrive, so every account stays unverified and every data route answers `403` `verify` for everyone: nobody gets past the
+  gate. `/api/status` says `"email": false`, and `tools/live-check.py --expect email` fails.
 - Limits: 40 sign-ups an hour per address, codes 3 an hour per account and 80 per address, a site-wide cap of 500 code emails an hour (`UAPLY_CODE_SENDS_PER_HOUR`). The refusal text says what to do.
 - `node tools/cdp.js tools/ui-gate-live.js` against the site (read only) checks the gate.
 
 **Fix:**
+- No email on the live server (owner): set the email keys (the Brevo SMTP settings in `UAPLY_CONFIG_JSON`, runbook 6 and `DEPLOY.md`
+  step 4 and section 5), redeploy, and check `"email": true` in `/api/status`; then people use Resend code or Email me a code.
 - Front end not showing the code step: test with `tools/ui-gate.js` locally and fix on `sandbox`.
 - A campus behind one address hitting limits: the limits were raised for this in October; any further change is a server change (Saif's area).
 - Real visitor address wrong behind Cloudflare: `serve.client_ip` trusts `CF-Connecting-IP` only from Cloudflare's ranges (`UAPLY_CF_RANGES=0` keeps the built-in copy).
