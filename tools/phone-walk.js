@@ -183,7 +183,25 @@ module.exports = async ({ ev, sleep, nav, send }) => {
   if (!(await calibrate())) return;
   await orient();
   log("phone: " + (await ev("JSON.stringify({css:[innerWidth,innerHeight],dpr:devicePixelRatio,ua:navigator.userAgent.match(/Chrome\\/[\\d.]+/)[0]})")) + " · " + T + " " + URL);
-  await waitFor("return d.getElementById('kcYes')||d.querySelector('.card.top')", 20000);
+  // the sign-in gate (October 22, Saif; the sandbox): signed out, the card is the whole screen. The walk's person signs up through it
+  // first (the card's own boxes, the code from the stand-in inbox, the two questions); section 4 signs out and walks the card by touch
+  await waitFor("return d.getElementById('kcYes')||d.querySelector('.card.top')||(d.body.classList.contains('sgGated')&&d.querySelector('.sg-su'))", 20000);
+  if (await q("return d.body.classList.contains('sgGated')?'yes':''")) {
+    await step("gate", "the sign-in gate (signed out)");
+    if (LIVE || !process.env.WALK_MAIL) { log("the sign-in gate is up and this walk does not sign up here (" + (LIVE ? "live: read only" : "no stand-in inbox") + "): the rest needs an account"); return; }
+    const E0 = "uaplytechnologies+phone0@gmail.com", seen0 = (() => { try { return fs.readFileSync(process.env.WALK_MAIL, "utf8").trim().split(/\n/).filter(Boolean).length; } catch (e) { return 0; } })();
+    const setv = (sel, v) => q("const e=d.querySelector(" + JSON.stringify(sel) + ");if(!e)return '';e.value=" + JSON.stringify(v) + ";e.dispatchEvent(new Event('input',{bubbles:true}));return 'ok'");
+    await setv(".sg-su [data-email] input", E0); await setv(".sg-su .sg-fn input", "Pat"); await setv(".sg-su .sg-ln input", "Walker"); await setv(".sg-su .sg-pw input", "Phone-walk-" + Date.now());
+    await q("const a=d.querySelector('.sg-su .sg-ag');if(a&&!a.checked)a.click();d.querySelector('.sg-su [type=submit]').click();return 1"); await sleep(2500);
+    let c0 = "";
+    for (let k = 0; k < 30 && !c0; k++) { await sleep(500); try { const rows = fs.readFileSync(process.env.WALK_MAIL, "utf8").trim().split(/\n/).map((l) => JSON.parse(l)); if (rows.length > seen0) { const m = rows.slice(seen0).reverse().map((r) => JSON.stringify(r).match(/\b(\d{6})\b/)).find(Boolean); if (m) c0 = m[1]; } } catch (e) {} }
+    if (c0) { await setv(".sg-code input", c0); await sleep(2500); }
+    for (let k = 0; k < 3; k++) { await q("const b=d.querySelector('.sg-next');if(b)b.click();return 1"); await sleep(900); }
+    const in0 = await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>j.user?j.user.email:'')");
+    if (in0 === E0 && !(await q("return d.body.classList.contains('sgGated')?'yes':''"))) log("signed up through the gate first (" + E0 + "): the app is open");
+    else { fail("Sign-in gate · could not sign up through it (" + (c0 ? "signed in: " + in0 : "no code in the stand-in inbox") + ")"); return; }
+    await waitFor("return d.getElementById('kcYes')||d.querySelector('.card.top')", 20000);
+  }
   await step("first-visit", "first visit");
   if (await q("return !!d.getElementById('kcYes')")) {
     await swipe("d.querySelector('#kitConsent [role=dialog] p')", 0, -400, 300);
@@ -224,9 +242,14 @@ module.exports = async ({ ev, sleep, nav, send }) => {
     await keyboardShot("profile-keyboard-last", "[...d.querySelectorAll('#form input[type=text],#form input[type=url],#form textarea')].filter(e=>e.offsetParent).pop()", "Profile setup, typing in the last field");
     // ---- 4. Account: sign-in options; sign-up with the stand-in inbox (local only) ----------------------------------------------------
     await menu("nb-prof", "account"); await step("account", "Account");
+    if (!LIVE && (await q("return d.querySelector('[data-auth=sout]')?'in':''"))) {     // signed up through the gate: sign out, and the gate is back
+      await tap("d.querySelector('[data-auth=sout]')"); await sleep(1800);
+      if (await q("return d.body.classList.contains('sgGated')?'yes':''")) log("Sign out: the sign-in gate is back"); else fail("Sign out · the sign-in gate did not come back");
+      await step("gate-after-signout", "the sign-in gate after Sign out");
+    }
     await keyboardShot("signin-keyboard", "d.getElementById('aEmail')||d.getElementById('sEmail')||d.querySelector('#acctSec input[type=email],#acctSec input[inputmode=email]')", "Sign in, typing an email");
     if (!LIVE && process.env.WALK_MAIL) {
-      const EMAIL = "uaplytechnologies+phone1@gmail.com", PW = "phone walk " + Math.random().toString(36).slice(2, 10);
+      const EMAIL = "uaplytechnologies+phone1@gmail.com", PW = "phone walk " + Math.random().toString(36).slice(2, 10), PW1 = "Walk" + Math.random().toString(36).slice(2, 10);
       const set = (id, v) => q("const e=d.getElementById('" + id + "');if(!e)return '';e.value=" + JSON.stringify(v) + ";e.dispatchEvent(new Event('input',{bubbles:true}));return 'ok'");
       // the newest 6-digit code in the stand-in inbox that was not there before `seen`
       const codeAfter = async (seen) => { for (let k = 0; k < 30; k++) { await sleep(500); try { const rows = fs.readFileSync(process.env.WALK_MAIL, "utf8").trim().split(/\n/).map((l) => JSON.parse(l));
@@ -249,7 +272,8 @@ module.exports = async ({ ev, sleep, nav, send }) => {
         if (g) log("sign-up card: Continue with Google is shown"); else fail("Sign up · the card shows no Continue with Google");
         await step("signup-card", "Sign up, the card");
         const ok = (await typeInto("d.querySelector('.sg-su [data-email] input')", EMAIL, "Email")) &&
-          (await typeInto("d.querySelector('.sg-su .sg-fn input')", "Sam", "First name")) && (await typeInto("d.querySelector('.sg-su .sg-ln input')", "Rivera", "Last name"));
+          (await typeInto("d.querySelector('.sg-su .sg-fn input')", "Sam", "First name")) && (await typeInto("d.querySelector('.sg-su .sg-ln input')", "Rivera", "Last name")) &&
+          (await typeInto("d.querySelector('.sg-su .sg-pw input')", PW1, "Password"));
         await blur(); await sleep(700);
         if (ok) {
           await tap("d.querySelector('.sg-su .sg-ag')"); await sleep(400);
@@ -279,12 +303,23 @@ module.exports = async ({ ev, sleep, nav, send }) => {
             if (await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>j.user?'in':'')")) fail("Sign out · a tap on Sign out did not sign out");
             await tap("d.querySelector('.sg-to-in')"); await sleep(700);
             await step("signin-card", "Sign in, the card");
-            if (await typeInto("d.querySelector('#acctSec [data-email] input')", EMAIL, "Sign-in email")) {
+            if ((await typeInto("d.querySelector('#acctSec [data-email] input')", EMAIL, "Sign-in email")) && (await typeInto("d.querySelector('.sg-si .sg-pw input')", PW1, "Sign-in password"))) {
+              await blur(); await sleep(600);
+              await step("signin-filled", "Sign in, filled in");
+              await tap("d.querySelector('.sg-si [type=submit]')"); await sleep(2500);
+              if ((await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>j.user?j.user.email:'')")) === EMAIL) log("sign-in by password checked"); else fail("Sign in · the password did not sign in");
+              await menu("nb-prof", "account"); await sleep(800);
+              await tap("d.querySelector('[data-auth=sout]')"); await sleep(1800);
+            }
+            await tap("d.querySelector('.sg-to-in')"); await sleep(700);
+            await tap("d.querySelector('.sg-codeinst')"); await sleep(600);
+            await step("signin-code-card", "Sign in, Email me a code instead");
+            if (await typeInto("d.querySelector('#acctSec [data-email] input')", EMAIL, "Sign-in email (code)")) {
               await blur(); await sleep(600); const b2 = inbox();
               await tap("d.querySelector('.sg-si [type=submit]')"); await sleep(2000);
               const code2 = await codeAfter(b2);
               if (!code2) fail("Sign in · no code arrived in the stand-in inbox");
-              else { await typeCode(code2, "signin-code"); if (/signed in/i.test(await card())) log("sign-in by code checked"); else fail("Sign in · the code did not sign in: " + (await card()).slice(0, 120).replace(/\s+/g, " ")); }
+              else { await typeCode(code2, "signin-code"); if ((await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>j.user?j.user.email:'')")) === EMAIL) log("sign-in by code checked"); else fail("Sign in · the code did not sign in: " + (await card()).slice(0, 120).replace(/\s+/g, " ")); }
               await step("signed-in", "Account, signed in again");
             }
             // ---- Continue with Google (the stand-in Google approves at once and sends the phone back) ----

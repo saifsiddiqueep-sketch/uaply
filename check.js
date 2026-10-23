@@ -100,10 +100,14 @@ try {
   /* sandbox-only: Hiring mode, the pretend back end, and the "Save to Applied?" question the sandbox removed */
   const leak = P.filter((k) => ["employers", "backend", "confirm"].includes(k));
   leak.length ? bad("sandbox-only features in the release build: " + leak.join(", ")) : ok("no sandbox-only feature (Hiring mode, Mock back end, Confirm apply) is in the release build");
-  /* sign-up v2 (the no-password card) can be promoted to dev only together with its file, and only once dev's server runs its routes
-     (serve.py CODE_SIGNIN, sandbox-only today; without them the card falls back to the old one by itself) */
+  /* the sign-in card can be promoted to dev only together with its file. Code sign-in runs wherever the server runs (Saif, October 22:
+     sign-up with a password, the emailed code to verify and as the other way in), and the sign-up test mode never on a public server */
   !P.includes("signup") || dev.includes('<script src="uaply-signup.js"></script>') ? ok("sign-up v2 is not promoted, or it is and its file loads in dev") : bad("dev promotes signup but does not load uaply-signup.js");
-  /\bCODE_SIGNIN = os\.path\.basename\(root\) == "sandbox"/.test(fs.readFileSync("serve.py", "utf8")) ? ok("the no-password sign-in routes are switched on for the sandbox server only") : bad("serve.py: CODE_SIGNIN is no longer limited to the sandbox (dev and the live site must keep today's sign-in until it is promoted on purpose)");
+  {
+    const sv = fs.readFileSync("serve.py", "utf8");
+    /\bCODE_SIGNIN = os\.environ\.get\("UAPLY_CODE_SIGNIN", ""\) != "0"/.test(sv) ? ok("code sign-in is on wherever the server runs (UAPLY_CODE_SIGNIN=0 is the only off switch)") : bad("serve.py: CODE_SIGNIN is no longer on for every instance");
+    /\bSIGNUP_TEST = os\.environ\.get\("UAPLY_SIGNUP_TEST", ""\) == "1" and not PUBLIC\b/.test(sv) ? ok("the sign-up test mode can never be on for a public server") : bad("serve.py: SIGNUP_TEST must be tied to not PUBLIC");
+  }
   /* its hooks in shared/uaply-nav.js: a merge that drops one would bring the old card back without a word, so each must be there once */
   {
     const nav = fs.readFileSync("shared/uaply-nav.js", "utf8"), count = (s) => nav.split(s).length - 1;

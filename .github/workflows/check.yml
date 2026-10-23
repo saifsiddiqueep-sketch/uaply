@@ -45,6 +45,7 @@ jobs:
           python tools/test-setup.py
           python tools/test-emails.py
           python tools/test-support.py
+          python tools/test-signin-contract.py
           python tools/test-chat.py
           python tools/test-ats.py
           python tools/test-ats-ashby.py

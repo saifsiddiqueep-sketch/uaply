@@ -84,6 +84,8 @@ def config():
 
 
 def _smtp_ready(cfg):
+    if NO_MAIL:                                         # test mode: every message goes to the test inbox, even with real email settings
+        return False
     s = cfg.get("smtp") or {}
     pw = s.get("password") if isinstance(s.get("password"), str) else ""
     if s.get("user") and (not pw.strip() or pw.strip().lower().startswith("a gmail app password")):
@@ -160,6 +162,7 @@ def _load():
 
 
 PUBLIC = False             # serve.py sets this on a hosted server (the live site): see _mail_ctx
+NO_MAIL = False            # serve.py sets this in test mode (UAPLY_SIGNUP_TEST, never public): no email leaves, whatever the settings say
 hide_errors = False        # serve.py sets this on a hosted server: visitors then see a plain sentence, never a mail server's or an employer's raw error text
 
 
@@ -722,12 +725,18 @@ def send_support_ticket(rec, user=None):
     return "emailed" if sent == "sent" else "held"         # held: near the daily limit or the mail service is down; it is sent later
 
 
-def send_verification_mail(user_id, to, digits):
-    """Email the 6-digit code that proves an email address is the person's own (plain text and a branded HTML version). The code is never
-    kept in the stored copy once emailed."""
-    subject, text, page = emails.verification_email(digits)
+def send_verification_mail(user_id, to, digits, purpose="confirm"):
+    """Email a 6-digit code (plain text and a branded HTML version). purpose "confirm": it proves the address is the person's own (after
+    sign-up); "signin": it signs in to an existing account (Email me a code), with its own wording (item 21). The code is never kept in
+    the stored copy once emailed."""
+    if purpose == "signin":
+        subject, text, page = emails.signin_code_email(digits)
+        stored = "Your UAply sign-in code"
+    else:
+        subject, text, page = emails.verification_email(digits)
+        stored = "Your UAply verification code"
     return send_system_mail(user_id, to, subject, text, secret=True, page=page,
-                            stored_subject="Your UAply verification code", redacted="(the code was emailed and is not kept here)", kind="code")
+                            stored_subject=stored, redacted="(the code was emailed and is not kept here)", kind="code")
 
 
 def mail_ready():
@@ -1023,6 +1032,10 @@ def submit(p, user=None, site=""):
     # plan_only (POST /api/apply/plan): read the posting's own form the way a swipe right does and say what it would ask, without recording
     # or sending anything. The card shows "Ready to apply" or "N answers needed" from it, before the swipe (uaply-live.js, readiness).
     plan_only = p.get("plan_only") is True
+    # the names given at sign-up (Saif, October 22) stand in for an empty profile name
+    acct_name = " ".join(x for x in ((user or {}).get("first", ""), (user or {}).get("last", "")) if x)
+    if acct_name and isinstance(p.get("profile"), dict) and not _s(p["profile"].get("name"), 100):
+        p = dict(p, profile=dict(p["profile"], name=acct_name))
     err = _validate(p, plan_only)
     if err:
         return 400, {"error": err}

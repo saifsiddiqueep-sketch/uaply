@@ -6,6 +6,29 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 
+### Sign-in, server side (Saif, October 22): password sign-up with names, the code to verify and to sign in, the gate, a test mode, items 12 to 23
+- **The contract** is in `docs/ACCOUNTS.md`, "The sign-in contract": every route, field and answer, the gate and the test mode, for the
+  card and the gate the front end builds.
+- **Sign-up** is email, first and last name and a password (8 to 128), with the 18+ / Terms tick: the account keeps the names
+  (`first_name`, `last_name`; `/api/auth/me` gives `first`, `last`), signs in at once, answers first and emails the verification code
+  after the answer (or says `bounced` for an address on the bounce list). An empty profile name is filled from the account's names when
+  an application is made. The emailed code is also the other way in ("Email me a code"), with its own sign-in wording (item 21).
+- **Code sign-in runs wherever the server runs** (sandbox, dev, the live site; item 0, record item 22), with its two rules (Google asks
+  the owner's own tick: `agree_owner`; Resend counts toward the day's cap). A public server without email does not offer it and its code
+  routes answer 503 `mail_off`. `UAPLY_CODE_SIGNIN=0` is the only off switch.
+- **The gate**: signed out, `/api/jobs`, the apply, plan, mark, decision, chat, feedback, resume and employer routes answer 401
+  `{"error": "Sign in first.", "code": "signin"}`; the page, help, legal, the health check, status and every sign-in route stay open.
+- **Test mode**: `UAPLY_SIGNUP_TEST=1` on a server that is not public makes sign-up verified and signed in at once with no email
+  (`providers.signupTest`); ignored on a public server.
+- **Items**: 13 the day counters are capped (20,000, the oldest first); 15 one limit sentence for sign-ups and codes, the same for every
+  address; 16 change password on an account with no password says so (Google only when linked); 17 full-width and Arabic-Indic digits
+  count; 19 an address like a@example..com is refused; 20 Forgot password answers first everywhere and writes its token after; 23
+  `/api/auth/me` says `googleLinked`. 14 and 18 were already closed (a660b4a: the last hop; the real `created` flag).
+- **Tests**: `tools/test-signin-contract.py` (new, 42, in the runner and CI); test-public (the 401s), test-signup-flow, test-public-auth,
+  test-accounts, test-google, test-google-token, test-render, test-mail-limits and the swipe walk updated for the new rules (codes arrive
+  just after the answer; dev has code sign-in; the people sign in first). `tools/live-check.py` checks the 401s and reads the job list and
+  the help chat only with a signed-in session in `UAPLY_LIVE_COOKIE`.
+
 ### Share this job (Mohammed's design, version A, October 22)
 - **On the swipe page the one change is a small share icon** (36 px, "Share this job") in the top-right corner of the job card.
   The header, the example-profile notice, the filters, the card's contents, Pass / Undo / Apply, Help and the bottom bar are as before

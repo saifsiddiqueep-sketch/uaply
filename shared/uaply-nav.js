@@ -307,6 +307,8 @@ html{-webkit-tap-highlight-color:transparent}a,button,input,select,textarea,summ
     October 22, 2026). Above the card, and reaching further down, it is 44 px again */
  .filters button{z-index:1}
  .filters button::after{height:52px}
+ /* ...and never over the location card's or a banner's own buttons next to them (Try again, Not now: 39 px on a turned phone) */
+ .banner button,#locAsk .acts .btn{z-index:2}
 }
 #fJt button{min-height:44px}
 .toast button{position:relative}
@@ -353,7 +355,7 @@ function apply(w,host){
   /* the Plan screen is in every build: on a real server it is backed by Stripe (see billingHTML); the simulated one remains only without a server */
   var ACCT={account:1,plan:1,data:1};
   var LEADS={
-    account:"Sign in to get an email receipt for each application and to apply directly to employers that take applications through UAply. Your profile stays on this device.",   /* nothing syncs a profile between devices, so the screen must not promise it */
+    account:"Sign in to get an email receipt for each application and to apply directly to employers that take applications through UAply. Your name goes with your account; the rest of your profile stays on this device.",   /* nothing syncs a profile between devices, so the screen must not promise it */
     plan:"Choose your plan. Payments are made on Stripe's secure page; you can cancel any time.",
     data:"Back up, move or delete everything UAply keeps about you.",
     settings:"Your details. Every card is scored against them, and they fill in your application note and the email address recruiters reply to.",
@@ -363,7 +365,7 @@ function apply(w,host){
      them; the owner's computer (test inbox) and a server with email keep the line above */
   function leadOf(v){
     /* signed in: the line above "You are signed in" must not still ask the person to sign in */
-    if(v==="account"&&SRV.up&&SRV.user)return "Your sign-in, email confirmations and password. Your profile stays on this device.";
+    if(v==="account"&&SRV.up&&SRV.user)return "Your sign-in, your name, email confirmations and password. The rest of your profile stays on this device.";
     if(v==="account"&&SRV.up&&SRV.mailKnown&&!(SRV.canEmail||SRV.testInbox))return "Sign in to keep a record of your applications with your account and to apply directly to employers that take applications through UAply. Email receipts start once email is switched on for this site. Your profile stays on this device.";
     return LEADS[v];
   }
@@ -515,6 +517,7 @@ function apply(w,host){
   };
   var TYPE_LABEL={job:"Full-time",parttime:"Part-time",internship:"Internship",coop:"Co-op"};
   function renderTrack(){
+    if(w.__uaplyGateUp){tp.innerHTML="";return}   /* the sign-in gate: no Job Tracker rows while nobody is signed in */
     var by={applied:[],accepted:[],rejected:[],interview:[],passed:[]};
     A.JOBS.forEach(function(j){
       var x=A.S.decisions[j.id];if(!x)return;
@@ -1908,7 +1911,7 @@ function apply(w,host){
     var h='<h3>'+label("prof",v)+'</h3><p class="lead">'+(v==="plan"&&earlyAccess()?EARLY:leadOf(v))+'</p>';
     /* preview: the release build shows only the preview note; the sandbox keeps its simulated sign-in below it */
     /* sign-up v2 (shared/uaply-signup.js): when that file is loaded and the server signs in by emailed code, its card replaces the signed-out Account screen and its two questions run here just after sign-up; it answers false to keep the card below. Without that file nothing changes */
-    acctSec.classList.remove("sgnOn");if(v==="account"&&SRV.up&&!AUI.reset&&!preview()&&w.__uaplySignCard){acctSec.innerHTML=h+(typeof shieldsLine==="function"?shieldsLine():"")+'<div id="sgnHost"></div><p class="note" id="aMsg" role="status"></p>';if(w.__uaplySignCard(d.getElementById("sgnHost"),SRV.user)!==false){acctSec.classList.add("sgnOn");paintHeader();return}}
+    acctSec.classList.remove("sgnOn");if(v==="account"&&(SRV.up||(w.__uaplyGated&&w.__uaplyGated()))&&!AUI.reset&&!preview()&&w.__uaplySignCard){acctSec.innerHTML=h+(typeof shieldsLine==="function"?shieldsLine():"")+'<div id="sgnHost"></div><p class="note" id="aMsg" role="status"></p>';if(w.__uaplySignCard(d.getElementById("sgnHost"),SRV.user)!==false){acctSec.classList.add("sgnOn");paintHeader();return}}
     if(v==="account"){acctSec.innerHTML=h+shieldsLine()+readyHTML("account")+(preview()?previewHTML()+(REL?"":accountHTML()):accountHTML())+'<p class="note" id="aMsg" role="status"></p>';paintHeader();setTimeout(mountGoogle,0);return}
     if(v==="plan"&&preview()&&REL){
       h+=previewHTML();
@@ -2092,6 +2095,7 @@ function apply(w,host){
     var e=signedWho();
     hb.innerHTML=e?'<span class="av" aria-hidden="true">'+E(e.charAt(0).toUpperCase())+'</span><span class="em">'+E(e)+'</span>':'Sign in';
     hb.setAttribute("aria-label",e?"Account: "+e:"Sign in or create an account");
+    if(w.__uaplyGateSync)w.__uaplyGateSync();   /* the sign-in gate (shared/uaply-signup.js): every change of who is signed in passes here */
   }
   hb.onclick=function(){sub.prof="account";cur="prof";go("prof")};
   function afterServerSignIn(){
@@ -2144,7 +2148,9 @@ function apply(w,host){
   /* sign-up v2: what shared/uaply-signup.js may use from this screen (nothing reads it when that file is not loaded) */
   w.__uaplyAuthApi={post:apiPost,msg:msg,srv:function(){return {up:SRV.up,user:SRV.user,google:!!SRV.google,hideGoogle:noGoogle(),redirect:!!SRV.googleRedirect,clientId:SRV.googleClientId||"",canEmail:!!SRV.canEmail,mailKnown:!!SRV.mailKnown,testInbox:SRV.testInbox||"",near:NEAR}},
     signedIn:function(u){SRV.user=u;afterServerSignIn();if(typeof checkCookie==="function")checkCookie()},mountGoogle:mountGoogle,redraw:function(){if(!acctSec.hidden&&sub.prof==="account")renderAcct("account")},
-    acct:function(fn){fn(acct);saveA();A.renderAll()},askDevice:askDevice,cards:function(){cur="svc";go("svc")}};
+    acct:function(fn){fn(acct);saveA();A.renderAll()},askDevice:askDevice,cards:function(){cur="svc";go("svc")},
+    /* the sign-in gate: the Account screen open (only once: an open one is left as it is, so nothing typed is redrawn away) */
+    account:function(){if(cur==="prof"&&sub.prof==="account"&&!acctSec.hidden&&!d.getElementById("pane-profile").hidden)return;sub.prof="account";cur="prof";go("prof")}};
   /* Apple (App Store guideline 4.8) requires Sign in with Apple wherever an iPhone app offers Google, so inside the iPhone app Google stays hidden until Apple sign-in exists */
   function iosShell(){try{var c=w.top.Capacitor;return !!(c&&c.getPlatform&&c.getPlatform()==="ios"&&!SRV.apple)}catch(e){return false}}
   /* Google refuses to sign anyone in inside an app's built-in web view (Android and iPhone alike: "Error 403: disallowed_useragent"),
@@ -2183,6 +2189,7 @@ function apply(w,host){
     var ga=(d.getElementById("gAgree")||{}).checked;
     msg("Signing in with Google…");
     apiPost("/api/auth/google/token",{credential:resp&&resp.credential,agree:!!ga}).then(function(r){
+      if(!r.ok&&r.j&&(r.j.code==="agree_owner"||r.j.code==="agree")&&w.__uaplySignReturn&&w.__uaplySignReturn.call(w,r.j.code,false,false))return;   /* the card asks for the owner's own tick (the same hook as googleReturn's) */
       if(!r.ok||!r.j.user){msg((r.j&&r.j.error)||"Google sign-in did not work. Try again.");return}
       SRV.user=r.j.user;afterServerSignIn();renderAcct("account");msg(r.j.passwordRemoved?PW_GONE:"Signed in with Google.");
     });
@@ -2266,7 +2273,7 @@ function apply(w,host){
   function serverHTML(){
     if(!SRV.user&&AUI.reset)return resetHTML();
     if(!SRV.user&&AUI.forgot&&AUI.sMode==="in")return forgotHTML();
-    if(SRV.user)return '<div class="plan" style="display:flex;flex-direction:column;gap:8px"><span class="tag" style="background:var(--accent);color:var(--accent-ink)">ACCOUNT</span><b>You are signed in</b><small>'+E(SRV.user.email)+(SRV.user.emailVerified===false?' · email not verified yet':' · email verified')+'</small>'+verifyHTML()+
+    if(SRV.user)return '<div class="plan" style="display:flex;flex-direction:column;gap:8px"><b>You are signed in</b><small>'+E(SRV.user.email)+(SRV.user.emailVerified===false?' · email not verified yet':' · email verified')+'</small>'+verifyHTML()+
       '<p class="note" style="margin:0">'+(SRV.user.emailVerified===false?'Once your email is verified, each swipe right sends a confirmation to it':'Every time you swipe right, a confirmation goes to this email')+(SRV.canEmail?'':SRV.testInbox?' (no real email is connected here yet, so it is saved in the <a href="/outbox" target="_blank" rel="noopener noreferrer">test inbox</a>; <a href="/setup#gmail" target="_blank" rel="noopener noreferrer">connect Gmail</a> to send real ones)':' (email is not switched on for this site yet, so no confirmation goes out for now)')+'.</p>'+
       (AUI.survey||AUI.delOpen?'':'<div class="acts"><button type="button" class="btn ghost" data-auth="sout">Sign out</button></div>'+changeHTML())+
       deleteHTML()+
@@ -2616,6 +2623,8 @@ function apply(w,host){
 
   /* routing */
   function go(k){
+    /* the sign-in gate (shared/uaply-signup.js): with no account signed in, every way of moving (a tab, a menu, a key) opens Account */
+    if(w.__uaplyGated&&w.__uaplyGated()){sub.prof="account";cur="prof";k="prof"}
     going=true;
     if(k==="svc"){A.setType(sub.svc);A.show("swipe");savePrefs()}
     else if(k==="dash"){A.show("apps");d.getElementById("pane-apps").hidden=true;renderTrack();tp.hidden=false}
@@ -2628,6 +2637,7 @@ function apply(w,host){
     going=false;refresh();main.scrollTop=0;
   }
   w.__uaplyOnShow=function(t){
+    if(t!=="profile"&&w.__uaplyGated&&w.__uaplyGated()){A.show("profile");return}   /* the sign-in gate: only Account behind the card */
     tp.hidden=true;
     /* leaving Profile setup with unsaved answers saves them quietly (if they are valid) instead of losing them */
     if(t!=="profile"&&wz.dirty&&!form.hidden&&form.classList.contains("wz")){w.__uaplyAutoSave=true;try{wzSave("quiet")}finally{w.__uaplyAutoSave=false;wz.dirty=false}}

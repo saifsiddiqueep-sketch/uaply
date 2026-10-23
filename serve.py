@@ -74,7 +74,20 @@ SHARED = os.path.join(HERE, "shared")
 # October 23 every file added since answered 404 until a restart). Only a plain file name directly inside shared/: no folder, no "..".
 SHARED_ALIAS_RE = re.compile(r"^/(uaply(?:-[A-Za-z0-9_-]+)?\.(?:js|css|webmanifest|json|html|png))$")
 SHARED_NAME_RE = re.compile(r"^[A-Za-z0-9_-][A-Za-z0-9_.-]*\.(?:js|css|webmanifest|json|html|png|svg|txt)$")
-CODE_SIGNIN = False      # sign-up v2: set below for the sandbox instance only
+CODE_SIGNIN = False      # code sign-in ("Email me a code"): set below, on wherever the server runs (UAPLY_CODE_SIGNIN=0 switches it off)
+SIGNUP_TEST = False      # UAPLY_SIGNUP_TEST=1: sign-up makes a verified account and signs it in at once, no email (never on a public server,
+                         # never on Render), and no email of any kind leaves the server: codes, reset links, receipts and reminders go to the
+                         # test inbox (/outbox) only, even with real email settings (uaply_api.NO_MAIL)
+# Saif, October 22: nobody reaches site data without an account. Without a session these answer 401 {"error": "Sign in first.",
+# "code": "signin"}; with a session whose account never confirmed its address (a password sign-up whose emailed code is not typed yet),
+# 403 {"error": "Confirm your email first.", "code": "verify"} (docs/ACCOUNTS.md, "The sign-in contract"). Every /api/auth/* route stays
+# open to that session, so it can type the code, ask for a new one or sign out. Owner pages keep their own owner check instead.
+GATED_GET = ("/api/jobs",)
+GATED_GET_PREFIX = ("/api/employer/logo/",)
+GATED_POST = ("/api/apply", "/api/apply/plan", "/api/apply/mark", "/api/decision", "/api/chat", "/api/feedback", "/api/profile/resume",
+              "/api/employer/company", "/api/employer/job", "/api/employer/job/status", "/api/employer/applicant", "/api/employer/import")
+SIGNIN_FIRST = {"error": "Sign in first.", "code": "signin"}
+VERIFY_FIRST = {"error": "Confirm your email first.", "code": "verify"}
 CODE_PATHS = ("/api/auth/code/send", "/api/auth/code/verify")      # sign-up v2: POST routes that exist only while CODE_SIGNIN is on
 # browsers and crawlers ask for /favicon.ico whatever the page says: answer with the instance's own icon (a PNG; every browser takes it)
 alias.setdefault("/favicon.ico", next((f for f in (os.path.join(root, "favicon-32.png"), os.path.join(HERE, "legal", "favicon-32.png"))
@@ -132,11 +145,17 @@ if api:
     uaply_api.init(os.path.basename(root))
     employers_api.init(os.path.basename(root))                    # Hiring mode: on for the sandbox only
     auth_api.init(os.path.basename(root))
-    # /* sign-up v2 */ sign up and sign in with an emailed code, no password: the sandbox only (the same rule as Hiring mode). dev and the
-    # live site: CODE_SIGNIN stays False and the new routes answer 404. UAPLY_CODE_SIGNIN=0 switches it off on a sandbox too (a test
-    # server that checks today's password card); nothing switches it on anywhere else.
-    CODE_SIGNIN = os.path.basename(root) == "sandbox" and os.environ.get("UAPLY_CODE_SIGNIN", "") != "0"
-    # /* end sign-up v2 */
+    # Sign-in (Saif, October 22): sign up with email, first and last name and a password; the emailed code verifies the address after
+    # sign-up and is the other way to sign in. Code sign-in, with its two rules (Google asks the owner's own 18+ tick when it joins an
+    # account nobody proved; Resend counts toward the day's cap), is on wherever the server runs, sandbox, dev and the live site alike.
+    # A public server that cannot send email still refuses to pretend to send codes (code_signin_live). UAPLY_CODE_SIGNIN=0 switches the
+    # code routes off (a test server that checks the password routes alone).
+    CODE_SIGNIN = os.environ.get("UAPLY_CODE_SIGNIN", "") != "0"
+    SIGNUP_TEST = os.environ.get("UAPLY_SIGNUP_TEST", "") == "1" and not PUBLIC and "RENDER" not in os.environ   # test mode: never on a
+    # public server, whatever is set, and never on Render (its own RENDER variable, any value), even if HOST were wrong. Filler addresses
+    # must never make a real send or a bounce, so in test mode nothing is emailed, whatever email settings are present (Saif's sandbox has
+    # real ones): every message lands in the test inbox instead.
+    uaply_api.NO_MAIL = SIGNUP_TEST
     chat_api.init(os.path.basename(root))
     billing_api.PUBLIC = PUBLIC                                     # Plan and billing: buy buttons on a public server only when Stripe keys are set
     uaply_api.hide_errors = jobs_api.hide_errors = PUBLIC       # a hosted server never shows visitors raw error text; the owner's own computer still does
@@ -547,7 +566,8 @@ def _path_key(path):
 
 
 def code_signin_live():
-    """sign-up v2 is on and can deliver its codes: a public server with no email set up keeps today's password card (sandbox only)"""
+    """Code sign-in is on and can deliver its codes: a public server with no email set up does not offer it (and its code routes answer
+    503 mail_off) instead of pretending to send codes."""
     return CODE_SIGNIN and (not PUBLIC or bool(uaply_api.mail_ready()))
 
 
@@ -567,10 +587,20 @@ def _mail_later(send, *args):
 
 
 def _login_code_mail(user_id):
-    """sign-up v2, on the background thread: make the "Email me a code" code (auth_api.issue_login_code) and email it."""
+    """On the background thread: make the "Email me a code" code (auth_api.issue_login_code) and email it with the sign-in wording."""
     mail = auth_api.issue_login_code(user_id)
     if mail:
-        uaply_api.send_verification_mail(*mail)
+        uaply_api.send_verification_mail(*mail, purpose="signin")
+
+
+def _reset_mail(user_id, base):
+    """On the background thread (item 20): write the reset link's token (auth_api.issue_reset_token) and email the link."""
+    mail = auth_api.issue_reset_token(user_id)
+    if mail:
+        uid, addr, tok = mail
+        body = ("Hi,\n\nSomeone asked to reset the password for this UAply account. Use this link within one hour:\n\n%s\n\n"
+                "If you did not ask for this, ignore this email; your password has not changed.\n\n--\nUAply") % (base + "/?reset=" + tok)
+        uaply_api.send_system_mail(uid, addr, "Reset your UAply password", body, secret=True, kind="reset")
 
 
 def record_request(method, path, code, ms, stat=None):
@@ -759,6 +789,17 @@ class H(http.server.SimpleHTTPRequestHandler):
     def _token(self):
         """The session token from this instance's cookie ('' if there is none)."""
         return self._cookie_value(auth_api.cookie_name())
+
+    def _gate(self):
+        """The gate's answer for a gated route, or None when it may go on: (401, SIGNIN_FIRST) with no live session, (403, VERIFY_FIRST)
+        when the session's account has emailVerified false. Google (when Google vouches for the address), a code sign-in and test mode
+        all make verified accounts, so only a password sign-up waiting for its emailed code is held here."""
+        u = auth_api.user_for(self._token())
+        if not u:
+            return 401, SIGNIN_FIRST
+        if not u.get("emailVerified"):
+            return 403, VERIFY_FIRST
+        return None
 
     def _cookie(self, token):
         secure = "; Secure" if (self.headers.get("X-Forwarded-Proto") == "https") else ""
@@ -951,6 +992,10 @@ class H(http.server.SimpleHTTPRequestHandler):
             if not OWNER_PASSWORD:
                 return self._send(403, {"error": "Owner pages are off on this server. Set OWNER_PASSWORD to use them."})
             return self._send(401, {"error": "Owner password required."}, headers=[("WWW-Authenticate", 'Basic realm="UAply owner"')])
+        if api and (p in GATED_GET or p.startswith(GATED_GET_PREFIX)):
+            held = self._gate()
+            if held:
+                return self._send(*held)
         if api:
             try:
                 if p == "/api/jobs":
@@ -976,13 +1021,18 @@ class H(http.server.SimpleHTTPRequestHandler):
                     return self._send(200, facts)
                 if p == "/api/auth/me":
                     me = auth_api.user_for(self._token())
-                    if CODE_SIGNIN and me and auth_api.google_hint(me["id"]):      # /* sign-up v2 */ what the Google sign-in a moment ago said
+                    if me:                                                          # whether a Google login opens it (item 23)
+                        me = dict(me, googleLinked=auth_api.google_linked(me["id"]))
+                    if CODE_SIGNIN and me and auth_api.google_hint(me["id"]):      # what the Google sign-in a moment ago said
                         me = dict(me, google=auth_api.google_hint(me["id"]))
                     return self._send(200, {"user": me})
                 if p == "/api/auth/providers":
-                    if code_signin_live():                                          # /* sign-up v2 */ the page shows the no-password card
-                        return self._send(200, dict(google_auth.public_config(*self._origin_parts()), codeSignin=True))
-                    return self._send(200, google_auth.public_config(*self._origin_parts()))
+                    out = google_auth.public_config(*self._origin_parts())
+                    if code_signin_live():                                          # "Email me a code" can be offered
+                        out = dict(out, codeSignin=True)
+                    if SIGNUP_TEST:                                 # test mode: sign-up signs in at once, nothing is emailed (never public)
+                        out = dict(out, signupTest=True, testMode=True)
+                    return self._send(200, out)
                 if p in ("/api/auth/google/start", "/api/auth/google/callback"):
                     return self._google(p)
                 if p == "/api/billing/status":
@@ -1092,6 +1142,10 @@ class H(http.server.SimpleHTTPRequestHandler):
         if origin not in ("http://" + host, "https://" + host) or (PUBLIC and origin != "https://" + host and
                                                                   self.headers.get("X-Forwarded-Proto") == "https"):
             return self._refuse(403, {"error": "cross-site request refused"})
+        if p in GATED_POST:
+            held = self._gate()
+            if held:
+                return self._refuse(*held)
         if p == "/api/profile/resume":
             return self._resume_upload()
         try:
@@ -1119,7 +1173,8 @@ class H(http.server.SimpleHTTPRequestHandler):
             if CODE_SIGNIN and p == "/api/auth/signup" and payload.get("passwordless") is True:
                 self._stat = "skip"                              # counted as a sign-up once its code is typed (/api/auth/code/verify)
                 code, out, mail = auth_api.signup_passwordless(payload.get("email"), ip, payload.get("agree"), dns_check(),
-                                                               auth_api.SIGNUPS_PER_HOUR if PUBLIC else None, self._known(), self._token())
+                                                               auth_api.SIGNUPS_PER_HOUR if PUBLIC else None, self._known(), self._token(),
+                                                               payload.get("first"), payload.get("last"))
                 if mail:                                         # new address or not, a code goes out, so the wait is the same
                     out = dict(out, delivery=uaply_api.send_verification_mail(*mail))
                 return self._send(code, out)
@@ -1138,15 +1193,24 @@ class H(http.server.SimpleHTTPRequestHandler):
                 return self._send(code, out)
             # /* end sign-up v2 */
             if p == "/api/auth/signup":
-                # the account and its first code are made in one locked step (auth_api.signup_with_code), so a Google sign-in for the same
-                # address racing this sign-up can never leave it half made
+                # the sign-up (Saif, October 22): email, first and last name, a password, the 18+ / Terms tick. The account and its first
+                # code are made in one locked step (auth_api.signup_with_code), so a Google sign-in for the same address racing this
+                # sign-up can never leave it half made. The answer goes first and the code is emailed after it; in test mode
+                # (UAPLY_SIGNUP_TEST, never public) the account is verified at once and nothing is emailed.
                 code, out, token, mail = auth_api.signup_with_code(payload.get("email"), payload.get("password"), ip, payload.get("agree"),
-                                                                   dns_check(), auth_api.SIGNUPS_PER_HOUR if PUBLIC else None)
-                if mail:                                         # a new password account must prove it owns the email: send the first code
+                                                                   dns_check(), auth_api.SIGNUPS_PER_HOUR if PUBLIC else None,
+                                                                   payload.get("first"), payload.get("last"), verified=SIGNUP_TEST)
+                if code == 200 and SIGNUP_TEST:
+                    out = dict(out, delivery="none", testMode=True)
+                if mail:                                         # a new password account must prove it owns the email: its first code
                     uid, addr, digits = mail
-                    if CODE_SIGNIN:                              # /* sign-up v2 */ every code to an address counts toward the day's cap
+                    if CODE_SIGNIN:                              # every code to an address counts toward the day's cap
                         auth_api.note_code_sent(addr)
-                    out = dict(out, delivery=uaply_api.send_verification_mail(uid, addr, digits))
+                    # what the email will do, said in the answer: an address on the bounce list gets nothing (mailer.py)
+                    told = "bounced" if uaply_api.mailer.suppressed(addr) else ("sent" if uaply_api.mail_ready() else "delivered_test")
+                    self._send(code, dict(out, delivery=told), headers=self._cookie(token) if token else ())
+                    _mail_later(uaply_api.send_verification_mail, uid, addr, digits)
+                    return None
                 return self._send(code, out, headers=self._cookie(token) if token else ())
             if p == "/api/auth/login":
                 code, out, token = auth_api.login(payload.get("email"), payload.get("password"), ip)
@@ -1233,22 +1297,15 @@ class H(http.server.SimpleHTTPRequestHandler):
                 if PUBLIC and not uaply_api.mail_ready():       # a real server that cannot send email must not pretend to
                     return self._send(200, {"ok": False, "delivery": "unavailable",
                                             "message": "Password reset by email is not available right now. Use Help, then Talk to a person, and we will help you get back in."})
-                code, out, mail = auth_api.request_reset(payload.get("email"), ip)
-                if mail:
-                    uid, addr, tok = mail
-                    link = self._site_base() + "/?reset=" + tok
-                    body = ("Hi,\n\nSomeone asked to reset the password for this UAply account. Use this link within one hour:\n\n%s\n\n"
-                            "If you did not ask for this, ignore this email; your password has not changed.\n\n--\nUAply") % link
-                    if CODE_SIGNIN:                              # /* sign-up v2 */ (sandbox) answer first, as /api/auth/code/send does
-                        self._send(code, dict(out, delivery=("sent" if uaply_api.mail_ready() else "delivered_test")))
-                        _mail_later(lambda: uaply_api.send_system_mail(uid, addr, "Reset your UAply password", body, secret=True, kind="reset"))
-                        return None
-                    else:
-                        status = uaply_api.send_system_mail(uid, addr, "Reset your UAply password", body, secret=True, kind="reset")
-                        out = dict(out, delivery=status)
-                else:
+                # the answer goes first on every server, the same whether or not the address has an account; the link's token is written
+                # and emailed after it, on the background thread (item 20: before, the email, and then the token, came first on dev)
+                code, out, mail = auth_api.request_reset(payload.get("email"), ip, defer=True)
+                if code == 200:
                     out = dict(out, delivery=("sent" if uaply_api.mail_ready() else "delivered_test"))
-                return self._send(code, out)
+                self._send(code, out)
+                if mail:
+                    _mail_later(_reset_mail, mail[0], self._site_base())
+                return None
             if p == "/api/auth/reset":
                 code, out = auth_api.reset_password(payload.get("token"), payload.get("password"), ip)
                 return self._send(code, out, headers=self._cookie("") if code == 200 else ())

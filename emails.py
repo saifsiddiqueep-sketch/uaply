@@ -279,6 +279,27 @@ def verification_email(digits):
     return subject, text, page
 
 
+def signin_code_email(digits):
+    """The email with the 6-digit code that signs in to an existing account (Email me a code), not the "Confirm your email" one (item
+    21): it says what the code does, that UAply never asks for it, and what to do if the person did not ask. Returns (subject, text, html)."""
+    code = "".join(ch for ch in str(digits) if ch.isdigit())[:6]
+    subject = "%s is your UAply sign-in code" % code
+    text = ("Your UAply sign-in code is:\n\n    %s\n\n"
+            "This code signs in to your UAply account. It works for 10 minutes. UAply will never ask you for it.\n\n"
+            "If it was not you, ignore this email. Nobody can sign in without this code.\n\n--\nUAply\n") % code
+    e = html.escape
+    page = ('<!doctype html><html><body style="margin:0;padding:20px;background:#FDF0F2;font:15px/1.5 Arial,sans-serif;color:#2A1218">'
+            '<div style="max-width:480px;margin:0 auto;background:#fff;border:1px solid #F3DADF;border-radius:14px;padding:22px">'
+            '<p style="margin:0 0 14px;color:%s;font-weight:800;font-size:18px">UAply</p>'
+            '<h1 style="margin:0 0 8px;font-size:20px">Your sign-in code</h1>'
+            '<p style="margin:0 0 14px">This code signs in to your UAply account. UAply will never ask you for it.</p>'
+            '<p style="margin:0 0 14px;padding:14px;background:#FDF0F2;border-radius:10px;text-align:center;font:800 32px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.3em">%s</p>'
+            '<p style="margin:0 0 8px;color:#7B5560;font-size:13px">The code works for 10 minutes. After 5 wrong tries you will need a new one.</p>'
+            '<p style="margin:0;color:#7B5560;font-size:13px">If it was not you, ignore this email. Nobody can sign in without this code.</p>'
+            '</div></body></html>') % (BRAND, e(code))
+    return subject, text, page
+
+
 KIND_LABEL = {"contact": "help", "bug": "problem", "general": "feedback", "answer": "feedback", "nudge": "feedback"}
 
 

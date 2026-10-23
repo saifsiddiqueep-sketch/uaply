@@ -5,6 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="UAply: swipe right to apply to jobs that match your profile.">
 <title>UAply</title>
+<script>
+/* The site itself (October 22, 2026, Saif: nobody reaches anything on the site without an account): opened as the top page by a UAply
+   server, this page hands over to app.html, the release app behind the sign-in gate (the same build as dev). Inside the frame the apps
+   build from this page, on a plain web host with no UAply server, or opened as a saved file, it stays exactly what it always was. */
+(function(){
+  try{if(window.top!==window)return}catch(e){return}
+  if(!/^https?:$/.test(location.protocol)||!/^\/(index\.html)?$/.test(location.pathname))return;
+  var x=new XMLHttpRequest(),ok=false;
+  try{x.open("GET","/api/auth/providers",false);x.send(null);ok=x.status===200&&/json/i.test(x.getResponseHeader("Content-Type")||"")}catch(e){}
+  if(ok){document.documentElement.style.visibility="hidden";location.replace("/app.html"+location.search+location.hash)}
+})();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <!-- the fonts never hold the app back: loaded as a non-blocking stylesheet (media=print, switched to all by the script below once it

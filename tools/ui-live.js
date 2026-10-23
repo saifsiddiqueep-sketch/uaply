@@ -310,7 +310,7 @@ async function main(api) {
         if (stt.mtimeMs >= startedAt - 1000) {
           const t = fs.readFileSync(file, "utf8");
           // the 6 digits typed by a person, or (the test suite) a stand-in mail server's file: "123456 is your UAply verification code"
-          const found = [...t.matchAll(/([0-9]{6}) is your UAply verification code/g)].map((m) => m[1]);
+          const found = [...t.matchAll(/([0-9]{6}) is your UAply (?:verification|sign-in) code/g)].map((m) => m[1]);
           if (!found.length) found.push(...[...t.matchAll(/(?:^|[^0-9])([0-9]{3}[ -]?[0-9]{3})(?![0-9])/g)].map((m) => m[1].replace(/[ -]/g, "")));
           const c = found.find((x) => !used.has(x));
           if (c) { used.add(c); return c; }
