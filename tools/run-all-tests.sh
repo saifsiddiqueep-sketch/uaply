@@ -183,6 +183,8 @@ PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/gate" UAPLY_SIGNUP_TEST=1 UAPLY_CONFIG_JSON='
 wait_port 18848
 run "the sign-in gate on a phone (390x844): only the card, its links open, sign-up to the questions, Sign out brings it back" env W=390 H=844 PORT=18848 node tools/cdp.js tools/ui-gate.js
 run "the sign-in gate on a laptop (1280x800): the same" env W=1280 H=800 PORT=18848 node tools/cdp.js tools/ui-gate.js
+run "pay as the posting gives it (390x844): yearly per year, hourly per hour, none Pay not listed; on the card, Job Tracker, Share rows and the receipt" env W=390 H=844 PORT=18848 node tools/cdp.js tools/ui-pay.js
+run "pay as the posting gives it on a laptop (1280x800): the same" env W=1280 H=800 PORT=18848 node tools/cdp.js tools/ui-pay.js
 
 step "Public server behind HTTPS (how a real host runs it)"
 PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/pub" HOST=0.0.0.0 OWNER_PASSWORD=ownerpw UAPLY_CONFIG_JSON='{}' start python serve.py 18772 dev --api)"

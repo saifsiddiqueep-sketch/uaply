@@ -6,6 +6,18 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 
+### Pay as the posting gives it (Saif, October 23, the recommendations list): never guessed, never converted
+- **A job with no pay** says "Pay not listed" in the pay line's place (and "Not listed" on its Salary line and in the receipt's Pay line).
+- **Hourly pay is shown as hourly**: the feeds now keep an hourly range with its unit (`salUnit: "hour"`: USAJOBS "PH", SmartRecruiters
+  HOURLY, career pages' JSON-LD HOUR, Jobicy and Himalayas hourly, and "$18 - $22 per hour" in a posting's text), and the card says
+  "$18–$22.50 per hour". It used to be dropped, so those cards said nothing. A yearly range still says "per year".
+- **Nothing derives one from the other**: an hourly job is not measured against the yearly minimum salary (its Salary line is neutral,
+  the minimum-salary filter and the pay band Learn uses skip it), and the receipt says "an hour" or "a year" as given.
+- Share this job's rows name the unit too ("a year", "an hour", "Pay not listed"). Job Tracker's rows show no pay at all, so nothing to change.
+- `tools/ui-pay.js` checks one job of each kind on the card, in Job Tracker, in the pay words Share uses and in the receipt, at 390 and 1280.
+- Not changed (Hiring mode, flagged for Mohammed): importing an employer's own posting still turns hourly pay into a yearly range
+  (x 2,080 in `shared/uaply-employers.js`), and the Post a job form asks for yearly pay ("Paid hourly? Multiply by 2,080").
+
 ### Galaxy walk fixes (Saif, October 23): the phone keyboard, the password eye, small text, the share target, the bar colours, the location card
 - **The keyboard no longer covers the card.** The pages ask the browser to resize for it (`interactive-widget=resizes-content`); where
   only the visual viewport shrinks (the installed app), the page around the app's frame sets the frame to the height still visible and

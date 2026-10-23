@@ -1048,7 +1048,11 @@ def submit(p, user=None, site=""):
     job["type"] = _pick(known.get("type") or pj.get("type"), ("job", "parttime", "internship", "coop")) or "job"
     job["mode"] = _pick(known.get("mode") or pj.get("mode"), ("remote", "hybrid", "onsite"))
     sal = known.get("sal") or pj.get("sal")
-    job["sal"] = [int(sal[0]), int(sal[1])] if isinstance(sal, list) and len(sal) == 2 and all(isinstance(x, (int, float)) for x in sal) else [0, 0]
+    hourly = (known.get("salUnit") if known.get("sal") else pj.get("salUnit")) == "hour"
+    job["sal"] = ([round(float(sal[0]), 2), round(float(sal[1]), 2)] if hourly else [int(sal[0]), int(sal[1])]) \
+        if isinstance(sal, list) and len(sal) == 2 and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in sal) else [0, 0]
+    if hourly and job["sal"][1] > 0:
+        job["salUnit"] = "hour"                           # the summary says "an hour", as the posting does
     job["desc"] = _s(known.get("desc") or known.get("blurb") or pj.get("blurb"), 900)
     # where the posting came from ("via USAJOBS; apply on the official announcement"), from this server's own copy only: kept in the record and named in the receipt
     if known.get("credit"):

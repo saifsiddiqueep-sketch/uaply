@@ -72,9 +72,17 @@ function patch(s){
     'type:["job","parttime","internship","coop"].indexOf(row.ty)>-1?row.ty:"job",mode:["remote","hybrid","onsite"].indexOf(row.m)>-1?row.m:"onsite",'+
     'sal:[0,0],yrs:0,edu:"High school",skills:[],blurb:"",live:true,stub:true,source:""};JOBS.push(sj);JOB_BY_ID[k]=sj}});\n    '+
     "S.history=(Array.isArray(d.history)?d.history:[])");
-  s=once(s,"'+money(j.sal[0])+'–'+money(j.sal[1])+'<small>per year</small>","'+(j.sal[1]>0?money(j.sal[0])+'–'+money(j.sal[1])+'<small>per year</small>':'Pay not listed')+'");
-  s=once(s,"var salOk=job.sal[1]>=p.salary;","var unk=job.sal[1]<=0;var salOk=unk||job.sal[1]>=p.salary;");
-  s=once(s,'s:salOk?1:(sa>=0.9?0.5:0),ask:money(job.sal[0])+" to "+money(job.sal[1])','s:unk?0.5:salOk?1:(sa>=0.9?0.5:0),ask:unk?"Not listed":money(job.sal[0])+" to "+money(job.sal[1])');
+  /* pay as the posting gives it (the recommendations list: never guess or estimate). A yearly range says "per year", an hourly one
+     (salUnit "hour") "per hour" with its cents; no pay says "Pay not listed" in the pay line's place. Nothing turns an hourly figure into
+     a yearly one or the reverse, so an hourly job is not compared with the yearly minimum salary (it scores as pay not listed). uaPayText
+     is shared with Share this job's rows and anything else that names a job's pay. */
+  s=once(s,'function money(n){return "$"+Math.round(n/1000)+"k"}','function money(n){return "$"+Math.round(n/1000)+"k"}\n'+
+    'function uaPayAmt(n,h){n=+n||0;return h?"$"+(Math.round(n*100)%100?n.toFixed(2):String(Math.round(n))):money(n)}\n'+
+    'function uaPayText(j,unit){var s=j&&Array.isArray(j.sal)?j.sal:[0,0],h=!!j&&j.salUnit==="hour",lo=+s[0]||0,hi=+s[1]||0;if(!(hi>0))return "";'+
+    'var r=lo>0&&lo<hi?uaPayAmt(lo,h)+"–"+uaPayAmt(hi,h):(lo>0?uaPayAmt(hi,h):"Up to "+uaPayAmt(hi,h));return unit?r+(h?" an hour":" a year"):r}\nwindow.uaPayText=uaPayText;');
+  s=once(s,"'+money(j.sal[0])+'–'+money(j.sal[1])+'<small>per year</small>","'+(uaPayText(j)?uaPayText(j)+'<small>'+(j.salUnit===\"hour\"?'per hour':'per year')+'</small>':'Pay not listed')+'");
+  s=once(s,"var salOk=job.sal[1]>=p.salary;","var unk=job.sal[1]<=0||job.salUnit===\"hour\";var salOk=unk||job.sal[1]>=p.salary;");
+  s=once(s,'s:salOk?1:(sa>=0.9?0.5:0),ask:money(job.sal[0])+" to "+money(job.sal[1])','s:unk?0.5:salOk?1:(sa>=0.9?0.5:0),ask:unk?(uaPayText(job)?uaPayText(job,1):"Not listed"):money(job.sal[0])+" to "+money(job.sal[1])');
   /* every real listing names its source and links to the original; example listings say they are examples */
   s=once(s,"<p class=\"blurb\">'+esc(j.blurb)+'</p>","<p class=\"blurb\">'+esc(j.blurb)+'</p>'+(j.url?'<button type=\"button\" class=\"linkbtn\" data-open=\"'+esc(j.url)+'\">View original posting ↗</button>':'')+(j.live?'<small class=\"note\">Source: '+esc(j.source||'the employer')+'</small>':'<small class=\"note\">Example listing, not a real opening.</small>')+'");
   s=once(s,'toast(dir==="applied"?"Applied to "+job.co+" · "+m.pct+"% match":"Passed on "+job.co,"Undo",undo);',
@@ -251,7 +259,7 @@ function kitApply(w,host){
       var sendBtn=d.getElementById("kitSend");if(sendBtn)sendBtn.disabled=true;
       setStatus("Sending…");
       post("/api/apply",{consent:true,confirm_real:live,match:m.pct,note:ta.value,
-        job:{id:job.id,co:job.co,role:job.role,url:job.url,source:job.source,loc:job.loc,contact:contact,mode:job.mode,type:job.type||"job",sal:job.sal,blurb:job.blurb},
+        job:{id:job.id,co:job.co,role:job.role,url:job.url,source:job.source,loc:job.loc,contact:contact,mode:job.mode,type:job.type||"job",sal:job.sal,salUnit:job.salUnit==="hour"?"hour":undefined,blurb:job.blurb},
         profile:{name:p.name,email:p.email,title:p.title,years:p.years,skills:p.skills,loc:p.loc,edu:p.edu,ext:(w.__uaplyApplyExt?w.__uaplyApplyExt():(p.ext||{}))},
         resume:(w.__uaplyResume?w.__uaplyResume():null)
       }).then(function(r){
@@ -708,7 +716,7 @@ function kitApply(w,host){
       var msgOn=!!(w.__uaplyAutoMsg&&w.__uaplyAutoMsg()&&w.__uaplyMessage);
       if(!(S&&S.decisions&&S.decisions[job.id]))return;   /* undone or withdrawn in the meantime (also while it waited for a connection): send nothing */
       post("/api/apply",{consent:true,confirm_real:live,match:m.pct,note:msgOn?w.__uaplyMessage(job,m,p):"",
-        job:{id:job.id,co:job.co,role:job.role,url:job.url||"https://example.com/example-listing",source:job.source,loc:job.loc,contact:job.contact||"",mode:job.mode,type:job.type||"job",sal:job.sal,blurb:job.blurb},
+        job:{id:job.id,co:job.co,role:job.role,url:job.url||"https://example.com/example-listing",source:job.source,loc:job.loc,contact:job.contact||"",mode:job.mode,type:job.type||"job",sal:job.sal,salUnit:job.salUnit==="hour"?"hour":undefined,blurb:job.blurb},
         profile:{name:p.name,email:p.email,title:p.title,years:p.years,skills:p.skills,loc:p.loc,edu:p.edu,ext:(w.__uaplyApplyExt?w.__uaplyApplyExt():(p.ext||{}))},
         resume:(w.__uaplyResume?w.__uaplyResume():null),
         answers:answersFor(job.co)
@@ -787,7 +795,7 @@ function kitApply(w,host){
   function rdyReadsForm(job){return rdyConnected(job)||!!(w.__uaplyFormPreview&&job.live&&!job.instant&&job.ats&&job.ats.kind==="greenhouse")}
   function rdyPayload(job){
     var p=(w.__uaply&&w.__uaply.S.profile)||{},res=w.__uaplyResume?w.__uaplyResume():null;
-    return {plan_only:true,match:0,job:{id:job.id,co:job.co,role:job.role,url:job.url||"https://example.com/example-listing",source:job.source,loc:job.loc,contact:job.contact||"",mode:job.mode,type:job.type||"job",sal:job.sal,blurb:job.blurb},
+    return {plan_only:true,match:0,job:{id:job.id,co:job.co,role:job.role,url:job.url||"https://example.com/example-listing",source:job.source,loc:job.loc,contact:job.contact||"",mode:job.mode,type:job.type||"job",sal:job.sal,salUnit:job.salUnit==="hour"?"hour":undefined,blurb:job.blurb},
       profile:{name:p.name,email:p.email,title:p.title,years:p.years,skills:p.skills,loc:p.loc,edu:p.edu,ext:(w.__uaplyApplyExt?w.__uaplyApplyExt():(p.ext||{}))},
       resume:res&&res.name?{name:res.name,present:true}:null,answers:answersFor(job.co)};
   }

@@ -118,7 +118,15 @@ t("the credit line on the record", (it.get("via"), it.get("credit")), ("USAJOBS"
 cs = by.get("Contract Specialist") or {}
 t("'Multiple Locations' names the first two places", cs.get("loc"), "Philadelphia, Pennsylvania; Camden, New Jersey +1 more")
 t("no ApplyURI: the announcement is the link", cs.get("url"), "https://www.usajobs.gov/job/900000102")
-t("hourly pay is not shown as a yearly range", cs.get("sal"), [0, 0])
+t("hourly pay stays hourly, as the posting gives it (never turned into a yearly range)", (cs.get("sal"), cs.get("salUnit")), ([28.1, 36.5], "hour"))
+t("a yearly range carries no hourly unit", it.get("salUnit"), None)
+# pay is read as the posting gives it, never guessed or converted (October 23: "Pay not listed" rule)
+t("text: '$18 - $22 per hour' and '$28.10-$36.50/hr' are hourly ranges as written", (J._hourly("Pay: $18 - $22 per hour"), J._hourly("$28.10 - $36.50/hr")), ([18.0, 22.0], [28.1, 36.5]))
+t("text: 'competitive pay', 'up to $25/hr', '$80k+' give no pay at all (nothing estimated)", (J._hourly("competitive pay"), J._hourly("up to $25/hr"), J._salary("Salary: $80k+")), (None, None, [0, 0]))
+t("text: a yearly range is never read as hourly", J._hourly("$120,000 - $140,000 per year"), None)
+import emails as EM   # noqa: E402
+t("the application summary's pay line: yearly a year, hourly an hour, none 'Not listed'",
+  (EM._money([60000, 80000]), EM._money([18, 22.5], "hour"), EM._money([0, 0])), ("$60k to $80k a year", "$18 to $22.50 an hour", "Not listed"))
 t("an overseas posting (Ramstein, Germany) is dropped by the US rule", "Budget Analyst" in by, False)
 rm = by.get("Management and Program Analyst") or {}
 t("a remote federal job is kept as remote", (rm.get("mode"), rm.get("loc")), ("remote", "Anywhere in the U.S. (remote job)"))
