@@ -16923,7 +16923,304 @@
    "us": 5,
    "tri": 0,
    "checked": "2026-10-21"
+  },
+  {
+   "kind": "recruitee",
+   "token": "curotec",
+   "name": "Curotec",
+   "total": 13,
+   "us": 12,
+   "tri": 9,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "hike2",
+   "name": "HIKE2",
+   "total": 9,
+   "us": 9,
+   "tri": 5,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "iliabeauty",
+   "name": "ILIA Beauty",
+   "total": 27,
+   "us": 24,
+   "tri": 4,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "kravet",
+   "name": "Kravet",
+   "total": 20,
+   "us": 19,
+   "tri": 1,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "transperfect",
+   "name": "TransPerfect",
+   "total": 666,
+   "us": 168,
+   "tri": 14,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "hudsonmanpower",
+   "name": "Hudson Manpower",
+   "total": 160,
+   "us": 67,
+   "tri": 7,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "careersdeltacapita",
+   "name": "Delta Capita",
+   "total": 58,
+   "us": 11,
+   "tri": 1,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "greatminds",
+   "name": "Great Minds",
+   "total": 28,
+   "us": 28,
+   "tri": 1,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "altiussearchgroup",
+   "name": "Altius Search Group",
+   "total": 69,
+   "us": 59,
+   "tri": 0,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "chgcareers",
+   "name": "Castellucci Hospitality Group",
+   "total": 76,
+   "us": 76,
+   "tri": 0,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "spectrumam",
+   "name": "SpectrumAM",
+   "total": 10,
+   "us": 10,
+   "tri": 0,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "medspapartnersinc",
+   "name": "Vos Collection",
+   "total": 13,
+   "us": 5,
+   "tri": 0,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "deephealth",
+   "name": "DeepHealth",
+   "total": 40,
+   "us": 17,
+   "tri": 0,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "mcdglobalhealth",
+   "name": "MCD Global Health",
+   "total": 7,
+   "us": 7,
+   "tri": 0,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "accufilecareers",
+   "name": "Accufile",
+   "total": 10,
+   "us": 9,
+   "tri": 0,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "resourcefultalentgroup",
+   "name": "Resourceful Talent Group",
+   "total": 21,
+   "us": 15,
+   "tri": 0,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "bushburgpropertiesinc",
+   "name": "Bushburg Properties",
+   "total": 12,
+   "us": 11,
+   "tri": 0,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "peakretirementplanninginc",
+   "name": "Peak Retirement Planning",
+   "total": 42,
+   "us": 42,
+   "tri": 0,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "griffinfundinginc",
+   "name": "Griffin Funding",
+   "total": 15,
+   "us": 15,
+   "tri": 0,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "blackdiamond",
+   "name": "Black Diamond Networks",
+   "total": 28,
+   "us": 28,
+   "tri": 0,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "omniconsultcorp",
+   "name": "OMNI Consulting Solutions",
+   "total": 15,
+   "us": 12,
+   "tri": 0,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "constructivedialogue",
+   "name": "Constructive Dialogue Institute",
+   "total": 5,
+   "us": 5,
+   "tri": 0,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "aikidosecurity",
+   "name": "Aikido Security",
+   "total": 83,
+   "us": 38,
+   "tri": 0,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "sustainablecomfort",
+   "name": "Sustainable Comfort",
+   "total": 10,
+   "us": 10,
+   "tri": 0,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "framestore",
+   "name": "Framestore",
+   "total": 36,
+   "us": 10,
+   "tri": 0,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "srahiring",
+   "name": "Next Level Exchange",
+   "total": 16,
+   "us": 16,
+   "tri": 0,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "lss",
+   "name": "SSC",
+   "total": 12,
+   "us": 6,
+   "tri": 0,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "consultdss",
+   "name": "dss+",
+   "total": 28,
+   "us": 5,
+   "tri": 0,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "tether",
+   "name": "Tether",
+   "total": 241,
+   "us": 8,
+   "tri": 0,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "wilcoxflegel",
+   "name": "Wilcox + Flegel",
+   "total": 22,
+   "us": 21,
+   "tri": 0,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "petrielectric",
+   "name": "Petri Electric",
+   "total": 12,
+   "us": 12,
+   "tri": 0,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "ballysintralotsa",
+   "name": "Bally's Intralot",
+   "total": 43,
+   "us": 8,
+   "tri": 0,
+   "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "dsiinnovations",
+   "name": "DSI Innovations",
+   "total": 8,
+   "us": 6,
+   "tri": 0,
+   "checked": "2026-10-23"
   }
  ],
- "note": "Employer boards found and checked live with tools/find-boards.py (counts on the day checked). Read by jobs_api.py after the hand-picked boards in SOURCES. Remove a row to stop reading a board."
+ "note": "Employer boards found and checked live with tools/find-boards.py (Recruitee: tools/find-recruitee.py) (counts on the day checked). Read by jobs_api.py after the hand-picked boards in SOURCES. Remove a row to stop reading a board."
 }
