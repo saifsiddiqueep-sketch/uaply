@@ -3,6 +3,8 @@
 //   W=390 H=844 PORT=8767 node tools/cdp.js tools/ui-release.js
 const PORT = process.env.PORT || "8767";
 module.exports = async ({ ev, sleep, nav, logs }) => {
+  // the sign-in gate (October 22, Saif): nobody reaches the jobs without an account, so a fresh test person signs up first (tools/gate-signup.js)
+  const gateWho = await require("./gate-signup.js")({ ev, sleep, nav }, "http://127.0.0.1:" + (process.env.PORT || "8767"), "release");
   const F = "document.querySelector('iframe').contentDocument";
   let bad = 0;
   const check = (name, ok, extra) => { if (!ok) bad++; console.log((ok ? "PASS " : "FAIL ") + name + (extra ? "  " + extra : "")); };
@@ -22,7 +24,7 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
   const BILL = JSON.parse(await (async () => { try { return JSON.stringify(await (await fetch("http://127.0.0.1:" + PORT + "/api/billing/status")).json()); } catch (e) { return "{}"; } })());
   const TESTY = /TEST MODE|Choose Plus|Choose Pro/i;
   const scan = async (where) => {
-    const t = (await pageText()).split("Test mode: no real charges").join(" ");   // the one allowed test-mode label (Plan and billing)
+    const t = (await pageText()).split("Test mode: no real charges").join(" ").split(gateWho.email).join(" ");   // the test person's own address (signed in through the gate) is theirs, not developer wording   // the one allowed test-mode label (Plan and billing)
     const m = t.match(BANNED) || t.match(NEVER) || (!owner && t.match(OWNER_ONLY)) || (!BILL.buttons && t.match(TESTY));
     check("no test or developer wording on " + where, !m, m ? "found: " + m[0] : "");
   };
@@ -68,7 +70,8 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
     }
     if (s === "Account") {
       await sleep(600);
-      check("account area shows the real sign-up form", !!(await ev("!!" + F + ".getElementById('sAgree')")), (await pageText()).slice(0, 140));
+      // signed in through the gate (the signed-out sign-up card is checked by tools/ui-gate.js): the real account card, the address and Sign out
+      check("account area shows the real account card (signed in as the test person, with Sign out)", (await pageText()).includes(gateWho.email) && !!(await ev("!!" + F + ".querySelector('[data-auth=sout]')")), (await pageText()).slice(0, 140));
       check("no simulated sign-in buttons", !(await ev("!!" + F + ".querySelector('[data-auth=google],[data-auth=apple],[data-auth=sendlink],[data-auth=sendcode]')")));
     }
     if (s === "Data") {

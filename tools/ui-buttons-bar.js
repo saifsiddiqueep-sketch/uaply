@@ -14,6 +14,8 @@
 // buttons; 5. with an emulated 34 px bottom safe area the bar keeps clear of it, counted once.
 const PORT = process.env.PORT || "8767";
 module.exports = async ({ ev, sleep, nav, shot, send }) => {
+  // the sign-in gate (October 22, Saif): nobody reaches the jobs without an account, so a fresh test person signs up first (tools/gate-signup.js)
+  await require("./gate-signup.js")({ ev, sleep, nav }, "http://127.0.0.1:" + (process.env.PORT || "8767"), "bar");
   const F = "document.querySelector('iframe').contentDocument";
   let bad = 0, n = 0;
   const check = (name, ok, extra) => { n++; if (!ok) bad++; console.log((ok ? "PASS " : "FAIL ") + name + (extra ? "  " + extra : "")); };

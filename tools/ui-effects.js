@@ -2,6 +2,8 @@
 //   W=390 H=844 PORT=18795 node tools/cdp.js tools/ui-effects.js
 const PORT = process.env.PORT || "8766";
 module.exports = async ({ ev, sleep, nav }) => {
+  // the sign-in gate (October 22, Saif): nobody reaches the jobs without an account, so a fresh test person signs up first (tools/gate-signup.js)
+  await require("./gate-signup.js")({ ev, sleep, nav }, "http://127.0.0.1:" + (process.env.PORT || "8767"), "effects");
   const F = "document.querySelector('iframe').contentDocument";
   const W = "document.querySelector('iframe').contentWindow";
   let bad = 0;

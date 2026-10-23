@@ -3,6 +3,8 @@
 // SHOT=<file.png> saves a picture of the card.
 const PORT = process.env.PORT || "8766";
 module.exports = async ({ ev, sleep, nav, shot }) => {
+  // the sign-in gate (October 22, Saif): nobody reaches the jobs without an account, so a fresh test person signs up first (tools/gate-signup.js)
+  await require("./gate-signup.js")({ ev, sleep, nav }, "http://127.0.0.1:" + (process.env.PORT || "8767"), "via", { api: true });
   const F = "document.querySelector('iframe').contentDocument";
   const check = (name, ok, got) => console.log((ok ? "PASS " : "FAIL ") + name + (ok ? "" : "  -> " + got));
   await nav("http://127.0.0.1:" + PORT + "/");

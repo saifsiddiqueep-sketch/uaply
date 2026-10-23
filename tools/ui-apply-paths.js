@@ -50,9 +50,18 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
     if (expectRow) check(label + ": Applied row", expectRow.test(rw), rw);
   }
 
-  if (SRV === "devtest") {
+  // signed out (the sign-in gate, October 22, Saif: nobody reaches the jobs without an account): no deck to swipe, and an application sent
+  // anyway (a page left open from before the gate, or a direct call) is refused by the server with nothing sent
+  async function signedOut(label, id) {
     await boot(false, "anon.ui@example.com");
-    await walk("signed out, email employer", ID["Mail Co|Marketing Intern"], 2500, /Applied to Mail Co \(test\)\. Sign in to get a confirmation email/, /Sent to hr@mailco\.example \(test, nothing reached Mail Co\)/);
+    check(label + ": signed out, the sign-in gate is up (no deck, no job to swipe)", await ev("(()=>{try{const d=" + F + ";return d.body.classList.contains('sgGated')&&!d.querySelector('#deck .card.top')}catch(e){return false}})()"));
+    const n0 = await outbox();
+    const st = await ev("fetch('/api/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({consent:true,job:{id:" + id + ",co:'Mail Co',role:'Marketing Intern',url:'https://example.com/jobs/mail'},profile:{name:'Sam Rivera',email:'anon.ui@example.com',ext:{phone:'2155550100'}}})}).then(r=>r.json().then(j=>r.status+' '+(j.code||'')))");
+    say(label + " | signed-out application", st);
+    check(label + ": an application sent anyway is refused (401, sign in first) and nothing reaches the employer", st === "401 signin" && (await outbox()) === n0, st);
+  }
+  if (SRV === "devtest") {
+    await signedOut("signed out, email employer", ID["Mail Co|Marketing Intern"]);
     await boot(true);
     await walk("Greenhouse partner", ID["GH Partner|Robotics Intern"], 3000, /Applied to GH Partner \(test\)\. UAply filled in \d+ of \d+ answers\. Confirmation is in the test inbox/, /Sent to GH Partner hiring system \(test, nothing reached GH Partner\)/);
     await walk("public Greenhouse posting in dev (hand-off)", ID["Discord|Data Intern"], 3000, /^Saved Discord to Applied · \d+% match ?Undo$/, /Finish on their site Not sent yet: Discord takes applications on its own site\. See the job posting ↗ Finish applying on their site ↗/);   // quiet swipe (Oct 20): no "finish on their site" message
@@ -97,10 +106,8 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
     check("back online: sent at once", /Applied to Lever Partner \(test\)/.test(t4) && /Sent to Lever Partner hiring system/.test(r4), t4 + " / " + r4);
   }
   if (SRV === "devlive") {
-    await boot(false, "anon.ui@example.com");
     const id = ID["Mail Co|Marketing Intern"];
-    await walk("live, signed out, employer that takes email", id, 8000, /Sign in first \(Profile, Account\) and verify your email, so Mail Co can trust your address\. Mail Co is back in your deck\.\s*Open Account/, /\(no row\)/);
-    check("the job went back to the deck", (await decision(id)) === null);
+    await signedOut("live, signed out, employer that takes email", id);
     await boot(true);
     const n0 = await outbox();
     await swipe(id); await sleep(1500);

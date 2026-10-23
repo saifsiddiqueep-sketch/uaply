@@ -8,6 +8,8 @@ const path = require("path");
 const PORT = process.env.PORT || "8766";
 const STUDENT = fs.readFileSync(path.join(__dirname, "fixtures", "resumes", "student.txt"), "utf8");
 module.exports = async ({ ev, sleep, nav, shot, logs }) => {
+  // the sign-in gate (October 22, Saif): nobody reaches the jobs without an account, so a fresh test person signs up first (tools/gate-signup.js)
+  await require("./gate-signup.js")({ ev, sleep, nav }, "http://127.0.0.1:" + (process.env.PORT || "8767"), "resume");
   const F = "document.querySelector('iframe').contentDocument";
   const W = "document.querySelector('iframe').contentWindow";
   let bad = 0;
@@ -21,6 +23,9 @@ module.exports = async ({ ev, sleep, nav, shot, logs }) => {
 
   await nav("http://127.0.0.1:" + PORT + "/?app=1");
   await sleep(3500);
+  // behind the sign-in gate: wait until the session is known and the app (not the card) is on screen, so nothing redraws Profile setup after
+  for (let i = 0; i < 40 && !(await ev("(()=>{try{const d=" + F + ";return !!d.getElementById('bnav')&&!d.body.classList.contains('sgGated')}catch(e){return false}})()")); i++) await sleep(250);
+  await sleep(800);
   await ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b)b.click()})()"); await sleep(300);
   await ev("(()=>{" + W + ".__uaplyOpenProf('back')})()"); await sleep(800);
   const step = await ev("(()=>{const c=" + F + ".querySelector('.wzDots button[aria-current=step]');return c?c.getAttribute('aria-label'):''})()");

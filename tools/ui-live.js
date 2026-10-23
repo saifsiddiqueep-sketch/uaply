@@ -308,7 +308,11 @@ async function main(api) {
       try {
         const stt = fs.statSync(file);
         if (stt.mtimeMs >= startedAt - 1000) {
-          const t = fs.readFileSync(file, "utf8");
+          let t = fs.readFileSync(file, "utf8");
+          // a stand-in mail server's file holds one JSON line per email: the newest one to this address first, so an older run's code
+          // (to another address in the same file) is never typed by mistake
+          const mine = t.split("\n").filter((l) => l.includes('"' + addr + '"')).reverse();
+          if (mine.length) t = mine.join("\n");
           // the 6 digits typed by a person, or (the test suite) a stand-in mail server's file: "123456 is your UAply verification code"
           const found = [...t.matchAll(/([0-9]{6}) is your UAply (?:verification|sign-in) code/g)].map((m) => m[1]);
           if (!found.length) found.push(...[...t.matchAll(/(?:^|[^0-9])([0-9]{3}[ -]?[0-9]{3})(?![0-9])/g)].map((m) => m[1].replace(/[ -]/g, "")));
@@ -320,23 +324,43 @@ async function main(api) {
     }
     return "";
   }
+  // sign-up on the sign-in gate's card (October 22, Saif: signed out, the card is the whole screen): email, first and last name, a password,
+  // the 18+ tick, Create my account; then the 6-digit code (from --code or the --code-file), unless the server is in sign-up test mode
+  // (providers.testMode: never a public server), where the account is confirmed at once and no code is asked; then the two questions
   async function signUp(addr, given, label) {
-    await fresh(); await agree();
-    await menu("nb-prof", "account");
-    if (!(await has("#sEmail"))) { await click("#hdrAcct"); await sleep(900); }
+    await fresh();
+    const prov = (await json("/api/auth/providers")).j || {};
+    const typeIn = (sel, v) => ev("(()=>{const e=" + F + ".querySelector(" + JSON.stringify(sel) + ");if(!e)return false;e.focus();e.value=" + JSON.stringify(v) + ";e.dispatchEvent(new Event('input',{bubbles:true}));return true})()");
+    if (!check(label + "signed out, the sign-up card is on screen", !!(await waitFor(() => has(".sg-su"), 15000)), (await secText("#acctSec")).slice(0, 120))) return false;
     const pw = "Live-" + crypto.randomBytes(12).toString("base64url");       // kept in memory only, never printed or saved
-    await setVal("sEmail", addr); await setVal("sPw", pw); await setVal("sPw2", pw); await tick("sAgree");
+    authOpen = true;
+    await typeIn(".sg-su [data-email] input", addr); await typeIn(".sg-su .sg-fn input", "Live"); await typeIn(".sg-su .sg-ln input", "Check");
+    await typeIn(".sg-su .sg-pw input", pw);
+    if (!(await ev("!!(" + F + ".querySelector('.sg-su .sg-ag')||{}).checked"))) await click(".sg-su .sg-ag");
     const startedAt = Date.now();
-    await click("[data-auth=ssubmit]");
-    const t1 = await waitFor(async () => { const t = await secText("#acctSec"); return /Verify your email|already has an account|Too many/.test(t) ? t : ""; }, 15000);
-    if (!check(label + "sign-up of " + addr + " creates the account and asks for the 6-digit code", /Verify your email/.test(t1 || "") && (await has("#sCode")), (t1 || await secText("#acctSec")).slice(0, 160))) return false;
-    check(label + "it says the code was emailed", /We emailed (you )?a 6-digit code/.test(t1 + " " + await secText("#aMsg")), (await secText("#aMsg")).slice(0, 120));
-    await snap("signup-" + label.replace(/\W+/g, "") + "-1-code");
-    const code = await getCode(addr, given, startedAt);
-    if (!check(label + "a 6-digit code was given (--code, or typed into the --code-file within 3 minutes)", /^[0-9]{6}$/.test(code), code ? "not 6 digits" : "no code arrived")) return false;
-    await setVal("sCode", code); await click("[data-auth=sverify]");
-    const t2 = await waitFor(async () => { const t = await secText("#acctSec"); return /email verified/.test(t) && !(await has("#sCode")) ? t : ""; }, 15000);
-    return check(label + "the code verifies the email", !!t2, (await secText("#aMsg")).slice(0, 120));
+    await click(".sg-su [type=submit]");
+    if (prov.testMode || prov.signupTest) {
+      const q1 = await waitFor(() => has(".sg-next"), 15000);
+      const u = ((await json("/api/auth/me")).j || {}).user || {};
+      check(label + "sign-up of " + addr + " on a test-mode server: the account is made and confirmed at once, no code asked", !!q1 && u.email === addr && u.emailVerified === true, JSON.stringify({ email: u.email, verified: u.emailVerified }));
+    } else {
+      const t1 = await waitFor(async () => { const t = await secText("#acctSec"); return /Check your email|already has an account|Too many/.test(t) ? t : ""; }, 15000);
+      if (!check(label + "sign-up of " + addr + " creates the account and asks for the 6-digit code", /Check your email/.test(t1 || "") && (await ev("(" + F + ").querySelectorAll('.sg-code input').length")) === 6, (t1 || await secText("#acctSec")).slice(0, 160))) { authOpen = false; return false; }
+      check(label + "it says the code was emailed", /We sent a 6-digit code to/.test(t1) && t1.includes(addr), t1.slice(0, 160));
+      await snap("signup-" + label.replace(/\W+/g, "") + "-1-code");
+      const code = await getCode(addr, given, startedAt);
+      if (!check(label + "a 6-digit code was given (--code, or typed into the --code-file within 3 minutes)", /^[0-9]{6}$/.test(code), code ? "not 6 digits" : "no code arrived")) { authOpen = false; return false; }
+      await ev("(()=>{const b=(" + F + ").querySelector('.sg-code input');b.focus();b.value=" + JSON.stringify(code) + ";b.dispatchEvent(new Event('input',{bubbles:true}))})()");
+      const ok = await waitFor(async () => { const u = ((await json("/api/auth/me")).j || {}).user; return u && u.emailVerified ? u : null; }, 15000);
+      check(label + "the code verifies the email", !!ok, (await secText("#acctSec")).slice(0, 120));
+      if (!ok) { authOpen = false; return false; }
+    }
+    for (let i = 0; i < 4 && (await waitFor(() => has(".sg-next"), 3000)); i++) { await click(".sg-next"); await sleep(700); }
+    const lifted = await waitFor(() => ev("!" + F + ".body.classList.contains('sgGated')"), 20000);
+    authOpen = false;
+    if (!check(label + "after the two questions the gate lifts: the app is on screen", !!lifted, (await secText("#acctSec")).slice(0, 160))) return false;
+    await sleep(800); await agree();
+    return true;
   }
 
   if (!EMAIL) skip("sign-up by email code", "--email you+tag@gmail.com and --code-file or --code (a real inbox)");
@@ -347,6 +371,7 @@ async function main(api) {
     if (cfg.mode !== "test") skip("[account 1] a swipe right appears under Applied", "delivery mode 'test' on the server (it is " + cfg.mode + "): this tool never sends an application to an employer");
     else {
       await menu("nb-svc", "job");
+      await waitFor(() => has(".card.top h2"), 60000);   // the job list is asked for once the gate lifts (a cold server can be slow)
       const role = await ev("(()=>{const c=" + F + ".querySelector('.card.top h2');return c?c.textContent.trim():''})()");
       await click("#btnYes"); await sleep(1500);
       if (await has("#kcYes")) await click("#kcYes");

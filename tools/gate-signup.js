@@ -6,7 +6,8 @@
 // account, then the two questions. Elsewhere (a page without the card) it posts /api/auth/signup. On a test server (UAPLY_SIGNUP_TEST=1:
 // providers.signupTest) the account is confirmed at once; otherwise the code is read from the server's test inbox (/outbox) and typed.
 // Call it after the test clears cookies and storage. Returns {email, how, ok}; the browser is signed in when ok is true.
-module.exports = async function gateSignup({ ev, sleep, nav }, base, tag) {
+// gateSignup(..., tag, { api: true }) always uses the API (no card), for the tests that race a server reading real boards.
+module.exports = async function gateSignup({ ev, sleep, nav }, base, tag, opts) {
   base = String(base).replace(/\/+$/, "");
   const F = "document.querySelector('iframe').contentDocument";
   const email = "first." + (tag || "test") + "." + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + "@example.com";
@@ -15,7 +16,9 @@ module.exports = async function gateSignup({ ev, sleep, nav }, base, tag) {
   const code = () => ev("fetch('/outbox').then(r=>r.text()).then(t=>{const m=t.replace(/<[^>]+>/g,' ').replace(/\\s+/g,' ').match(new RegExp('([0-9]{6}) is your UAply (?:verification|sign-in) code to '+" + JSON.stringify(email.replace(/\./g, "\\.")) + "));return m?m[1]:''})");
   await nav(base + "/");
   let gated = false;
-  for (let i = 0; i < 60; i++) {
+  // opts.api: straight to POST /api/auth/signup, not through the card (a few seconds quicker: the feed tests' servers read real boards
+  // in the background, and a slower start lets those jobs in beside the made-up ones the test counts)
+  for (let i = 0; i < 60 && !(opts && opts.api); i++) {
     const s = await ev("(()=>{try{const d=" + F + ";if(!d||!d.body)return '';if(d.body.classList.contains('sgGated')&&d.querySelector('.sg-su'))return 'gate';return d.getElementById('bnav')?'app':''}catch(e){return ''}})()").catch(() => "");
     if (s === "gate") { gated = true; break; }
     if (s === "app" && i > 12) break;            // a page without the gate (dev, the live build): its bottom bar, and no card after 3 s
