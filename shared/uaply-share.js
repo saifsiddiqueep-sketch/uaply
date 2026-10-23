@@ -36,7 +36,7 @@ var CSS=`
 .ushr-g{width:1em;height:1em;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;flex:none}
 .card .chead{padding-right:52px}
 .ushr-ic{position:absolute;top:12px;right:12px;z-index:1;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;padding:0;border:1px solid var(--line);background:color-mix(in srgb,var(--surface) 80%,transparent);color:var(--ink);font-size:16px;cursor:pointer}
-.ushr-ic::after{content:"";position:absolute;inset:-4px}
+.ushr-ic::after{content:"";position:absolute;left:50%;top:50%;width:44px;height:44px;transform:translate(-50%,-50%)}
 .ushr-ic:hover{border-color:var(--accent);color:var(--accent)}
 .ushr-line{width:100%;max-width:620px;margin:0;display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)}
 .ushr-line b{color:var(--ink)}
