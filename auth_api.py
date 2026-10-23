@@ -130,14 +130,7 @@ def init(instance):
         c.execute("""CREATE TABLE IF NOT EXISTS stripe_events(
             id TEXT PRIMARY KEY,
             at INTEGER NOT NULL)""")                     # Stripe event ids already handled (billing_api.webhook), so a resent event is done once
-        c.execute("""CREATE TABLE IF NOT EXISTS consents(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-            version INTEGER NOT NULL,
-            at INTEGER NOT NULL,
-            ip TEXT NOT NULL,
-            text_sha256 TEXT NOT NULL,
-            auto INTEGER NOT NULL DEFAULT 0)""")         # the first-swipe agreement, one row each time it is given (consent_api.py)
+        c.execute(CONSENTS_TABLE)                      # the first-swipe agreement, one row each time it is given (consent_api.py)
         for col in ("terms_at INTEGER", "has_password INTEGER NOT NULL DEFAULT 1", "email_verified INTEGER NOT NULL DEFAULT 0",
                     "first_name TEXT NOT NULL DEFAULT ''", "last_name TEXT NOT NULL DEFAULT ''",
                     "plan TEXT NOT NULL DEFAULT 'free'", "plan_status TEXT NOT NULL DEFAULT ''", "plan_renews INTEGER NOT NULL DEFAULT 0",
@@ -534,6 +527,16 @@ def set_send_for_me(token, on):
     return 200, {"ok": True, "sendForMe": on}
 
 
+# made with the other tables in init(), and again (if missing) by the two functions that use it, so a database made before the table
+# existed, or one a caller opened without init(), never answers "no such table: consents" to a swipe right (uaply_api.submit reads it)
+CONSENTS_TABLE = """CREATE TABLE IF NOT EXISTS consents(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            version INTEGER NOT NULL,
+            at INTEGER NOT NULL,
+            ip TEXT NOT NULL,
+            text_sha256 TEXT NOT NULL,
+            auto INTEGER NOT NULL DEFAULT 0)"""
 CONSENT_ROWS = 20                # the most agreements kept per account (the latest one counts; older ones show what was agreed before)
 
 
@@ -543,6 +546,7 @@ def record_consent(user_id, version, ip, text_sha256, auto=False):
     The rows go with the account when it is deleted. Returns consent_for(user_id)."""
     uid = int(user_id)
     with _lock, _db() as c:
+        c.execute(CONSENTS_TABLE)
         c.execute("INSERT INTO consents(user_id, version, at, ip, text_sha256, auto) VALUES(?,?,?,?,?,?)",
                   (uid, int(version), int(time.time()), str(ip or "")[:64], str(text_sha256 or "")[:64], 1 if auto else 0))
         c.execute("DELETE FROM consents WHERE user_id=? AND id NOT IN (SELECT id FROM consents WHERE user_id=? ORDER BY id DESC LIMIT ?)",
@@ -557,6 +561,7 @@ def consent_for(user_id):
     except (TypeError, ValueError):
         return None
     with _lock, _db() as c:
+        c.execute(CONSENTS_TABLE)
         row = c.execute("SELECT version, at, auto FROM consents WHERE user_id=? ORDER BY id DESC LIMIT 1", (uid,)).fetchone()
     if not row or not row["version"]:
         return None

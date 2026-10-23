@@ -6,6 +6,9 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
   const F = "document.querySelector('iframe').contentDocument", FW = "document.querySelector('iframe').contentWindow";
   let bad = 0;
   const check = (name, ok, extra) => { if (!ok) bad++; console.log((ok ? "PASS " : "FAIL ") + "[" + SRV + "] " + name + (extra ? "  | " + extra : "")); };
+  // a page answer that is not JSON (cdp.js answers "JSERR <message>" when the page's own code threw) is reported as a failure with the
+  // page's message, never a crash of this script that hides every check after it
+  const J = (s) => { try { return JSON.parse(s); } catch (e) { check("a page answer could be read (the page said: " + String(s).slice(0, 200) + ")", false); return {}; } };
   const say = (k, v) => console.log("   " + k + ": " + v);
   let net = "ok";                                         // "down": UAply's server does not answer (the device itself stays online)
   await send("Fetch.enable", { patterns: [{ urlPattern: "*/api/apply" }] });
@@ -13,8 +16,8 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
     ? send("Fetch.failRequest", { requestId: p.requestId, errorReason: "ConnectionRefused" }) : send("Fetch.continueRequest", { requestId: p.requestId }));
   const base = "http://127.0.0.1:" + PORT + "/";
   const toast = () => ev("(()=>{const t=" + F + ".getElementById('kitToast');return t?t.innerText.replace(/\\s+/g,' ').trim():''})()");
-  const decision = (id) => ev("JSON.stringify((" + FW + ".__uaply.S.decisions||{})[" + id + "]||null)").then(JSON.parse);
-  const outbox = async () => JSON.parse(await ev("fetch('/api/outbox').then(r=>r.text())")).applications.length;
+  const decision = (id) => ev("JSON.stringify((" + FW + ".__uaply.S.decisions||{})[" + id + "]||null)").then(J);
+  const outbox = async () => (J(await ev("fetch('/api/outbox').then(r=>r.text())")).applications || []).length;
   async function boot(signedIn, addr) {
     await nav(base); await sleep(3000);
     if (signedIn) {
@@ -70,7 +73,7 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
     // the first-swipe agreement (October 23, Reviewer 3): the Automatic submit tick sits right after the four ways, above "By continuing you
     // agree", it is on screen without scrolling at this size, it is off, and its words say no hiring system is switched on yet
     await ev("(()=>{" + FW + ".__uaplyConsentAgain(function(){});return 1})()"); await sleep(1500);
-    const box = JSON.parse(await ev("(()=>{const d=" + F + ",l=d.querySelector('label[for=kcAuto]'),dlg=d.querySelector('#kitConsent [role=dialog]'),ps=[...d.querySelectorAll('#kitConsent p')];" +
+    const box = J(await ev("(()=>{const d=" + F + ",l=d.querySelector('label[for=kcAuto]'),dlg=d.querySelector('#kitConsent [role=dialog]'),ps=[...d.querySelectorAll('#kitConsent p')];" +
       "const by=ps.find(p=>/^By continuing you agree/.test(p.textContent)),ul=d.querySelector('#kitConsent ul');if(!l||!by||!dlg||!ul)return JSON.stringify({missing:true});const r=l.getBoundingClientRect(),dr=dlg.getBoundingClientRect();" +
       "return JSON.stringify({afterList:!!(ul.compareDocumentPosition(l)&Node.DOCUMENT_POSITION_FOLLOWING),aboveBy:!!(l.compareDocumentPosition(by)&Node.DOCUMENT_POSITION_FOLLOWING)," +
       "onScreen:r.top>=0&&r.bottom<=innerHeight,top:dr.top>=0,off:!d.getElementById('kcAuto').checked,words:(d.getElementById('kcAutoT')||{}).textContent||'',bottom:Math.round(r.bottom),h:innerHeight})})()"));
@@ -79,10 +82,10 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
     check("...and it says where: 'where a hiring system allows it; none is switched on yet' (from assist-systems.json)", /^Automatic submit: where a hiring system allows it; none is switched on yet\./.test(box.words), box.words);
     await ev("(()=>{" + F + ".getElementById('kcYes').click();return 1})()"); await sleep(800);
     await walk("Greenhouse partner", ID["GH Partner|Robotics Intern"], 3000, /Applied to GH Partner \(test\)\. UAply filled in \d+ of \d+ answers\. Confirmation is in the test inbox/, /Sent to GH Partner hiring system \(test, nothing reached GH Partner\)/);
-    await walk("public Greenhouse posting in dev (hand-off)", ID["Discord|Data Intern"], 3000, /^Saved to Job Tracker\. One tap to finish on their site\. ?Undo$/, /Finish on their site Not sent yet: Discord takes applications on its own site\. See the job posting ↗ Finish applying on their site ↗/);   // quiet swipe (Oct 20): no "finish on their site" message
+    await walk("public Greenhouse posting in dev (hand-off)", ID["Discord|Data Intern"], 3000, /^Saved \S.* to Job Tracker\. ?Undo$/, /Finish on their site Not sent yet: Discord takes applications on its own site\. See the job posting ↗ Finish applying on their site ↗/);   // quiet swipe (Oct 20): no "finish on their site" message
     // a job saved on this device that the server no longer lists
     await ev(FW + ".__uaplyJobs.add([{id:4242425,live:true,co:'Vanished Co',role:'Gone Intern',loc:'Philadelphia, PA',mode:'onsite',type:'internship',sal:[0,0],yrs:0,edu:'High school',skills:['Python'],blurb:'Gone.',url:'https://boards.greenhouse.io/vanished/jobs/9',source:\"Vanished Co's careers page\"}])");
-    await walk("a job no longer in the feed", 4242425, 2500, /^Saved to Job Tracker\. One tap to finish on their site\. ?Undo$/, /Finish on their site Not sent yet: Vanished Co takes applications on its own site\. See the job posting ↗ Finish applying on their site ↗/);
+    await walk("a job no longer in the feed", 4242425, 2500, /^Saved \S.* to Job Tracker\. ?Undo$/, /Finish on their site Not sent yet: Vanished Co takes applications on its own site\. See the job posting ↗ Finish applying on their site ↗/);
     // a question only the person can answer is asked once, then it goes
     await swipe(ID["GH Partner|Odd Question Role"]); await sleep(2500);
     const ask = await ev("(()=>{const o=" + F + ".getElementById('kitAsk');return o?o.innerText.replace(/\\s+/g,' ').slice(0,200):''})()");
@@ -132,7 +135,7 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
     await ev("window.__t0=Date.now();1");
     check("one tap: the hand-off is in the app", (await swipe(oneId)) === "ok");
     for (let i = 0; i < 40 && (await ev("window.__calls.length")) < 2; i++) await sleep(100);
-    const calls = JSON.parse(await ev("JSON.stringify(window.__calls)")), t0 = await ev("window.__t0");
+    const calls = J(await ev("JSON.stringify(window.__calls)")), t0 = await ev("window.__t0");
     const ms = calls.length >= 2 ? calls[1].at - t0 : -1;
     console.log("ONE-TAP-CLIENT " + JSON.stringify({ ms: ms, scanAsked: calls[0] ? calls[0].at - t0 : -1 }));
     check("one tap: right after the swipe the app reads the employer's form, then opens it filled (two opens: the scan, then the form)",
@@ -161,7 +164,7 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
       await install({ confirmed: false, url: "" });
       await ev("(()=>{const w=" + F + ".defaultView;w.__uaplyConsentRec={v:w.__uaplyConsentV,auto:" + tick + "};const j=w.__uaply.JOBS.find(x=>x.id===" + oneId + ");return w.__uaplyOneTap(j)})()");
       for (let i = 0; i < 40 && (await ev("window.__calls.length")) < 2; i++) await sleep(100);
-      const c = JSON.parse(await ev("JSON.stringify(window.__calls)"));
+      const c = J(await ev("JSON.stringify(window.__calls)"));
       return c[1] ? c[1].mode : "(no form opened)";
     };
     const mNo = await modeWith(false);
@@ -179,7 +182,7 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
     const offId = ID["Discord|Data Intern Three"];
     check("one tap, switch off: the hand-off is in the app", (await swipe(offId)) === "ok");
     await sleep(2500);
-    const offCalls = JSON.parse(await ev("JSON.stringify(window.__calls)")), offToast = await toast();
+    const offCalls = J(await ev("JSON.stringify(window.__calls)")), offToast = await toast();
     say("one tap, switch off | toast", offToast);
     check("...no employer's form opens, and the message says it was only saved", offCalls.length === 0 && /^Saved Discord to Job Tracker\. Send applications for me is off \(Profile, Account\), so nothing was sent\. ?Undo$/.test(offToast),
       offCalls.length + " opens | " + offToast);
@@ -215,7 +218,7 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
     await sleep(8000);
     check("...and when it fails again, the row still says not sent", /Not sent: UAply could not deliver it to Dropbox/.test(await row(broken)));
     await walk("live, Greenhouse partner", ID["GH Partner|Robotics Intern"], 9000, /Applied to GH Partner\. UAply filled in/, /Application sent to GH Partner/);
-    await walk("live, public Greenhouse posting (hand-off)", ID["Discord|Data Intern"], 4000, /^Saved to Job Tracker\. One tap to finish on their site\. ?Undo$/, /Finish on their site Not sent yet: Discord takes applications on its own site\. See the job posting ↗ Finish applying on their site ↗/);
+    await walk("live, public Greenhouse posting (hand-off)", ID["Discord|Data Intern"], 4000, /^Saved \S.* to Job Tracker\. ?Undo$/, /Finish on their site Not sent yet: Discord takes applications on its own site\. See the job posting ↗ Finish applying on their site ↗/);
   }
   if (SRV === "devlive") {
     // ---------- Send applications for me (Profile, Account; Terms section 3): off, a swipe right only saves the job ----------
@@ -223,15 +226,15 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
     check("Profile, Account has the Send applications for me switch, and it is on", (await sw()) === "on", await sw());
     await ev("(()=>{" + F + ".getElementById('aSendForMe').click()})()"); await sleep(1500);
     check("...turned off, it says swipes right only save the job", (await sw()) === "off" && /^Off: swipes right only save the job to Job Tracker/.test(await note()), await note());
-    const me = JSON.parse(await ev("fetch('/api/auth/me').then(r=>r.text())"));
+    const me = J(await ev("fetch('/api/auth/me').then(r=>r.text())"));
     check("...and the account keeps it (the server will honor it on every device)", me.user && me.user.sendForMe === false, JSON.stringify(me.user && me.user.sendForMe));
     const lv = ID["Lever Partner|Support Engineer"];
     await walk("live, Send applications for me off, an employer connected through Lever", lv, 4000, /^Saved Lever Partner to Job Tracker\. Send applications for me is off \(Profile, Account\), so nothing was sent\. ?Undo$/, /Finish on their site/);
-    const last = JSON.parse(await ev("fetch('/api/outbox').then(r=>r.text())")).applications[0] || {};
+    const last = (J(await ev("fetch('/api/outbox').then(r=>r.text())")).applications || [])[0] || {};
     check("...the server only saved it: a hand-off, nothing sent to Lever Partner", last.status === "handoff" && last.job && last.job.id === lv, JSON.stringify({ status: last.status, to: last.to }));
     const mc = ID["Mail Co|Sales Intern"];
     await walk("live, Send applications for me off, the employer that takes email", mc, 4000, /^Saved Mail Co to Job Tracker\. Send applications for me is off \(Profile, Account\), so nothing was sent\. ?Undo$/, /Finish on their site/);
-    const last2 = JSON.parse(await ev("fetch('/api/outbox').then(r=>r.text())")).applications[0] || {};
+    const last2 = (J(await ev("fetch('/api/outbox').then(r=>r.text())")).applications || [])[0] || {};
     check("...nothing emailed to Mail Co: only saved", last2.status === "handoff" && last2.job && last2.job.id === mc && !last2.to, JSON.stringify({ status: last2.status, to: last2.to }));
     await openAcct();
     await ev("(()=>{" + F + ".getElementById('aSendForMe').click()})()"); await sleep(1500);
@@ -242,14 +245,14 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
     // a public posting the sandbox fills in to show what UAply would send (October 23): nothing is sent, so it is a hand-off, said as one,
     // and Job Tracker says Saved, never Applied or Sent
     await walk("sandbox, public Greenhouse posting (form filled in for the test inbox, nothing sent)", ID["Discord|Data Intern"], 3000,
-      /^Saved to Job Tracker\. One tap to finish on their site\. ?Undo$/, /Saved [A-Z][a-z]{2} \d{1,2} Finish on their site Not sent yet: Discord takes applications on its own site/);
-    const pv = JSON.parse(await ev("fetch('/api/outbox').then(r=>r.text())")).applications[0] || {};
+      /^Saved \S.* to Job Tracker\. ?Undo$/, /Saved [A-Z][a-z]{2} \d{1,2} Finish on their site Not sent yet: Discord takes applications on its own site/);
+    const pv = (J(await ev("fetch('/api/outbox').then(r=>r.text())")).applications || [])[0] || {};
     check("...the test inbox has the filled-in form, marked as a preview (what UAply would send once Discord connects)", pv.preview === true && pv.status === "delivered_test", JSON.stringify({ status: pv.status, preview: pv.preview }));
     await openAcct();
     await ev("(()=>{" + F + ".getElementById('aSendForMe').click()})()"); await sleep(1500);
     check("sandbox: Send applications for me turned off", (await sw()) === "off", await note());
     await walk("sandbox, switch off, a public posting", ID["Discord|Data Intern Two"], 3000, /^Saved Discord to Job Tracker\. Send applications for me is off \(Profile, Account\), so nothing was sent\. ?Undo$/, /Finish on their site/);
-    const pv2 = JSON.parse(await ev("fetch('/api/outbox').then(r=>r.text())")).applications[0] || {};
+    const pv2 = (J(await ev("fetch('/api/outbox').then(r=>r.text())")).applications || [])[0] || {};
     check("...not even the test inbox's filled-in form: only saved", pv2.status === "handoff" && !pv2.preview, JSON.stringify({ status: pv2.status, preview: pv2.preview }));
     await openAcct();
     await ev("(()=>{" + F + ".getElementById('aSendForMe').click()})()"); await sleep(1500);

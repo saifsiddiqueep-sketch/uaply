@@ -12,7 +12,7 @@ production page and only changes when the owner decides.
 - **Reviewer 3's review fixes.** The Automatic submit tick says where it applies from `shared/assist-systems.json` (today "where a hiring
   system allows it; none is switched on yet"; it names a system once one is switched on), and sits right after the four ways, above "By
   continuing you agree", on screen at 375 px. Job Tracker says "Saved Oct 23" for a hand-off and "Sent Oct 23" only for a send. A
-  hand-off says "Saved to Job Tracker. One tap to finish on their site.", and the sandbox's filled-in preview of a public posting is shown
+  hand-off says "Saved to Job Tracker. One tap to finish on their site." where the app opens the form, else "Saved <company> to Job Tracker.", and the sandbox's filled-in preview of a public posting is shown
   as the hand-off it is (only a send says Applied or Sent). Reviewer 3's three missing tests are merged.
 - **Reviewer 3's words.** The first-swipe box (version 4) and Terms section 3 are Reviewer 3's drafts: the authorization, the four ways a
   swipe right goes (the third, UAply pressing Submit, only with the Automatic submit tick, which stays the extra line), and how to stop

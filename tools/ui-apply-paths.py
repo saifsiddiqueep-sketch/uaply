@@ -5,7 +5,7 @@ Greenhouse, one through Lever, one link-only, and public Greenhouse postings (on
 employer system that fails). Nothing leaves this computer. It runs twice, on fresh servers each time: at phone size (390x844) and at laptop size
 (1280x800), and at 375x812 (the smallest phone the sign-up and the agreement are checked at); SIZES=390x844 runs one. In the phone app (a stand-in for its assist plugin) a hand-off opens the employer's form right after the
 swipe ("one tap", October 23), timed from the swipe to the form being asked for.
-  python tools/ui-apply-paths.py [first port]        (uses 5 ports from there; default 18780)"""
+  python tools/ui-apply-paths.py [first port]        (uses 5 ports from there; default: 5 free ones in a row)"""
 import json
 import os
 import re
@@ -19,7 +19,31 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-P = int(sys.argv[1]) if len(sys.argv) > 1 else 18780
+
+
+def _free_base(n=5):
+    """The first of n ports in a row that nothing listens on now: the fixed default 18780 once met another run's servers there (their
+    pages answered this run's browser, and every check after that failed)."""
+    import random
+    import socket as _so
+    for _ in range(200):
+        base = random.randint(30000, 60000 - n)
+        try:
+            socks = []
+            for k in range(n):
+                s_ = _so.socket()
+                s_.bind(("127.0.0.1", base + k))
+                socks.append(s_)
+            for s_ in socks:
+                s_.close()
+            return base
+        except OSError:
+            for s_ in socks:
+                s_.close()
+    return 18780
+
+
+P = int(sys.argv[1]) if len(sys.argv) > 1 else _free_base()
 ATS, SMTP, PORTS = P, P + 1, {"devtest": P + 2, "devlive": P + 3, "sbtest": P + 4}
 INST = {"devtest": "dev", "devlive": "dev", "sbtest": "sandbox"}
 TMP = tempfile.mkdtemp(prefix="uaply-applypaths-")

@@ -70,7 +70,7 @@ run "Connect Gmail form" python tools/test-setup.py
 
 step "Swipe-right emails (content, test label, safety, real send)"
 run "receipt and owner copy emails" python tools/test-emails.py
-run "email as the mail service sees it: headers, daily quota (250/300), refusals, held mail, bounce webhook" python tools/test-mail-limits.py 2538 18799
+run "email as the mail service sees it: headers, daily quota (250/300), refusals, held mail, bounce webhook" python tools/test-mail-limits.py 0 18799
 run "help requests from the assistant reach the support inbox" python tools/test-support.py
 run "the sign-in contract: password sign-up with names, the code to verify and to sign in, the gate, the test mode, items 12 to 23" python tools/test-signin-contract.py 18964
 run "the consent record: the box's words are the server's, kept on the account with the time, the address and their SHA-256; nothing is sent without it" python tools/test-consent.py 18970
@@ -102,7 +102,10 @@ run "human checks on application pages: captchas and challenge pages found (neve
 run "where a job is: every US city, town and township with its state, the app using it for near you, every ZIP3 for home, co-ops first on careers sites" python tools/test-placement.py
 run "a long-running local server: files added to shared/ are served without a restart, no escape from shared/, a stale-code header and log line (local only)" python tools/test-stale-server.py
 run "backups: pack the data folder, restore it, refuse damaged ones, encrypt, upload to a private GitHub repository" python tools/test-backup.py 18806
-run "every path from swipe right to inbox, replayed in a browser" python tools/ui-apply-paths.py
+# one size per line: each takes about four minutes on fresh servers, and run() stops any single check at ten
+run "every path from swipe right to inbox, replayed in a browser (375x812)" env SIZES=375x812 python tools/ui-apply-paths.py
+run "every path from swipe right to inbox, replayed in a browser (390x844)" env SIZES=390x844 python tools/ui-apply-paths.py
+run "every path from swipe right to inbox, replayed in a browser (1280x800)" env SIZES=1280x800 python tools/ui-apply-paths.py
 run "the swipe guarantee: resume to profile, then swipe right into Greenhouse, Lever, Ashby, SmartRecruiters, Workable, an email employer and a hand-off; a question box, a file it cannot ask, the weekly limit" python tools/test-swipe-e2e.py 18830
 run "the one-time question box: every kind of question, phone and computer" python tools/ui-questions.py
 mkdir -p "$TMP/tk"

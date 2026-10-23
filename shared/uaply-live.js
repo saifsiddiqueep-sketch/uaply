@@ -835,7 +835,9 @@ function kitApply(w,host){
     /* Undo on the saved message takes back this job only (the person may have swiped on since); nothing was sent for a hand-off */
     function undoThis(){revert()}
     /* a hand-off (nothing sent): it is saved, and the employer's own site finishes it (October 23: only a send says Applied or Sent) */
-    function savedToast(){toast("Saved to Job Tracker. One tap to finish on their site.","Undo",undoThis,9000)}
+    /* "One tap to finish" only when it is true: the phone app has just opened the employer's form, filled. Anywhere else (the website, a
+       system the app does not fill) the copy says only that it was saved; Job Tracker shows how to finish (never a promise the page cannot keep) */
+    function savedToast(opened){toast(opened?"Saved to Job Tracker. One tap to finish on their site.":"Saved "+job.co+" to Job Tracker.","Undo",undoThis,9000)}
     function mark(status,to){var dec=S&&S.decisions&&S.decisions[job.id];if(dec){dec.sent={at:Date.now(),to:to||"",status:status};if(save)save();if(w.__uaplyTrack)w.__uaplyTrack()}}   /* the Applied list, if it is open, shows the new state at once */
     var rdy=w.__uaplyReadiness?w.__uaplyReadiness():null;
     if(rdy&&!rdy.min&&!retry){revert();if(w.__uaplyFinishProfile)w.__uaplyFinishProfile(job);return}
@@ -898,10 +900,10 @@ function kitApply(w,host){
         else if(j.status==="sent")toast("Applied to "+job.co+"."+auto+cp,"","",9000);
         else if(j.status==="duplicate")toast("Already applied to "+job.co+".");
         else if(j.status==="handoff"&&j.sendForMe===false){if(!retry)toast("Saved "+job.co+" to Job Tracker. Send applications for me is off (Profile, Account), so nothing was sent.","Undo",undoThis,9000)}
-        else if(j.status==="handoff"){if(!retry&&!deliver.waiting){savedToast();
+        else if(j.status==="handoff"){if(!retry&&!deliver.waiting){
           /* the phone app (October 23, "one swipe"): the employer's own form opens right away, filled; the person completes any check and
              taps Submit there. On the website, or a system the app does not fill, it stays quiet: Applied has Finish on their site */
-          if(w.__uaplyOneTap)w.__uaplyOneTap(job)}}
+          savedToast(!!(w.__uaplyOneTap&&w.__uaplyOneTap(job)))}}
         else if(j.status==="failed")toast(j.error||"The application could not be sent.","Try again",deliver,9000);
         else toast("Done.");
       }).catch(function(){
