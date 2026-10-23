@@ -24,16 +24,29 @@ module.exports = async ({ ev, sleep, nav, send, on, logs }) => {
   const passTop = () => ev("(()=>{const b=" + F + ".getElementById('btnNo');if(b)b.click()})()");
   const note = () => ev("(()=>{const n=" + F + ".getElementById('titleNote');return !!n&&n.getClientRects().length>0})()");
 
-  // the target titles to look for: a nurse and a barista when this server lists them (the seeded 16,000-job server puts 1,000 tech
-  // postings first), else the title of a job far down the list that the first page has none of (a real feed's own mix)
-  const T = JSON.parse(await ev("Promise.all([fetch('/api/jobs?size=200&page=1').then(r=>r.json()),fetch('/api/jobs').then(r=>r.json())]).then(([p,a])=>{" +
-    "const first=p.jobs.map(j=>j.role.toLowerCase()).join(' | '),all=a.jobs;const out=[];" +
-    "for(const [t,w] of [['Registered Nurse','nurse'],['Barista','barista']])if(all.some(j=>j.role.toLowerCase().includes(w)))out.push({title:t,word:w,inFirst:first.includes(w)});" +
-    "if(!out.length){const far=all.slice(400).find(j=>{const w=(j.role.toLowerCase().match(/[a-z]{5,}/g)||[]).find(x=>!first.includes(x));return !!w});" +
-    "if(far){const w=(far.role.toLowerCase().match(/[a-z]{5,}/g)||[]).find(x=>!first.includes(x));out.push({title:far.role,word:w,inFirst:false})}}return JSON.stringify(out)})"));
-  console.log("  target titles to look for: " + JSON.stringify(T));
-  check("(there is a target title to look for: a nurse, a barista, or a far job's title)", T.length > 0, JSON.stringify(T));
-  const T1 = T[0] || { title: "Registered Nurse", word: "nurse" }, rx1 = new RegExp(T1.word, "i");
+  // two known postings at the end of the whole list, whatever this server's feeds hold (a real feed may have no registered nurse):
+  // the browser's copy of GET /api/jobs (the whole list, not the first page) gets a Registered Nurse and a Barista added at its end,
+  // the way tools/ui-apply-paths.js seeds the jobs it swipes. Both on-site, in Philadelphia, posted today.
+  const KNOWN = [
+    { id: 4250101, co: "UAply Test Clinic", role: "Registered Nurse", loc: "Philadelphia, PA", mode: "onsite", type: "job", jobType: "full-time", sal: [0, 0], yrs: 0, edu: "High school",
+      skills: ["Patient care", "Customer service"], blurb: "A test posting.", url: "https://example.com/jobs/nurse", source: "UAply Test Clinic's careers page", apply: "link", contact: "", live: true, posted: Date.now() },
+    { id: 4250102, co: "UAply Test Cafe", role: "Barista", loc: "Philadelphia, PA", mode: "onsite", type: "job", jobType: "full-time", sal: [0, 0], yrs: 0, edu: "High school",
+      skills: ["Customer service", "Cash handling"], blurb: "A test posting.", url: "https://example.com/jobs/barista", source: "UAply Test Cafe's careers page", apply: "link", contact: "", live: true, posted: Date.now() }];
+  let block = 0;                                   // > 0: that many whole-list requests fail first (a deploy), Infinity: all of them
+  await send("Fetch.enable", { patterns: [{ urlPattern: "*/api/jobs", requestStage: "Response" }] });
+  on("Fetch.requestPaused", async (q) => {
+    try {
+      if (!/\/api\/jobs$/.test(q.request.url)) return send("Fetch.continueRequest", { requestId: q.requestId });
+      if (block > 0) { block--; return send("Fetch.failRequest", { requestId: q.requestId, errorReason: "Failed" }); }
+      const r = await send("Fetch.getResponseBody", { requestId: q.requestId }), b = r.result || {};
+      const j = JSON.parse(b.base64Encoded ? Buffer.from(b.body, "base64").toString("utf8") : b.body);
+      j.jobs = (j.jobs || []).concat(KNOWN);
+      const hdr = (q.responseHeaders || []).filter((h) => !/^(content-length|content-encoding)$/i.test(h.name));
+      return send("Fetch.fulfillRequest", { requestId: q.requestId, responseCode: q.responseStatusCode || 200, responseHeaders: hdr, body: Buffer.from(JSON.stringify(j)).toString("base64") });
+    } catch (e) { return send("Fetch.continueRequest", { requestId: q.requestId }); }
+  });
+  const T = [{ title: "Registered Nurse", word: "registered nurse" }, { title: "Barista", word: "barista" }];
+  const T1 = T[0], rx1 = /Registered Nurse/i;
   // ---- 1. a person with that target title: the first card from page 1, then the whole list ranked, the top card held ----
   await send("Page.navigate", { url: base + "/" });
   for (let i = 0; i < 80 && !(await ev("!!(" + F + "&&" + FW + ".__uaply&&" + F + ".getElementById('bnav'))").catch(() => false)); i++) await sleep(250);
@@ -54,23 +67,33 @@ module.exports = async ({ ev, sleep, nav, send, on, logs }) => {
   const roles = [];
   await passTop(); await sleep(700);
   for (let i = 0; i < 10; i++) { const t = await top(); if (!t) break; roles.push(t.role); if (rx1.test(t.role)) break; await passTop(); await sleep(500); }
-  check("once ranked, a person after " + JSON.stringify(T1.title) + " sees a matching card within the first 10 (" + roles.length + " looked at; the first page had " + (T1.inFirst ? "some" : "none") + ")", roles.some((r) => rx1.test(r)), JSON.stringify(roles));
+  check("once ranked, a person after \"Registered Nurse\" sees a matching card within the first 10 (" + roles.length + " looked at; the known one is at the very end of the list)", roles.some((r) => rx1.test(r)), JSON.stringify(roles));
   const once = (p) => A2.filter((x) => x[0] === p).length;
   check("the start-up questions are asked once each: /api/auth/me, /api/auth/providers, /api/apply/config", once("/api/auth/me") === 1 && once("/api/auth/providers") <= 1 && once("/api/apply/config") <= 1,
     JSON.stringify({ me: once("/api/auth/me"), providers: once("/api/auth/providers"), config: once("/api/apply/config") }));
 
   // ---- 2. a second target title (a barista), the same ----
-  if (T[1]) {
-    const rx2 = new RegExp(T[1].word, "i");
+  {
+    const rx2 = /Barista/i;
     await ev("(()=>{const A=" + FW + ".__uaply;A.S.profile.title=" + JSON.stringify(T[1].title) + ";A.S.decisions={};A.save();A.renderAll();return 1})()"); await sleep(800);
     const r2 = [];
     for (let i = 0; i < 10; i++) { const t = await top(); if (!t) break; r2.push(t.role); if (rx2.test(t.role)) break; await passTop(); await sleep(500); }
     check("a person after " + JSON.stringify(T[1].title) + " sees a matching card within the first 10 of the ranked deck", r2.some((r) => rx2.test(r)), JSON.stringify(r2));
-  } else console.log("  (one target title on this server: the second-title check needs both a nurse and a barista posting)");
+  }
 
-  // ---- 3. the whole list refused (a slow link, an error): the deck carries on a page at a time ----
-  await send("Fetch.enable", { patterns: [{ urlPattern: "*/api/jobs", requestStage: "Request" }] });
-  const stop = on("Fetch.requestPaused", (p) => /\/api\/jobs$/.test(p.request.url) ? send("Fetch.failRequest", { requestId: p.requestId, errorReason: "Failed" }) : send("Fetch.continueRequest", { requestId: p.requestId }));
+  // ---- 3a. the whole list fails once (a deploy, a dropped connection): it is asked for again 10 s on, and the deck is ranked then ----
+  block = 1;
+  await ev("(()=>{const A=" + FW + ".__uaply;A.S.decisions={};A.save();Object.keys(localStorage).filter(k=>/\\.live$|jobs|cache/i.test(k)).forEach(k=>localStorage.removeItem(k));return 1})()");
+  await send("Page.navigate", { url: base + "/" });
+  await firstCard(); await sleep(1500);
+  const R0 = await live(), noteR = await note();
+  let R1 = R0;
+  for (let i = 0; i < 80 && R1.n < Math.min(total.total, 1000); i++) { await sleep(250); R1 = await live(); }
+  check("the whole list fails once: the deck keeps its first page (" + R0.n + " jobs) and shows no \"none matched\" note meanwhile", R0.n <= 260 && !noteR, JSON.stringify({ R0, noteR }));
+  check("...and asks for it again about 10 s on: then the deck holds the whole list (" + R1.n + " jobs), none twice", R1.n >= Math.min(total.total, 1000) && R1.dup === 0, JSON.stringify(R1));
+
+  // ---- 3b. the whole list refused for good (a slow link, an error): the deck carries on a page at a time ----
+  block = Infinity;
   await ev("(()=>{const A=" + FW + ".__uaply;A.S.profile.title='';A.S.profile.custom=false;A.S.decisions={};A.save();Object.keys(localStorage).filter(k=>/.live$|jobs|cache/i.test(k)).forEach(k=>localStorage.removeItem(k));return 1})()");
   await send("Page.navigate", { url: base + "/" });
   await firstCard(); await sleep(1500);
@@ -97,8 +120,7 @@ module.exports = async ({ ev, sleep, nav, send, on, logs }) => {
   L = await live();
   check("...still no job twice", L.dup === 0, JSON.stringify(L));
   await ev("(()=>{const A=" + FW + ".__uaply;if(A.setType)A.setType('job')})()"); await sleep(500);
-  if (typeof stop === "function") stop();
-  await send("Fetch.disable");
+  block = 0;
 
   // ---- 4. Job Tracker lists the passed jobs ----
   await ev("(()=>{const b=" + F + ".getElementById('nb-dash');if(b)b.click()})()"); await sleep(400);

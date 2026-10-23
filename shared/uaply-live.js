@@ -60,7 +60,11 @@ function shareGets(){
   var C={},TTL=5000,ONE=/^\/api\/(auth\/me|auth\/providers|apply\/config)$/;
   window.fetch=function(u,o){
     var url=String(u&&u.url||u),m=String(o&&o.method||u&&u.method||"GET").toUpperCase(),p=url.replace(/^https?:\/\/[^\/]+/,"").split("#")[0];
-    if(m!=="GET"){if(/^\/api\//.test(p))C={};return f.apply(this,arguments)}
+    if(m!=="GET"){
+      if(!/^\/api\//.test(p))return f.apply(this,arguments);
+      C={};var sent=f.apply(this,arguments);   /* a sign-in, a sign-out, a code: what was shared is forgotten now and when it answers */
+      sent.then(function(){C={}},function(){C={}});return sent;
+    }
     if(!ONE.test(p))return f.apply(this,arguments);
     var c=C[p];if(c&&(!c.at||Date.now()-c.at<TTL))return c.p.then(function(r){return r.clone()});
     var e={at:0};C[p]=e;
@@ -199,13 +203,26 @@ function apply(w,host){
     }).catch(function(){pgBusy=false;pgWait=Date.now()+10000});   /* a page that failed: tried again on a later swipe, 10 s on */
   };
   /* the whole list, after the first card is drawn (and again while boards are still loading, as before paging) */
+  /* a whole list that does not come (a deploy, a dropped connection) is asked for again after 10 s, 30 s and 60 s, then every 2 minutes
+     while the page is open (a page in the background waits until it is shown again). Meanwhile the deck carries on a page at a time,
+     and the "none matched" note stays away: it would be judged on the first page alone */
+  var WAIT=[10000,30000,60000],wTries=0,wTimer=0;
+  function again(round){
+    clearTimeout(wTimer);
+    wTimer=setTimeout(function go(){
+      var doc=w.document;
+      if(doc&&doc.hidden){doc.addEventListener("visibilitychange",function once(){if(!doc.hidden){doc.removeEventListener("visibilitychange",once);whole(round)}});return}
+      whole(round);
+    },wTries<WAIT.length?WAIT[wTries]:120000);
+    wTries++;
+  }
   function whole(round){
     if(fullBusy)return Promise.resolve();
     fullBusy=true;ranking(true);
     return fetch("/api/jobs").then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}).then(function(data){
-      hold();fullBusy=false;FULL=true;ranking(false);took(data);
+      hold();fullBusy=false;FULL=true;wTries=0;ranking(false);took(data);
       if(data.pending>0&&round<15)setTimeout(function(){FULL=false;whole(round+1)},round<3?5000:15000);
-    }).catch(function(){fullBusy=false;ranking(false);try{w.__uaply.renderAll()}catch(x){}});   /* not now: the deck carries on a page at a time */
+    }).catch(function(){fullBusy=false;try{w.__uaply.renderAll()}catch(x){}again(round)});   /* not now: a page at a time, and the whole list again soon */
   }
   function loadJobs(round){
   if(round>0)return whole(round);
