@@ -285,6 +285,69 @@ J._sr_desc.clear()
 t("a SmartRecruiters posting outside the US is dropped", J._fetch_source(("smartrecruiters", "T2", "T2"))[0], [])
 J._get = fake_get
 
+# ---------------- Recruitee: the careers site's public offers (a saved sample, tools/fixtures/recruitee-offers.json) ----------------
+with open(os.path.join(HERE, "fixtures", "recruitee-offers.json"), encoding="utf-8") as f:
+    RC = json.load(f)
+RC_CALLS = []
+real_items = J._get_items
+
+
+def fake_items(url, key=None):
+    RC_CALLS.append((url, key))
+    if url == "https://acmedental.recruitee.com/api/offers/":
+        return iter(RC[key])
+    raise OSError("unexpected request " + url)
+
+
+ROBOTS = {"acmedental.recruitee.com": ["User-agent: *", "Disallow: /v/"], "closeddental.recruitee.com": ["User-agent: *", "Disallow: /api/"]}
+real_robots = J._robots_for
+
+
+def fake_robots(host):
+    RC_CALLS.append(("robots", host))
+    if host not in ROBOTS:
+        return None                                       # robots.txt could not be read
+    rp = J.RobotsTxt()
+    rp.parse(ROBOTS[host])
+    return rp
+
+
+J._get_items, J._robots_for = fake_items, fake_robots
+RCS = ("recruitee", "acmedental", "Acme Dental Group")
+rjobs, rstatus = J._fetch_source(RCS)
+t("Recruitee: robots.txt is asked first, then one request for the careers site's own offers list", RC_CALLS, [("robots", "acmedental.recruitee.com"), ("https://acmedental.recruitee.com/api/offers/", "offers")])
+RC_CALLS.clear()
+closed = J._fetch_source(("recruitee", "closeddental", "Closed Dental"))
+t("Recruitee: a site whose robots.txt disallows /api/ is not read (no jobs, no request for the offers)", (closed[0], RC_CALLS, "robots" in closed[1]),
+  ([], [("robots", "closeddental.recruitee.com")], True))
+RC_CALLS.clear()
+unread = J._fetch_source(("recruitee", "unreadable", "Unreadable"))
+t("Recruitee: a site whose robots.txt cannot be read is not read either", (unread[0], RC_CALLS), ([], [("robots", "unreadable.recruitee.com")]))
+J._get_items, J._robots_for = real_items, real_robots
+by = {j["role"]: j for j in rjobs}
+t("Recruitee: the US offers are kept; London, an offer with a bad slug and a draft are not", sorted(by), ["Billing Specialist", "Dental Hygienist", "Front Desk Intern", "Practice Office Manager"])
+t("Recruitee: the status line counts them", rstatus, "4 jobs")
+hy = by["Dental Hygienist"]
+t("Recruitee: a stable id, made from the offer number", (hy["id"], J._jid("recruitee", 9100001)), (hy["id"], hy["id"]))
+t("Recruitee: ats is kind recruitee, the careers site, and the offer slug (where an application goes)", hy["ats"],
+  {"kind": "recruitee", "board": "acmedental", "id": "dental-hygienist-philadelphia"})
+t("Recruitee: the link is the posting, applyUrl its application form",
+  (hy["url"], hy["applyUrl"]), ("https://acmedental.recruitee.com/o/dental-hygienist-philadelphia", "https://acmedental.recruitee.com/o/dental-hygienist-philadelphia/c/new"))
+t("Recruitee: place, pay per hour, part-time, credit", (hy["loc"], hy["mode"], hy["sal"], hy.get("salUnit"), hy["jobType"], hy["via"]),
+  ("Philadelphia, PA", "onsite", [32.0, 40.0], "hour", "part-time", "Acme Dental Group on Recruitee"))
+t("Recruitee: the posted date is read from Recruitee's 'UTC' form", (hy["posted"], hy.get("updated")), (J._ts("2026-10-10T14:00:00+00:00"), J._ts("2026-10-12T09:30:00+00:00")))
+om = by["Practice Office Manager"]
+t("Recruitee: a remote US offer with a yearly range", (om["mode"], om["sal"], om.get("salUnit"), om["jobType"]), ("remote", [55000, 65000], None, "full-time"))
+fd = by["Front Desk Intern"]
+t("Recruitee: an offer in Dublin and Cherry Hill NJ is placed in its US place, and an internship", (fd["loc"], fd["jobType"], fd["type"]), ("Cherry Hill, NJ", "internship", "internship"))
+bs = by["Billing Specialist"]
+t("Recruitee: hybrid in Wilmington DE; a range in euros is not shown as dollars", (bs["mode"], bs["sal"]), ("hybrid", [0, 0]))
+t("Recruitee: no key, no email: a hand-off like every feed job", (hy["apply"], hy["contact"], J.job_policy(hy["id"])), ("link", "", "link"))
+t("Recruitee: the list form keeps only ats.kind and leaves applyUrl to GET /api/jobs/<id>",
+  ({k: v for k, v in J._out_job(hy, 0, {}, True).items() if k in ("ats", "applyUrl")}, J._out_job(hy, 0, {}, True, full=True).get("applyUrl")),
+  ({"ats": {"kind": "recruitee"}}, hy["applyUrl"]))
+t("Recruitee boards from job-boards.json are read (kind recruitee is allowed there)", "recruitee" in J.BOARD_KINDS and any(s_[0] == "recruitee" for s_ in J.SOURCES), True)
+
 # ---------------- the "via" credit for every kind ----------------
 raw = dict(id=7, title="Data Analyst", company="Acme Corp", loc="Philadelphia, PA", remote=None, text="Python and SQL.", url="https://example.com/j/7", salary_text="", posted=0)
 for kind, name, want in (("greenhouse", "Stripe", "Stripe on Greenhouse"), ("lever", "Spotify", "Spotify on Lever"), ("ashby", "Linear", "Linear on Ashby"),
@@ -390,6 +453,10 @@ t("without the variable or feed_keys USAJOBS is skipped again", J._fetch_source(
 def http_checks(port):
     copy = os.path.join(TMP, "code")
     shutil.copytree(ROOT, copy, ignore=shutil.ignore_patterns(".git", "node_modules", "mobile", "marketing", "data", "uaply-config.json*", "uaply-partners.json*", "__pycache__"))
+    # no employer boards from job-boards.json on this server (about 180 of them are SmartRecruiters boards, which its feeds switch on): it
+    # read them live, and whichever answered first could take the top card from the recorded City jobs the browser check looks for
+    with open(os.path.join(copy, "job-boards.json"), "w", encoding="utf-8") as f:
+        json.dump({"boards": [], "note": "emptied by tools/test-feeds.py: this test server reads no boards"}, f)
     data = os.path.join(TMP, "server-data")
     os.makedirs(data)
     # the job list starts from a saved copy of the recorded City jobs, so the server needs no network
@@ -398,7 +465,11 @@ def http_checks(port):
         now_ms = int(time.time() * 1000)
         dated = [dict(x, posted=now_ms - (5 if i < 40 else 90) * J.DAY_MS) for i, x in enumerate(city_jobs)]
         dated = [{k: v for k, v in x.items() if k != "updated"} for x in dated]
-        json.dump({"|".join(CITY): {"at": time.time(), "jobs": dated, "status": "67 jobs"}, "_version": J.CACHE_VERSION}, f)
+        # every other SmartRecruiters board (the hand-picked ones in SOURCES) is saved as fresh and empty, so nothing is read from the
+        # network: a live board that answered before the browser check could take the top card from the City jobs it looks for
+        saved = {"|".join(s_): {"at": time.time(), "jobs": [], "status": "0 jobs"} for s_ in J.SOURCES if s_[0] == "smartrecruiters" and s_ != CITY}
+        saved.update({"|".join(CITY): {"at": time.time(), "jobs": dated, "status": "67 jobs"}, "_version": J.CACHE_VERSION})
+        json.dump(saved, f)
     env = dict(os.environ, UAPLY_CONFIG_FILE="none", UAPLY_DATA_DIR=data, HOST="127.0.0.1",
                UAPLY_CONFIG_JSON=json.dumps({"feeds": ["smartrecruiters", "usajobs"], "delivery": "test", "smtp": {}, "google": {}, "owner_copy": ""}),
                UAPLY_SIGNUP_TEST="1")          # sign-up test mode (never public): the sign-in gate's test person is confirmed at once

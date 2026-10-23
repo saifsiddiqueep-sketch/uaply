@@ -100,7 +100,7 @@ AGE_EXEMPT = ("usajobs",)
 # An hourly part-time or seasonal posting on the employer's own board is usually evergreen: one posting per store or studio, open all
 # year (Insomnia Cookies: 852 of 1,063 part-time postings older than 60 days; solidcore coaches: years). Still listed on the employer's
 # own board means still hiring, so those are not aged out there. An aggregator's copy still is.
-EVERGREEN_KINDS = ("greenhouse", "lever", "ashby", "workable", "smartrecruiters", "careerpage")
+EVERGREEN_KINDS = ("greenhouse", "lever", "ashby", "workable", "smartrecruiters", "recruitee", "careerpage")
 EVERGREEN_TYPES = ("part-time", "temporary")
 
 # (kind, board token, display name). Boards are the employer's own public careers feed.
@@ -224,7 +224,11 @@ SOURCES = [
     ("remoteok", "all", "Remote OK"),         # link back to the job on Remote OK and name Remote OK as the source
 ]
 BOARDS_FILE = os.path.join(ROOT, "job-boards.json")   # employer boards found and checked with tools/find-boards.py (see docs/job-sources.md)
-BOARD_KINDS = ("greenhouse", "lever", "ashby", "smartrecruiters", "workable")       # plus "careerpage": an employer's own careers site (see _career_pages)
+BOARD_KINDS = ("greenhouse", "lever", "ashby", "smartrecruiters", "workable", "recruitee")       # plus "careerpage": an employer's own careers site (see _career_pages)
+# Hiring systems whose postings carry where they live in the system (job["ats"] = kind, board, posting id): the ones UAply can send an
+# application into once the employer connects (ats_api.KINDS), and Recruitee, whose public careers-site API takes an application with no
+# employer key (POST https://{company}.recruitee.com/api/offers/{slug}/candidates; the send itself is the apply side's, not built here)
+ATS_REF_KINDS = ats_api.KINDS + ("recruitee",)
 BOARD_TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$")    # a board's name in its system's address (Lever and Ashby allow dots: "thea.energy")
 
 
@@ -437,6 +441,7 @@ load_human_checks()
 FILE_TTL = 2 * 3600            # a board from job-boards.json is read every 2 hours (the hand-picked ones every 30 minutes)
 
 VIA = {"greenhouse": "%s on Greenhouse", "lever": "%s on Lever", "ashby": "%s on Ashby", "smartrecruiters": "%s on SmartRecruiters", "workable": "%s on Workable",
+       "recruitee": "%s on Recruitee",
        "jobicy": "Jobicy", "muse": "The Muse", "usajobs": "USAJOBS", "remotive": "Remotive",
        "himalayas": "Himalayas", "remoteok": "Remote OK",
        # the CareerOneStop license: every page showing its data credits both the U.S. Department of Labor (ETA) and Minnesota DEED
@@ -1185,6 +1190,58 @@ def _hourly(*texts):
     return None
 
 
+RECRUITEE_US = ("US", "USA", "UNITED STATES", "UNITED STATES OF AMERICA")
+
+
+def _recruitee_raw(j, name):
+    """One offer of a Recruitee careers site's public list (GET https://{company}.recruitee.com/api/offers/, no key; the careers site's own
+    API, documented at docs.recruitee.com/reference/offers) as a raw posting, or None. The posting id is Recruitee's offer number (the same
+    for the life of the offer); its slug is where an application goes (/api/offers/{slug}/candidates), kept as the job's ats id. An offer
+    open in several places is placed in its first US one; one with none in the US is left out."""
+    if not isinstance(j, dict) or not j.get("id") or not j.get("title") or not j.get("slug") or j.get("status") not in (None, "published"):
+        return None
+    if not _recruitee_slug_ok(j.get("slug")):
+        return None
+    places = [l for l in (j.get("locations") or []) if isinstance(l, dict)]
+    us = [l for l in places if str(l.get("country_code") or l.get("country") or "").strip().upper() in RECRUITEE_US]
+    if us:
+        l = us[0]
+        city, state, country = l.get("city") or "", l.get("state_code") or l.get("state") or "", "us"
+    else:
+        city, state = j.get("city") or "", j.get("state_code") or ""
+        country = "us" if str(j.get("country_code") or "").strip().upper() in RECRUITEE_US else (j.get("country_code") or "other")
+    loc = ", ".join(x.strip() for x in (city, state) if x and x.strip()) or ("United States" if country == "us" else "")
+    remote = True if j.get("remote") is True else None
+    if remote and not j.get("on_site") and not j.get("hybrid"):
+        loc = "Remote - " + (loc or "United States")
+    elif j.get("hybrid") and loc:
+        loc += " (hybrid)"
+    pay = j.get("salary") if isinstance(j.get("salary"), dict) else {}
+    sal = unit = None
+    if str(pay.get("currency") or "").upper() == "USD":
+        if pay.get("period") == "hour":
+            sal = _hour_pay(pay.get("min"), pay.get("max"))
+            unit = "hour" if sal else None
+        elif pay.get("period") == "year":
+            try:
+                lo, hi = int(float(pay.get("min"))), int(float(pay.get("max")))
+                sal = [lo, hi] if 20000 <= lo < hi <= 600000 else None
+            except (TypeError, ValueError):
+                sal = None
+    emp = str(j.get("employment_type_code") or "")
+    when = lambda v: str(v or "").replace(" UTC", "+00:00")       # "2026-09-25 18:00:43 UTC"
+    url = str(j.get("careers_url") or "")
+    return dict(id=j["id"], ats_id=j["slug"], apply_url=str(j.get("careers_apply_url") or ""), title=j["title"], company=j.get("company_name") or name, loc=loc, remote=remote, country=country,
+                text=_text((j.get("description") or "") + " " + (j.get("requirements") or "")), url=url, salary_text="", sal=sal, sal_unit=unit or "",
+                posted=_ts(when(j.get("published_at") or j.get("created_at"))), updated=_ts(when(j.get("updated_at"))), emp=emp,
+                force_type="internship" if emp in ("internship", "traineeship", "apprenticeship") else None,
+                fallback=(j.get("department") or "").strip() or None)
+
+
+def _recruitee_slug_ok(slug):
+    return isinstance(slug, str) and bool(ats_api.ID_RE.match(slug))
+
+
 def _iter_raw(kind, token, name):
     """The raw postings of one board, one at a time: dicts with id, title, company, loc, remote, text, url, salary_text. A generator, so a
     board's postings are worked through as they are read instead of all being held (each with up to 20,000 characters of text) first."""
@@ -1229,6 +1286,20 @@ def _iter_raw(kind, token, name):
                        salary_text="", posted=_ts(j.get("published_on") or j.get("created_at")), emp=j.get("employment_type"),
                        force_type="parttime" if re.search(r"part", j.get("employment_type") or "", re.I) else
                                   ("internship" if re.search(r"intern", j.get("employment_type") or "", re.I) else None))
+    elif kind == "recruitee":
+        # the careers site's own robots.txt first, as for every careers site (_robots_for: read once a day; a site whose robots.txt
+        # cannot be read is not read at all), and nothing when it does not allow the offers list
+        host = "%s.recruitee.com" % token.lower()
+        url = "https://%s/api/offers/" % host
+        rp = _robots_for(host)
+        if rp is None:
+            raise PermissionError("robots.txt could not be read")
+        if not rp.can_fetch(CP_UA, url):
+            raise PermissionError("robots.txt does not allow it")
+        for j in _get_items(url, "offers"):
+            r = _recruitee_raw(j, name)
+            if r:
+                yield r
     elif kind == "remotive":
         for j in _get("https://remotive.com/api/remote-jobs?category=%s&limit=60" % token).get("jobs", []):
             loc = j.get("candidate_required_location") or ""
@@ -2235,7 +2306,7 @@ def _normalize(raw, kind, name, board=None):
     # employer has connected with their own key (see ats_connections); otherwise it is never used and apply stays "link".
     # Ashby: the job board's own posting id is the jobPostingId its API takes. SmartRecruiters: the posting's uuid (see _smartrecruiters).
     pid = str(raw.get("ats_id") or raw["id"])
-    ats = {"kind": kind, "board": board, "id": pid} if (kind in ats_api.KINDS and board and ats_api.TOKEN_RE.match(board) and ats_api.ID_RE.match(pid)) else None
+    ats = {"kind": kind, "board": board, "id": pid} if (kind in ATS_REF_KINDS and board and ats_api.TOKEN_RE.match(board) and ats_api.ID_RE.match(pid)) else None
     # contact and apply "email": only when the posting itself asks for applications by email at the employer's own address (apply_address,
     # October 23, 2026). Every other feed posting keeps contact empty and apply "link": nothing is emailed to anyone for it.
     contact = apply_address(text, company, board or "", raw["url"])
@@ -2269,6 +2340,8 @@ def _normalize(raw, kind, name, board=None):
     out["credit"] = "via USAJOBS; apply on the official announcement" if kind == "usajobs" else "via " + out["via"]
     if (raw.get("announcement") or "").startswith("https://"):
         out["announcement"] = raw["announcement"]                 # USAJOBS: the official announcement, kept next to the apply link
+    if kind == "recruitee" and _public_https(raw.get("apply_url") or ""):
+        out["applyUrl"] = raw["apply_url"]                        # Recruitee: the offer's own application form (its slug is in ats.id)
     # the same few strings repeat across thousands of jobs (a board's name, credit and places, the work style, type and level): one copy each
     for k in INTERNED:
         if isinstance(out.get(k), str):
@@ -2413,7 +2486,8 @@ def _link_alive(url):
 
 
 ATS_POSTING = {"greenhouse": "https://boards-api.greenhouse.io/v1/boards/%s/jobs/%s", "lever": "https://api.lever.co/v0/postings/%s/%s",
-               "smartrecruiters": "https://api.smartrecruiters.com/v1/companies/%s/postings/%s"}
+               "smartrecruiters": "https://api.smartrecruiters.com/v1/companies/%s/postings/%s",
+               "recruitee": "https://%s.recruitee.com/api/offers/%s"}       # (Recruitee: the careers site's one offer, by its slug)
 
 
 def job_alive(j):
@@ -3136,8 +3210,8 @@ def apply_classes():
 # 13.3 MB of JSON): the 650-character description (only the emails use it, from this server's own copy), the record's credit line ("via
 # ..." again, which the server takes from its own copy, never the browser's), the update date and its age, the official announcement
 # (both read from this server's copy for the receipt), and of the employer-system reference only its kind (the app asks
-# job.ats.kind === "greenhouse"; the board and posting id stay here). GET /api/jobs/<id> answers the whole job (job_full).
-LIST_DROP = ("desc", "credit", "updated", "updatedDays", "announcement")
+# job.ats.kind === "greenhouse"; the board and posting id stay here). GET /api/jobs/<id> answers the whole job (job_full), Recruitee's applyUrl too.
+LIST_DROP = ("desc", "credit", "updated", "updatedDays", "announcement", "applyUrl")
 
 
 def _out_job(j, now_ms, conns, feed, blocked=frozenset(), full=False):
