@@ -8,6 +8,45 @@ production page and only changes when the owner decides.
 - Hosted preview pages (Mohammed): share/build-share.js now embeds every experiment script the sandbox and dev pages list (sign-up card, Share this job, and any future uaply-*.js) instead of a fixed list, so the Render preview truly runs what is switched on; uaply-live.js stays out of the hosted copy as before because it needs the server.
 - Phone apps, before the testers (Mohammed): Android Back goes back one screen and quits only from the first screen on a second press; the CSV, calendar and backup exports work inside the apps (saved with the file plugin and shared, or copied when the plugin is missing) and Delete all my data removes those files; the iPhone app is locked to portrait and carries its privacy manifest; app plugin calls always go through the top page's bridge, since Android drops calls from frames.
 
+### The next release: candidate `17105d4` over the live `9b76822` (October 23; proposed tag `v1.0.0-rc.15`)
+What the live site gets, in plain words. The sections below this one, down to "Pay as the posting gives it", are the detail; from
+"Galaxy walk fixes" down, everything was already live in `9b76822` (rc.14, deployed October 23, not tagged yet: it still needs
+`v1.0.0-rc.14`). Release-day steps for this one: HANDOFF.md, "Release day for 17105d4".
+- **A faster first card, ranked over every job** (ebd1221, 2e4940f, a885d21, 282adbf). What: at sign-in the deck asks for one page of
+  200 jobs (`GET /api/jobs?size=200&page=1`) and draws the first card from it, then fetches the whole list in the background and ranks
+  all of it; a shared job opens with `GET /api/jobs/<id>`. If the whole list fails it is asked again after 10, 30 and 60 seconds, then
+  every 2 minutes. Why: with about 20,000 jobs the old single download kept the first card waiting. Checked: `tools/ui-deck-pages.js`
+  22 of 22 at 390 and 1280; the retries seen at 2, 12 and 19 seconds; 14,325 jobs ranked in the review run.
+- **A swipe right that submits, phase A** (58f0721 and its follow-ups). What: the first-swipe agreement (box version 4, so everyone
+  sees it once more) is kept on the account, and no application leaves UAply without it; apply by email where a posting asks for it;
+  one tap in the phone app on Greenhouse, Lever, Workable and Ashby; the outreach queue (a tool, it sends nothing); Send applications
+  for me (Profile, Account). Automatic submit is built and switched off for every hiring system, Ashby included
+  (`shared/assist-systems.json`: `counsel_approved` false everywhere; Saif and the lawyer decide). Why: Saif's October 23 plan; the box
+  and Terms section 3 are drafts pending the lawyer. Checked: `test-consent` 41/41, `test-delivery` 60/60, `test-ats-flow` 52/52
+  and `ui-apply-paths` 100 checks at 375 and at 390; the full release run covers the rest. Detail below.
+- **Phase A test fixes** (5dfd383, e72f0f0, 3616475). What: the agreement's table is made wherever it is read or written (one
+  definition, so there is never a second one); the in-process test applicants are real accounts with the agreement on record; the mail
+  tests pick a free port; `ui-apply-paths` runs one screen size per line and reports a page answer it cannot read instead of
+  crashing. A hand-off now promises "One tap to finish on their site" only where the app really opens the employer's form; anywhere
+  else it says "Saved <company> to Job Tracker." Checked: the tests above, on the rebased commit.
+- **Recruitee careers sites** (f843829, db338fa). What: a new job source, 33 companies' Recruitee boards (about 500 US jobs on
+  October 23), read only where the board's robots.txt allows `/api/offers/`. Every Recruitee job is a hand-off (nothing is sent to
+  Recruitee). Why: more employers' own postings without a key. **It is off until the live settings name it**: add `recruitee` to
+  `UAPLY_FEEDS` on Render (or to `feeds` in `UAPLY_CONFIG_JSON`). Checked: `test-feeds` 115/115 on `17105d4`.
+- **Text at 14 px or more everywhere** (887d393, ae21e1d, 052d316). What: the card, the app's other screens, and a turned phone
+  (the message after a swipe sits beside the buttons; the posting link's tap area is 48 px). Why: the Galaxy walk at 390 found 11 texts
+  under 14 px. Checked: no text under 14 px and no sideways scroll at 375x667, 390x844, 667x375 and 1280x800.
+- **Pay as the posting gives it** (f329582): "Pay not listed" instead of a guess; hourly pay stays hourly. Detail below.
+- **Smaller things**: Share this job's tap area is 46 px (2d765bd); the card's legal pages return to the card on Back in the installed
+  app (887d393); Mohammed's hosted-preview and phone-app fixes (eabda0f, f67b6db; the two lines just above this section).
+- **For the team, not the app**: the handbook back as a reference with a joint CLAUDE.md and HANDOFF (e1b9f51); the repository setting
+  that keeps AI attribution lines out of commits and pull requests (dd2b510, 2316fc8); runbooks 3 and 5 after the sign-in gate and the
+  paged job list (aeab0d7).
+- **Going back**: rolling back to `9b76822` keeps every account. This release only adds to the accounts database (the `consents`
+  table and the `send_for_me` columns), and `9b76822` reads, signs in and deletes such accounts. Checked by hand on October 23: an
+  account made by `17105d4` with the agreement on record and the switch off signed in under `9b76822`, and deleting it there also
+  removed its agreement.
+
 ### A swipe right that submits, phase A (Saif, October 23; the consent box and Terms section 3 are pending the lawyer)
 - **Reviewer 3's review fixes.** The Automatic submit tick says where it applies from `shared/assist-systems.json` (today "where a hiring
   system allows it; none is switched on yet"; it names a system once one is switched on), and sits right after the four ways, above "By
