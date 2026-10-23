@@ -89,14 +89,14 @@ var CSS=`
 .facts .inst{color:var(--yes);font-weight:700}.facts .ext{color:var(--muted)}.facts .rdy{font-weight:700}.facts .rdy.ok{color:var(--yes)}.facts .rdy.need{color:var(--accent)}.facts .rdy.ext{color:var(--muted)}
 .rdyList{display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:14px;padding:14px;background:var(--surface)}
 .rdyItems{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}.rdyItems li{display:flex;align-items:center;gap:10px;min-height:44px;min-width:0}
-.rdyItems .rdyL{flex:1;min-width:0;overflow-wrap:anywhere}.rdyItems em{font-style:normal;font-size:12px;color:var(--accent);font-weight:600}.rdyItems li[data-done=true]{color:var(--muted)}
-.rdyItems .rdyMark{width:18px;text-align:center;font-weight:700}.rdyItems li[data-done=true] .rdyMark{color:var(--yes)}.rdyItems .rdyOk{font-size:12px}
-.facts .via{color:var(--muted);font-size:12px;opacity:.85}   /* where a feed job came from ("via USAJOBS"): every free feed asks for credit */
+.rdyItems .rdyL{flex:1;min-width:0;overflow-wrap:anywhere}.rdyItems em{font-style:normal;font-size:14px;color:var(--accent);font-weight:600}.rdyItems li[data-done=true]{color:var(--muted)}
+.rdyItems .rdyMark{width:18px;text-align:center;font-weight:700}.rdyItems li[data-done=true] .rdyMark{color:var(--yes)}.rdyItems .rdyOk{font-size:14px}
+.facts .via{color:var(--muted);font-size:14px;opacity:.85}   /* where a feed job came from ("via USAJOBS"): every free feed asks for credit */
 .tabs{display:none}
 #bnav{display:flex;gap:4px;justify-content:center;flex:none;max-width:1100px;width:100%;margin-inline:auto;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px;position:relative}
 .nwrap{position:relative;flex:1;display:flex;min-width:0}
 .nb{flex:1;border:0;background:none;border-radius:999px;padding:6px 8px;min-height:48px;font-weight:600;color:var(--muted);display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.15;min-width:0}
-.nb small{font:500 11px var(--mono);opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.nb small{font:500 14px var(--mono);opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .nb>span{white-space:nowrap}#bnav.simple .nb small{display:none}#bnav.simple .nb{font-size:15px;min-height:44px}
 /* the screen's bottom safe area (iPhone home indicator). The app runs in a frame: Safari gives a frame no inset, Chrome gives it the
    whole screen's even where the page around the frame already keeps that space free (the sandbox's app mode), so the page around the
@@ -111,7 +111,7 @@ var CSS=`
 .nitem{display:flex;justify-content:space-between;align-items:center;gap:14px;border:0;background:none;text-align:left;padding:10px 14px;border-radius:10px;font-weight:600;min-height:44px;color:var(--ink)}
 .nitem:hover,.nitem:focus-visible{background:var(--bg)}
 .nitem[aria-checked="true"]{color:var(--accent);background:var(--bg)}
-.nitem .c{font:500 12px var(--mono);color:var(--muted)}
+.nitem .c{font:500 14px var(--mono);color:var(--muted)}
 .toast{bottom:var(--toast-at,var(--above-nav,calc(88px + var(--safe-b))));pointer-events:none;width:max-content;max-width:min(600px,calc(100vw - 32px))}.toast button{pointer-events:auto}
 /* a phone: every message uses the screen's width (the stranger walk, October 18: a short one sat in a narrow column over the card) */
 .toast{min-width:min(320px,calc(100vw - 32px))}   /* a short message is not a narrow column either (laptop) */
@@ -137,8 +137,8 @@ body{padding-bottom:calc(12px + var(--safe-b))}
 @media (max-width:460px){#pane-track .stats{grid-template-columns:repeat(2,1fr)}}
 #pane-track .row{flex-wrap:wrap}
 #pane-track .acts{display:flex;gap:6px;flex-wrap:wrap;flex-basis:100%}
-#pane-track .acts .btn{padding:6px 12px;font-size:13px}
-#legalbar{flex:none;text-align:center;font-size:12px;color:var(--muted);padding-bottom:2px}#legalbar a{color:inherit;text-underline-offset:2px}
+#pane-track .acts .btn{padding:6px 12px;font-size:14px}
+#legalbar{flex:none;text-align:center;font-size:14px;color:var(--muted);padding-bottom:2px}#legalbar a{color:inherit;text-underline-offset:2px}
 #acctSec{display:flex;flex-direction:column;gap:14px}
 #acctSec h3{margin:0}
 #acctSec textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;min-height:96px;resize:vertical;width:100%}
@@ -150,7 +150,7 @@ body{padding-bottom:calc(12px + var(--safe-b))}
 #acctSec .plan b{font-size:16px}#acctSec .plan .pr{font:800 22px var(--display,inherit)}
 #acctSec .plan ul{margin:0;padding-left:18px;color:var(--muted)}
 #acctSec .todo{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
-#acctSec .tag{font:700 11px ui-monospace,Menlo,monospace;padding:2px 8px;border-radius:6px;background:#E8A317;color:#2A1A00;align-self:flex-start}
+#acctSec .tag{font:700 14px ui-monospace,Menlo,monospace;padding:2px 8px;border-radius:6px;background:#E8A317;color:#2A1A00;align-self:flex-start}
 #acctSec .toggle{display:flex;gap:10px;align-items:center;min-height:44px}
 #acctSec .acts{display:flex;gap:8px;flex-wrap:wrap}
 #pane-track .overview{display:flex;flex-direction:column;gap:14px}
@@ -168,11 +168,11 @@ body{padding-bottom:calc(12px + var(--safe-b))}
 .mchip.m-remote{background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);border-color:transparent}
 .mchip.m-hybrid{background:color-mix(in srgb,var(--accent2) 18%,transparent);color:var(--ink);border-color:transparent}
 .mchip.m-onsite{background:var(--bg);color:var(--muted)}
-.stchip{display:inline-block;margin:4px 0 0;padding:2px 9px;border-radius:999px;font:600 11px var(--mono,inherit);white-space:nowrap;border:1px solid var(--line);background:var(--bg);color:var(--muted);width:max-content}
+.stchip{display:inline-block;margin:4px 0 0;padding:2px 9px;border-radius:999px;font:600 14px var(--mono,inherit);white-space:nowrap;border:1px solid var(--line);background:var(--bg);color:var(--muted);width:max-content}
 .stchip.st-sent,.stchip.st-accepted{background:color-mix(in srgb,#1f9d55 16%,transparent);color:#1b7a44;border-color:transparent}
 .stchip.st-finish{background:color-mix(in srgb,var(--accent2) 18%,transparent);color:var(--ink);border-color:transparent}
 .stchip.st-interview{background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);border-color:transparent}
-.joblinks{display:flex;flex-wrap:wrap;gap:0 14px;margin-top:2px}.joblinks .linkbtn{font-size:13.5px;text-align:left}
+.joblinks{display:flex;flex-wrap:wrap;gap:0 14px;margin-top:2px}.joblinks .linkbtn{font-size:14px;text-align:left}
 #aEeo{display:block;border-top:1px solid var(--line);padding-top:6px}
 #aElig{display:flex;flex-direction:column;gap:10px}
 #tBox{display:flex;flex-direction:column;gap:8px}
@@ -189,7 +189,7 @@ body{padding-bottom:calc(12px + var(--safe-b))}
 .nomiles{display:none!important}
 .px-dup{display:none!important}
 .mgr{margin-top:14px;border-top:1px solid var(--line);padding-top:4px}
-.mgr summary{cursor:pointer;min-height:44px;display:flex;align-items:center;color:var(--muted);font-weight:600;font-size:13.5px}
+.mgr summary{cursor:pointer;min-height:44px;display:flex;align-items:center;color:var(--muted);font-weight:600;font-size:14px}
 .mgr summary:focus-visible,.dangerlink:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .dangerlink{color:#B3261E;text-decoration:underline;min-height:44px;font-weight:600;font-size:14px;padding:0}
 @media (prefers-color-scheme: dark){.dangerlink{color:#FF8A80}}
@@ -205,7 +205,7 @@ body{padding-bottom:calc(12px + var(--safe-b))}
 .npsb input:focus-visible+span{outline:3px solid var(--accent);outline-offset:2px}
 .npsend{display:flex;justify-content:space-between;gap:10px}
 /* form polish: labels sit directly on the page (no white boxes), softer inputs, clear focus */
-.field label:not(.chip){background:none;color:var(--muted);font-weight:600;font-size:12.5px;letter-spacing:.02em}
+.field label:not(.chip){background:none;color:var(--muted);font-weight:600;font-size:14px;letter-spacing:.02em}
 .checks label{background:var(--surface)}
 .field input[type=text],.field input[type=number],.field input[type=tel],.field select,#acctSec textarea,#acctSec input[type=datetime-local],#acctSec input[type=date]{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;color:var(--ink);font:inherit;transition:border-color .15s,box-shadow .15s;width:100%}
 .field input:focus,.field select:focus,#acctSec textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}
@@ -225,12 +225,12 @@ body{padding-bottom:calc(12px + var(--safe-b))}
 #wzMsg:empty{display:none}
 .wz-off{display:none!important}
 #wzTop{display:flex;flex-direction:column;gap:8px}
-.wzRow{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font:600 12.5px var(--mono);color:var(--muted)}
+.wzRow{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font:600 14px var(--mono);color:var(--muted)}
 .wzBar{height:8px;border-radius:999px;background:var(--line);overflow:hidden}
 .wzBar i{display:block;height:100%;background:linear-gradient(135deg,var(--accent),var(--accent2));transition:width .25s}
 .wzDots{list-style:none;margin:0;padding:0;display:flex;gap:6px}
 .wzDots li{flex:1;min-width:0}
-.wzDots button{width:100%;min-height:44px;border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:12px;font-weight:600;font-size:13px;display:flex;align-items:center;justify-content:center;gap:6px;padding:4px 6px}
+.wzDots button{width:100%;min-height:44px;border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:12px;font-weight:600;font-size:14px;display:flex;align-items:center;justify-content:center;gap:6px;padding:4px 6px}
 .wzDots button .t{display:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .wzDots button[data-done="true"]::after{content:"\\2713";color:var(--yes)}
 .wzDots button[aria-current="step"]{background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);border-color:transparent}
@@ -239,22 +239,22 @@ body{padding-bottom:calc(12px + var(--safe-b))}
 @media (min-width:640px){.wzDots button .t{display:inline}}
 #form.wz h3#secTitle{font:800 22px var(--display);letter-spacing:-.01em;text-transform:none;color:var(--ink);margin:6px 0 0}
 #form.wz p.lead{font-size:15px}
-.wzUse{padding:10px 12px;border-radius:12px;background:var(--surface);border:1px solid var(--line);font-size:13px;color:var(--muted)}
+.wzUse{padding:10px 12px;border-radius:12px;background:var(--surface);border:1px solid var(--line);font-size:14px;color:var(--muted)}
 .wzUse b{color:var(--ink);font-weight:600}
 #wzFoot{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 #wzFoot .btn{min-height:48px;padding:10px 22px}
 #wzFoot .grow{flex:1}
 #wzPrev{display:none;flex-direction:column;gap:10px}
-#wzPrev .pvh{font:800 12px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+#wzPrev .pvh{font:800 14px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 #wzPrev .pv{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:12px;box-shadow:var(--shadow)}
 #wzPrev .pvTop{display:flex;gap:12px;align-items:center}
 #wzPrev .pvAv{flex:none;width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);display:grid;place-items:center;font:800 18px var(--display)}
 #wzPrev .pvTop b{display:block;font:800 17px/1.2 var(--display);overflow-wrap:anywhere}
-#wzPrev .pvTop span{color:var(--muted);font-size:13.5px;overflow-wrap:anywhere}
-#wzPrev .pvMeta{font:500 13px var(--mono);color:var(--muted)}
+#wzPrev .pvTop span{color:var(--muted);font-size:14px;overflow-wrap:anywhere}
+#wzPrev .pvMeta{font:500 14px var(--mono);color:var(--muted)}
 #wzPrev .chips{gap:6px}
-#wzPrev .chip{font-size:12px;padding:3px 10px}
-#wzPrev ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px;font-size:13.5px}
+#wzPrev .chip{font-size:14px;padding:3px 10px}
+#wzPrev ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px;font-size:14px}
 #wzPrev li{display:flex;justify-content:space-between;gap:10px;border-top:1px solid var(--line);padding-top:7px}
 #wzPrev li span:first-child{color:var(--muted);flex:none}
 #wzPrev li span:last-child{text-align:right;overflow-wrap:anywhere;min-width:0}
@@ -283,18 +283,18 @@ input[type=range]{accent-color:var(--accent);min-height:44px}
 #aEeo>.eeoBody{display:flex;flex-direction:column;gap:10px;padding-top:6px}
 #banner:not([hidden]){display:flex!important}
 #locAsk{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:100%;max-width:620px}
-#locAsk p{margin:0;color:var(--muted);font-size:13.5px}
+#locAsk p{margin:0;color:var(--muted);font-size:14px}
 #locAsk .acts{display:flex;gap:8px;flex-wrap:wrap}
 /* on a phone: the title, at most two lines of text and the two buttons side by side, so the first job card keeps its place below */
 #locAsk.phone{padding:10px 12px;gap:6px}
-#locAsk.phone p{font-size:13px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+#locAsk.phone p{font-size:14px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 #locAsk.phone .acts{flex-wrap:nowrap}
 #locAsk.phone .acts .btn{flex:1}
-@media (max-height:740px){.swipecol{gap:8px}.tips{padding:6px 10px!important;font-size:12.5px!important;line-height:1.35}.banner{padding:4px 10px!important;font-size:12px!important;line-height:1.3}.banner button{padding:4px 0!important;min-height:32px}#locAsk{padding:8px 12px;gap:4px;border-radius:12px}#locAsk b{font-size:13.5px}#locAsk p{font-size:12px;line-height:1.35}#locAsk .acts .btn{min-height:34px;padding:5px 14px;font-size:13.5px}.filters button{padding:4px 2px!important;min-height:32px}}
+@media (max-height:740px){.swipecol{gap:8px}.tips{padding:6px 10px!important;font-size:14px!important;line-height:1.35}.banner{padding:4px 10px!important;font-size:14px!important;line-height:1.3}.banner button{padding:4px 0!important;min-height:32px}#locAsk{padding:8px 12px;gap:4px;border-radius:12px}#locAsk b{font-size:14px}#locAsk p{font-size:14px;line-height:1.35}#locAsk .acts .btn{min-height:34px;padding:5px 14px;font-size:14px}.filters button{padding:4px 2px!important;min-height:32px}}
 #fMilesWrap.nearbox{display:flex;flex-direction:column;gap:6px;margin-top:8px}
 #fMilesWrap .rngrow{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
 #fMilesWrap .rngrow b{font-size:15px}
-#fMilesWrap .rngrow .m{color:var(--muted);font-size:12px}
+#fMilesWrap .rngrow .m{color:var(--muted);font-size:14px}
 #fLoc{display:flex;flex-direction:column;gap:6px;align-items:flex-start;margin-top:4px}
 @media (max-width:480px){.hdrbtn .em{display:none}.hdrbtn{padding:5px;max-width:none}}
 /* taps and focus: the same rule as every UAply page (shared/uaply-focus.css) */
@@ -307,6 +307,9 @@ html{-webkit-tap-highlight-color:transparent}a,button,input,select,textarea,summ
      the box scrolls inside itself with its buttons pinned to its bottom edge
    - a message's action (Undo, OK) is a 44 px target, the account and hiring buttons in the header 44 px tall */
 @media (max-height:740px){
+ /* the card's "View original posting" link: a 48 px tall tap area, so a card that sits a fraction of a pixel off (a transform, a
+    rounding) never measures it under 44 */
+ .card .linkbtn[data-open]{position:relative}.card .linkbtn[data-open]::after{content:"";position:absolute;left:0;right:0;top:50%;height:48px;transform:translateY(-50%)}
  .filters button,.banner button,#locAsk .acts .btn{position:relative}
  .filters button::after,.banner button::after,#locAsk .acts .btn::after{content:"";position:absolute;left:0;right:0;top:50%;height:46px;transform:translateY(-50%)}
  /* with no "example profile" line above them (a person's own profile, after sign-up) the job type buttons are the first thing in the
@@ -417,10 +420,18 @@ function apply(w,host){
   /* on the job deck the message also clears the Pass / Undo / Apply row: it used to sit on top of it (390x844: the message's
      Undo link lay on the Apply button, so a tap on Apply right after a pass undid the pass). Worked out each time a message appears. */
   function toastAt(){
-    var a=d.querySelector("#pane-swipe:not([hidden]) .actions"),nr=nav.getBoundingClientRect(),y=nr.height?nr.top:w.innerHeight;
+    var a=d.querySelector("#pane-swipe:not([hidden]) .actions"),nr=nav.getBoundingClientRect(),y=nr.height?nr.top:w.innerHeight,side=null;
     /* only a row along the bottom: on a turned phone the row is a column at the top right, and the message would have jumped over the header */
-    if(a){var r=a.getBoundingClientRect();if(r.height&&r.bottom>0&&r.top<y&&r.top>w.innerHeight/2)y=Math.min(y,r.top)}
+    if(a){var r=a.getBoundingClientRect();if(r.height&&r.bottom>0&&r.top<y&&r.top>w.innerHeight/2)y=Math.min(y,r.top);
+      /* a turned phone (Galaxy walk, October 23): the message across the bottom lay on whatever the deck column had scrolled there (a
+         filter chip, the location card's Not now), so a tap on it right after a Pass hit the message's Undo. There it sits in the
+         buttons' own column instead, under Pass / Undo / Apply, as wide as that column: nothing of the deck is under it */
+      else if(r.height&&r.top<w.innerHeight/2&&r.left>w.innerWidth/2)side=r}
     d.documentElement.style.setProperty("--toast-at",(Math.max(0,Math.round(w.innerHeight-y))+8)+"px");
+    [].forEach.call(d.querySelectorAll(".toast"),function(t){
+      if(side){t.style.left="auto";t.style.transform="none";t.style.right=Math.max(0,Math.round(w.innerWidth-side.right))+"px";t.style.minWidth="0";t.style.width=t.style.maxWidth=Math.round(side.width)+"px";t.style.flexWrap="wrap"}
+      else{t.style.left=t.style.transform=t.style.right=t.style.minWidth=t.style.width=t.style.maxWidth=t.style.flexWrap=""}
+    });
   }
   new w.MutationObserver(function(ms){for(var i=0;i<ms.length;i++)for(var j=0;j<ms[i].addedNodes.length;j++){var n=ms[i].addedNodes[j];if(n.nodeType===1&&(n.classList.contains("toast")||n.querySelector&&n.querySelector(".toast"))){toastAt();return}}}).observe(d.body,{childList:true,subtree:true});
   /* how much of the top card lies under the sticky Pass / Undo / Apply row (see #deck[data-covered] in the CSS). Worked out again when

@@ -332,10 +332,10 @@ function kitApply(w,host){
     o.innerHTML='<div role="dialog" aria-modal="true" aria-labelledby="kitH" style="background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:20px;max-width:460px;width:100%;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:12px">'+
       '<h2 id="kitH" style="margin:0;font:800 20px var(--display)">'+(submitOn&&!ask?'Sending to ':'Finish applying to ')+esc(job.co)+'</h2>'+
       '<p style="margin:0;color:var(--muted);font-size:14px">'+intro+'</p>'+
-      (!p.custom?'<p style="margin:0;color:var(--mid);font-size:13px">This uses the example profile. Add your own details in Profile setup first.</p>':'')+
-      (submitOn&&!profileOk?'<p style="margin:0;color:var(--no);font-size:13px">Add your name and a valid email in Profile setup, under About you, so the recruiter can reply.</p>':'')+
+      (!p.custom?'<p style="margin:0;color:var(--mid);font-size:14px">This uses the example profile. Add your own details in Profile setup first.</p>':'')+
+      (submitOn&&!profileOk?'<p style="margin:0;color:var(--no);font-size:14px">Add your name and a valid email in Profile setup, under About you, so the recruiter can reply.</p>':'')+
       '<textarea id="kitText" rows="7" aria-label="Application note" style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);font:inherit;resize:vertical"></textarea>'+
-      '<p id="kitStatus" role="status" style="margin:0;font-size:13.5px;font-weight:600;min-height:1.3em"></p>'+
+      '<p id="kitStatus" role="status" style="margin:0;font-size:14px;font-weight:600;min-height:1.3em"></p>'+
       '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
         (submitOn&&ask?'<button type="button" class="btn" id="kitSend"'+((!profileOk||(live&&!(contact||w.__uaplyRedirect)))?' disabled':'')+'>Send application</button>':'')+
         (submitOn&&!profileOk?'<button type="button" class="btn" id="kitProfile">Open Profile</button>':'')+
@@ -698,7 +698,7 @@ function kitApply(w,host){
       '<h2 id="kaH" tabindex="-1" style="margin:0;font:800 20px var(--display);outline:none">'+(qs.length===1?'One question':qs.length+' questions')+' from '+esc(job.co)+'</h2>'+
       '<p style="margin:0;color:var(--muted)">'+(how&&how.lead?esc(how.lead):'UAply filled in '+filled+' of '+total+' answers on '+esc(job.co)+'\'s application. '+(hasFile?'It also needs a resume file. Answer what you can (it is saved), then upload your resume in Profile setup, under Background and links, and swipe right again.':'Answer '+(qs.length===1?'this':'these')+' and UAply sends it. Your answers are saved, so the next employer that asks the same thing gets them automatically. You can change them in Profile setup, under Eligibility and extras.'))+'</p>';
     qs.forEach(function(q,i){h+=fieldHtml(q.optional?Object.assign({},q,{q:q.q+" (optional)"}):q,"kaQ"+i,"")});
-    h+='<p id="kaMsg" role="alert" style="margin:0;font-size:13px;color:var(--no);min-height:1.2em"></p>'+
+    h+='<p id="kaMsg" role="alert" style="margin:0;font-size:14px;color:var(--no);min-height:1.2em"></p>'+
       '<div id="kaBtns" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;position:sticky;bottom:0;margin:0 -20px;padding:12px 20px 20px;background:var(--surface);border-top:1px solid var(--line)"><button type="button" class="btn ghost" id="kaNo">Not now</button><button type="submit" class="btn" id="kaYes">'+(hasFile?'Open Profile':how&&how.yes?esc(how.yes):'Send application')+'</button></div></form>';
     o.innerHTML=h;d.body.appendChild(o);
     var boxes=[].slice.call(o.querySelectorAll(".kaF"));

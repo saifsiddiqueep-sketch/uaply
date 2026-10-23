@@ -13,18 +13,18 @@ var MAX=5*1024*1024,OK_EXT=/\.(pdf|docx|txt)$/i;
 var MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 var CSS=".rsBox{border:1px dashed var(--accent);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:8px;margin-bottom:14px;background:var(--surface)}"+
-".rsBox h4{margin:0;font:800 16px var(--display)}.rsBox>p{margin:0;color:var(--muted);font-size:13.5px}"+
-".rsActs{display:flex;flex-wrap:wrap;gap:8px;align-items:center;position:relative}.rsActs .btn{min-height:44px}.rsActs .linkbtn{font-size:13.5px;min-height:44px;text-align:left}"+
+".rsBox h4{margin:0;font:800 16px var(--display)}.rsBox>p{margin:0;color:var(--muted);font-size:14px}"+
+".rsActs{display:flex;flex-wrap:wrap;gap:8px;align-items:center;position:relative}.rsActs .btn{min-height:44px}.rsActs .linkbtn{font-size:14px;min-height:44px;text-align:left}"+
 ".rsPick{position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none;overflow:hidden}"+
 "#rsMsg{margin:0;font-size:14px;font-weight:600}#rsMsg.bad{color:var(--no)}#rsMsg:empty{display:none}"+
 ".rsList{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}"+
 ".rsList li{border:1px solid var(--line);border-radius:12px;padding:9px 11px;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;background:var(--bg)}"+
-".rsList .k{font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.03em;flex:1 1 100%}"+
+".rsList .k{font-size:14px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.03em;flex:1 1 100%}"+
 ".rsList .v{flex:1 1 180px;min-width:0;overflow-wrap:anywhere;font-weight:600}"+
-".rsList .st{font-size:12.5px;color:var(--muted)}.rsList .st.ok{color:var(--yes)}"+
-".rsList .src{flex:1 1 100%;font-size:12px;color:var(--muted);overflow-wrap:anywhere}.rsList .src q{font-style:italic}"+
-".rsList .chk{font-size:11.5px;font-weight:700;color:var(--no);border:1px solid currentColor;border-radius:99px;padding:1px 7px}"+
-".rsList button{min-height:36px;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 12px;font-weight:600;font-size:13px;color:var(--ink)}"+
+".rsList .st{font-size:14px;color:var(--muted)}.rsList .st.ok{color:var(--yes)}"+
+".rsList .src{flex:1 1 100%;font-size:14px;color:var(--muted);overflow-wrap:anywhere}.rsList .src q{font-style:italic}"+
+".rsList .chk{font-size:14px;font-weight:700;color:var(--no);border:1px solid currentColor;border-radius:99px;padding:1px 7px}"+
+".rsList button{min-height:36px;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 12px;font-weight:600;font-size:14px;color:var(--ink)}"+
 ".rsFilled{outline:2px solid var(--accent);outline-offset:1px}";
 
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
@@ -162,8 +162,8 @@ function apply(w){
           '<span class="src">From your resume: '+lines.map(function(l){return '<q>'+esc(l)+'</q>'}).join(" ")+'</span></li>';
       }).join("")+'</ul>';
     }
-    if(job)h+='<p style="margin:0;font-size:13px;color:var(--muted)">Most recent job in your resume: '+esc([job.t,job.e].filter(Boolean).join(" at "))+(job.a?" ("+esc(when(job.a))+(job.b?" to "+esc(when(job.b)):"")+")":"")+'.</p>';
-    h+='<p id="rsKeep" style="margin:0;font-size:13px;color:var(--muted)"></p>';
+    if(job)h+='<p style="margin:0;font-size:14px;color:var(--muted)">Most recent job in your resume: '+esc([job.t,job.e].filter(Boolean).join(" at "))+(job.a?" ("+esc(when(job.a))+(job.b?" to "+esc(when(job.b)):"")+")":"")+'.</p>';
+    h+='<p id="rsKeep" style="margin:0;font-size:14px;color:var(--muted)"></p>';
     out.innerHTML=h;
     keep(file);
   }
