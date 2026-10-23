@@ -824,7 +824,7 @@ function apply(w,host){
   w.__uaplyHide=function(j){
     if(w.__uaplyHideMore&&w.__uaplyHideMore(j))return true;   /* set by Hiring mode (sandbox): closed postings, eligibility */
     var p=A.S.profile;
-    if(acct.fSal&&p.salary&&j.sal&&j.sal.length>1&&j.sal[1]<p.salary)return true;
+    if(acct.fSal&&p.salary&&j.sal&&j.sal.length>1&&j.salUnit!=="hour"&&j.sal[1]<p.salary)return true;   /* hourly pay is never measured against a yearly minimum */
     if(acct.fYrs!=="any"&&j.yrs>(+p.years||0)+(+acct.fYrs))return true;
     var co=String(j.co).toLowerCase(),hay=(String(j.role)+" "+(j.skills||[]).join(" ")).toLowerCase();
     if(list(acct.fCo).some(function(x){return co.indexOf(x)>-1})||list(acct.fKw).some(function(x){return hay.indexOf(x)>-1}))return true;

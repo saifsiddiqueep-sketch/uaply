@@ -643,6 +643,9 @@ def _us_ok(loc, remote):
             return True
     return bool(remote and not FOREIGN_RE.search(loc))
 SAL_RE = re.compile(r"\$\s?(\d{2,3}(?:,\d{3})+|\d{2,3}\s?[kK])\s*(?:-|–|—|to)\s*\$?\s*(\d{2,3}(?:,\d{3})+|\d{2,3}\s?[kK])")
+# an hourly range written out with its unit ("$18 - $22 per hour", "$28.10–$36.50/hr", "$17 to $19 an hour", "$20-25 hourly"). Pay is never
+# guessed and never converted: an hourly figure stays hourly (salUnit "hour"), a yearly one yearly, and no unit means no pay on the card
+HOURLY_RE = re.compile(r"\$\s?(\d{1,3}(?:\.\d{1,2})?)\s*(?:-|–|—|to)\s*\$?\s?(\d{1,3}(?:\.\d{1,2})?)\s*(?:USD\s*)?(?:/\s?(?:hr|hour)\b|per\s+hour\b|an\s+hour\b|hourly\b)", re.I)
 YRS_RE = re.compile(r"(\d{1,2})\+?\s*(?:or more\s*)?(?:years|yrs)", re.I)
 
 _cache = {}
@@ -1064,6 +1067,25 @@ def _salary(*texts):
     return [0, 0]
 
 
+def _hour_pay(lo, hi):
+    """An hourly range as the posting gives it ([18.0, 22.5]), or None. Never a yearly figure made from it."""
+    try:
+        lo, hi = float(lo), float(hi)
+    except (TypeError, ValueError):
+        return None
+    return [round(lo, 2), round(hi, 2)] if 5 <= lo < hi <= 500 else None
+
+
+def _hourly(*texts):
+    for t in texts:
+        m = HOURLY_RE.search(t or "")
+        if m:
+            h = _hour_pay(m.group(1), m.group(2))
+            if h:
+                return h
+    return None
+
+
 def _iter_raw(kind, token, name):
     """The raw postings of one board, one at a time: dicts with id, title, company, loc, remote, text, url, salary_text. A generator, so a
     board's postings are worked through as they are read instead of all being held (each with up to 20,000 characters of text) first."""
@@ -1124,9 +1146,10 @@ def _iter_raw(kind, token, name):
             if j.get("salaryPeriod") == "yearly" and j.get("salaryCurrency") == "USD" and isinstance(lo, (int, float)) \
                     and isinstance(hi, (int, float)) and 20000 <= lo < hi <= 600000:
                 sal = [int(lo), int(hi)]
-            yield dict(id=j["id"], title=j["jobTitle"], company=j["companyName"],
+            hour = _hour_pay(lo, hi) if j.get("salaryPeriod") == "hourly" and j.get("salaryCurrency") == "USD" else None
+            yield dict(id=j["id"], title=j["jobTitle"], company=j["companyName"], sal_unit="hour" if hour else "",
                        loc="Remote (%s)" % re.sub(r"\s+", " ", j.get("jobGeo") or "USA").strip(), remote=True,
-                       text=_text(j.get("jobDescription")), url=j["url"], salary_text="", sal=sal,
+                       text=_text(j.get("jobDescription")), url=j["url"], salary_text="", sal=hour or sal,
                        posted=_ts(j.get("pubDate")), emp=j.get("jobType"),
                        fallback=(j.get("jobIndustry") or [None])[0])
     elif kind == "muse":
@@ -1163,9 +1186,10 @@ def _iter_raw(kind, token, name):
                 if j.get("currency") == "USD" and j.get("salaryPeriod") in ("annual", "yearly") and isinstance(lo, (int, float)) \
                         and isinstance(hi, (int, float)) and 20000 <= lo < hi <= 600000:
                     sal = [int(lo), int(hi)]
+                hour = _hour_pay(lo, hi) if j.get("currency") == "USD" and j.get("salaryPeriod") in ("hour", "hourly") else None
                 link = j.get("applicationLink") if str(j.get("applicationLink") or "").startswith("https://") else j["guid"]
                 yield dict(id=j["guid"], title=j["title"], company=j.get("companyName") or "Himalayas", loc="Remote (%s)" % (", ".join(where[:3]) or "Worldwide"),
-                           remote=True, text=_text(j.get("description") or j.get("excerpt")), url=link, salary_text="", sal=sal,
+                           remote=True, text=_text(j.get("description") or j.get("excerpt")), url=link, salary_text="", sal=hour or sal, sal_unit="hour" if hour else "",
                            posted=_ts(j.get("pubDate")), emp=j.get("employmentType"),
                            fallback=next((c.replace("-", " ") for c in (j.get("categories") or []) if isinstance(c, str)), None))
     elif kind == "remoteok":
@@ -1298,6 +1322,7 @@ def _smartrecruiters(token, name):
         if comp.get("currency") == "USD" and comp.get("period") == "YEARLY" and isinstance(comp.get("min"), (int, float)) and isinstance(comp.get("max"), (int, float)) \
                 and 20000 <= comp["min"] < comp["max"] <= 600000:
             sal = [int(comp["min"]), int(comp["max"])]
+        hour = _hour_pay(comp.get("min"), comp.get("max")) if comp.get("currency") == "USD" and comp.get("period") == "HOURLY" else None
         kind_label = ((p.get("typeOfEmployment") or {}).get("label") or "").lower()
         force = "internship" if "intern" in kind_label else ("parttime" if "part" in kind_label else None)
         dept = re.split(r"\s[-–—]\s", (p.get("department") or {}).get("label") or "")[0].strip()      # "Law Department – Tax Unit" -> "Law Department"
@@ -1306,7 +1331,7 @@ def _smartrecruiters(token, name):
         out.append(dict(id=p["id"], title=(p.get("name") or "").strip(), company=(p.get("company") or {}).get("name") or name, country=L.get("country") or "us",
                         loc=loc or "Not listed", remote=True if L.get("remote") else None,
                         text=_text(text) or (p.get("name") or ""), url="https://jobs.smartrecruiters.com/%s/%s" % (token, p["id"]),
-                        salary_text="", sal=sal, posted=_ts(p.get("releasedDate")), fallback=fallback, force_type=force, emp=kind_label,
+                        salary_text="", sal=hour or sal, sal_unit="hour" if hour else "", posted=_ts(p.get("releasedDate")), fallback=fallback, force_type=force, emp=kind_label,
                         ats_id=str(p.get("uuid") or "")))     # the Application API addresses a posting by its uuid, not by its number
         if again:
             out[-1]["_prev"] = again                              # unchanged since the last read: the same job again
@@ -1336,13 +1361,15 @@ def _usajobs(token):
         if not loc or loc.lower().startswith("multiple locations"):        # "Multiple Locations": name the first two, as The Muse cards do
             loc = "; ".join(places[:2]) + (" +%d more" % (len(places) - 2) if len(places) > 2 else "") or loc
         pay = (d.get("PositionRemuneration") or [{}])[0] or {}
-        sal, sal_text = None, ""
+        sal, sal_text, sal_unit = None, "", ""
         try:
             lo, hi = float(pay.get("MinimumRange") or 0), float(pay.get("MaximumRange") or 0)
             money = lambda n: "{:,.0f}".format(n) if n >= 1000 else "{:,.2f}".format(n)   # noqa: E731  (yearly in dollars, hourly with cents)
             sal_text = ("$%s - $%s %s" % (money(lo), money(hi), pay.get("Description") or "")).strip() if hi else ""
             if pay.get("RateIntervalCode") == "PA" and 20000 <= lo < hi <= 600000:
-                sal = [int(lo), int(hi)]                                   # yearly pay only; hourly pay stays in the text
+                sal = [int(lo), int(hi)]                                   # yearly pay as yearly
+            elif pay.get("RateIntervalCode") == "PH" and _hour_pay(lo, hi):
+                sal, sal_unit = _hour_pay(lo, hi), "hour"                 # hourly pay as hourly (never multiplied into a year)
         except (TypeError, ValueError):
             pass
         duties = det.get("MajorDuties")
@@ -1359,7 +1386,7 @@ def _usajobs(token):
                         loc=loc, remote=True if (det.get("RemoteIndicator") is True or re.search(r"remote", loc, re.I)) else None,
                         text=_text(" ".join(x for x in (det.get("JobSummary"), duties, d.get("QualificationSummary")) if isinstance(x, str))),
                         url=(apply_uri[0] if apply_uri else d.get("PositionURI") or ""), announcement=d.get("PositionURI") or "",
-                        salary_text=sal_text, sal=sal, posted=_ts(re.sub(r"\.\d+$", "", str(d.get("PublicationStartDate") or ""))), fallback=cats[0] if cats else None,
+                        salary_text=sal_text, sal=sal, sal_unit=sal_unit, posted=_ts(re.sub(r"\.\d+$", "", str(d.get("PublicationStartDate") or ""))), fallback=cats[0] if cats else None,
                         force_type="internship" if intern else None,
                         emp=(sched + " " + " ".join(s.get("Name", "") for s in d.get("PositionOfferingType") or [] if isinstance(s, dict) and s.get("Name") == "Temporary")).strip()))
     return out
@@ -1624,18 +1651,20 @@ def _ld_raw(p, page_url, name):
         remote = wp == "Remote" or bool(re.search(r"\bremote\b", title, re.I))
         if wp:
             places = [wp]
-    sal = None
+    sal, cp_unit = None, ""
     bs = p.get("baseSalary") if isinstance(p.get("baseSalary"), dict) else {}
     v = bs.get("value") if isinstance(bs.get("value"), dict) else {}
     try:
         lo, hi = float(v.get("minValue")), float(v.get("maxValue"))
         if bs.get("currency") == "USD" and str(v.get("unitText") or "").upper() == "YEAR" and 20000 <= lo < hi <= 600000:
             sal = [int(lo), int(hi)]
+        elif bs.get("currency") == "USD" and str(v.get("unitText") or "").upper() == "HOUR" and _hour_pay(lo, hi):
+            sal, cp_unit = _hour_pay(lo, hi), "hour"
     except (TypeError, ValueError):
         pass
     clean = _cp_clean(page_url)
     return dict(id=clean, title=title, company=str(company).strip(), loc="; ".join(x for x in places if x) or ("Remote" if remote else ""),
-                remote=True if remote else None, text=_text(p.get("description") or "")[:CP_TEXT], url=clean, salary_text="", sal=sal,
+                remote=True if remote else None, text=_text(p.get("description") or "")[:CP_TEXT], url=clean, salary_text="", sal=sal, sal_unit=cp_unit,
                 posted=_ts(p.get("datePosted")), emp=p.get("employmentType"), country=country or "us",
                 # a clinical or store role often names no skill UAply scores on: its category (or the employer's industry) stands in
                 fallback=str(p.get("occupationalCategory") or p.get("industry") or "").strip()[:60] or "General")
@@ -2109,10 +2138,20 @@ def _normalize(raw, kind, name, board=None):
     pid = str(raw.get("ats_id") or raw["id"])
     ats = {"kind": kind, "board": board, "id": pid} if (kind in ats_api.KINDS and board and ats_api.TOKEN_RE.match(board) and ats_api.ID_RE.match(pid)) else None
     # contact is deliberately empty and apply is "link": a third-party feed never gets an application emailed to anyone
+    # pay as the posting gives it: a yearly range, or an hourly one with its unit; nothing at all ([0, 0], "Pay not listed") otherwise
+    sal, sal_unit = raw.get("sal"), (raw.get("sal_unit") or "") if raw.get("sal") else ""
+    if not sal:
+        sal = _salary(raw["salary_text"], text)
+        if not sal[1]:
+            hour = _hourly(raw["salary_text"], text)
+            if hour:
+                sal, sal_unit = hour, "hour"
     out = dict(id=jid, co=company, role=title, loc=_place(loc, mode), mode=mode,
-               sal=raw.get("sal") or _salary(raw["salary_text"], text), yrs=yrs, edu=edu, skills=skills, blurb=blurb, desc=desc,
+               sal=sal, yrs=yrs, edu=edu, skills=skills, blurb=blurb, desc=desc,
                type=typ, jobType=jtype, url=raw["url"], source=src, contact="", apply="link", live=True, ats=ats,
                posted=_ts(raw.get("posted")), perks=_perks(text), comm=bool(COMM_RE.search(text)))
+    if sal_unit == "hour":
+        out["salUnit"] = "hour"                                   # the card says "per hour"; nothing compares it with a yearly minimum
     if jtype in ("internship", "co-op") and _grad_only(title, text):
         out["gradOnly"] = True                                    # the Internship and Co-op stacks show undergraduate roles first
     pt = job_geo(loc, mode == "remote")

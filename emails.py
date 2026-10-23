@@ -35,15 +35,22 @@ NEXT_STEPS = [
 ]
 
 
-def _money(sal):
+def _money(sal, unit=""):
+    """The pay as the posting gives it, with its unit: "$60k to $80k a year", "$18 to $22.50 an hour". "Not listed" when the posting
+    gives none. Never an estimate, and never a yearly figure made from an hourly one or the reverse."""
     try:
-        lo, hi = int(sal[0]), int(sal[1])
+        lo, hi = float(sal[0]), float(sal[1])
     except (TypeError, ValueError, IndexError):
-        return ""
+        return "Not listed"
     if hi <= 0:
-        return ""
-    k = lambda n: "$%dk" % round(n / 1000) if n >= 1000 else "$%d" % n   # noqa: E731
-    return "%s to %s a year" % (k(lo), k(hi)) if lo else "up to %s a year" % k(hi)
+        return "Not listed"
+    if unit == "hour":
+        k = lambda n: ("$%.2f" % n) if round(n * 100) % 100 else ("$%d" % round(n))   # noqa: E731
+        per = "an hour"
+    else:
+        k = lambda n: "$%dk" % round(n / 1000) if n >= 1000 else "$%d" % n   # noqa: E731
+        per = "a year"
+    return ("%s to %s %s" % (k(lo), k(hi), per)) if 0 < lo < hi else ("%s %s" % (k(hi), per) if lo == hi else "up to %s %s" % (k(hi), per))
 
 
 def _when(ts):
@@ -59,7 +66,7 @@ def _https(u):
 def _summary_rows(job, match):
     rows = [("Company", job.get("co")), ("Job title", job.get("role")), ("Location", job.get("loc")),
             ("Job type", TYPE_LABEL.get(job.get("type") or "job", "")), ("Work style", MODE_LABEL.get(job.get("mode"), "")),
-            ("Pay", _money(job.get("sal"))), ("Your match", ("%d%%" % match) if match else ""),
+            ("Pay", _money(job.get("sal"), job.get("salUnit"))), ("Your match", ("%d%%" % match) if match else ""),
             ("Source", job.get("via")), ("Official announcement", _https(job.get("announcement")))]      # the feed is credited, as its terms ask
     return [(k, v) for k, v in rows if v]
 
