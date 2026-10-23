@@ -5,7 +5,7 @@ UAply is a job-swiping app (swipe right = start an application). Founders: Moham
 ## Start of every chat
 1. One task per chat. The task is a numbered card on the UAply Team Board (https://trello.com/b/TUiuK5fz). Read that card first.
 2. Read `HANDOFF.md` on the `sandbox` branch for the current state of every instance.
-3. How the system works: Confluence space "UAply Engineering Handbook" (https://uaplytechnologies.atlassian.net/wiki/spaces/UENG). Copies of the pages: `review-pages/handbook/`.
+3. How the system works: the handbook in `docs/handbook/` (start with `docs/handbook/index.md`). The same pages are in the Confluence space "UAply Engineering Handbook" (https://uaplytechnologies.atlassian.net/wiki/spaces/UENG).
 4. If something is missing, ask one question, then record the answer (memory or the card) so the next chat has it.
 
 ## End of every chat ("write the handoff")
