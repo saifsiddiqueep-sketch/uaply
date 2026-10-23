@@ -12,7 +12,7 @@ module.exports = async function gateSignup({ ev, sleep, nav }, base, tag) {
   const email = "first." + (tag || "test") + "." + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + "@example.com";
   const PW = "First-" + Math.random().toString(36).slice(2, 10) + "-pw9";
   const me = () => ev("fetch('/api/auth/me',{credentials:'same-origin'}).then(r=>r.json()).then(j=>j.user?JSON.stringify(j.user):'')").then((t) => (t ? JSON.parse(t) : null));
-  const code = () => ev("fetch('/outbox').then(r=>r.text()).then(t=>{const m=t.replace(/<[^>]+>/g,' ').match(new RegExp('([0-9]{6}) is your UAply (?:verification|sign-in) code to '+" + JSON.stringify(email.replace(/\./g, "\\.")) + "));return m?m[1]:''})");
+  const code = () => ev("fetch('/outbox').then(r=>r.text()).then(t=>{const m=t.replace(/<[^>]+>/g,' ').replace(/\\s+/g,' ').match(new RegExp('([0-9]{6}) is your UAply (?:verification|sign-in) code to '+" + JSON.stringify(email.replace(/\./g, "\\.")) + "));return m?m[1]:''})");
   await nav(base + "/");
   let gated = false;
   for (let i = 0; i < 60; i++) {

@@ -462,7 +462,9 @@ function apply(w,host){
   }
   watch(w);try{if(w.top&&w.top!==w)watch(w.top)}catch(e){}
   function needCode(){
-    var u=srv().user;if(!u||(V.view==="code"&&V.kind==="pw"))return;
+    /* not while a code step or the questions are already on the card, and not while a trip back from Google is being finished (its own
+       code step, kind "g", comes from startAfterGoogle) */
+    var u=srv().user;if(!u||V.view==="code"||V.view==="q"||getPending())return;
     var cs=getCodeStep();
     V.user=u;V.email=u.email||V.email;V.kind="pw";V.view="code";V.verifyOnly=true;V.noSend=false;
     V.sentAt=cs&&cs.kind==="pw"&&cs.email.toLowerCase()===String(u.email||"").toLowerCase()?+cs.at||0:0;

@@ -140,7 +140,7 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
     s = await seen();
     check("an account whose address is not confirmed: the job list answers 403 verify, and the card shows its code step (still nothing behind it)",
       st === 200 && /Check your email/.test(tv) && tv.includes(vm) && (await gated()) && nothingBehind(s), st + " " + tv.slice(0, 200) + " " + JSON.stringify(s));
-    const vc = await ev("fetch('/outbox').then(r=>r.text()).then(t=>{const m=t.replace(/<[^>]+>/g,' ').match(new RegExp('([0-9]{6}) is your UAply verification code to '+" + JSON.stringify(vm.replace(/\./g, "\\.")) + "));return m?m[1]:''})");
+    const vc = await ev("fetch('/outbox').then(r=>r.text()).then(t=>{const m=t.replace(/<[^>]+>/g,' ').replace(/\\s+/g,' ').match(new RegExp('([0-9]{6}) is your UAply verification code to '+" + JSON.stringify(vm.replace(/\./g, "\\.")) + "));return m?m[1]:''})");
     await typeIn(".sg-code input", vc);
     for (let i = 0; i < 40 && !(await ev("!!(" + FW + "&&" + FW + ".__uaply&&!" + F + ".body.classList.contains('sgGated'))").catch(() => false)); i++) await sleep(300);
     await sleep(1500);

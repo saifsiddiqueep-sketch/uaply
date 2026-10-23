@@ -143,7 +143,8 @@ function apply(w,host){
     if(REL)w.__uaplyJobsFailed=true;if(REL){try{w.__uaply.renderAll()}catch(x){}}say(REL?"Could not load jobs ("+e.message+"). Check your connection and try again.":"Could not load real postings ("+e.message+"). Showing the example jobs.")});
   }
   /* the sign-in gate (shared/uaply-signup.js): no request for the job list while nobody is signed in; it is asked for once the gate lifts */
-  if(w.__uaplyGateUp){w.__uaplyLoadJobs=function(){w.__uaplyLoadJobs=null;loadJobs(0)};return}
+  /* (asked again each time the gate lifts: after a code that confirmed the address, the list that answered 403 "verify" comes now) */
+  if(w.__uaplyGateUp){w.__uaplyLoadJobs=function(){loadJobs(0)};return}
   return loadJobs(0);
 }
 
