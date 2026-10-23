@@ -5,6 +5,7 @@ build: it is what the hosted site and the phone apps run. Each version is tagged
 production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
+- Hosted preview pages (Mohammed): share/build-share.js now embeds every experiment script the sandbox and dev pages list (sign-up card, Share this job, and any future uaply-*.js) instead of a fixed list, so the Render preview truly runs what is switched on; uaply-live.js stays out of the hosted copy as before because it needs the server.
 
 ### Share this job (Mohammed's design, version A, October 22)
 - **On the swipe page the one change is a small share icon** (36 px, "Share this job") in the top-right corner of the job card.
