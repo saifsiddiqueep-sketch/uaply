@@ -203,6 +203,21 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
       await ev("(()=>{const c=" + F + ".querySelector('.card.top');if(c)c.scrollTop=0})()");
     } else check("the top card has a posting link to swipe from", false);
   }
+  // Job Tracker (second Galaxy walk, October 23): the Remote / Hybrid / In person chip is 14 px text like the labels (it was 11 px),
+  // and no figure's label breaks inside a word ("Interview" / "s" at 384 px): every word of every label sits on one line
+  {
+    await menu("nb-dash", "Applied"); await sleep(700);
+    const T = JSON.parse(await ev("(()=>{const d=" + F + ",w=d.defaultView,p=d.getElementById('pane-track');if(!p)return 'null';" +
+      "const chips=[...p.querySelectorAll('.mchip')].filter(e=>e.getClientRects().length).map(e=>parseFloat(w.getComputedStyle(e).fontSize));" +
+      "const broken=[];for(const s of p.querySelectorAll('.stat small')){if(!s.getClientRects().length)continue;const t=s.firstChild;if(!t||t.nodeType!==3)continue;" +
+      "const re=/\\S+/g;let m;while((m=re.exec(t.data))){const r=d.createRange();r.setStart(t,m.index);r.setEnd(t,m.index+m[0].length);" +
+      "const tops=new Set([...r.getClientRects()].map(x=>Math.round(x.top)));if(tops.size>1)broken.push(m[0])}}" +
+      "const labels=[...p.querySelectorAll('.stat small')].filter(e=>e.getClientRects().length).map(e=>[e.textContent,Math.round(parseFloat(w.getComputedStyle(e).fontSize))]);" +
+      "return JSON.stringify({chips,broken,labels})})()"));
+    check("Job Tracker: the work-style chips on its rows are at least 14 px (" + (T && T.chips.length) + " on screen)", !!T && T.chips.length > 0 && T.chips.every((x) => x >= 14), JSON.stringify(T && T.chips));
+    check("Job Tracker: every figure's label is at least 14 px and no label breaks inside a word (Interviews, Accepted, ...)",
+      !!T && T.labels.length >= 4 && T.labels.every((l) => l[1] >= 14) && T.broken.length === 0, JSON.stringify(T));
+  }
   // the location card when location is blocked (Galaxy walk, October 22: in the installed app it gave laptop instructions, "the icon at
   // the left of the address bar", and pushed the first job down). On a phone: the phone's settings, two lines and its two buttons, and
   // the first job card starts below it, never under it
