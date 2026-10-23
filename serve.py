@@ -1397,6 +1397,7 @@ class H(http.server.SimpleHTTPRequestHandler):
             self.send_header("X-UAply-Stale", "restart")                 # this computer's server runs older code than the files on disk
         self.send_header("Cache-Control", getattr(self, "_cache", None) or "no-store")   # a versioned file: a year (see VERSIONED); the rest never
         self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-UAply", "1")       # "a UAply server": prod/index.html's hand-over to app.html reads it from a HEAD of the page itself
         self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
         self.send_header("X-Frame-Options", "SAMEORIGIN")               # the app frames itself; other sites may not
         # the same rule for browsers that only read CSP, plus no plugins and no <base> tag pointing scripts elsewhere. Deliberately no script
