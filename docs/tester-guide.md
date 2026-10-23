@@ -70,3 +70,19 @@ passwords or other private details in a message.
 3. **Report one thing.** Send us at least one piece of feedback or one problem report from Help, even a small one.
 
 Thank you. Everything you tell us goes straight to the people building UAply.
+
+## 7. If you are testing the phone app
+
+A few things only a real phone can show. Please tell us (Help, then Report a problem) if any of them does not happen as written.
+
+- **Back button (Android).** Open Job Tracker, then Profile, then press your phone's Back button: it goes to Job Tracker, then to
+  the jobs. With a menu or a box open, Back closes it first. On the jobs, the first press says "Press Back again to leave UAply";
+  only a second press within 2 seconds closes the app. This must be confirmed on a real Android phone: our computer tests only
+  imitate the phone, so if the first Back press closes UAply at once, please report it.
+- **Export buttons.** Profile > Data & privacy > Download backup (JSON) and Applications (CSV), and Add to calendar on an interview
+  in Job Tracker: your phone's share sheet opens with the file, so you can save it to Files or Drive, or send it. If you close the
+  share sheet, nothing happens and nothing is saved. If the app instead says "Copied ...", your app version cannot save files yet:
+  paste the text somewhere to keep it. Profile > Data & privacy > Delete all my data also deletes these files from the app.
+- **Turning the phone (iPhone).** The iPhone app stays upright when you turn the phone sideways.
+- **Backups (Android).** What UAply keeps on your phone (your profile and swipes) is not part of the phone's automatic Google backup.
+  Before you reinstall the app or switch phones, use Download backup (JSON) and keep the file; Restore on the same screen brings it back.

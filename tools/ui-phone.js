@@ -9,6 +9,7 @@
 //    covering nothing, no dialog taller than the screen with its buttons out of sight.
 //    LANDSCAPE=1 W=844 H=390 (or 667x375) checks a phone turned on its side: the same screens, the same checks.
 const PORT = process.env.PORT || "8767";
+const gateSignup = require("./gate-signup.js");   // the test person signs up first (Saif, October 22: no account, no data)
 module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
   const F = "document.querySelector('iframe').contentDocument";
   const FW = "document.querySelector('iframe').contentWindow";
@@ -53,6 +54,10 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
   // bottom bar and the agreement, in the system font. Before, a font stylesheet in the head stopped every script until it arrived.
   await send("Fetch.enable", { patterns: [{ urlPattern: "*fonts.googleapis.com*" }, { urlPattern: "*fonts.gstatic.com*" }] });
   on("Fetch.requestPaused", (p) => { setTimeout(() => send("Fetch.continueRequest", { requestId: p.requestId }), 8000); });
+  // the test person signs up first (October 22, Saif: on the sandbox nobody reaches anything without an account; the same everywhere)
+  const who = await gateSignup({ ev, sleep, nav: (u) => send("Page.navigate", { url: u }).then(() => sleep(300)) }, "http://127.0.0.1:" + PORT, "phone");
+  const su = who.ok ? 200 : 0 || await ev("fetch('/api/auth/signup',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'phonefit.'+Date.now()+'@example.com',password:'Signup-first-99',first:'Test',last:'Person',agree:true,passwordless:false})}).then(r=>r.status)");
+  check("0. the test person signs up first (POST /api/auth/signup)", su === 200, su);
   const t0 = Date.now();
   await send("Page.navigate", { url: "http://127.0.0.1:" + PORT + "/" });
   let upAt = 0;
@@ -135,6 +140,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
   const onBtns = await ev("(()=>{const d=" + F + ";const out=[];for(const id of ['btnNo','btnUndo','btnYes']){const e=d.getElementById(id),r=e.getBoundingClientRect();if(r.bottom>innerHeight||r.top<0)continue;for(const [fx,fy] of [[.5,.5],[.2,.3],[.8,.3],[.2,.7],[.8,.7]]){const h=d.elementFromPoint(r.left+r.width*fx,r.top+r.height*fy);if(h&&!(h===e||e.contains(h))&&h.closest('.toast')){out.push(id);break}}}return out.join(',')})()");
   check("the message after a swipe does not cover Pass, Undo or Apply", onBtns === "", onBtns);
   screens.push(["right after a swipe (message showing)", await coverage("after swipe")]);
+  fits.push(["Jobs right after a Pass (the next card's buttons, Share this job's included, still 44 px)", await fit("after pass")]);
   for (const [name, covered] of screens) check("nothing covers a button: " + name, covered.length === 0, covered.slice(0, 4).join("; "));
   for (const [name, list] of fits) check("fits the phone: " + name + " (44 px targets, nothing off the edge, Help covers nothing)", list.length === 0, list.slice(0, 4).join("; "));
   await shot((process.env.OUT || require("os").tmpdir()) + "/phone-after-swipe.png");
@@ -197,6 +203,39 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
       check("a swipe left that starts on the posting link passes and opens nothing", (d1.passed || 0) - (d0.passed || 0) === 1 && (await opens()) === o0, "passed " + ((d1.passed || 0) - (d0.passed || 0)) + ", opened " + ((await opens()) - o0));
       await ev("(()=>{const c=" + F + ".querySelector('.card.top');if(c)c.scrollTop=0})()");
     } else check("the top card has a posting link to swipe from", false);
+  }
+  // Job Tracker (second Galaxy walk, October 23): the Remote / Hybrid / In person chip is 14 px text like the labels (it was 11 px),
+  // and no figure's label breaks inside a word ("Interview" / "s" at 384 px): every word of every label sits on one line
+  {
+    await menu("nb-dash", "Applied"); await sleep(700);
+    const T = JSON.parse(await ev("(()=>{const d=" + F + ",w=d.defaultView,p=d.getElementById('pane-track');if(!p)return 'null';" +
+      "const chips=[...p.querySelectorAll('.mchip')].filter(e=>e.getClientRects().length).map(e=>parseFloat(w.getComputedStyle(e).fontSize));" +
+      "const broken=[];for(const s of p.querySelectorAll('.stat small')){if(!s.getClientRects().length)continue;const t=s.firstChild;if(!t||t.nodeType!==3)continue;" +
+      "const re=/\\S+/g;let m;while((m=re.exec(t.data))){const r=d.createRange();r.setStart(t,m.index);r.setEnd(t,m.index+m[0].length);" +
+      "const tops=new Set([...r.getClientRects()].map(x=>Math.round(x.top)));if(tops.size>1)broken.push(m[0])}}" +
+      "const labels=[...p.querySelectorAll('.stat small')].filter(e=>e.getClientRects().length).map(e=>[e.textContent,Math.round(parseFloat(w.getComputedStyle(e).fontSize))]);" +
+      "return JSON.stringify({chips,broken,labels})})()"));
+    check("Job Tracker: the work-style chips on its rows are at least 14 px (" + (T && T.chips.length) + " on screen)", !!T && T.chips.length > 0 && T.chips.every((x) => x >= 14), JSON.stringify(T && T.chips));
+    check("Job Tracker: every figure's label is at least 14 px and no label breaks inside a word (Interviews, Accepted, ...)",
+      !!T && T.labels.length >= 4 && T.labels.every((l) => l[1] >= 14) && T.broken.length === 0, JSON.stringify(T));
+  }
+  // the location card when location is blocked (Galaxy walk, October 22: in the installed app it gave laptop instructions, "the icon at
+  // the left of the address bar", and pushed the first job down). On a phone: the phone's settings, two lines and its two buttons, and
+  // the first job card starts below it, never under it
+  if (!process.env.LANDSCAPE) {
+    const origin = "http://127.0.0.1:" + PORT;
+    await send("Browser.setPermission", { permission: { name: "geolocation" }, setting: "denied", origin });
+    await ev("(()=>{const w=" + FW + ";try{w.localStorage.removeItem(w.__uaplyKey+'.loc')}catch(e){}})()");
+    await send("Page.navigate", { url: origin + "/" });
+    let la = null;
+    for (let i = 0; i < 40 && !la; i++) { await sleep(300); la = await ev("(()=>{try{const d=" + F + ",c=d.getElementById('locAsk');return c&&c.getClientRects().length?1:null}catch(e){return null}})()"); }
+    for (let i = 0; i < 40 && la && !(await ev("(()=>{const t=" + F + ".querySelector('.card.top');return !!t&&t.getClientRects().length>0})()")); i++) await sleep(300);   // and the first job card
+    const L = la && JSON.parse(await ev("(()=>{const d=" + F + ",w=d.defaultView,c=d.getElementById('locAsk'),p=c.querySelector('p'),cr=c.getBoundingClientRect(),t=d.querySelector('.card.top'),tr=t&&t.getBoundingClientRect(),bs=[...c.querySelectorAll('.acts .btn')].map(b=>b.getBoundingClientRect());" +
+      "const lh=parseFloat(w.getComputedStyle(p).lineHeight);return JSON.stringify({title:c.querySelector('b').textContent,text:p.textContent,lines:Math.round(p.getBoundingClientRect().height/lh),clipped:p.scrollHeight>p.clientHeight+1,h:Math.round(cr.height),bottom:Math.round(cr.bottom),cardTop:tr?Math.round(tr.top):null,oneRow:bs.length===2&&Math.abs(bs[0].top-bs[1].top)<2,btnH:bs.map(b=>Math.round(b.height))})})()"));
+    check("location blocked, on a phone: the card says to allow it in the phone's settings, then Try again (no address bar)", !!L && /phone's settings/.test(L.text) && /Try again/.test(L.text) && !/address bar/.test(L.text), JSON.stringify(L));
+    check("...in two lines of text (nothing cut off) and its two buttons side by side", !!L && L.lines <= 2 && !L.clipped && L.oneRow && L.btnH.every((h) => h >= 44), JSON.stringify(L));
+    check("...and the first job card starts below it, never under it", !!L && L.cardTop !== null && L.cardTop >= L.bottom, JSON.stringify(L));
+    await send("Browser.resetPermissions", {});
   }
   check("no script errors", logs.length === 0, logs.join(" / ").slice(0, 200));
   console.log(bad ? "\n" + bad + " check(s) failed" : "\nEverything works on the phone");

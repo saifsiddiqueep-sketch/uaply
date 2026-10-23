@@ -4,6 +4,52 @@ Written October 17, 2026 (Bot 4, sign-in and payments). The code is `auth_api.py
 `mailbox_problem`), `google_auth.py` (`_identity`) and `billing_api.py` (`_ref_uid`). The proof is `tools/test-accounts.py`; the check
 for a live disk is `tools/audit-accounts.py`.
 
+## The sign-in contract (Saif, October 22, 2026: read this first when building the card or the gate)
+
+Three decisions: **(a)** sign-up is email, first name, last name and a password; the emailed 6-digit code verifies the address after
+sign-up and is the other way to sign in ("Email me a code"). **(b)** Nobody reaches site data without an account. **(c)** A test server
+can make filler accounts at once. Code sign-in and the gate run wherever the server runs (sandbox, dev, the live site); a public server
+that cannot send email still refuses to pretend to send codes. Every answer is JSON; every POST needs this site's own `Origin`; the
+session is the HttpOnly cookie `uaply_<instance>_session` (`SameSite=Lax`, `Secure` behind HTTPS).
+
+| Route | Send | Answer |
+|---|---|---|
+| `GET /api/auth/providers` | | Google's settings, plus `codeSignin: true` when "Email me a code" can be offered (absent on a public server without email) and `signupTest: true, testMode: true` only in test mode (absent on a public server and on Render, always). |
+| `POST /api/auth/signup` | `{email, password, first, last, agree: true}` | **200** `{user: {id, email, hasPassword: true, emailVerified: false, plan, first, last}, delivery: "sent" or "delivered_test"}` and the session cookie: signed in at once. The 6-digit verification code is emailed **after** the answer. **400** `{error}` (an address that cannot exist, no tick, a password under 8 or over 128 characters or equal to the email, `code: "mailbox"` for a throwaway or dead domain). **409** "That email already has an account. Sign in instead." **429** `{error, code: "signup_limit" or "signup_email_limit"}`, the same words for every address. `first` and `last` are cleaned and cut to 60 characters; the server accepts them empty, the card requires them. |
+| `POST /api/auth/verify` | `{code}` with the session | **200** `{ok: true}` (the address is verified), **400** `{error}` (wrong: tries left; `expired: true`: send a new one), **429**. Full-width and Arabic-Indic digits count as the digits they are. |
+| `POST /api/auth/resend` | with the session | **200** `{ok, message}`; **429** `{error}` (3 an hour per account, 6 a day per address, the site's hour). |
+| `POST /api/auth/login` | `{email, password}` | **200** `{user}` and the cookie; **401** "Wrong email or password."; **429** lock-out. |
+| `POST /api/auth/code/send` | `{email}` | **200** `{ok: true}`, the same for every address; an address with an account gets a **sign-in** code ("This code signs in to your UAply account. UAply will never ask you for it. If it was not you, ignore this email."). **429** `{error, code: "code_limit" / "code_day" / "code_busy"}`. **503** `{code: "mail_off"}` on a public server without email. |
+| `POST /api/auth/code/verify` | `{email, code, agree?}` | **200** `{user: {..., new}}` and the cookie (and the known-device cookie); **400** one plain answer for every wrong code; `needsAgree: true` when an account no one proved yet needs this person's own 18+ / Terms tick. |
+| `POST /api/auth/forgot` | `{email}` | **200** the same answer either way; the link is emailed after the answer. A public server without email: `{ok: false, delivery: "unavailable"}`. |
+| `POST /api/auth/reset`, `change-password`, `logout`, `delete` | as before | `change-password` on an account with no password: **400** `code: "no_password"`, "This account has no password: you sign in with a code sent to your email (or with Google). Use Forgot password to add one." |
+| `POST /api/auth/google/token`; `GET /api/auth/google/start`, `/callback` | Google's token or the redirect | Joining an account whose address nobody proved needs `agree: true`: **400** `code: "agree_owner"` (the redirect: `/?auth_error=agree_owner`). |
+| `GET /api/auth/me` | | `{user: null}`, or `{user: {id, email, hasPassword, emailVerified, plan, first, last, googleLinked, google?: {new}, consent}}`; `consent` is the first-swipe agreement on record, `{v, at, auto}`, or `null`. |
+| `POST /api/consent` | `{version, text, auto}` or `{withdraw: true}`, signed in with a confirmed address | **200** `{ok, consent}`: the version, the time, the visitor's address and the SHA-256 of the words are kept on the account (`consent_api.py`). **409** `consent_old` or `consent_text` when the page's words are not the server's. No application leaves UAply without the current version on record (`/api/apply` answers **403** `code: "consent"`). |
+| `POST /api/auth/signup` with `passwordless: true` | `{email, agree: true, first?, last?}` | Still answers (the sandbox's no-password card): **200** `{ok: true, email}` either way and a code to type in `/api/auth/code/verify`. |
+
+**The gate.** Without a session these answer **401** `{"error": "Sign in first.", "code": "signin"}`: `GET /api/jobs`,
+`GET /api/employer/logo/*`, and `POST /api/apply`, `/api/apply/plan`, `/api/apply/mark`, `/api/decision`, `/api/chat`, `/api/feedback`,
+`/api/profile/resume`, `/api/employer/company`, `/api/employer/job`, `/api/employer/job/status`, `/api/employer/applicant`,
+`/api/employer/import` (`/api/employer/me` answers its own "sign in" itself). With a session whose account has `emailVerified: false`
+(a password sign-up whose emailed code is not typed yet) the same routes answer **403** `{"error": "Confirm your email first.", "code":
+"verify"}`: the card shows the code step. Every `/api/auth/*` route stays open to that session (verify, resend, me, logout, delete, Email
+me a code), and so do the open routes below; the owner pages keep their own check. Accounts that pass at once: Google when Google vouches
+for the address, a code sign-in or code sign-up (typing the code proves the address), test mode's filler accounts. Open without a session: `/` and the page's own files,
+`/healthz`, `/api/status`, every `/api/auth/*` route, `/api/apply/config`, `/api/chat/config`, `/api/billing/status`, the legal pages,
+`/help/articles.json`, the support page, the service worker, the manifest and the offline page. `/sitemap.xml` lists only the home page
+and the legal pages, and the home page's JSON-LD only names the site. The owner pages (`/outbox`, `/api/outbox`, `/feedback`, `/setup`,
+`/api/feed-health`) keep their own owner check (this computer, or the owner password) instead of the session gate: on a test server the
+test inbox is how a code is read before anyone is signed in.
+
+**Test mode.** `UAPLY_SIGNUP_TEST=1` on a server that is not public (this computer): `POST /api/auth/signup` makes the account already
+verified, signs it in at once and emails nothing (`delivery: "none", testMode: true`), and providers says `signupTest: true, testMode:
+true`. In test mode no email of any kind leaves the server, even when real email settings are present (Saif's sandbox has them): codes
+from "Email me a code" and from a code sign-up, Forgot password links and receipts (a hand-off's too, in place of the day's reminder) land in the test inbox (`/outbox`)
+only, a help request is only saved, and the setup page's test email says test mode is on. On a public server the setting is ignored,
+always, and so it is wherever Render's own `RENDER` variable is set (any value), even if `HOST` were wrong. `UAPLY_CODE_SIGNIN=0` switches the code routes off (a test server that checks the password routes
+alone); nothing else does. `tools/test-signin-contract.py` tests all of this.
+
 ## The promise
 Every address has at most one UAply account, and nothing done with one account ever reaches another. Sign-up, log-in, Forgot password,
 the 6-digit code, Continue with Google, the sign-up limits and the lock-out all find an account through one key: the canonical address.

@@ -6,6 +6,94 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 - Hosted preview pages (Mohammed): share/build-share.js now embeds every experiment script the sandbox and dev pages list (sign-up card, Share this job, and any future uaply-*.js) instead of a fixed list, so the Render preview truly runs what is switched on; uaply-live.js stays out of the hosted copy as before because it needs the server.
+- Phone apps, before the testers (Mohammed): Android Back goes back one screen and quits only from the first screen on a second press; the CSV, calendar and backup exports work inside the apps (saved with the file plugin and shared, or copied when the plugin is missing) and Delete all my data removes those files; the iPhone app is locked to portrait and carries its privacy manifest; app plugin calls always go through the top page's bridge, since Android drops calls from frames.
+
+### A swipe right that submits, phase A (Saif, October 23; the consent box and Terms section 3 are pending the lawyer)
+- **Reviewer 3's review fixes.** The Automatic submit tick says where it applies from `shared/assist-systems.json` (today "where a hiring
+  system allows it; none is switched on yet"; it names a system once one is switched on), and sits right after the four ways, above "By
+  continuing you agree", on screen at 375 px. Job Tracker says "Saved Oct 23" for a hand-off and "Sent Oct 23" only for a send. A
+  hand-off says "Saved to Job Tracker. One tap to finish on their site.", and the sandbox's filled-in preview of a public posting is shown
+  as the hand-off it is (only a send says Applied or Sent). Reviewer 3's three missing tests are merged.
+- **Reviewer 3's words.** The first-swipe box (version 4) and Terms section 3 are Reviewer 3's drafts: the authorization, the four ways a
+  swipe right goes (the third, UAply pressing Submit, only with the Automatic submit tick, which stays the extra line), and how to stop
+  it; the match-percentage line and its How matching works link stay, under the authorization. An emailed application counts as sent
+  when UAply's email service accepts it for delivery; UAply cannot see whether the employer read it (the Terms and the receipt say so).
+- **Send applications for me** (Profile, Account): on unless the person turns it off; off, every swipe right only saves the job to Job
+  Tracker, and the server honors it for every route (`POST /api/auth/send-for-me`, kept on the account: no email, no hiring system, no
+  simulated send, no employer's form read, no automatic or one-tap opening).
+- **The agreement is kept on the account.** The first-swipe box is version 4 (`CONSENT_V` 4; everyone sees it once more), in Reviewer 3's
+  words (below), with a separate **Automatic submit** tick, off by default. Agreeing posts the exact words to `POST /api/consent`; the server
+  checks them against its own copy (`consent_api.py`) and keeps the version, the time, the visitor's address and the words' SHA-256 on the
+  account (`/api/auth/me` shows `consent`). **No application leaves UAply without it** (403 `consent`); a device that agreed before sends its
+  agreement once and retries. Not agreeing when the box is shown again takes it back. Pending the lawyer (LEGAL-REVIEW.md, section 12).
+- **Apply by email.** A posting whose own text asks for applications by email ("send your resume to ...") at an address on the employer's
+  own domain is now Ready: a swipe right emails the application and resume there, with the person's email as the reply address, a line on
+  why it came and a stop link; the person gets the confirmation and Job Tracker says Sent. The server reads the address from the posting
+  itself (never the browser's), and never takes a free mailbox, an agency's, or an accommodations, questions or privacy address. One per
+  person per job, at most 10 a day per employer domain and UAply's own daily limit (past them: a hand-off); an address that bounces or
+  whose owner presses the stop link is a hand-off again at once. Test mode sends nothing. `docs/apply-by-email.md`.
+- **One tap.** In the phone app, a hand-off on Greenhouse, Lever, Workable or Ashby opens the employer's form right after the swipe, filled,
+  scrolled to the check or Submit, with "One tap to finish: this employer asks you to confirm you are a person." UAply never touches the
+  check; backing out keeps Finish on their site. The app asks the page every 150 ms until the form is filled (it was 1.5 s), and the fill
+  looks at lists more often for the same time, so the form is ready in about 1 to 2.5 s on the mock forms.
+- **Automatic submit, built and off.** Phone app only, with the person's tick on record and the per-system switch (`counsel_approved`
+  stays false everywhere: Saif decides): every condition is checked again, "Submitting for you in 3" with Cancel, Sent only on the
+  employer's confirmation page.
+- **Terms section 3** rewritten to match (draft): sent straight to the employer, sent by email, one tap, submitted for you only if you
+  turn it on.
+- **Outreach queue** (`tools/outreach-queue.py`): the week's employers to invite to connect, SmartRecruiters first, and where each
+  invitation stands. It sends nothing.
+- Tests: `tools/test-consent.py`, `tools/test-email-route.py`, `tools/test-outreach-queue.py`; the email-posting path in
+  `tools/test-swipe-e2e.py`; one tap, the automatic notice and its timing in `tools/test-assist.js`; one tap in the app (with a stand-in
+  plugin) and the sign-in gate in `tools/ui-apply-paths.py`, now at 390 and 1280.
+
+### Pay as the posting gives it (Saif, October 23, the recommendations list): never guessed, never converted
+- **A job with no pay** says "Pay not listed" in the pay line's place (and "Not listed" on its Salary line and in the receipt's Pay line).
+- **Hourly pay is shown as hourly**: the feeds now keep an hourly range with its unit (`salUnit: "hour"`: USAJOBS "PH", SmartRecruiters
+  HOURLY, career pages' JSON-LD HOUR, Jobicy and Himalayas hourly, and "$18 - $22 per hour" in a posting's text), and the card says
+  "$18–$22.50 per hour". It used to be dropped, so those cards said nothing. A yearly range still says "per year".
+- **Nothing derives one from the other**: an hourly job is not measured against the yearly minimum salary (its Salary line is neutral,
+  the minimum-salary filter and the pay band Learn uses skip it), and the receipt says "an hour" or "a year" as given.
+- Share this job's rows name the unit too ("a year", "an hour", "Pay not listed"). Job Tracker's rows show no pay at all, so nothing to change.
+- `tools/ui-pay.js` checks one job of each kind on the card, in Job Tracker, in the pay words Share uses and in the receipt, at 390 and 1280.
+- Not changed (Hiring mode, flagged for Mohammed): importing an employer's own posting still turns hourly pay into a yearly range
+  (x 2,080 in `shared/uaply-employers.js`), and the Post a job form asks for yearly pay ("Paid hourly? Multiply by 2,080").
+
+### Galaxy walk fixes (Saif, October 23): the phone keyboard, the password eye, small text, the share target, the bar colours, the location card
+- **The keyboard no longer covers the card.** The pages ask the browser to resize for it (`interactive-widget=resizes-content`); where
+  only the visual viewport shrinks (the installed app), the page around the app's frame sets the frame to the height still visible and
+  back when the keyboard goes, and the box being typed in plus the card's main button below it (Create my account, Sign in) scroll into
+  that space. `tools/ui-gate.js` proves it at 384 x 748 with the bottom 330 px covered.
+- **The password eye** keeps the focus in the box (no keyboard closing and re-opening), caret at the end, the box in view.
+- **14 px text**: the Job Tracker figures' labels and the points on each match line ("15/15"), without breaking the rows at 390.
+- **Share this job**: its tap area is exactly 44 x 44 px (was 43).
+- **Status and navigation bars**: a theme-color per light and dark mode on the app pages (the manifest keeps the light value).
+- **Location card on a phone or in the installed app**: "Allow location for UAply in your phone's settings, then tap Try again", two
+  lines and its two buttons, above the chips and never over the first job card (`tools/ui-phone.js` checks it). Laptops keep the
+  address-bar wording.
+
+### Sign-in, server side (Saif, October 22): password sign-up with names, the code to verify and to sign in, the gate, a test mode, items 12 to 23
+- **The contract** is in `docs/ACCOUNTS.md`, "The sign-in contract": every route, field and answer, the gate and the test mode, for the
+  card and the gate the front end builds.
+- **Sign-up** is email, first and last name and a password (8 to 128), with the 18+ / Terms tick: the account keeps the names
+  (`first_name`, `last_name`; `/api/auth/me` gives `first`, `last`), signs in at once, answers first and emails the verification code
+  after the answer (or says `bounced` for an address on the bounce list). An empty profile name is filled from the account's names when
+  an application is made. The emailed code is also the other way in ("Email me a code"), with its own sign-in wording (item 21).
+- **Code sign-in runs wherever the server runs** (sandbox, dev, the live site; item 0, record item 22), with its two rules (Google asks
+  the owner's own tick: `agree_owner`; Resend counts toward the day's cap). A public server without email does not offer it and its code
+  routes answer 503 `mail_off`. `UAPLY_CODE_SIGNIN=0` is the only off switch.
+- **The gate**: signed out, `/api/jobs`, the apply, plan, mark, decision, chat, feedback, resume and employer routes answer 401
+  `{"error": "Sign in first.", "code": "signin"}`; the page, help, legal, the health check, status and every sign-in route stay open.
+- **Test mode**: `UAPLY_SIGNUP_TEST=1` on a server that is not public makes sign-up verified and signed in at once with no email
+  (`providers.signupTest`); ignored on a public server.
+- **Items**: 13 the day counters are capped (20,000, the oldest first); 15 one limit sentence for sign-ups and codes, the same for every
+  address; 16 change password on an account with no password says so (Google only when linked); 17 full-width and Arabic-Indic digits
+  count; 19 an address like a@example..com is refused; 20 Forgot password answers first everywhere and writes its token after; 23
+  `/api/auth/me` says `googleLinked`. 14 and 18 were already closed (a660b4a: the last hop; the real `created` flag).
+- **Tests**: `tools/test-signin-contract.py` (new, 42, in the runner and CI); test-public (the 401s), test-signup-flow, test-public-auth,
+  test-accounts, test-google, test-google-token, test-render, test-mail-limits and the swipe walk updated for the new rules (codes arrive
+  just after the answer; dev has code sign-in; the people sign in first). `tools/live-check.py` checks the 401s and reads the job list and
+  the help chat only with a signed-in session in `UAPLY_LIVE_COOKIE`.
 
 ### Share this job (Mohammed's design, version A, October 22)
 - **On the swipe page the one change is a small share icon** (36 px, "Share this job") in the top-right corner of the job card.

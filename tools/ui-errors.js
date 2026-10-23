@@ -3,6 +3,8 @@
 //   W=390 H=844 PORT=18795 node tools/cdp.js tools/ui-errors.js
 const PORT = process.env.PORT || "18795";
 module.exports = async ({ ev, sleep, nav, logs, send, on, shot }) => {
+  // the sign-in gate (October 22, Saif): nobody reaches the jobs without an account, so a fresh test person signs up first (tools/gate-signup.js)
+  await require("./gate-signup.js")({ ev, sleep, nav }, "http://127.0.0.1:" + (process.env.PORT || "8767"), "errors");
   const F = "document.querySelector('iframe').contentDocument";
   let bad = 0;
   const check = (name, ok, extra) => { if (!ok) bad++; console.log((ok ? "PASS " : "FAIL ") + name + (extra ? "  " + extra : "")); };
@@ -15,7 +17,10 @@ module.exports = async ({ ev, sleep, nav, logs, send, on, shot }) => {
   await send("Fetch.enable", { patterns: [{ urlPattern: "*/api/*" }] });
   on("Fetch.requestPaused", (p) => {
     const id = p.requestId;
-    if (mode === "ok") return send("Fetch.continueRequest", { requestId: id });
+    // the session and sign-in calls (/api/auth/...) answer as usual, so the app behind the sign-in gate is on screen and each data call misbehaves;
+    // "all-offline" (at the end) fails that one too: then the gate's card must show, with nothing broken on it
+    if (mode === "ok" || (mode !== "all-offline" && /\/api\/auth\//.test(p.request.url))) return send("Fetch.continueRequest", { requestId: id });
+    if (mode === "all-offline") return send("Fetch.failRequest", { requestId: id, errorReason: "InternetDisconnected" });
     if (mode === "offline") return send("Fetch.failRequest", { requestId: id, errorReason: "InternetDisconnected" });
     if (mode === "500") return send("Fetch.fulfillRequest", { requestId: id, responseCode: 500, responseHeaders: [{ name: "Content-Type", value: "application/json" }], body: b64('{"error":"boom"}') });
     if (mode === "502html") return send("Fetch.fulfillRequest", { requestId: id, responseCode: 502, responseHeaders: [{ name: "Content-Type", value: "text/html" }], body: b64("<html><body>Bad gateway</body></html>") });
@@ -54,6 +59,12 @@ module.exports = async ({ ev, sleep, nav, logs, send, on, shot }) => {
     check("[" + m + "] no uncaught script errors", newErrs.length === 0, newErrs.slice(0, 3).join(" | "));
     if (process.env.OUT && (m === "500" || m === "offline")) await shot(require("path").join(process.env.OUT, "errors-" + m + ".png"));      // a picture only when asked for one
   }
+  // nothing answers at all, the session included: the app cannot know who this is, so the sign-in gate's card is the screen
+  mode = "all-offline";
+  await nav("http://127.0.0.1:" + PORT + "/"); await sleep(4500);
+  const tg = await text();
+  check("[all-offline] the server answers nothing, the session included: the sign-in card shows, not a blank or broken screen",
+    (await ev("!!(" + F + ").querySelector('.sg-card')")) && tg.length > 40 && !BADTOK.test(tg), BADTOK.test(tg) ? "found: " + tg.match(BADTOK)[0] : tg.slice(0, 160));
   mode = "ok";
   console.log(bad ? bad + " problem(s)" : "All good");
 };

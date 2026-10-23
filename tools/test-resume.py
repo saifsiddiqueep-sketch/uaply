@@ -237,16 +237,20 @@ print("\n== The endpoint on a real server (POST /api/profile/resume)")
 tmp = tempfile.mkdtemp(prefix="uaply-resume-")
 logf = open(os.path.join(tmp, "server.log"), "w+")
 env = dict(os.environ, UAPLY_DATA_DIR=os.path.join(tmp, "data"), UAPLY_CONFIG_FILE="none",
-           UAPLY_CONFIG_JSON=json.dumps({"feeds": [], "delivery": "test", "smtp": {}, "owner_copy": ""}))
+           UAPLY_CONFIG_JSON=json.dumps({"feeds": [], "delivery": "test", "smtp": {}, "owner_copy": ""}),
+           UAPLY_SIGNUP_TEST="1")          # sign-up test mode (never public): the sign-in gate's test person is confirmed at once
 env.pop("HOST", None)
 proc = subprocess.Popen([sys.executable, os.path.join(ROOT, "serve.py"), str(PORT), os.path.join(ROOT, "sandbox"), "--api"], env=env, stdout=logf, stderr=logf)
 BASE = "http://127.0.0.1:%d" % PORT
+COOKIE = ""                                # the signed-in test person's session (the resume reader is behind the sign-in gate)
 
 
 def call(body, ctype="application/json", origin=True, path="/api/profile/resume"):
     h = {"Content-Type": ctype}
     if origin:
         h["Origin"] = BASE
+    if COOKIE:
+        h["Cookie"] = COOKIE
     req = urllib.request.Request(BASE + path, data=body, headers=h, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
@@ -265,6 +269,9 @@ try:
             break
         except Exception:
             time.sleep(0.25)
+    sys.path.insert(0, HERE)
+    import gate_session
+    COOKIE = gate_session.cookie(BASE)
     code, out = call(js)
     t("a text resume: 200 and its fields", (code, out.get("found", 0) >= 12, val(out.get("fields", {}), "school")), (200, True, "Temple University"))
     code, out = call(mp, "multipart/form-data; boundary=" + bnd)

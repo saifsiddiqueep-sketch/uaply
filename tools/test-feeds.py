@@ -118,7 +118,15 @@ t("the credit line on the record", (it.get("via"), it.get("credit")), ("USAJOBS"
 cs = by.get("Contract Specialist") or {}
 t("'Multiple Locations' names the first two places", cs.get("loc"), "Philadelphia, Pennsylvania; Camden, New Jersey +1 more")
 t("no ApplyURI: the announcement is the link", cs.get("url"), "https://www.usajobs.gov/job/900000102")
-t("hourly pay is not shown as a yearly range", cs.get("sal"), [0, 0])
+t("hourly pay stays hourly, as the posting gives it (never turned into a yearly range)", (cs.get("sal"), cs.get("salUnit")), ([28.1, 36.5], "hour"))
+t("a yearly range carries no hourly unit", it.get("salUnit"), None)
+# pay is read as the posting gives it, never guessed or converted (October 23: "Pay not listed" rule)
+t("text: '$18 - $22 per hour' and '$28.10-$36.50/hr' are hourly ranges as written", (J._hourly("Pay: $18 - $22 per hour"), J._hourly("$28.10 - $36.50/hr")), ([18.0, 22.0], [28.1, 36.5]))
+t("text: 'competitive pay', 'up to $25/hr', '$80k+' give no pay at all (nothing estimated)", (J._hourly("competitive pay"), J._hourly("up to $25/hr"), J._salary("Salary: $80k+")), (None, None, [0, 0]))
+t("text: a yearly range is never read as hourly", J._hourly("$120,000 - $140,000 per year"), None)
+import emails as EM   # noqa: E402
+t("the application summary's pay line: yearly a year, hourly an hour, none 'Not listed'",
+  (EM._money([60000, 80000]), EM._money([18, 22.5], "hour"), EM._money([0, 0])), ("$60k to $80k a year", "$18 to $22.50 an hour", "Not listed"))
 t("an overseas posting (Ramstein, Germany) is dropped by the US rule", "Budget Analyst" in by, False)
 rm = by.get("Management and Program Analyst") or {}
 t("a remote federal job is kept as remote", (rm.get("mode"), rm.get("loc")), ("remote", "Anywhere in the U.S. (remote job)"))
@@ -391,16 +399,19 @@ def http_checks(port):
         dated = [{k: v for k, v in x.items() if k != "updated"} for x in dated]
         json.dump({"|".join(CITY): {"at": time.time(), "jobs": dated, "status": "67 jobs"}, "_version": J.CACHE_VERSION}, f)
     env = dict(os.environ, UAPLY_CONFIG_FILE="none", UAPLY_DATA_DIR=data, HOST="127.0.0.1",
-               UAPLY_CONFIG_JSON=json.dumps({"feeds": ["smartrecruiters", "usajobs"], "delivery": "test", "smtp": {}, "google": {}, "owner_copy": ""}))
+               UAPLY_CONFIG_JSON=json.dumps({"feeds": ["smartrecruiters", "usajobs"], "delivery": "test", "smtp": {}, "google": {}, "owner_copy": ""}),
+               UAPLY_SIGNUP_TEST="1")          # sign-up test mode (never public): the sign-in gate's test person is confirmed at once
     env.pop("OWNER_PASSWORD", None)
     log = open(os.path.join(TMP, "server.log"), "w")
     srv = subprocess.Popen([sys.executable, os.path.join(copy, "serve.py"), str(port), os.path.join(copy, "dev"), "--api"], env=env, stdout=log, stderr=log)
     base = "http://127.0.0.1:%d" % port
 
-    def call(method, path, body=None, origin=base):
+    def call(method, path, body=None, origin=base, cookie=""):
         h = {"Content-Type": "application/json"}
         if origin:
             h["Origin"] = origin
+        if cookie:
+            h["Cookie"] = cookie
         rq = urllib.request.Request(base + path, data=json.dumps(body).encode() if body is not None else None, headers=h, method=method)
         try:
             with urllib.request.urlopen(rq, timeout=30) as r:
@@ -427,7 +438,9 @@ def http_checks(port):
             t("HTTP: the keys landed in the throwaway copy's settings file", json.load(f).get("feed_keys"), {"usajobs": KEY, "muse": MUSE})
         s, page = call("GET", "/setup")
         t("HTTP: /setup has the Job feed keys box and never the keys", (s, 'id="feeds"' in page, KEY in page, MUSE in page), (200, True, False, False))
-        s, body = call("GET", "/api/jobs")
+        sys.path.insert(0, HERE)
+        import gate_session                    # the sign-in gate: the job list needs a signed-in, confirmed person
+        s, body = call("GET", "/api/jobs", cookie=gate_session.cookie(base))
         data_out = json.loads(body)
         city = [j for j in data_out["jobs"] if j.get("via") == "City of Philadelphia on SmartRecruiters"]
         t("HTTP: the job list serves the City's 40 jobs from the last 60 days (not the 27 older ones; two postings with one title stay two), each with its via label and postedDays",

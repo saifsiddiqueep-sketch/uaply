@@ -189,6 +189,14 @@ def suppressed(addr):
     return ""
 
 
+def blocked_addresses():
+    """Every address mail is not sent to right now, read once (the job list checks the postings that take applications by email)."""
+    with _lock:
+        d = _read_json(_sup_path(), {}).get("blocked", {})
+    now = clock()
+    return frozenset(a for a, s in d.items() if isinstance(s, dict) and (not s.get("until") or s["until"] > now))
+
+
 def suppress(addr, why, days=None):
     a = str(addr or "").strip().lower()
     if not a or "@" not in a:

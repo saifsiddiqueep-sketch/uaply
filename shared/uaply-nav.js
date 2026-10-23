@@ -133,6 +133,8 @@ body{padding-bottom:calc(12px + var(--safe-b))}
    The height is measured each time (cardCover below); nothing is added when the row does not reach the card. */
 #deck[data-covered] .card.top::after{content:"";flex:none;height:var(--card-cover,0px)}
 #pane-track .stats{grid-template-columns:repeat(4,1fr)}
+/* four figures in a row need about 460 px for "Interviews" at 14 px; narrower, they sit two by two so no label breaks inside a word */
+@media (max-width:460px){#pane-track .stats{grid-template-columns:repeat(2,1fr)}}
 #pane-track .row{flex-wrap:wrap}
 #pane-track .acts{display:flex;gap:6px;flex-wrap:wrap;flex-basis:100%}
 #pane-track .acts .btn{padding:6px 12px;font-size:13px}
@@ -162,7 +164,7 @@ body{padding-bottom:calc(12px + var(--safe-b))}
 .hdrbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 #pane-track .info>b{display:inline}
 #pane-track .info>small{display:block}
-.mchip{display:inline-block;margin-left:8px;padding:2px 9px;border-radius:999px;font:600 11px var(--mono,inherit);letter-spacing:.02em;vertical-align:2px;border:1px solid var(--line);white-space:nowrap}
+.mchip{display:inline-block;margin-left:8px;padding:2px 9px;border-radius:999px;font:600 14px/1.3 var(--mono,inherit);letter-spacing:.02em;vertical-align:2px;border:1px solid var(--line);white-space:nowrap}
 .mchip.m-remote{background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);border-color:transparent}
 .mchip.m-hybrid{background:color-mix(in srgb,var(--accent2) 18%,transparent);color:var(--ink);border-color:transparent}
 .mchip.m-onsite{background:var(--bg);color:var(--muted)}
@@ -283,6 +285,11 @@ input[type=range]{accent-color:var(--accent);min-height:44px}
 #locAsk{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:100%;max-width:620px}
 #locAsk p{margin:0;color:var(--muted);font-size:13.5px}
 #locAsk .acts{display:flex;gap:8px;flex-wrap:wrap}
+/* on a phone: the title, at most two lines of text and the two buttons side by side, so the first job card keeps its place below */
+#locAsk.phone{padding:10px 12px;gap:6px}
+#locAsk.phone p{font-size:13px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+#locAsk.phone .acts{flex-wrap:nowrap}
+#locAsk.phone .acts .btn{flex:1}
 @media (max-height:740px){.swipecol{gap:8px}.tips{padding:6px 10px!important;font-size:12.5px!important;line-height:1.35}.banner{padding:4px 10px!important;font-size:12px!important;line-height:1.3}.banner button{padding:4px 0!important;min-height:32px}#locAsk{padding:8px 12px;gap:4px;border-radius:12px}#locAsk b{font-size:13.5px}#locAsk p{font-size:12px;line-height:1.35}#locAsk .acts .btn{min-height:34px;padding:5px 14px;font-size:13.5px}.filters button{padding:4px 2px!important;min-height:32px}}
 #fMilesWrap.nearbox{display:flex;flex-direction:column;gap:6px;margin-top:8px}
 #fMilesWrap .rngrow{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
@@ -307,6 +314,8 @@ html{-webkit-tap-highlight-color:transparent}a,button,input,select,textarea,summ
     October 22, 2026). Above the card, and reaching further down, it is 44 px again */
  .filters button{z-index:1}
  .filters button::after{height:52px}
+ /* ...and never over the location card's or a banner's own buttons next to them (Try again, Not now: 39 px on a turned phone) */
+ .banner button,#locAsk .acts .btn{z-index:2}
 }
 #fJt button{min-height:44px}
 .toast button{position:relative}
@@ -353,7 +362,7 @@ function apply(w,host){
   /* the Plan screen is in every build: on a real server it is backed by Stripe (see billingHTML); the simulated one remains only without a server */
   var ACCT={account:1,plan:1,data:1};
   var LEADS={
-    account:"Sign in to get an email receipt for each application and to apply directly to employers that take applications through UAply. Your profile stays on this device.",   /* nothing syncs a profile between devices, so the screen must not promise it */
+    account:"Sign in to get an email receipt for each application and to apply directly to employers that take applications through UAply. Your name goes with your account; the rest of your profile stays on this device.",   /* nothing syncs a profile between devices, so the screen must not promise it */
     plan:"Choose your plan. Payments are made on Stripe's secure page; you can cancel any time.",
     data:"Back up, move or delete everything UAply keeps about you.",
     settings:"Your details. Every card is scored against them, and they fill in your application note and the email address recruiters reply to.",
@@ -363,7 +372,7 @@ function apply(w,host){
      them; the owner's computer (test inbox) and a server with email keep the line above */
   function leadOf(v){
     /* signed in: the line above "You are signed in" must not still ask the person to sign in */
-    if(v==="account"&&SRV.up&&SRV.user)return "Your sign-in, email confirmations and password. Your profile stays on this device.";
+    if(v==="account"&&SRV.up&&SRV.user)return "Your sign-in, your name, email confirmations and password. The rest of your profile stays on this device.";
     if(v==="account"&&SRV.up&&SRV.mailKnown&&!(SRV.canEmail||SRV.testInbox))return "Sign in to keep a record of your applications with your account and to apply directly to employers that take applications through UAply. Email receipts start once email is switched on for this site. Your profile stays on this device.";
     return LEADS[v];
   }
@@ -376,6 +385,7 @@ function apply(w,host){
   phoneField.innerHTML='<label for="pPhone">Phone</label><input type="tel" id="pPhone" autocomplete="tel" maxlength="20" placeholder="+1 555 123 4567"><small id="pPhoneErr" role="alert"></small>';
   emailField.after(phoneField);FIELDS.settings.push("pPhone");
   var cur="svc",sub={svc:"job",dash:"overview",prof:"settings"},going=false;
+  var viewStack=[],viewNow=null,backing=false,exitAt=0;   /* the screens visited, for the phone's Back button (see __uaplyBack) */
   function label(k,v){if(k==="prof"&&SUB_ALIAS[v])v=SUB_ALIAS[v];var r="";SECS[k].items.forEach(function(i){if(i[0]===v)r=i[1]});return r}
 
   var st=d.createElement("style");st.textContent=CSS;d.head.appendChild(st);
@@ -454,6 +464,8 @@ function apply(w,host){
       b.setAttribute("aria-current",k===cur?"true":"false");
       b.querySelector("small").textContent=label(k,sub[k]);
     });
+    var vk=cur+":"+sub[cur];
+    if(vk!==viewNow){if(viewNow&&!backing){viewStack.push(viewNow);if(viewStack.length>30)viewStack.shift()}viewNow=vk;exitAt=0}
   }
   function closeMenus(except){
     nav.querySelectorAll(".nwrap").forEach(function(wr){
@@ -515,6 +527,7 @@ function apply(w,host){
   };
   var TYPE_LABEL={job:"Full-time",parttime:"Part-time",internship:"Internship",coop:"Co-op"};
   function renderTrack(){
+    if(w.__uaplyGateUp){tp.innerHTML="";return}   /* the sign-in gate: no Job Tracker rows while nobody is signed in */
     var by={applied:[],accepted:[],rejected:[],interview:[],passed:[]};
     A.JOBS.forEach(function(j){
       var x=A.S.decisions[j.id];if(!x)return;
@@ -537,6 +550,10 @@ function apply(w,host){
       if(x.status==="needs_answers")return '<small class="sent todo">Not sent yet: '+e(o.j.co)+'\'s form asks something only you can answer. '+again+'Answer now</button></small>';
       return "";
     }
+    /* the date beside the status (October 23): "Sent" only for an application that went (UAply's send, a test send, the person's own on the
+       employer's site); "Saved" for everything else (a hand-off, one waiting, one not sent yet) */
+    function whenLine(o){var x=o.x.sent,went=!!(x&&(x.status==="sent"||x.status==="delivered_test"||x.status==="self"));
+      return (went?"Sent ":"Saved ")+new Date(went&&x.at?x.at:o.x.at).toLocaleDateString(undefined,{month:"short",day:"numeric"})}
     /* what the row is at a glance: the tracking stage once the person set one, otherwise what happened to the application */
     function isHandoff(o){var x=o.x.sent;return !x||x.status==="handoff"}     /* nothing was sent (no server said so): finish on their site */
     function stChip(o){
@@ -558,7 +575,7 @@ function apply(w,host){
     function row(o,acts,view){
       var t=A.tone(o.x.pct),e=A.esc;
       return '<div class="row"><div class="logo" aria-hidden="true" style="background:hsl('+A.hue(o.j.id)+' 60% 46%)">'+e(o.j.co.charAt(0))+'</div><div class="info"><b>'+e(o.j.role)+'</b>'+modeChip(o.j)+'<small>'+e(o.j.co)+' · '+e(o.j.loc)+' · '+TYPE_LABEL[o.j.type||"job"]+(o.j.live&&w.__uaplyRouteWord?'<span class="rtword"> · '+e(w.__uaplyRouteWord(o.j))+'</span>':'')+'</small>'+
-        (view!=="passed"?'<small>Applied '+new Date(o.x.at).toLocaleDateString(undefined,{month:"short",day:"numeric"})+'</small>':'')+
+        (view!=="passed"?'<small>'+whenLine(o)+'</small>':'')+
         detLine(o,view)+(view!=="passed"?stChip(o):'')+sentLine(o)+(view!=="passed"?jobLinks(o):'')+'</div><span class="pill tone-'+t+'">'+o.x.pct+'%</span>'+
         '<div class="acts">'+extraActs(o,acts,view).map(function(a,i){return '<button type="button" class="btn'+(i?' ghost':'')+'" data-act="'+a[0]+'" data-id="'+o.j.id+'" aria-label="'+a[1]+': '+e(o.j.role)+' at '+e(o.j.co)+'">'+a[1]+'</button>'}).join("")+'</div>'+(OPEN[o.j.id]&&view!=="passed"?detForm(o,view):"")+'</div>';
     }
@@ -622,12 +639,16 @@ function apply(w,host){
   function assistOnly(p,sc,asked){var o={answers:{}},own=Object.prototype.hasOwnProperty;if(!p||!sc)return o;(sc.keys||[]).forEach(function(k){if(own.call(ASSIST_NEED,k))ASSIST_NEED[k].split(" ").forEach(function(f){if(own.call(p,f)&&f!=="answers"&&f!=="resume")o[f]=p[f]})});var want={};(sc.answerKeys||[]).concat(asked||[]).forEach(function(k){want[String(k)]=1});Object.keys(p.answers||{}).forEach(function(k){if(own.call(want,k))o.answers[k]=p.answers[k]});if(sc.resume===true&&p.resume)o.resume=p.resume;return o}
   function assistHosts(cfg,url){var out=[],add=function(h){h=String(h||"").toLowerCase();if(/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(h)&&out.indexOf(h)<0)out.push(h)},s=cfg&&cfg.systems||{};Object.keys(s).forEach(function(k){var hs=s[k]&&s[k].hosts;if(Array.isArray(hs))hs.forEach(add)});try{var u=new w.URL(url);if(u.protocol==="https:")add(u.hostname)}catch(e){}return out}
   w.__uaplyAssistShape=assistShape;w.__uaplyAssistOnly=assistOnly;w.__uaplyAssistHosts=assistHosts;   /* for the browser tests */
+  /* Automatic submit needs the person's own tick, on record at the server for the current agreement (consent_api.py): the answer of the
+     agreement just given on this device (__uaplyConsentRec), else what /api/auth/me said. Without it the app never presses Submit */
+  function autoConsent(){if(SRV.user&&SRV.user.sendForMe===false)return false;var c=("__uaplyConsentRec" in w)?w.__uaplyConsentRec:(SRV.user&&SRV.user.consent);return !!(c&&c.v===w.__uaplyConsentV&&c.auto===true)}
+  w.__uaplyAutoConsent=autoConsent;   /* for the browser test */
   var assistBusy=false;
   function assistedApply(j,AP){
     var prof=w.__uaplyAssistProfile&&w.__uaplyAssistProfile(j);if(!prof||assistBusy)return false;
     assistBusy=true;var sys=atsOf(j.url),url=handoffURL(j.url);
     Promise.all([w.fetch("/uaply-assist.js").then(function(r){if(!r.ok)throw 0;return r.text()}),w.fetch("/assist-systems.json").then(function(r){return r.ok?r.json():{}}).catch(function(){return {}})]).then(function(r){
-      var base={url:url,engine:r[0],allow:assistHosts(r[1],url),job:{co:j.co,role:j.role},system:sys,mode:assistMode(r[1],sys)};
+      var base={url:url,engine:r[0],allow:assistHosts(r[1],url),job:{co:j.co,role:j.role},system:sys,mode:assistMode(r[1],sys)==="automatic"&&autoConsent()?"automatic":"assisted"};
       /* the bridge: the app reads the form first (scan, nothing changed, with stand-ins for the person's details) and returns what the
          profile cannot answer and which profile items the form asks for; UAply asks those in its own question box (required first, then
          the optional ones, which may be left blank), keeps the answers like every question-box answer, and only then opens the form,
@@ -654,6 +675,18 @@ function apply(w,host){
     },function(){assistBusy=false;if(w.__uaplyOpen)w.__uaplyOpen(handoffURL(j.url))});   /* the app could not open it: the employer's page as before */
     return true;
   }
+  /* one swipe (Saif, October 23): in the phone app, a swipe right that is a hand-off on a hiring system the app fills opens that employer's
+     own form at once, filled and scrolled to the check or Submit ("One tap to finish", shared/uaply-assist.js); the person completes any
+     check and taps Submit, and Job Tracker says Sent on the confirmation page. Backing out leaves it as Finish on their site. Not on the
+     website, not for SmartRecruiters (its bot wall) or an employer's own careers site: those wait for Finish on their site */
+  var ONE_TAP_SYS={greenhouse:1,lever:1,workable:1,ashby:1};
+  w.__uaplyOneTap=function(j){
+    if(!j||!j.url||!/^https:\/\//.test(j.url)||!ONE_TAP_SYS[atsOf(j.url)])return false;
+    if(SRV.user&&SRV.user.sendForMe===false)return false;   /* Send applications for me is off: the swipe only saves the job */
+    var AP=plug("UAplyAssist");if(!AP)return false;
+    w.__uaplyOneTapAt=Date.now();          /* for the measurement in tools/ui-apply-paths.js: swipe answered, form asked for */
+    return assistedApply(j,AP);
+  };
   function finishOnSite(id){
     var j=A.JOBS.filter(function(x){return x.id===id})[0];if(!j||!j.url||!/^https:\/\//.test(j.url))return;
     var AP=plug("UAplyAssist");if(AP&&assistedApply(j,AP))return;
@@ -816,7 +849,7 @@ function apply(w,host){
   w.__uaplyHide=function(j){
     if(w.__uaplyHideMore&&w.__uaplyHideMore(j))return true;   /* set by Hiring mode (sandbox): closed postings, eligibility */
     var p=A.S.profile;
-    if(acct.fSal&&p.salary&&j.sal&&j.sal.length>1&&j.sal[1]<p.salary)return true;
+    if(acct.fSal&&p.salary&&j.sal&&j.sal.length>1&&j.salUnit!=="hour"&&j.sal[1]<p.salary)return true;   /* hourly pay is never measured against a yearly minimum */
     if(acct.fYrs!=="any"&&j.yrs>(+p.years||0)+(+acct.fYrs))return true;
     var co=String(j.co).toLowerCase(),hay=(String(j.role)+" "+(j.skills||[]).join(" ")).toLowerCase();
     if(list(acct.fCo).some(function(x){return co.indexOf(x)>-1})||list(acct.fKw).some(function(x){return hay.indexOf(x)>-1}))return true;
@@ -862,9 +895,26 @@ function apply(w,host){
     var ask=d.getElementById("locAsk");if(ask&&(devPos()||(DEV&&DEV.skipped)))ask.remove();
     var st=d.getElementById("fLocState"),bt=d.getElementById("fLocBtn");if(!st||!bt)return;
     if(devPos()){st.textContent="Using your device location (accurate to about a mile). It stays on this device and is never sent to our server.";bt.textContent="Stop using my location";bt.setAttribute("data-mode","stop")}
-    else if(DEV&&DEV.denied){st.textContent="Location is blocked for this site. Allow it in your browser's site settings (the icon at the left of the address bar), then tap Use my location. Until then distance uses your city.";bt.textContent="Use my location";bt.setAttribute("data-mode","ask")}
+    else if(DEV&&DEV.denied){st.textContent=phoneish()?"Location is off for UAply. Allow it in your phone's settings, then tap Use my location. Until then distance uses your city.":"Location is blocked for this site. Allow it in your browser's site settings (the icon at the left of the address bar), then tap Use my location. Until then distance uses your city.";bt.textContent="Use my location";bt.setAttribute("data-mode","ask")}
     else{st.textContent="Not using your device location. Distance uses your city or ZIP code.";bt.textContent="Use my location";bt.setAttribute("data-mode","ask")}
   }
+  /* a phone, or the installed app (the Play Store app, a site added to the home screen): no address bar to point at, so the location card
+     speaks of the phone's settings and stays short (two lines and its two buttons: Galaxy walk, October 22, it pushed the first job card
+     down with laptop instructions). Laptops keep the laptop words. */
+  function phoneish(){
+    try{var t=w.top;
+      if(t.Capacitor||(t.matchMedia&&(t.matchMedia("(display-mode: standalone)").matches||t.matchMedia("(display-mode: fullscreen)").matches)))return true;
+      if(t.navigator&&t.navigator.standalone)return true;
+      if(/Android|iPhone|iPad|iPod|Mobile/i.test(t.navigator.userAgent||""))return true;
+      return !!(t.matchMedia&&t.matchMedia("(pointer: coarse)").matches&&t.innerWidth<820);
+    }catch(e){return false}
+  }
+  var LOC_PHONE={
+    ask:["See jobs near you first?","Your phone will ask to share your location. It only puts nearby jobs first and never leaves this device.","Use my location"],
+    again:["See jobs near you first?","Tap Use my location, then choose Allow. It only puts nearby jobs first.","Use my location"],
+    blocked:["Location is off for UAply","Allow location for UAply in your phone's settings, then tap Try again.","Try again"],
+    nofix:["We could not find you just now","Your phone could not tell where it is. Try again, or UAply uses your city.","Try again"]
+  };
   var LOC_TXT={
     ask:["See jobs near you first?","Your browser will ask to share your location. UAply uses it only to put nearby jobs at the top. It stays on this device and is never sent to our server. You can turn it off any time in Profile, Filters.","Use my location"],
     again:["See jobs near you first?","Tap Use my location, then choose Allow when your browser asks. UAply uses it only to put nearby jobs at the top, and it never leaves this device.","Use my location"],
@@ -885,7 +935,7 @@ function apply(w,host){
         else{DEV={asked:true,skipped:true,at:Date.now()};saveDev();c.remove();syncLocUI()}
       });
     }
-    var t=LOC_TXT[mode]||LOC_TXT.ask,yes=c.querySelector('[data-near="yes"]');
+    var T=phoneish()?LOC_PHONE:LOC_TXT,t=T[mode]||T.ask,yes=c.querySelector('[data-near="yes"]');c.classList.toggle("phone",T===LOC_PHONE);
     c.querySelector("b").textContent=t[0];c.querySelector("p").textContent=t[1];yes.textContent=t[2];yes.disabled=false;
     return c;
   }
@@ -901,7 +951,8 @@ function apply(w,host){
       var mode=why==="denied"?"blocked":why==="nofix"?"nofix":"again";
       nearBox(mode);
       /* Try again that ends the same way used to redraw the same words, so the button looked dead: say it was tried */
-      if(mode!=="again"&&was.indexOf(LOC_TXT[mode][0])===0)c.querySelector("b").textContent=LOC_TXT[mode][0]+" (still, tried again at "+new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit",second:"2-digit"})+")";
+      var TT=phoneish()?LOC_PHONE:LOC_TXT;
+      if(mode!=="again"&&was.indexOf(TT[mode][0])===0)c.querySelector("b").textContent=TT[mode][0]+" (still, tried again at "+new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit",second:"2-digit"})+")";
     });
   }
   /* The Internship and Co-op stacks: undergraduate roles before graduate-only ones (PhD, master's, MBA; the server marks them gradOnly),
@@ -1267,8 +1318,12 @@ function apply(w,host){
   }
 
   /* ---------- phone-app features (App Store / Google Play build in mobile/). They switch on only when the page runs
-     inside the Capacitor app; on the website every helper quietly does nothing or uses the browser equivalent. ---------- */
-  function cap(){var c=w.Capacitor||(w.parent&&w.parent!==w&&w.parent.Capacitor);return c&&c.isNativePlatform&&c.isNativePlatform()?c:null}
+     inside the Capacitor app; on the website every helper quietly does nothing or uses the browser equivalent.
+     The TOP page's bridge comes first, the frame's only when there is no top one. The app runs in a frame, and the native side answers
+     plugin calls from the top page (the main frame) only. Android (Capacitor 7) also puts a bridge into the same-origin app frame, but
+     every plugin call from it is dropped with no answer (MessageHandler.java: "Plugin execution is allowed in Main Frame only"), so
+     calling it would never add the Back listener and never finish an export. iPhone puts its bridge in the main frame only. ---------- */
+  function cap(){var c=null;try{if(w.parent&&w.parent!==w)c=w.parent.Capacitor||null}catch(e){}c=c||w.Capacitor;return c&&c.isNativePlatform&&c.isNativePlatform()?c:null}
   function plug(name){var c=cap();return c&&c.Plugins&&c.Plugins[name]||null}
   function noteId(id){return Math.abs(+id)%2000000000||1}
   /* two reminders for each interview: the evening before (6 pm) and one hour before */
@@ -1304,9 +1359,41 @@ function apply(w,host){
   },0);
   function icsTime(t){function z(n){return (n<10?"0":"")+n}return t.getUTCFullYear()+z(t.getUTCMonth()+1)+z(t.getUTCDate())+"T"+z(t.getUTCHours())+z(t.getUTCMinutes())+"00Z"}
   function icsText(s){return String(s).replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\r?\n/g,"\\n")}
+  /* the three export buttons (calendar .ics, applications CSV, backup JSON). On the website: a normal download. The phone apps' web
+     views ignore downloads, so there the file is written to the app's own cache folder (@capacitor/filesystem; private to the app,
+     never shared storage, as the backup holds the whole profile) and the phone's share sheet opens to save or send it. An app build
+     without that plugin copies the text instead and says so; it never says "Saved" for a file it did not write. */
   function download(name,type,text){
+    if(cap())return appExport(name,text);
     var b=new w.Blob([text],{type:type}),u=w.URL.createObjectURL(b),a=d.createElement("a");
     a.href=u;a.download=name;d.body.appendChild(a);a.click();a.remove();setTimeout(function(){w.URL.revokeObjectURL(u)},4000);
+  }
+  function appExport(name,text){
+    var FS=plug("Filesystem"),SH=plug("Share");
+    if(!FS||!SH||!FS.writeFile)return copyExport(name,text);
+    /* writing the file gets 8 seconds: a bridge that never answers must not leave the button doing nothing, so the text is copied
+       instead. The share sheet has no time limit: the person may take as long as they like in it. */
+    var tm,late=new Promise(function(ok,no){tm=setTimeout(function(){no(new Error("no answer"))},8000)});
+    return Promise.race([Promise.resolve().then(function(){return FS.writeFile({path:name,data:text,directory:"CACHE",encoding:"utf8"})}),late]).then(function(r){
+      clearTimeout(tm);
+      if(!r||!r.uri)throw new Error("no file");
+      return Promise.resolve(SH.share({title:name,dialogTitle:"Save or send "+name,files:[r.uri]})).then(function(){return "shared"},function(e){
+        if(/cancel/i.test(String(e&&e.message||e)))return "canceled";   /* the person closed the share sheet: nothing to say */
+        throw e;
+      });
+    }).catch(function(){clearTimeout(tm);return copyExport(name,text)});
+  }
+  function copyExport(name,text){
+    return copyText(text).then(function(ok){
+      showToastNote(ok?"Copied "+name+". Paste it into a note or email to keep it.":"This version of the app cannot save "+name+". Nothing was saved.");
+      return ok?"copied":"failed";
+    });
+  }
+  function copyText(t){
+    function old(){try{var ta=d.createElement("textarea");ta.value=t;ta.setAttribute("readonly","");ta.style.cssText="position:fixed;top:0;left:0;opacity:0";d.body.appendChild(ta);ta.select();var ok=d.execCommand("copy");ta.remove();return !!ok}catch(e){return false}}
+    var C=w.navigator.clipboard;
+    if(C&&C.writeText)return Promise.resolve().then(function(){return C.writeText(t)}).then(function(){return true},function(){return old()});
+    return Promise.resolve(old());
   }
   function exportIcs(id){
     var job=A.JOBS.filter(function(j){return j.id===id})[0],a=ap(id),t=new Date(a.when);
@@ -1908,7 +1995,7 @@ function apply(w,host){
     var h='<h3>'+label("prof",v)+'</h3><p class="lead">'+(v==="plan"&&earlyAccess()?EARLY:leadOf(v))+'</p>';
     /* preview: the release build shows only the preview note; the sandbox keeps its simulated sign-in below it */
     /* sign-up v2 (shared/uaply-signup.js): when that file is loaded and the server signs in by emailed code, its card replaces the signed-out Account screen and its two questions run here just after sign-up; it answers false to keep the card below. Without that file nothing changes */
-    acctSec.classList.remove("sgnOn");if(v==="account"&&SRV.up&&!AUI.reset&&!preview()&&w.__uaplySignCard){acctSec.innerHTML=h+(typeof shieldsLine==="function"?shieldsLine():"")+'<div id="sgnHost"></div><p class="note" id="aMsg" role="status"></p>';if(w.__uaplySignCard(d.getElementById("sgnHost"),SRV.user)!==false){acctSec.classList.add("sgnOn");paintHeader();return}}
+    acctSec.classList.remove("sgnOn");if(v==="account"&&(SRV.up||(w.__uaplyGated&&w.__uaplyGated()))&&!AUI.reset&&!preview()&&w.__uaplySignCard){acctSec.innerHTML=h+(typeof shieldsLine==="function"?shieldsLine():"")+'<div id="sgnHost"></div><p class="note" id="aMsg" role="status"></p>';if(w.__uaplySignCard(d.getElementById("sgnHost"),SRV.user)!==false){acctSec.classList.add("sgnOn");paintHeader();return}}
     if(v==="account"){acctSec.innerHTML=h+shieldsLine()+readyHTML("account")+(preview()?previewHTML()+(REL?"":accountHTML()):accountHTML())+'<p class="note" id="aMsg" role="status"></p>';paintHeader();setTimeout(mountGoogle,0);return}
     if(v==="plan"&&preview()&&REL){
       h+=previewHTML();
@@ -1945,6 +2032,14 @@ function apply(w,host){
   }
   acctSec.addEventListener("change",function(e){
     var t=e.target;
+    if(t.id==="aSendForMe"){var want=!!t.checked;t.disabled=true;
+      apiPost("/api/auth/send-for-me",{on:want}).then(function(r){
+        if(r.ok&&r.j&&SRV.user)SRV.user.sendForMe=r.j.sendForMe!==false;
+        renderAcct("account");
+        msg(r.ok?(want?"Send applications for me is on: a swipe right sends your application wherever UAply can.":"Send applications for me is off: swipes right only save the job to Job Tracker.")
+          :(r.j&&r.j.error)||"Could not change it. Try again.");
+      });
+      return}
     if(t.id==="aEnf"){acct.enforce=t.checked;saveA();msg(acct.enforce?"Limits are now enforced.":"Limits are off.")}
     else if(t.id==="aImp"&&t.files[0]){
       var g=t.files[0];if(g.size>3145728){msg("That file is too large.");return}
@@ -1988,7 +2083,21 @@ function apply(w,host){
     else if(a==="wipe"){
       if(b.getAttribute("data-sure")!=="1"){b.setAttribute("data-sure","1");b.textContent="Click again to delete everything";return}
       [w.__uaplyKey,AK,NK,LK].forEach(function(k){try{w.localStorage.removeItem(k)}catch(x){}});
-      w.location.reload();
+      /* in the phone apps the export files stay in the app's cache folder after the share sheet (the backup holds the whole profile),
+         so they go too: uaply-backup.json, uaply-applications.csv and every interview-*.ics. A delete that fails (a file never made) is
+         ignored, and the page reloads once all of them have answered (at most 8 seconds, like the export, if the bridge never answers).
+         They are not deleted when the share sheet returns: the app the person picked may still be reading the file then. */
+      var FS=plug("Filesystem");
+      if(!FS||!FS.deleteFile){w.location.reload();return}
+      b.disabled=true;
+      var gone=false,reload=function(){if(!gone){gone=true;w.location.reload()}};
+      var del=function(p){return Promise.resolve().then(function(){return FS.deleteFile({path:p,directory:"CACHE"})}).catch(function(){})};
+      var jobs=[del("uaply-backup.json"),del("uaply-applications.csv")];
+      if(FS.readdir)jobs.push(Promise.resolve().then(function(){return FS.readdir({path:"",directory:"CACHE"})}).then(function(r){
+        return Promise.all(((r&&r.files)||[]).map(function(f){return typeof f==="string"?f:(f&&f.name)||""}).filter(function(n){return /^interview-[^\/]*\.ics$/.test(n)}).map(del));
+      }).catch(function(){}));
+      Promise.all(jobs).then(reload,reload);
+      setTimeout(reload,8000);
     }
   });
   function importBackup(txt){
@@ -2092,6 +2201,7 @@ function apply(w,host){
     var e=signedWho();
     hb.innerHTML=e?'<span class="av" aria-hidden="true">'+E(e.charAt(0).toUpperCase())+'</span><span class="em">'+E(e)+'</span>':'Sign in';
     hb.setAttribute("aria-label",e?"Account: "+e:"Sign in or create an account");
+    if(w.__uaplyGateSync)w.__uaplyGateSync();   /* the sign-in gate (shared/uaply-signup.js): every change of who is signed in passes here */
   }
   hb.onclick=function(){sub.prof="account";cur="prof";go("prof")};
   function afterServerSignIn(){
@@ -2144,7 +2254,9 @@ function apply(w,host){
   /* sign-up v2: what shared/uaply-signup.js may use from this screen (nothing reads it when that file is not loaded) */
   w.__uaplyAuthApi={post:apiPost,msg:msg,srv:function(){return {up:SRV.up,user:SRV.user,google:!!SRV.google,hideGoogle:noGoogle(),redirect:!!SRV.googleRedirect,clientId:SRV.googleClientId||"",canEmail:!!SRV.canEmail,mailKnown:!!SRV.mailKnown,testInbox:SRV.testInbox||"",near:NEAR}},
     signedIn:function(u){SRV.user=u;afterServerSignIn();if(typeof checkCookie==="function")checkCookie()},mountGoogle:mountGoogle,redraw:function(){if(!acctSec.hidden&&sub.prof==="account")renderAcct("account")},
-    acct:function(fn){fn(acct);saveA();A.renderAll()},askDevice:askDevice,cards:function(){cur="svc";go("svc")}};
+    acct:function(fn){fn(acct);saveA();A.renderAll()},askDevice:askDevice,cards:function(){cur="svc";go("svc")},
+    /* the sign-in gate: the Account screen open (only once: an open one is left as it is, so nothing typed is redrawn away) */
+    account:function(){if(cur==="prof"&&sub.prof==="account"&&!acctSec.hidden&&!d.getElementById("pane-profile").hidden)return;sub.prof="account";cur="prof";go("prof")}};
   /* Apple (App Store guideline 4.8) requires Sign in with Apple wherever an iPhone app offers Google, so inside the iPhone app Google stays hidden until Apple sign-in exists */
   function iosShell(){try{var c=w.top.Capacitor;return !!(c&&c.getPlatform&&c.getPlatform()==="ios"&&!SRV.apple)}catch(e){return false}}
   /* Google refuses to sign anyone in inside an app's built-in web view (Android and iPhone alike: "Error 403: disallowed_useragent"),
@@ -2183,6 +2295,7 @@ function apply(w,host){
     var ga=(d.getElementById("gAgree")||{}).checked;
     msg("Signing in with Google…");
     apiPost("/api/auth/google/token",{credential:resp&&resp.credential,agree:!!ga}).then(function(r){
+      if(!r.ok&&r.j&&(r.j.code==="agree_owner"||r.j.code==="agree")&&w.__uaplySignReturn&&w.__uaplySignReturn.call(w,r.j.code,false,false))return;   /* the card asks for the owner's own tick (the same hook as googleReturn's) */
       if(!r.ok||!r.j.user){msg((r.j&&r.j.error)||"Google sign-in did not work. Try again.");return}
       SRV.user=r.j.user;afterServerSignIn();renderAcct("account");msg(r.j.passwordRemoved?PW_GONE:"Signed in with Google.");
     });
@@ -2248,6 +2361,16 @@ function apply(w,host){
       '<div class="acts"><button type="button" class="btn" data-auth="sdelsend">Send and continue</button><button type="button" class="btn ghost" data-auth="sdelskip">Skip survey</button></div>'+
       '<div class="acts"><button type="button" class="linkbtn" data-auth="sdelno">Keep my account</button></div></div>';
   }
+  /* Send applications for me (Terms, section 3): on, a swipe right sends the application wherever UAply can; off, every swipe right only
+     saves the job to Job Tracker, and the server honors it (uaply_api.submit), so it holds on every device. Kept on the account */
+  function sendForMeHTML(){
+    var on=!(SRV.user&&SRV.user.sendForMe===false);
+    return '<div class="field" id="aSendWrap" style="margin:4px 0"><label for="aSendForMe" style="display:flex;gap:10px;align-items:center;min-height:44px;cursor:pointer">'+
+      '<input type="checkbox" id="aSendForMe" role="switch" aria-describedby="aSendNote"'+(on?' checked':'')+' style="min-width:22px;min-height:22px;margin:0"><b>Send applications for me</b></label>'+
+      '<small id="aSendNote">'+(on?'On: a swipe right sends your application wherever UAply can (see the Terms, section 3). Turn it off and swipes right only save the job to Job Tracker.'
+        :'Off: swipes right only save the job to Job Tracker. Nothing is sent to any employer for you until you turn it on again.')+'</small></div>';
+  }
+  w.__uaplySendOff=function(){return !!(SRV.user&&SRV.user.sendForMe===false)};
   function deleteHTML(){
     if(AUI.survey)return surveyHTML();
     if(AUI.delOpen){
@@ -2266,9 +2389,9 @@ function apply(w,host){
   function serverHTML(){
     if(!SRV.user&&AUI.reset)return resetHTML();
     if(!SRV.user&&AUI.forgot&&AUI.sMode==="in")return forgotHTML();
-    if(SRV.user)return '<div class="plan" style="display:flex;flex-direction:column;gap:8px"><span class="tag" style="background:var(--accent);color:var(--accent-ink)">ACCOUNT</span><b>You are signed in</b><small>'+E(SRV.user.email)+(SRV.user.emailVerified===false?' · email not verified yet':' · email verified')+'</small>'+verifyHTML()+
+    if(SRV.user)return '<div class="plan" style="display:flex;flex-direction:column;gap:8px"><b>You are signed in</b><small>'+E(SRV.user.email)+(SRV.user.emailVerified===false?' · email not verified yet':' · email verified')+'</small>'+verifyHTML()+
       '<p class="note" style="margin:0">'+(SRV.user.emailVerified===false?'Once your email is verified, each swipe right sends a confirmation to it':'Every time you swipe right, a confirmation goes to this email')+(SRV.canEmail?'':SRV.testInbox?' (no real email is connected here yet, so it is saved in the <a href="/outbox" target="_blank" rel="noopener noreferrer">test inbox</a>; <a href="/setup#gmail" target="_blank" rel="noopener noreferrer">connect Gmail</a> to send real ones)':' (email is not switched on for this site yet, so no confirmation goes out for now)')+'.</p>'+
-      (AUI.survey||AUI.delOpen?'':'<div class="acts"><button type="button" class="btn ghost" data-auth="sout">Sign out</button></div>'+changeHTML())+
+      (AUI.survey||AUI.delOpen?'':sendForMeHTML()+'<div class="acts"><button type="button" class="btn ghost" data-auth="sout">Sign out</button></div>'+changeHTML())+
       deleteHTML()+
       '</div>';
     var up=AUI.sMode!=="in";
@@ -2616,6 +2739,8 @@ function apply(w,host){
 
   /* routing */
   function go(k){
+    /* the sign-in gate (shared/uaply-signup.js): with no account signed in, every way of moving (a tab, a menu, a key) opens Account */
+    if(w.__uaplyGated&&w.__uaplyGated()){sub.prof="account";cur="prof";k="prof"}
     going=true;
     if(k==="svc"){A.setType(sub.svc);A.show("swipe");savePrefs()}
     else if(k==="dash"){A.show("apps");d.getElementById("pane-apps").hidden=true;renderTrack();tp.hidden=false}
@@ -2628,6 +2753,7 @@ function apply(w,host){
     going=false;refresh();main.scrollTop=0;
   }
   w.__uaplyOnShow=function(t){
+    if(t!=="profile"&&w.__uaplyGated&&w.__uaplyGated()){A.show("profile");return}   /* the sign-in gate: only Account behind the card */
     tp.hidden=true;
     /* leaving Profile setup with unsaved answers saves them quietly (if they are valid) instead of losing them */
     if(t!=="profile"&&wz.dirty&&!form.hidden&&form.classList.contains("wz")){w.__uaplyAutoSave=true;try{wzSave("quiet")}finally{w.__uaplyAutoSave=false;wz.dirty=false}}
@@ -2637,6 +2763,44 @@ function apply(w,host){
     if(t==="profile")section(sub.prof);
     refresh();
   };
+  /* the phone's Back button (Android; @capacitor/app). Without a listener Capacitor closes the whole app, because UAply changes
+     screens inside one page. Back now closes the top box or menu, then goes back one screen (Profile, Job Tracker, a job type),
+     then to the job cards; on the job cards it asks once and leaves only on a second press within 2 seconds.
+     Returns what it did, for tools/ui-native-back-export.js. */
+  function topDialog(){
+    var ds=[].slice.call(d.querySelectorAll('[role="dialog"]')).filter(function(x){return !x.closest("[hidden]")&&x.getClientRects().length>0});
+    return ds[ds.length-1]||null;
+  }
+  w.__uaplyBack=function(){
+    var dl=topDialog();
+    if(dl){   /* UAply's boxes close on Escape, the rating question on its Close button; a box that needs an answer stays */
+      exitAt=0;dl.dispatchEvent(new w.KeyboardEvent("keydown",{key:"Escape",bubbles:true,cancelable:true}));
+      if(topDialog()===dl){var x=dl.querySelector('button[aria-label="Close"]');if(x)x.click()}
+      return "dialog";
+    }
+    if([].some.call(nav.querySelectorAll(".nmenu"),function(m){return !m.hidden})){closeMenus();exitAt=0;return "menu"}
+    var to=viewStack.pop();
+    while(to&&to===viewNow)to=viewStack.pop();
+    if(!to&&cur!=="svc")to="svc:"+sub.svc;
+    if(to){
+      var c=to.slice(0,to.indexOf(":")),v=to.slice(to.indexOf(":")+1);
+      backing=true;try{closeMenus();sub[c]=v;cur=c;go(c)}finally{backing=false}
+      return "view";
+    }
+    if(exitAt&&Date.now()-exitAt<2000){exitAt=0;var AP=plug("App");if(AP&&AP.exitApp)Promise.resolve(AP.exitApp()).catch(function(){});return "exit"}
+    exitAt=Date.now();showToastNote("Press Back again to leave UAply.");
+    return "ask";
+  };
+  /* one listener per bridge: the bridge belongs to the top page and outlives this frame, and "Delete all my data" reloads only the
+     frame, so adding a listener on every load would run Back twice per press (quit at once on the job cards). The one listener calls
+     whichever page is current through c.__uaplyBackGo, which each load points at its own __uaplyBack. */
+  (function(){
+    var c=cap(),AP=plug("App");if(!c||!AP||!AP.addListener)return;
+    c.__uaplyBackGo=function(){return w.__uaplyBack()};
+    if(c.__uaplyBackOn)return;
+    c.__uaplyBackOn=true;
+    try{Promise.resolve(AP.addListener("backButton",function(){if(typeof c.__uaplyBackGo==="function")c.__uaplyBackGo()})).catch(function(){})}catch(e){}
+  })();
   section(sub.prof);
   refresh();
   /* de-duplication: experiments apply one after another in the same turn, so by the next tick we know whether the

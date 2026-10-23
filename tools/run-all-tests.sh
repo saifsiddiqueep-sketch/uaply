@@ -31,6 +31,7 @@ run "node check.js" node check.js
 run "audit of every file (JSON, Python, JS, HTML, links, XML, images, secrets, git hygiene)" python tools/audit-files.py
 run "every page and email renders, every script parses, no line break JavaScript would join, shell scripts parse" python tools/test-pages.py
 run "taps and focus: the one rule (shared/uaply-focus.css) word for word in every page UAply serves" python tools/test-focus.py
+run "phone apps' native settings: iPhone portrait only, the privacy manifest in the app, Android backup off, the Back and export plugins in both builds" python tools/test-mobile-native.py
 run "taps and focus in Chrome at phone size: no default tap highlight anywhere, no ring after a tap, a keyboard ring, the starting-up retries" env W=390 H=844 node tools/cdp.js tools/ui-focus.js
 run "assisted apply on a mock form of each hiring system: every field lands, nothing voluntary, never Submit; filled from only what the scan saw" env W=390 H=844 node tools/cdp.js tools/test-assist.js
 run "assisted apply against hostile pages: a page's own UAplyAssist, a redirect to another site and a look-alike host receive nothing" env W=390 H=844 node tools/cdp.js tools/test-assist-hostile.js
@@ -40,15 +41,19 @@ if python -m ruff --version >/dev/null 2>&1; then run "Python syntax errors and 
 step "Servers"
 mkdir -p "$TMP/sb" "$TMP/dv" "$TMP/pub" "$TMP/smtp" "$TMP/g"
 export UAPLY_CONFIG_JSON="$FEEDS"
-PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/sb" start python serve.py 18766 sandbox --api)"
-PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/dv" start python serve.py 18767 dev --api)"
+# both in sign-up test mode (UAPLY_SIGNUP_TEST=1, allowed because they bind 127.0.0.1): behind the sign-in gate a browser test signs a
+# fresh person up first (tools/gate-signup.js) and is confirmed at once; codes and receipts still land in the test inbox (/outbox)
+PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/sb" UAPLY_SIGNUP_TEST=1 start python serve.py 18766 sandbox --api)"
+PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/dv" UAPLY_SIGNUP_TEST=1 start python serve.py 18767 dev --api)"
 wait_port 18766 && wait_port 18767 && echo "  sandbox on 18766, dev on 18767" || { echo "  FAIL  servers did not start"; exit 1; }
 # sign-up v2: the sandbox shows the no-password card; this second sandbox has it off (UAPLY_CODE_SIGNIN=0), for the tests of today's password card
 mkdir -p "$TMP/sboff"
 PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/sboff" UAPLY_CODE_SIGNIN=0 start python serve.py 18770 sandbox --api)"
 wait_port 18770 && echo "  sandbox with today's sign-in card on 18770"
 # wait for the real-jobs feed to be ready on dev
-for _ in $(seq 1 120); do n=$(curl -s http://127.0.0.1:18767/api/jobs | python -c "import sys,json; print(len(json.load(sys.stdin)['jobs']))" 2>/dev/null); [ "${n:-0}" -gt 100 ] && break; sleep 1; done
+# the job list needs an account now: one test sign-up on dev (test mode signs it in at once), and its cookie for the count
+curl -s -c "$TMP/dv.jar" -o /dev/null -H 'Content-Type: application/json' -H 'Origin: http://127.0.0.1:18767' -d '{"email":"runner.feeds@example.com","password":"Runner-feeds-pw9","first":"Run","last":"Ner","agree":true}' http://127.0.0.1:18767/api/auth/signup
+for _ in $(seq 1 120); do n=$(curl -s -b "$TMP/dv.jar" http://127.0.0.1:18767/api/jobs | python -c "import sys,json; print(len(json.load(sys.stdin)['jobs']))" 2>/dev/null); [ "${n:-0}" -gt 100 ] && break; sleep 1; done
 echo "  real postings on dev: ${n:-0}"
 
 step "Job feed rules (US-only, no foreign roles, classification)"
@@ -67,6 +72,10 @@ step "Swipe-right emails (content, test label, safety, real send)"
 run "receipt and owner copy emails" python tools/test-emails.py
 run "email as the mail service sees it: headers, daily quota (250/300), refusals, held mail, bounce webhook" python tools/test-mail-limits.py 2538 18799
 run "help requests from the assistant reach the support inbox" python tools/test-support.py
+run "the sign-in contract: password sign-up with names, the code to verify and to sign in, the gate, the test mode, items 12 to 23" python tools/test-signin-contract.py 18964
+run "the consent record: the box's words are the server's, kept on the account with the time, the address and their SHA-256; nothing is sent without it" python tools/test-consent.py 18970
+run "apply by email: only a posting's own \"send your resume to\" address at the employer's domain; reply-to, receipt, limits, the stop link, bounces, test mode" python tools/test-email-route.py 18973
+run "the outreach queue: who to invite each week, and it can never send" python tools/test-outreach-queue.py
 run "the Help chat sends to the AI only after the person said Continue (checked on the server)" python tools/test-chat.py
 run "applications go straight into employers' hiring systems (Greenhouse, Lever)" python tools/test-ats.py
 run "applications go straight into an employer's Ashby" python tools/test-ats-ashby.py
@@ -116,6 +125,8 @@ run "dev: every way of swiping, and what each sends (LinkedIn, resume, one email
 run "dev: the app copes when the server fails, goes offline or sends garbage" env W=390 H=844 PORT=18767 node tools/cdp.js tools/ui-errors.js
 run "the installable website: Chrome can install it; its offline screen when the server is down, during a deploy (502) and offline, never for a slow page" node tools/cdp.js tools/ui-installable.js
 run "dev: skill chips, the empty Add button and the file downloads" env W=390 H=844 PORT=18767 node tools/cdp.js tools/ui-effects.js
+run "dev in the phone apps (a stand-in Capacitor): Android Back goes back one screen and leaves only on a second press; the export buttons share a file, or copy and say so" env W=390 H=844 PORT=18767 node tools/cdp.js tools/ui-native-back-export.js
+run "sandbox in the phone apps: the same" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-native-back-export.js
 run "sandbox: the first-application agreement shows once, swipes throw no error" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-consent-once.js
 run "dev: the first-application agreement shows once, swipes throw no error" env W=390 H=844 PORT=18767 node tools/cdp.js tools/ui-consent-once.js
 run "sandbox: every profile checklist item lands on its field" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-checklist.js
@@ -166,8 +177,20 @@ run "Continue with Google on an iPhone (full-page sign-in), and hidden inside th
 mkdir -p "$TMP/sg"
 PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/sg" UAPLY_CONFIG_JSON='{"delivery":"test","smtp":{},"feeds":[],"owner_copy":"","google":{"client_id":"test.apps.googleusercontent.com","client_secret":"test-secret","auth_url":"http://127.0.0.1:8790/auth","token_url":"http://127.0.0.1:8790/token","certs_url":"http://127.0.0.1:8790/certs"}}' start python serve.py 18769 sandbox --api)"
 wait_port 18769
-run "sandbox sign-up card on a laptop (1280x720): Mohammed's order, Google above the fold, code, the questions, sign-in, Google, hostile text" env W=1280 H=720 PORT=18769 MOCK_GOOGLE_PORT=8790 node tools/cdp.js tools/ui-signup.js
-run "sandbox sign-up card on a phone (390x844): 16 px gutters and the same flow" env W=390 H=844 PORT=18769 MOCK_GOOGLE_PORT=8790 node tools/cdp.js tools/ui-signup.js
+run "sandbox sign-up card on a laptop (1280x720): the order, the password box, the code, the questions, sign-in by password and by code, Google, hostile text" env W=1280 H=720 PORT=18769 MOCK_GOOGLE_PORT=8790 CDP_LIMIT_MS=900000 node tools/cdp.js tools/ui-signup.js
+# the phone run gets a server of its own (each run makes several accounts, and this computer may make 10 an hour)
+mkdir -p "$TMP/sg2"
+PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/sg2" UAPLY_CONFIG_JSON='{"delivery":"test","smtp":{},"feeds":[],"owner_copy":"","google":{"client_id":"test.apps.googleusercontent.com","client_secret":"test-secret","auth_url":"http://127.0.0.1:8790/auth","token_url":"http://127.0.0.1:8790/token","certs_url":"http://127.0.0.1:8790/certs"}}' start python serve.py 18847 sandbox --api)"
+wait_port 18847
+run "sandbox sign-up card on a phone (390x844): 16 px gutters and the same flow" env W=390 H=844 PORT=18847 MOCK_GOOGLE_PORT=8790 CDP_LIMIT_MS=900000 node tools/cdp.js tools/ui-signup.js
+# the sign-in gate (October 22, Saif): signed out, only the card; nothing behind it by scrolling, keys, #hash or the app's own buttons
+mkdir -p "$TMP/gate"
+PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/gate" UAPLY_SIGNUP_TEST=1 UAPLY_CONFIG_JSON='{"delivery":"test","smtp":{},"feeds":[],"owner_copy":""}' start python serve.py 18848 sandbox --api)"
+wait_port 18848
+run "the sign-in gate on a phone (390x844): only the card, its links open, sign-up to the questions, Sign out brings it back" env W=390 H=844 PORT=18848 node tools/cdp.js tools/ui-gate.js
+run "the sign-in gate on a laptop (1280x800): the same" env W=1280 H=800 PORT=18848 node tools/cdp.js tools/ui-gate.js
+run "pay as the posting gives it (390x844): yearly per year, hourly per hour, none Pay not listed; on the card, Job Tracker, Share rows and the receipt" env W=390 H=844 PORT=18848 node tools/cdp.js tools/ui-pay.js
+run "pay as the posting gives it on a laptop (1280x800): the same" env W=1280 H=800 PORT=18848 node tools/cdp.js tools/ui-pay.js
 
 step "Public server behind HTTPS (how a real host runs it)"
 PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/pub" HOST=0.0.0.0 OWNER_PASSWORD=ownerpw UAPLY_CONFIG_JSON='{}' start python serve.py 18772 dev --api)"
@@ -203,7 +226,9 @@ PIDS="$PIDS $(start python tools/mock-stripe.py $((LP+4)))"
 LC_ON='{"feeds":["greenhouse","lever","ashby"],"delivery":"test","owner_copy":"","anthropic_api_key":"","smtp":{"host":"127.0.0.1","port":'$((LP+3))',"starttls":false,"from_addr":"uaply@example.com"},"google":{"client_id":"test.apps.googleusercontent.com","client_secret":"test-secret","auth_url":"http://127.0.0.1:'$((LP+2))'/auth","token_url":"http://127.0.0.1:'$((LP+2))'/token","certs_url":"http://127.0.0.1:'$((LP+2))'/certs"}}'
 PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/lc-on" HOST=0.0.0.0 OWNER_PASSWORD=ownerpw UAPLY_STRIPE_BASE="http://127.0.0.1:$((LP+4))" STRIPE_SECRET_KEY=sk_test_mockkey123456 STRIPE_WEBHOOK_SECRET=whsec_testsecret STRIPE_PRICE_PLUS=price_plus1 STRIPE_PRICE_PRO=price_pro1 UAPLY_CONFIG_JSON="$LC_ON" start python serve.py $((LP+1)) dev --api)"
 wait_port "$LP" && wait_port $((LP+1))
-for _ in $(seq 1 120); do n=$(curl -s "http://127.0.0.1:$LP/api/jobs" | python -c "import sys,json; print(len(json.load(sys.stdin)['jobs']))" 2>/dev/null); m=$(curl -s "http://127.0.0.1:$((LP+1))/api/jobs" | python -c "import sys,json; print(len(json.load(sys.stdin)['jobs']))" 2>/dev/null); [ "${n:-0}" -gt 100 ] && [ "${m:-0}" -gt 100 ] && break; sleep 1; done
+# the job list needs an account now and these two are public (no test mode): the owner's feed health counts the postings instead
+fh() { curl -s -u owner:ownerpw "http://127.0.0.1:$1/api/feed-health" | python -c "import sys,json; print(sum(s.get('jobs',0) for s in json.load(sys.stdin)['sources']))" 2>/dev/null; }
+for _ in $(seq 1 120); do n=$(fh "$LP"); m=$(fh $((LP+1))); [ "${n:-0}" -gt 100 ] && [ "${m:-0}" -gt 100 ] && break; sleep 1; done
 run "live-check.py, everything off: every PASS/FAIL/SKIP line as the live site gets it" python tools/live-check.py --base "http://127.0.0.1:$LP"
 run "live-check.py, email, Google and payments on (stand-ins), all of them required" python tools/live-check.py --base "http://127.0.0.1:$((LP+1))" --expect email,google,payments --google-host "127.0.0.1:$((LP+2))"
 run "ui-live.js, everything off: agreement, Got it, a swipe, Account says email is off, no Google, early access, help" node tools/cdp.js tools/ui-live.js --base "http://127.0.0.1:$LP"

@@ -7,6 +7,7 @@
 // the swipes, nothing else.
 const PORT = process.env.PORT || "18766";
 const path = require("path");
+const gateSignup = require("./gate-signup.js");   // the test person signs up first (Saif, October 22: no account, no data)
 module.exports = async ({ ev, sleep, nav, send, logs, shot }) => {
   const F = "document.querySelector('iframe').contentDocument";
   const FW = "document.querySelector('iframe').contentWindow";
@@ -33,6 +34,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot }) => {
   };
   const decided = () => ev("Object.keys(" + FW + ".__uaply.S.decisions).length");
 
+  await gateSignup({ ev, sleep, nav }, "http://127.0.0.1:" + PORT, "learn");
   await nav("http://127.0.0.1:" + PORT + "/?app=1");
   await sleep(3500);
   if (await ev("!!" + F + ".getElementById('kcYes')")) { await ev(F + ".getElementById('kcYes').click()"); await sleep(400); }

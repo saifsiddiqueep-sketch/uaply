@@ -89,6 +89,17 @@ its "please specify" box, else a job-board choice. Lists, radios and Yes/No butt
 Pronouns and voluntary fields (and an "age range") are always skipped. Never the voluntary
 answers (gender, race, ethnicity, veteran, disability) and never pronouns. The example profile is never used.
 
+### One tap and the automatic notice (October 23, 2026)
+
+- **One tap:** in the phone app a swipe right that is a hand-off on Greenhouse, Lever, Workable or Ashby opens this flow at once, instead
+  of waiting for Finish applying (`__uaplyOneTap` in `shared/uaply-nav.js`). A form with a human check shows "One tap to finish: this employer
+  asks you to confirm you are a person." and is scrolled to the check's box, or to Submit when the check is invisible; the check itself is
+  never filled, started or touched. Backing out keeps Finish on their site. The app asks the page every 150 ms until the form is read or
+  filled (`AssistActivity.FAST`), then every 1.5 s.
+- **Automatic notice:** where automatic submit would be allowed (the switch below and the person's own Automatic submit tick on record,
+  `docs/apply-by-email.md`), `UAplyAssist.autoSubmit` shows "Submitting for you in 3" with a Cancel button, checks every condition again at
+  0, and only then presses Submit. Today no system is approved, so it never runs.
+
 ## 2. Per-system table
 
 ### Before and after the bridge (October 22, the same 80 postings, the Galaxy, nothing submitted)

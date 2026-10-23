@@ -27,6 +27,6 @@ FREE DURING EARLY ACCESS
 UAply is free during early access: nothing is charged, there is no weekly limit on applications, and no card is asked for. There are no ads.
 
 PRIVACY
-UAply does not sell your information or use it for advertising. Your profile and swipes are saved on your device; an application's details go to an employer only when you apply to that employer. An account is optional (email and password, or Continue with Google); with one, you get a receipt for each application and can delete the account at any time in Profile, Account. Privacy Policy: https://uaply.net/legal/privacy.html
+UAply does not sell your information or use it for advertising. You sign up once (email and password with a 6-digit code sent to your email, or Continue with Google); your profile and swipes are saved on your device, and an application's details go to an employer only when you apply to that employer. You get a receipt for each application and can delete your account at any time in Profile, Account. Privacy Policy: https://uaply.net/legal/privacy.html
 
 UAply is for people 18 and older. It is the same as the website at uaply.net: sign in with the same account on both.

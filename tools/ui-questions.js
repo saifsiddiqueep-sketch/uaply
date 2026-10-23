@@ -3,6 +3,7 @@
 const fs = require("fs");
 const PORT = process.env.PORT, ID = JSON.parse(fs.readFileSync(process.env.IDS, "utf8")), W = Number(process.env.W), H = Number(process.env.H);
 const PHONE = W < 700, TAG = "[" + W + "x" + H + "]";
+const gateSignup = require("./gate-signup.js");   // the test person signs up first (Saif, October 22: no account, no data)
 module.exports = async ({ ev, sleep, nav, send, shot }) => {
   const snap = async (n) => { if (process.env.SHOTS) await shot(require("path").join(process.env.SHOTS, "questions-" + W + "-" + n + ".png")); };
   const F = "document.querySelector('iframe').contentDocument", FW = "document.querySelector('iframe').contentWindow";
@@ -47,9 +48,10 @@ module.exports = async ({ ev, sleep, nav, send, shot }) => {
     "const over=w.document.documentElement.scrollWidth-w.innerWidth;return b.left>=0&&b.right<=w.innerWidth+0.5&&over<=0?'ok':'left '+b.left+' right '+b.right+' of '+w.innerWidth+', page wider by '+over})()");
 
   // ---- the person: a profile with name and email only, the first-application agreement given --------------------------------------------
+  await gateSignup({ ev, sleep, nav }, "http://127.0.0.1:" + PORT, "questions");
   await nav(base); await sleep(3000);
   const email = "q" + W + "@example.com";
-  await ev("(()=>{const w=" + FW + ";w.localStorage.setItem((w.__uaplyKey||'uaply')+'.consent',JSON.stringify({v:3,at:Date.now(),agent:true}));const A=w.__uaply;Object.assign(A.S.profile,{name:'Sam Rivera',email:'" + email + "',custom:true,title:'Data Analyst',years:1,skills:['Python','SQL']});A.save()})()");
+  await ev("(()=>{const w=" + FW + ";w.localStorage.setItem((w.__uaplyKey||'uaply')+'.consent',JSON.stringify({v:4,at:Date.now(),agent:true}));const A=w.__uaply;Object.assign(A.S.profile,{name:'Sam Rivera',email:'" + email + "',custom:true,title:'Data Analyst',years:1,skills:['Python','SQL']});A.save()})()");
   await nav(base); await sleep(4500);
   await ev("(()=>{const w=" + FW + ";w.__uaplyResume=function(){return {name:'Sam Rivera Resume.pdf',size:40,data:'data:application/pdf;base64,'+btoa('%PDF-1.4 Sam Rivera resume for tests %%EOF')}}})()");
   check("app loaded", await ev("!!(" + FW + ".__uaply&&" + FW + ".__uaplyOnDecision)"));
@@ -58,7 +60,10 @@ module.exports = async ({ ev, sleep, nav, send, shot }) => {
   // a phone's keyboard, as the box sees it: the visible part of the screen shrinks to 420 px (the top page's visual viewport, read when the
   // box opens). Send application must stay inside it (apply journey, October 22: the keyboard covered Send on the Galaxy)
   if (PHONE) await ev("(()=>{window.__realVV=window.visualViewport;window.visualViewport={width:" + W + ",height:420,offsetTop:0,offsetLeft:0,scale:1,addEventListener(){},removeEventListener(){}};return 1})()");
-  check("swipe right on Every Kind Co", (await swipe(ID["Every Kind Co|Data Analyst"])) === "ok");
+  // (the job list now loads only for an account: wait for it before the swipe, up to 20 s)
+  for (let i = 0; i < 40 && !(await ev("!!" + FW + ".__uaply.JOBS.find(j=>j.id===" + ID["Every Kind Co|Data Analyst"] + ")")); i++) await sleep(500);
+  const sw = await swipe(ID["Every Kind Co|Data Analyst"]);
+  check("swipe right on Every Kind Co", sw === "ok", sw + " (jobs in the app: " + (await ev(FW + ".__uaply.JOBS.filter(j=>j.live).length")) + ", signed in: " + (await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>j.user?j.user.email:'nobody')")) + ")");
   await sleep(3000);
   if (PHONE) {
     const pin = JSON.parse(await ev("(()=>{const d=" + F + ",o=d.getElementById('kitAsk'),y=d.getElementById('kaYes');if(!o||!y)return 'null';const b=y.getBoundingClientRect(),ob=o.getBoundingClientRect();" +

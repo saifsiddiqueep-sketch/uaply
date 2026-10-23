@@ -2,6 +2,7 @@
 // node tools/cdp.js tools/ui-sweep.js
 const PORT = process.env.PORT || "8766";
 const REL = process.env.REL === "1";      // the release build (dev): no Plan screen, real jobs only (covered by tools/ui-release.js)
+const gateSignup = require("./gate-signup.js");   // the test person signs up first (Saif, October 22: no account, no data)
 module.exports = async ({ ev, sleep, nav, logs }) => {
   const F = "document.querySelector('iframe').contentDocument";
   const W = "document.querySelector('iframe').contentWindow";
@@ -10,6 +11,7 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
   const clickText = (txt, scope = "button,a,[role=tab]") => ev("(()=>{const e=[...(" + F + ").querySelectorAll('" + scope + "')].find(b=>b.innerText.split(/\\s+/).join(' ').trim().startsWith(" + JSON.stringify(txt) + "));if(!e)return false;e.click();return true})()");
   const visibleText = () => ev("(" + F + ").body.innerText.split(/\\s+/).join(' ')");
 
+  await gateSignup({ ev, sleep, nav }, "http://127.0.0.1:" + PORT, "sweep");
   await nav("http://127.0.0.1:" + PORT + "/");
   await sleep(1500);
   check("page loads with job cards", (await ev(F + ".querySelectorAll('.card').length")) >= 1);

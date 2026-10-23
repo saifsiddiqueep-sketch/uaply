@@ -2,9 +2,42 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
 <meta name="description" content="UAply: swipe right to apply to jobs that match your profile.">
 <title>UAply</title>
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=2">   <!-- a plain host has no /favicon.ico to fall back on -->
+<meta name="theme-color" content="#FDF0F2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#190B10" media="(prefers-color-scheme: dark)">
+<script>
+/* The site itself (October 22, 2026, Saif: nobody reaches anything on the site without an account): opened as the top page by a UAply
+   server, this page hands over to app.html, the release app behind the sign-in gate (the same build as dev). Inside the frame the apps
+   build from this page, on a plain web host with no UAply server, or opened as a saved file, it stays exactly what it always was.
+   How it knows (Reviewer 3, October 22): a HEAD of this very page, which every host answers, and the X-UAply header only a UAply server
+   sends (serve.py), so a plain host logs no failed request. While it asks, the screen says "Starting UAply" (never blank); after 6 s with
+   no answer (a server still waking up) this page shows as it always did, and the question is asked again quietly every 10 s until the
+   server answers, then the hand-over happens. */
+(function(){
+  try{if(window.top!==window)return}catch(e){return}
+  if(!/^https?:$/.test(location.protocol)||!/^\/(index\.html)?$/.test(location.pathname))return;
+  var root=document.documentElement,done=false,shown=false;
+  root.classList.add("uaWaiting");
+  var st=document.createElement("style");
+  st.textContent="html.uaWaiting body{visibility:hidden}html.uaWaiting::after{content:'Starting UAply\u2026';position:fixed;inset:0;display:grid;place-items:center;"+
+    "font:600 16px/1.4 'DM Sans','Segoe UI',system-ui,sans-serif;color:#7B5560;background:#FDF0F2}";
+  document.head.appendChild(st);
+  function show(){if(shown)return;shown=true;root.classList.remove("uaWaiting")}
+  function go(){done=true;location.replace("/app.html"+location.search+location.hash)}
+  function ask(first){
+    var x=new XMLHttpRequest();
+    try{x.open("HEAD",location.pathname+"?uaply_probe="+Date.now(),true);x.timeout=first?6000:20000}catch(e){show();return}
+    x.onload=function(){if(done)return;if(x.getResponseHeader("X-UAply")==="1")go();else show()};   /* a plain web host: the page as it is */
+    x.onerror=x.ontimeout=function(){if(done)return;show();setTimeout(function(){ask(false)},10000)};
+    x.send(null);
+  }
+  ask(true);
+  setTimeout(function(){if(!done){show()}},6500);   /* never more than about 6 s of "Starting UAply" */
+})();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <!-- the fonts never hold the app back: loaded as a non-blocking stylesheet (media=print, switched to all by the script below once it
@@ -77,7 +110,7 @@ main{flex:1;min-height:0;overflow-y:auto;max-width:1100px;width:100%;margin-inli
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .stat{background:var(--bg);border-radius:12px;padding:10px 8px;text-align:center}
 .stat b{display:block;font:800 22px/1.1 var(--display)}
-.stat small{font-size:11.5px;color:var(--muted)}
+.stat small{font-size:14px;line-height:1.25;color:var(--muted);overflow-wrap:normal;word-break:normal;hyphens:none}
 .next{display:flex;flex-direction:column;gap:14px;margin:0;padding:0;list-style:none}
 .next li{display:flex;gap:12px;align-items:center;font-size:15px}
 .next .logo{width:40px;height:40px;border-radius:11px;font-size:18px}
@@ -116,7 +149,7 @@ main{flex:1;min-height:0;overflow-y:auto;max-width:1100px;width:100%;margin-inli
 .score strong{color:var(--tone)}
 .crit{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
 .crit li{display:grid;grid-template-columns:22px 100px 1fr auto;gap:10px;align-items:baseline;font-size:15px}
-.crit .pts{font:400 11.5px var(--mono);color:var(--muted)}
+.crit .pts{font:400 14px var(--mono);color:var(--muted);white-space:nowrap}
 .crit .lbl{color:var(--muted)}
 .crit .val{min-width:0;overflow-wrap:anywhere}
 .crit .val em{font-style:normal;color:var(--muted)}

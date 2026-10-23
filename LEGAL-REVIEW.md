@@ -99,3 +99,32 @@ Added at the owner's request; needs the attorney review before launch. Full rese
 - **Draft clause for the Terms of Service** (not yet in `legal/terms.html`): "Applications on your behalf. You authorize UAply to complete and submit job applications on your behalf using the information you provide. For employers connected to UAply, UAply sends your application when you swipe right. On other employers' sites, the UAply app fills in the employer's application form from your profile and you review and submit it yourself; UAply submits there for you only where this is allowed and you can see that it did. UAply never answers voluntary self-identification questions, never completes security checks such as CAPTCHAs, and tells you an application was sent only when the employer confirms it. You are responsible for the accuracy of your profile and of every application you submit."
 - **The per-system switch:** `shared/assist-systems.json` can allow automatic submit for a hiring system only when the attorney has approved it (`counsel_approved`) and none of its measured forms has a human check. Today every system is "assisted". Measured findings: Greenhouse, Lever and Workable put a human check on every form; Ashby on none; SmartRecruiters blocks automated sessions. None of the five publishes candidate terms that address agents, except SmartRecruiters' Candidate Terms of Use (May 14, 2019), whose prohibited conduct includes using automatic means to access other users' data.
 - **Ask the attorney:** (1) does the clause above make UAply the person's agent, and is that what we want; (2) may UAply press Submit for the person on a system with no human check (Ashby), given the employer's own terms with its hiring system; (3) is "the person presses Submit" enough to treat this as the person's own autofill everywhere else; (4) do the employers' privacy notices, which the person acknowledges themselves, change anything; (5) what notice is needed that the profile is put into the employer's page to fill it.
+
+## 12. A swipe right that submits (October 23, 2026, pending the lawyer)
+
+Saif's direction: a swipe right should submit the application as far as the law and the employers' own channels allow, with the person's
+recorded consent. Built on the sandbox branch b2-swipe-submits; the research and the plan are in `docs/apply-by-email.md`.
+
+- **Consent version 4, on the account.** The first-swipe box (`shared/uaply-live.js`) now says, in Reviewer 3's words, that a swipe right
+  authorizes UAply to submit the application, the four ways it goes, and how to stop it (below). When the
+  person agrees, the server keeps on the account the version, the time, the visitor's address and the SHA-256 of the exact words
+  (`consent_api.py`, `POST /api/consent`). No application leaves UAply without that record: the server answers 403 "consent" otherwise.
+  Not agreeing when the box is shown again from Settings takes it back. Everyone who agreed to version 3 sees the box once more.
+- **The separate tick, off by default, right after the four ways:** "Automatic submit: where a hiring system allows it; none is switched on
+  yet. Where one is, a swipe right fills the employer's form from your profile and presses Submit for you. UAply never answers voluntary
+  self-identification questions, never ticks consent or certification boxes, and never completes a security check; if one is needed it
+  stops and you finish." The "where" comes from `shared/assist-systems.json`, so once Saif switches a system on (counsel approved, no
+  human check measured) the line names it, and the words a person agrees to then are the ones kept with their record.
+- **Apply by email.** Only when a posting's own text asks for applications by email ("send your resume to ...") at an address on the
+  employer's own domain; never a free mailbox, an agency, an accommodations or questions address. Each email names why it came and carries a
+  link that stops UAply emailing that address. Limits: one application per person per job, at most 10 a day per employer domain, UAply's own
+  daily limit, and the bounce list. Question: is an application the posting itself asked for transactional email (CAN-SPAM), as we think?
+- **The words are Reviewer 3's** (box version 4 and Terms section 3, relayed October 23): the authorization, the four ways a swipe right
+  goes, and **Send applications for me** in Profile, Account to stop it (off, every swipe right only saves the job; the server honors it).
+  Settled October 23: an emailed application counts as sent "when UAply's email service accepts it for delivery; UAply cannot see
+  whether the employer read it" (Terms section 3 and the receipt, matching what the app does: a later bounce turns the posting into a
+  hand-off but does not change that Job Tracker row), and the box's third way says it happens "only if you turn on Automatic submit
+  below". The match-percentage line and its How matching works link stay in the box, under the authorization.
+- **Ask the attorney:** (1) the version 4 box and Terms section 3 wording; (2) the email route as described; (3) whether the automatic
+  submit tick should be shown before any system is approved; (4) how long consent records should be kept after an account is deleted
+  (today they go with the account).

@@ -78,7 +78,11 @@ call(u, "/api/auth/logout", {})
 # the real owner of that address uses Forgot password: the emailed link proves the address is theirs, so the Google login Google did not
 # vouch for (it may belong to whoever had the address before) stops opening the account
 call(client(), "/api/auth/forgot", {"email": "fresh@example.com"})
-links = re.findall(r"\?reset=([A-Za-z0-9_-]{20,100})", html.unescape(urllib.request.urlopen(B + "/outbox").read().decode("utf-8")))
+for _ in range(50):                             # Forgot password answers first and emails the link a moment later
+    links = re.findall(r"\?reset=([A-Za-z0-9_-]{20,100})", html.unescape(urllib.request.urlopen(B + "/outbox").read().decode("utf-8")))
+    if links:
+        break
+    __import__("time").sleep(0.1)
 t("the reset link reaches the test inbox", bool(links), True)
 t("the owner sets a password with it", call(client(), "/api/auth/reset", {"token": links[0] if links else "x" * 30, "password": "owners own pass 1"})[0], 200)
 s, out = call(client(), "/api/auth/google/token", {"credential": token(email="fresh@example.com", sub="9020")})
@@ -108,8 +112,8 @@ t("a new password account starts unverified", me(pw)["emailVerified"], False)
 g = client()                                    # pw stays signed in: the link below must sign it out
 # the account's address was never proven, so joining it needs this person's own 18+ / Terms tick (auth_api.oauth_login answers "agree")
 s, out = call(g, "/api/auth/google/token", {"credential": token(email="linked@gmail.com", sub="9004")})
-t("without the 18+ / Terms tick, Google into that unproven account is refused with 'agree', and nothing is linked",
-  (s, out.get("code"), me(g), me(pw)["email"]), (400, "agree", None, "linked@gmail.com"))
+t("without the 18+ / Terms tick, Google into that unproven account is refused with 'agree_owner', and nothing is linked",
+  (s, out.get("code"), me(g), me(pw)["email"]), (400, "agree_owner", None, "linked@gmail.com"))
 s, out = call(g, "/api/auth/google/token", {"credential": token(email="linked@gmail.com", sub="9004"), "agree": True})
 t("Google with the same Gmail address signs into that same account", (s, out["user"]["email"]), (200, "linked@gmail.com"))
 t("...the password nobody confirmed by email is removed, and the page is told", (out["user"]["hasPassword"], out.get("passwordRemoved")), (False, True))

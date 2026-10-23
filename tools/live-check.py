@@ -112,8 +112,15 @@ def req(method, path, body=None, headers=None, raw=None):
         conn.close()
 
 
-def get_json(path):
-    s, h, b = req("GET", path)
+# Saif, October 22: nobody reaches site data without an account. Signed out, the job list and the help chat answer 401 "Sign in first.";
+# their contents are checked only with a signed-in session given in UAPLY_LIVE_COOKIE ("uaply_dev_session=..." from a browser that is
+# signed in: never written into a file or a chat). This check itself never signs up or signs in.
+SIGNIN_FIRST = {"error": "Sign in first.", "code": "signin"}
+LIVE_COOKIE = os.environ.get("UAPLY_LIVE_COOKIE", "").strip()
+
+
+def get_json(path, headers=None):
+    s, h, b = req("GET", path, headers=headers)
     try:
         return s, h, json.loads(b.decode("utf-8"))
     except ValueError:
@@ -183,7 +190,7 @@ def status():
     s, _, j = get_json("/api/status")
     if s == 200 and isinstance(j, dict) and j.get("ok") is True:
         STATUS.update(j, source="/api/status")
-        odd = {k: v for k, v in j.items() if k not in ("apply", "questions") and not (isinstance(v, bool) or v is None or (k == "commit" and isinstance(v, str) and re.fullmatch(r"[0-9a-f]{7}", v)))}
+        odd = {k: v for k, v in j.items() if k not in ("apply", "questions", "selfCheck") and not (isinstance(v, bool) or v is None or (k == "commit" and isinstance(v, str) and re.fullmatch(r"[0-9a-f]{7}", v)))}
         t("/api/status answers with yes/no facts only (and the deployed commit's short id)", not odd, "a value that is not yes/no: %r" % odd)
         return
     # an older server (before /api/status): the same facts from the endpoints the app already reads
@@ -299,8 +306,13 @@ safe(deployed, "the deployed commit")
 
 # ---------- the job list ----------
 def jobs():
-    t0 = time.time()
     s, _, j = get_json("/api/jobs")
+    t("signed out, /api/jobs asks for an account (401 Sign in first.)", (s, j) == (401, SIGNIN_FIRST), "%s %r" % (s, j))
+    if not LIVE_COOKIE:
+        skip("the job list's contents", "a signed-in session in UAPLY_LIVE_COOKIE")
+        return
+    t0 = time.time()
+    s, _, j = get_json("/api/jobs", headers={"Cookie": LIVE_COOKIE})
     took = time.time() - t0
     if not t("/api/jobs answers with a job list", s == 200 and isinstance(j, dict) and isinstance(j.get("jobs"), list), "%s" % s):
         return
@@ -497,8 +509,15 @@ safe(payments, "Plan and billing")
 def help_and_apply():
     s, _, b = req("POST", "/api/chat", {"messages": [{"role": "user", "content": "How do I apply?"}]})
     j = json.loads(b.decode("utf-8")) if b else {}
-    src = [x.get("id") for x in (j.get("sources") or [])]
-    t("the help assistant answers \"How do I apply?\" from its swipe-right article", s == 200 and bool(j.get("answer")) and "swipe-right" in src, "%s %r" % (s, (j.get("answer") or j.get("error") or "")[:100]))
+    t("signed out, the help chat asks for an account (401 Sign in first.)", (s, j) == (401, SIGNIN_FIRST), "%s %r" % (s, j))
+    if LIVE_COOKIE:
+        s, _, b = req("POST", "/api/chat", {"messages": [{"role": "user", "content": "How do I apply?"}]}, headers={"Cookie": LIVE_COOKIE})
+        j = json.loads(b.decode("utf-8")) if b else {}
+        src = [x.get("id") for x in (j.get("sources") or [])]
+        t("the help assistant answers \"How do I apply?\" from its swipe-right article", s == 200 and bool(j.get("answer")) and "swipe-right" in src,
+          "%s %r" % (s, (j.get("answer") or j.get("error") or "")[:100]))
+    else:
+        skip("the help assistant's answer", "a signed-in session in UAPLY_LIVE_COOKIE")
     _, _, c = get_json("/api/apply/config")
     c = c or {}
     t("/api/apply/config answers with the delivery mode", c.get("mode") in ("test", "live"), repr(c))

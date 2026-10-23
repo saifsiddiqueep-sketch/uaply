@@ -19,7 +19,7 @@ var CSS=`
 #acctSec.sgnOn{max-width:none;width:100%;padding:12px 0 16px;flex:1 0 auto;justify-content:center;justify-content:safe center;gap:0}
 #acctSec.sgnOn.sgWide{max-width:none}
 #acctSec.sgnOn>h3,#acctSec.sgnOn>.lead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-#acctSec.sgnOn>#aMsg{text-align:center;margin-top:10px}
+#acctSec.sgnOn>#aMsg{text-align:center;margin-top:10px;font-size:14px}
 #acctSec.sgnOn>#aMsg:empty{display:none}
 #pane-profile:has(>#acctSec.sgnOn:not([hidden])){display:flex;flex-direction:column;min-height:100%}
 .sg{--sg-field:color-mix(in srgb,var(--muted) 72%,var(--surface));--sg-no:color-mix(in srgb,var(--no,#E03A45) 88%,var(--ink));--sg-yes:var(--yes,#0B8F62);--sg-yes-ink:color-mix(in srgb,var(--yes,#0B8F62) 80%,var(--ink));--sg-yes-bg:var(--yes-bg,#DCF5EA);
@@ -41,8 +41,8 @@ var CSS=`
 .sg-chead{display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px;margin-bottom:4px}
 .sg-chead h1{font-size:25px;line-height:1.15}
 .sg-sub{color:var(--muted);margin:0}
-.sg-fine{color:var(--muted);font-size:13px;margin:0}
-.sg-or{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:13px}
+.sg-fine{color:var(--muted);font-size:14px;line-height:1.35;margin:0}
+.sg-or{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:14px;line-height:1.2}
 .sg-or::before,.sg-or::after{content:"";flex:1;height:1px;background:var(--line)}
 .sg-stack{display:flex;flex-direction:column;gap:12px}
 .sg-two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -72,20 +72,20 @@ var CSS=`
 #acctSec .sg .sg-fld.bad input{border-color:var(--sg-no)}
 .sg-fld .sg-tick{position:absolute;right:13px;top:50%;transform:translateY(-50%) scale(.6);color:var(--sg-yes);opacity:0;transition:opacity .2s,transform .2s;font-size:18px;display:flex;pointer-events:none}
 .sg-fld.good .sg-tick{opacity:1;transform:translateY(-50%) scale(1)}
-.sg-fmsg{margin:6px 0 0;font-size:13px;color:var(--muted)}
+.sg-fmsg{margin:6px 0 0;font-size:14px;line-height:1.35;color:var(--muted)}
 .sg-fmsg:empty{display:none}
 .sg-fld.bad .sg-fmsg,.sg-fmsg.err{color:var(--sg-no)}
 .sg-fmsg.nudge{color:var(--accent);font-weight:600}
 .sg-fmsg.ok{color:var(--sg-yes-ink)}
-.sg-fix{font:600 13px var(--body);color:var(--accent);background:none;border:0;padding:0;text-decoration:underline;cursor:pointer}
+.sg-fix{font:600 14px var(--body);color:var(--accent);background:none;border:0;padding:0;text-decoration:underline;cursor:pointer}
 .sg-agree{display:flex;gap:10px;align-items:flex-start;font-size:14px;cursor:pointer;line-height:1.4;color:var(--ink);min-height:44px;padding:2px 0}   /* the whole row ticks the box: a 44 px target (phone fit rule) */
 .sg-agree input{width:20px;height:20px;margin:0;flex:none;accent-color:var(--accent);cursor:pointer}
 .sg-agree span{flex:1;min-width:0}
 .sg-agree a{color:var(--accent)}
 .sg-agree.bad span{color:var(--sg-no)}
-.sg-note{margin:0;font-size:13px;color:var(--muted);text-align:center}
+.sg-note{margin:0;font-size:14px;color:var(--muted);text-align:center}
 .sg-note a{color:var(--accent)}
-.sg-gnote{margin:0;font-size:13px;background:var(--sg-yes-bg);color:var(--ink);border-radius:12px;padding:9px 12px;display:flex;gap:8px;align-items:flex-start}
+.sg-gnote{margin:0;font-size:14px;background:var(--sg-yes-bg);color:var(--ink);border-radius:12px;padding:9px 12px;display:flex;gap:8px;align-items:flex-start}
 .sg-gnote .sg-i{color:var(--sg-yes);margin-top:2px}
 .sg-gis{min-height:44px;display:flex;justify-content:center}
 .sg-have{margin:0;font-size:14px;text-align:center;background:color-mix(in srgb,var(--accent) 9%,var(--surface));border:1px solid color-mix(in srgb,var(--accent) 30%,var(--line));border-radius:12px;padding:6px 12px;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;column-gap:6px}
@@ -95,7 +95,7 @@ var CSS=`
 .sg-okc{width:58px;height:58px;border-radius:50%;display:grid;place-items:center;background:var(--sg-yes-bg);color:var(--sg-yes);font-size:28px;margin:0 auto}
 .sg-done{display:flex;flex-direction:column;gap:12px;text-align:center}
 .sg-done h2,.sg-codestep h2{font-size:25px;line-height:1.15}
-.sg-mark{font:12px var(--mono);color:var(--muted);margin:0;text-align:center}
+.sg-mark{font:14px/1.35 var(--mono);color:var(--muted);margin:0;text-align:center}
 .sg-mark a{color:var(--accent)}
 .sg-code{display:flex;gap:8px;justify-content:center}
 #acctSec .sg .sg-code input{flex:0 1 46px;min-width:0;width:46px;height:56px;border-radius:12px;border:1.5px solid var(--sg-field);background:var(--surface);color:var(--ink);text-align:center;font:600 22px var(--mono);padding:0;margin:0}
@@ -123,12 +123,12 @@ var CSS=`
 .sg-qs{max-width:540px;display:flex;flex-direction:column;gap:16px}
 .sg-qs h2{font-size:32px;line-height:1.1}
 .sg-made{display:inline-flex;align-self:flex-start;align-items:center;gap:8px;margin:0 0 4px;font-weight:600;font-size:14px;color:var(--sg-yes-ink);background:var(--sg-yes-bg);border-radius:999px;padding:6px 12px 6px 10px}
-.sg-eyebrow{font:600 12px var(--mono);color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin:0}
+.sg-eyebrow{font:600 14px var(--mono);color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin:0}
 .sg-chips{display:flex;flex-wrap:wrap;gap:8px}
 .sg-chip{font:600 14px var(--body);color:var(--ink);background:var(--surface);border:1.5px solid var(--sg-field);border-radius:999px;padding:9px 15px;min-height:44px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background-color .15s,border-color .15s}
 .sg-chip:hover{border-color:var(--accent)}
 .sg-chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
-.sg-pvh{font:600 11px var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 8px}
+.sg-pvh{font:600 14px var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 8px}
 .sg-pvcard{background:var(--bg);border:1px solid var(--line);border-radius:20px;padding:20px;display:flex;flex-direction:column;gap:10px}
 .sg-pvn{font:800 22px var(--display);overflow-wrap:anywhere}
 .sg-pvph{color:var(--muted);font-weight:600}
@@ -136,7 +136,7 @@ var CSS=`
 .sg-pvr span{color:var(--muted)}
 .sg-pvr b{font-weight:600;min-width:0;overflow-wrap:anywhere}
 .sg-pvr.later b{font-weight:400;color:var(--muted);font-style:italic}
-.sg-vfl{display:flex;align-items:center;gap:6px;margin:10px 0 0;font-size:13px;font-weight:600;color:var(--sg-yes-ink)}
+.sg-vfl{display:flex;align-items:center;gap:6px;margin:10px 0 0;font-size:14px;font-weight:600;color:var(--sg-yes-ink)}
 .sg-vfl .sg-i{color:var(--sg-yes)}
 .sg-flash{animation:sgflash .6s}
 @keyframes sgflash{0%{background:color-mix(in srgb,var(--accent2) 30%,transparent)}100%{background:transparent}}
@@ -145,8 +145,8 @@ var CSS=`
 .sg-pvmini{display:none}
 .sg-q4f{display:flex;align-items:center;gap:12px;padding:14px 28px 18px;border-top:1px solid var(--line)}
 .sg-q4f .sp{flex:1}
-.sg-kh{font:12px var(--mono);color:var(--muted)}
-.sg-kh kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 5px;background:var(--bg)}
+.sg-kh{font:14px var(--mono);color:var(--muted)}
+.sg-kh kbd{font:14px var(--mono);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 5px;background:var(--bg)}
 @media (max-width:700px){
   .sg-card{max-width:none;padding:22px 20px 20px;border-radius:22px;gap:11px}
   .sg-bb{padding:0 0 12px}
@@ -162,7 +162,7 @@ var CSS=`
   .sg-pv{order:-1}
   .sg-pvh,.sg-pvcard,.sg-vfl{display:none}
   .sg-pv.open .sg-pvcard,.sg-pv.open .sg-vfl{display:flex}
-  .sg-pvmini{display:flex;width:100%;align-items:center;gap:10px;font:600 13px var(--body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:10px 12px;min-height:44px;cursor:pointer;margin-bottom:8px}
+  .sg-pvmini{display:flex;width:100%;align-items:center;gap:10px;font:600 14px var(--body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:10px 12px;min-height:44px;cursor:pointer;margin-bottom:8px}
   .sg-pvmini .sg-meter{flex:1;margin:0;height:6px}
   .sg-pvmini .sg-i{transition:transform .2s}
   .sg-pv.open .sg-pvmini .sg-i{transform:rotate(90deg)}
@@ -178,11 +178,40 @@ var CSS=`
   .sg-q4f{padding:10px 24px 12px}.sg-pvcard{padding:14px 16px;gap:7px}.sg-pvr{padding-top:7px}.sg-pvh{margin-bottom:6px}}
 @media (max-width:360px){.sg-two{grid-template-columns:1fr}#acctSec .sg .sg-code input{height:50px}}
 @media (prefers-reduced-motion:reduce){.sg *,.sg *::before,.sg *::after{animation-duration:1ms!important;animation-iteration-count:1!important;transition-duration:1ms!important}}
+/* the gate (October 22, 2026, Saif): with no account signed in, the card is the whole screen. Everything else (the header, the deck,
+   Job Tracker, Profile, Hiring mode, Help, any message or dialog) is not drawn at all, so nothing behind it can be seen, scrolled to,
+   tabbed to or read by a screen reader. Signed in, the app is exactly as before */
+body.sgGated>*:not(main){display:none!important}
+body.sgGated #main{position:fixed;inset:0;z-index:50;overflow-y:auto;overscroll-behavior:contain;background:var(--bg);margin:0;max-width:none;width:auto;height:auto;
+  padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px))}
+body.sgGated #main>*:not(#pane-profile){display:none!important}
+body.sgGated #pane-profile{display:flex!important;flex-direction:column;min-height:100%}
+body.sgGated #pane-profile>*:not(#acctSec){display:none!important}
+body.sgGated #acctSec{display:flex!important}
+.sg-legal{margin:2px 0 0;text-align:center;font-size:14px;color:var(--muted);display:flex;flex-wrap:wrap;justify-content:center;column-gap:4px}
+.sg-legal a{color:var(--muted);text-decoration:underline;display:inline-flex;align-items:center;min-height:44px;padding:0 6px}
+/* the password box: its own show/hide button inside the box, a 44 px target */
+#acctSec .sg .sg-pw input{padding-right:52px}
+.sg-pw .sg-tick{display:none}
+.sg-eye{position:absolute;right:2px;top:50%;transform:translateY(-50%);width:44px;height:44px;border:0;background:none;color:var(--muted);cursor:pointer;display:grid;place-items:center;border-radius:10px;padding:0}
+.sg-eye:hover{color:var(--ink)}
+.sg-eye svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.sg-pwh{margin-top:6px}
+.sg-pw.bad .sg-pwh{display:none}
+.sg-alt{margin:0;text-align:center;font-size:14px}
+.sg-alt .sg-lnk{font-size:14px;font-weight:500;color:var(--muted)}
 `;
 
 /* the card's styles go into the production page's own style sheet, so the card never shows unstyled */
 function patch(s){
   s=once(s,"</style>",CSS+"</style>");
+  /* the gate (October 22, the runner's finding): signed out, the page builds no job card, no Applied list and no dashboard, so no job's
+     title is anywhere in the page, drawn or hidden. __uaplyGateUp is up from the first line and comes down only once /api/auth/me
+     answers with an account (gateSync); every drawing of the deck, Applied and the dashboard asks it first, and the gate going up again
+     (Sign out) empties them */
+  s=once(s,'var KEY="','window.__uaplyGateUp=true;\nvar KEY="');
+  s=once(s,'function renderAll(){renderDeck();renderApps();renderDash()}',
+    'function renderAll(){if(window.__uaplyGateUp){["deck","pane-apps","pane-dash"].forEach(function(i){var e=$(i);if(e)e.innerHTML=""});return}renderDeck();renderApps();renderDash()}');
   return s;
 }
 
@@ -209,6 +238,83 @@ function apply(w,host){
   function fx(el){if(!el)return;try{el.focus({preventScroll:true})}catch(e){try{el.focus()}catch(_){}}}
   /* error focus: bring the problem into view first (a phone shows less than the card), then focus it. Headings keep plain fx() */
   function fxs(el){if(!el)return;try{el.scrollIntoView({block:"center",behavior:RM()?"auto":"smooth"})}catch(e){}fx(el)}
+
+  /* ---------- the phone's keyboard (Galaxy walk, October 22: in the installed app it covered Create my account by 133 px and Sign in by
+     40 px; in Chrome it once covered the Email box while typing). The app runs in a frame, and the frame did not get shorter when the
+     keyboard came up, so nothing inside could scroll above it. Now: the pages ask the browser to resize for the keyboard
+     (interactive-widget=resizes-content); where it only shrinks the visual viewport instead, the page around the frame sets the
+     frame's height to what is still visible (and back when the keyboard goes); and on the card the box being typed in, and the
+     card's main button below it, are scrolled into the part of the screen that is left. ---------- */
+  function editable(el){return !!el&&(/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)||el.isContentEditable)&&!/^(button|submit|checkbox|radio|range|color|file|hidden|reset|image)$/i.test(el.type||"")}
+  function scroller(el){for(var p=el.parentElement;p&&p!==d.body;p=p.parentElement){var o=w.getComputedStyle(p).overflowY;if((o==="auto"||o==="scroll")&&p.scrollHeight>p.clientHeight+1)return p}return d.scrollingElement||d.documentElement}
+  function mainAfter(el){var f=el.closest("form")||el.closest(".sg-card");if(!f)return null;var bs=f.querySelectorAll(".sg-btn.pri");
+    for(var i=0;i<bs.length;i++){if((el.compareDocumentPosition(bs[i])&4)&&bs[i].getClientRects().length)return bs[i]}return null}
+  function inView(el){
+    if(!el||!el.getClientRects().length)return;
+    var fr=w.frameElement,top0=(fr&&fr.__sgKbVisTop)||0,bot0=w.innerHeight,M=12;
+    var sc=scroller(el),sr=sc===d.scrollingElement||sc===d.documentElement?{top:0,bottom:w.innerHeight}:sc.getBoundingClientRect();
+    var vt=Math.max(top0,sr.top)+M,vb=Math.min(bot0,sr.bottom)-M;if(vb-vt<40)return;
+    var r=el.getBoundingClientRect(),b=mainAfter(el),lo=r.bottom;
+    if(b){var br=b.getBoundingClientRect();if(br.bottom-r.top<=vb-vt)lo=br.bottom}   /* the box and its button, when both fit */
+    var dy=0;if(lo>vb)dy=lo-vb;if(r.top-dy<vt)dy=r.top-vt;
+    if(Math.abs(dy)>=1){if(sc===d.scrollingElement||sc===d.documentElement)w.scrollBy(0,dy);else sc.scrollTop+=dy}
+  }
+  function bring(){var a=d.activeElement;if(editable(a)&&a.closest(".sg"))inView(a)}
+  w.__uaplyKbBring=bring;
+
+  /* ---------- the card's own pages in the installed app (live walk, October 23): Terms, Privacy, Delete an account, Help and support and
+     the tick line's links open in a new tab in a browser; in the installed app (standalone, or the phone apps) that "tab" replaced the
+     card and the phone's Back button then closed the app. There they open over the card instead, with a history entry: Back (or the
+     page's own "Back to UAply", or the Back button on top) closes the page and the card is as it was, with what was typed in it. ---------- */
+  function installed(){
+    try{var t=w.top;if(t.Capacitor||(t.navigator&&t.navigator.standalone))return true;
+      return ["standalone","fullscreen","minimal-ui"].some(function(m){return t.matchMedia&&t.matchMedia("(display-mode: "+m+")").matches})}catch(e){return false}
+  }
+  function cardPage(a){var u;try{u=new URL(a.href,w.top.location.href)}catch(e){return null}
+    return u.origin===w.top.location.origin&&/^\/legal\/[\w-]+\.html$/.test(u.pathname)?u.href:null}
+  function openOver(url,from){
+    var T=w.top,D=T.document,old=D.getElementById("sgPage");if(old)old.remove();
+    var ov=D.createElement("div");ov.id="sgPage";ov.setAttribute("role","dialog");ov.setAttribute("aria-modal","true");ov.setAttribute("aria-label","UAply page");
+    ov.style.cssText="position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;background:var(--bg,#FDF0F2);padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)";
+    var bar=D.createElement("div");bar.style.cssText="flex:none;display:flex;align-items:center;padding:4px 8px;border-bottom:1px solid var(--line,#F3DADF);background:var(--surface,#fff)";
+    var back=D.createElement("button");back.type="button";back.textContent="\u2039 Back to sign-up";
+    back.style.cssText="min-height:44px;min-width:44px;padding:0 12px;border:0;background:none;color:var(--ink,#2A1218);font:600 15px system-ui,sans-serif;cursor:pointer;border-radius:10px";
+    var fr=D.createElement("iframe");fr.title="UAply page";fr.src=url;fr.style.cssText="flex:1;min-height:0;width:100%;border:0;background:#fff";
+    bar.appendChild(back);ov.appendChild(bar);ov.appendChild(fr);D.body.appendChild(ov);
+    try{T.history.pushState({sgPage:1},"")}catch(e){}
+    function close(viaPop){if(!ov.isConnected)return;ov.remove();T.removeEventListener("popstate",onPop);if(!viaPop){try{T.history.back()}catch(e){}}fx(from)}
+    function onPop(){close(true)}
+    T.addEventListener("popstate",onPop);
+    back.onclick=function(){close(false)};
+    /* the page's own "Back to UAply" (and any link off the legal pages) leaves them: that is closing the page, not loading the app in it */
+    fr.addEventListener("load",function(){var pth="";try{pth=fr.contentWindow.location.pathname}catch(e){}if(!/^\/legal\//.test(pth))close(false)});
+    setTimeout(function(){try{back.focus()}catch(e){}},0);
+  }
+  d.addEventListener("click",function(e){
+    var a=e.target&&e.target.closest&&e.target.closest(".sg a[href]");if(!a||e.defaultPrevented||e.button>0||e.metaKey||e.ctrlKey||e.shiftKey)return;
+    var url=cardPage(a);if(!url||!installed())return;
+    e.preventDefault();openOver(url,a);
+  });
+  d.addEventListener("focusin",function(e){if(!editable(e.target)||!e.target.closest(".sg"))return;[60,320,650].forEach(function(t){setTimeout(bring,t)})});
+  w.addEventListener("resize",function(){setTimeout(bring,30)});
+  (function kbFrame(){
+    var fr=w.frameElement,top;try{top=fr&&fr.ownerDocument.defaultView}catch(e){}
+    if(!fr||!top)return;fr.__sgKbW=w;if(fr.__sgKb)return;fr.__sgKb=true;   /* one set of listeners per frame; a reloaded app takes them over */
+    var raf=0;
+    function fit(){
+      raf=0;var vv=top.visualViewport,iw=fr.__sgKbW;if(!vv)return;
+      var inner=null;try{inner=iw&&iw.document.activeElement}catch(e){}
+      var bottom=vv.offsetTop+vv.height,covered=top.innerHeight-bottom,t=fr.getBoundingClientRect().top;
+      /* the keyboard: a box is being typed in, the page is not pinch-zoomed, and more than 100 px at the bottom are hidden */
+      if(covered>100&&Math.abs((vv.scale||1)-1)<.01&&(editable(inner)||editable(top.document.activeElement))&&bottom-Math.max(0,t)>=160){
+        fr.style.height=Math.round(bottom-Math.max(0,t))+"px";fr.style.flex="0 0 auto";fr.__sgKbVisTop=Math.max(0,vv.offsetTop-t);fr.__sgKbOn=true;
+      }else if(fr.__sgKbOn){fr.style.height="";fr.style.flex="";fr.__sgKbVisTop=0;fr.__sgKbOn=false}
+      try{if(iw&&iw.__uaplyKbBring)setTimeout(iw.__uaplyKbBring,30)}catch(e){}
+    }
+    function soon(){if(!raf)raf=top.requestAnimationFrame(fit)}
+    if(top.visualViewport){top.visualViewport.addEventListener("resize",soon);top.visualViewport.addEventListener("scroll",soon)}
+    top.addEventListener("resize",soon);
+  })();
   function h(html){var t=d.createElement("template");t.innerHTML=html.trim();return t.content.firstElementChild}
   function topStore(){try{return w.top.sessionStorage}catch(e){return null}}
   function getPending(){try{var s=topStore(),p=s&&JSON.parse(s.getItem(PENDING));return p&&typeof p==="object"&&Date.now()-(+p.at||0)<15*60e3?p:null}catch(e){return null}}
@@ -216,7 +322,7 @@ function apply(w,host){
   /* the code step outlives a reload (a refresh, Back then Forward, a phone that dropped the tab while the person read their email): this
      tab remembers which address the code went to, for which step, and when; never the code. The card then offers "Type the code" for
      10 minutes instead of a new code (each new code cancels the last and counts toward the limit of 3 an hour) */
-  function getCodeStep(){try{var s=topStore(),c=s&&JSON.parse(s.getItem(CODEK));return c&&typeof c==="object"&&typeof c.email==="string"&&(c.kind==="up"||c.kind==="in")&&Date.now()-(+c.at||0)<CODE_MS?c:null}catch(e){return null}}
+  function getCodeStep(){try{var s=topStore(),c=s&&JSON.parse(s.getItem(CODEK));return c&&typeof c==="object"&&typeof c.email==="string"&&(c.kind==="up"||c.kind==="in"||c.kind==="pw")&&Date.now()-(+c.at||0)<CODE_MS?c:null}catch(e){return null}}
   function setCodeStep(c){try{var s=topStore();if(!s)return;if(c)s.setItem(CODEK,JSON.stringify(c));else s.removeItem(CODEK)}catch(e){}}
   function ownGet(){try{var o=JSON.parse(w.localStorage.getItem(OWN));return o&&typeof o==="object"?o:{}}catch(e){return {}}}
   function ownSet(o){try{w.localStorage.setItem(OWN,JSON.stringify(o))}catch(e){}}
@@ -258,6 +364,29 @@ function apply(w,host){
   }
   function emailFieldHTML(val){var id=uid("em");return '<div class="sg-fld" data-email><label for="'+id+'">Email</label><div class="sg-in"><input id="'+id+'" data-f="email" type="email" inputmode="email" enterkeyhint="go" autocomplete="email" autocapitalize="off" spellcheck="false" maxlength="200" placeholder="you@example.com" aria-describedby="'+id+'m" value="'+esc(val||"")+'"><span class="sg-tick" aria-hidden="true">'+I.check+'</span></div><p class="sg-fmsg" id="'+id+'m" aria-live="polite"></p></div>'}
   function textFieldHTML(label,ac,ph,val,cls,ekh){var id=uid("tx");return '<div class="sg-fld'+(cls?" "+cls:"")+'"><label for="'+id+'">'+label+'</label><div class="sg-in"><input id="'+id+'" data-f="'+esc(label)+'" type="text" maxlength="80" autocomplete="'+ac+'"'+(ekh?' enterkeyhint="'+ekh+'"':'')+' placeholder="'+esc(ph||"")+'" aria-describedby="'+id+'m" value="'+esc(val||"")+'"><span class="sg-tick" aria-hidden="true">'+I.check+'</span></div><p class="sg-fmsg" id="'+id+'m" aria-live="polite"></p></div>'}
+  /* the password box (October 22, Saif): a new one needs 8 characters (auth_api._check_new_password), with a show/hide button inside */
+  var EYE=SVG('<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
+      EYEX=SVG('<path d="M3 3l18 18"/><path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.1 4.1M6.6 6.6C3.8 8.4 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>');
+  function pwFieldHTML(isNew){var id=uid("pw");return '<div class="sg-fld sg-pw"><label for="'+id+'">Password</label><div class="sg-in"><input id="'+id+'" data-f="password" type="password" maxlength="128" autocomplete="'+(isNew?"new-password":"current-password")+'" enterkeyhint="'+(isNew?"next":"go")+'" aria-describedby="'+id+'h '+id+'m">'+
+    '<button type="button" class="sg-eye" aria-label="Show password" aria-pressed="false" aria-controls="'+id+'">'+EYE+'</button></div>'+(isNew?'<p class="sg-fine sg-pwh" id="'+id+'h">At least 8 characters.</p>':'<span id="'+id+'h" hidden></span>')+'<p class="sg-fmsg" id="'+id+'m" aria-live="polite"></p></div>'}
+  function wirePw(fld,isNew){
+    var inp=fld.querySelector("input"),m=fld.querySelector(".sg-fmsg"),eye=fld.querySelector(".sg-eye");
+    /* the eye (Galaxy walk, October 22): a tap must not take the focus from the box (that closed and re-opened the phone's keyboard,
+       and the box could end up under it). pointerdown keeps the focus where it is; the click shows or hides the password, puts the caret
+       back at the end when the box was being typed in, and keeps the box (and the button below it) in view */
+    function keep(e){e.preventDefault()}
+    eye.addEventListener("pointerdown",keep);eye.addEventListener("mousedown",keep);
+    eye.onclick=function(){var had=d.activeElement===inp,show=inp.type==="password";inp.type=show?"text":"password";eye.setAttribute("aria-pressed",show?"true":"false");eye.setAttribute("aria-label",show?"Hide password":"Show password");eye.innerHTML=show?EYEX:EYE;
+      if(had){try{var n=inp.value.length;inp.setSelectionRange(n,n)}catch(e){}}inView(inp)};
+    function set(t){fld.classList.toggle("bad",!!t);if(t)inp.setAttribute("aria-invalid","true");else inp.removeAttribute("aria-invalid");m.textContent=t||""}
+    inp.addEventListener("input",function(){if(fld.classList.contains("bad")&&(!isNew||inp.value.length>=8))set("")});
+    return {input:inp,value:function(){return inp.value},error:set,
+      validate:function(){var v=inp.value;if(!v){set(isNew?"Choose a password of at least 8 characters.":"Enter your password.");return false}
+        if(isNew&&v.length<8){set("Use at least 8 characters.");return false}set("");return true}};
+  }
+  /* reachable without an account, from the card itself: the legal pages, deleting an account, help and support (they are their own pages) */
+  function legalHTML(){return '<p class="sg-legal"><a href="'+LB+'terms.html" target="_blank" rel="noopener noreferrer">Terms</a><a href="'+LB+'privacy.html" target="_blank" rel="noopener noreferrer">Privacy</a>'+
+    '<a href="'+LB+'delete-account.html" target="_blank" rel="noopener noreferrer">Delete an account</a><a href="'+LB+'support.html" target="_blank" rel="noopener noreferrer">Help and support</a></p>'}
   /* "reward early, punish late": an error waits for blur or submit, but clears the moment the address becomes valid */
   function wireEmail(fld,onChange){
     var inp=fld.querySelector("input"),m=fld.querySelector(".sg-fmsg"),tmr;
@@ -290,11 +419,12 @@ function apply(w,host){
   /* ---------- state: survives the Account screen being redrawn (the server's start-up answers redraw it) ---------- */
   var V={view:"up",email:"",first:"",last:"",agreed:false,gWait:false,err:"",kind:"",delivery:"",steps:[],k:0,work:[],other:"",where:"",remote:false,near:false,pvOpen:false,viaG:false,isNew:false,typedName:false,pwGone:false,user:null};
   var codeOn=null;   /* the server signs in by emailed code (providers.codeSignin): null until it answers */
+  var signupTest=false;   /* a test server (providers.signupTest): Create my account signs the person in, already confirmed */
   var host0=null,back=null,wasIn=false;
   /* after a sign-out the next person on this device starts from an empty card: no email, no name, the box unticked (their tick must be
      their own), no saved Google trip, nothing left from the questions */
   function forget(){
-    resetV();V.view="up";V.email=V.first=V.last="";V.agreed=false;V.gWait=false;V.err="";V.errTop=false;V.user=null;V.kind="";V.delivery="";V.cd=null;V.pvOpen=false;
+    resetV();V.view="in";V.codeMode=false;V.email=V.first=V.last="";V.pwUp=V.pwIn="";V.agreed=false;V.gWait=false;V.err="";V.errTop=false;V.user=null;V.kind="";V.delivery="";V.cd=null;V.pvOpen=false;
     gGone="";lastF=null;wasIn=false;setPending(null);setCodeStep(null);V.sentAt=0;V.noSend=false;
   }
   /* the card field that had focus (data-f), so a redraw from the app (a late start-up answer on a slow connection replaces the Account
@@ -324,18 +454,14 @@ function apply(w,host){
   w.__uaplySignCard=function(el,user){
     if(user)wasIn=true;else if(wasIn||V.user)forget();   /* signed out since the last drawing */
     var pend=getPending();
-    if(codeOn===false)return false;
-    if(codeOn===null&&!pend){
-      /* the server has not said yet whether it signs in by code: hold the card's place (nothing to type into, so nothing typed is lost
-         when the answer redraws the screen); signed in, the app's own card as before */
-      if(user)return false;
-      host0=el;back=null;el.className="sg";el.innerHTML='<div class="sg-wait" aria-busy="true"><span class="sg-vh">Loading…</span></div>';
-      return true;
-    }
+    /* the card is drawn at once, before the server has said whether it can email codes (Reviewer 3, October 22: 2.5 s of blank screen
+       on load): only "Email me a code instead" waits for that answer, and the redraw it brings keeps what was typed (lastF, V) */
     host0=el;   /* back from Google before the server's answer: the card already knew */
     if(user){
-      if(V.view==="q"||V.view==="signedin"||(V.view==="code"&&V.kind==="g")){render();restoreFocus();return true}
+      if(V.view==="q"||V.view==="signedin"||(V.view==="code"&&(V.kind==="g"||V.kind==="pw"))){render();restoreFocus();return true}
       if(pend){startAfterGoogle(user,pend);return true}
+      /* a reload during a new password account's code step: the account is signed in but not confirmed, and the step comes back */
+      var pcs=pwStep(user);if(pcs){V.user=user;resume(pcs);return true}
       return false;   /* signed in, nothing to ask: the app's own signed-in card */
     }
     if(V.view!=="up"&&V.view!=="in"&&!(V.view==="code"&&V.kind!=="g"))V.view="up";   /* signed out in the middle of the questions */
@@ -343,7 +469,7 @@ function apply(w,host){
     return true;
   };
   /* back from Google (hook in googleReturn): errors show next to the box they are about; a sign-in was already handled above */
-  function mine(){return !!(host0&&host0.isConnected&&acctOn()&&(V.view==="q"||V.view==="signedin"||(V.view==="code"&&V.kind==="g")))}
+  function mine(){return !!(host0&&host0.isConnected&&acctOn()&&(V.view==="q"||V.view==="signedin"||(V.view==="code"&&(V.kind==="g"||V.kind==="pw"))))}
   w.__uaplySignReturn=function(er,signed,pwGone){
     var pend=getPending();
     if(signed&&pwGone)V.pwGone=true;   /* Google proved the inbox and the server removed a password nobody had proven: the card says so */
@@ -360,7 +486,7 @@ function apply(w,host){
       }else{
         V.view=pend&&pend.mode==="in"?"in":"up";
         V.err=({cancelled:"Google sign-in was cancelled.",expired:"That Google sign-in expired or could not be checked. Try again.",unverified:"Google says that email address is not verified, so UAply cannot use it.",
-          off:"Google sign-in is not switched on.",email_in_use:"That email already has a UAply account. Use Email me a code to sign in to it.",disposable:"Please use an email address you’ll keep. Temporary addresses can’t be used for job applications."})[er]||"Google sign-in did not work. Try again, or use your email.";
+          off:"Google sign-in is not switched on.",email_in_use:"That email already has a UAply account. Sign in with your password, or Email me a code instead.",disposable:"Please use an email address you’ll keep. Temporary addresses can’t be used for job applications."})[er]||"Google sign-in did not work. Try again, or use your email.";
         V.errTop=true;
       }
       render(true);
@@ -371,15 +497,74 @@ function apply(w,host){
   };
   function acctOn(){var a=d.getElementById("acctSec");return !!(a&&a.classList.contains("sgnOn"))}
 
+  /* ---------- the gate (October 22, 2026, Saif): nobody reaches anything on the site without an account ----------
+     No session (GET /api/auth/me without a user): the card is the whole screen (CSS body.sgGated) and the app keeps the Account screen
+     open behind it whatever is tapped, typed or linked (uaply-nav.js go() asks __uaplyGated). It stays while a new account's code or its
+     two questions are on screen, and lifts once they are done; Sign out brings it back. Until the server has answered it is up (nothing
+     shows for a moment and then hides); a preview with no server at all (a plain web host) has no accounts, so no gate. */
+  var gated=null;
+  function preview(){try{return !!w.__uaplyPreviewOn||!!(w.__uaplyPreview&&w.__uaplyPreview())}catch(e){return false}}
+  function wantGate(){
+    var s=srv();
+    if(!s.up)return !preview();
+    return !s.user||V.view==="q"||V.view==="code"||!!pwStep(s.user);
+  }
+  /* this tab's code step for a new password account that is signed in and not yet confirmed (survives a reload, as Mohammed's does) */
+  function pwStep(u){var cs=getCodeStep();return u&&u.emailVerified===false&&cs&&cs.kind==="pw"&&cs.email.toLowerCase()===String(u.email||"").toLowerCase()?cs:null}
+  function gateSync(){
+    var on=wantGate(),was=gated;
+    if(on!==was){
+      gated=on;w.__uaplyGateUp=on;d.body.classList.toggle("sgGated",on);try{d.documentElement.classList.toggle("sgGated",on)}catch(e){}
+      /* up: the deck, Applied, the dashboard and Job Tracker are emptied. Down: they are drawn, and the job list is asked for now (the
+         first time: uaply-live.js waits for this; the server answers 401 to a visitor with no account anyway) */
+      try{A.renderAll()}catch(e){}try{var tpn=d.getElementById("pane-track");if(on&&tpn)tpn.innerHTML="";else if(w.__uaplyTrack)w.__uaplyTrack()}catch(e){}
+      if(!on&&w.__uaplyLoadJobs)try{w.__uaplyLoadJobs()}catch(e){}
+    }
+    if(on){try{B.account()}catch(e){}}
+    else if(was===true){if(V.view==="signedin")resetV();try{B.cards()}catch(e){}}
+  }
+  /* any data route answering 401 "signin" (the session ended, or was never there): back to the gate */
+  /* the app's own window and the page around it (shared/uaply-live.js reads the job list from there): each is watched once, and its
+     answers go to the app of the moment (__uaplyGateHook), so a sandbox rebuilding its app never talks to an old one */
+  function onAnswer(status,j){
+    if(!j)return;
+    if(status===401&&j.code==="signin"){if(srv().user)B.signedIn(null);else gateSync()}
+    else if(status===403&&j.code==="verify")needCode();   /* signed in, the address not proven yet: the card's code step (kind "pw") */
+  }
+  function watch(win){
+    win.__uaplyGateHook=onAnswer;
+    var f0=win.fetch;
+    if(typeof f0!=="function"||f0.__uaplyGateWatch)return;
+    var wrapped=function(){
+      return f0.apply(this,arguments).then(function(r){
+        if(r&&(r.status===401||r.status===403)){try{r.clone().json().then(function(j){if(win.__uaplyGateHook)win.__uaplyGateHook(r.status,j)},function(){})}catch(e){}}
+        return r;
+      });
+    };
+    wrapped.__uaplyGateWatch=true;win.fetch=wrapped;
+  }
+  watch(w);try{if(w.top&&w.top!==w)watch(w.top)}catch(e){}
+  function needCode(){
+    /* not while a code step or the questions are already on the card, and not while a trip back from Google is being finished (its own
+       code step, kind "g", comes from startAfterGoogle) */
+    var u=srv().user;if(!u||V.view==="code"||V.view==="q"||getPending())return;
+    var cs=getCodeStep();
+    V.user=u;V.email=u.email||V.email;V.kind="pw";V.view="code";V.verifyOnly=true;V.noSend=false;
+    V.sentAt=cs&&cs.kind==="pw"&&cs.email.toLowerCase()===String(u.email||"").toLowerCase()?+cs.at||0:0;
+    gateSync();try{B.redraw()}catch(e){}
+  }
+  w.__uaplyGated=function(){return gated!==false};
+  w.__uaplyGateSync=gateSync;
+
   /* is the no-password sign-in switched on for this server? (sandbox only; the old card stays everywhere else) */
   w.fetch("/api/auth/providers",{credentials:"same-origin"}).then(function(r){return r.ok?r.json():null}).then(function(j){
-    var was=codeOn;codeOn=!!(j&&j.codeSignin);
+    var was=codeOn;codeOn=!!(j&&j.codeSignin);signupTest=!!(j&&j.signupTest);
     if(codeOn!==was)B.redraw();
   }).catch(function(){var was=codeOn;codeOn=false;if(was!==false)B.redraw()});
   /* the app's own signed-in card says how a person with no password signs in: here that is an emailed code (or Google), not "Forgot password" */
   w.__uaplyNoPwNote=function(user){
     if(codeOn!==true)return "";
-    var s=srv(),g=!s.hideGoogle&&(s.google||s.testInbox)&&!gOff(user&&user.email);
+    var s=srv(),g=!s.hideGoogle&&!!(user&&user.googleLinked)&&!gOff(user&&user.email);
     return '<p class="note" style="margin:0">You sign in with an emailed code'+(g?' or with Google':'')+'. No password needed.</p>';
   };
 
@@ -388,7 +573,7 @@ function apply(w,host){
   function shell(inner){
     wide(false);
     host0.className="sg";
-    host0.innerHTML='<div class="sg-shell"><div class="sg-bb" aria-hidden="true"><span class="sg-lg">'+LOGO+'</span><span class="sg-wm">UAply</span></div><section class="sg-card sg-pop">'+inner+'</section></div>';
+    host0.innerHTML='<div class="sg-shell"><div class="sg-bb" aria-hidden="true"><span class="sg-lg">'+LOGO+'</span><span class="sg-wm">UAply</span></div><section class="sg-card sg-pop">'+inner+'</section>'+(gated?legalHTML():'')+'</div>';
     return host0.querySelector(".sg-card");
   }
   function render(focus){
@@ -438,7 +623,7 @@ function apply(w,host){
   function resume(cs){
     if(!cs){render(true);return}
     V.email=cs.email;V.kind=cs.kind;V.sentAt=+cs.at||0;V.noSend=false;
-    if(cs.kind==="up"){V.first=cs.first||V.first;V.last=cs.last||V.last;V.agreed=true}   /* the names and the tick from Create my account */
+    if(cs.kind==="up"||cs.kind==="pw"){V.first=cs.first||V.first;V.last=cs.last||V.last;V.agreed=true}   /* the names and the tick from Create my account */
     V.view="code";render(true);
   }
 
@@ -446,14 +631,14 @@ function apply(w,host){
   function signup(focus){
     back=null;V.view="up";
     var hid=uid("h"),aid=uid("am"),gh=googleHTML();
-    var c=shell('<div class="sg-chead"><h1 id="'+hid+'" tabindex="-1">Create your UAply account</h1><p class="sg-sub">Takes a minute. No password to remember.</p></div>'+
+    var c=shell('<div class="sg-chead"><h1 id="'+hid+'" tabindex="-1">Create your UAply account</h1></div>'+
       (V.errTop?'<p class="sg-fmsg err" role="alert" style="text-align:center">'+esc(V.err)+'</p>':'')+haveHTML()+
       /* Mohammed's order: Google, "or", Email, First name, Last name, the 18+ tick, Create my account. The server needs the tick before
          Google opens; that is the tick's state, not its place, so an unticked Google tap stays here, shakes the box and says why */
       (gh?gh+'<div class="sg-or">or</div>':'')+
       '<form class="sg-stack sg-su" novalidate>'+emailFieldHTML(V.email)+
       '<div class="sg-two">'+textFieldHTML("First name","given-name","",V.first,"sg-fn","next")+textFieldHTML("Last name","family-name","",V.last,"sg-ln","go")+'</div>'+
-      '<p class="sg-fine sg-nameh">Goes on your applications. Kept on this device.</p>'+
+      '<p class="sg-fine sg-nameh">Goes on your applications.</p>'+pwFieldHTML(true)+
       '<label class="sg-agree"><input type="checkbox" class="sg-ag" data-f="tick"'+(gh.indexOf('id="gBtn"')>-1?' id="gAgree"':'')+' aria-describedby="'+aid+'"'+(V.agreed?" checked":"")+'><span>'+AGREE+'</span></label>'+
       '<p class="sg-fmsg sg-amsg" id="'+aid+'" aria-live="polite"></p>'+
       '<button type="submit" class="sg-btn pri wide">Create my account</button></form>'+
@@ -469,6 +654,9 @@ function apply(w,host){
     var em=wireEmail(c.querySelector("[data-email]"),function(v){V.email=v;keepGis()});
     var fn=wireReq(c.querySelector(".sg-fn"),"Add your first name."),ln=wireReq(c.querySelector(".sg-ln"),"Add your last name.");
     fn.input.addEventListener("input",function(){V.first=fn.value();keepGis()});ln.input.addEventListener("input",function(){V.last=ln.value();keepGis()});
+    /* the password is kept only in this page's memory (V.pwUp, never stored), so a redraw of the card (a late answer from the server just
+       after the page opens) does not empty the box; it is dropped once the account is made or the card is left */
+    var pw=wirePw(c.querySelector(".sg-pw"),true);if(V.pwUp)pw.input.value=V.pwUp;pw.input.addEventListener("input",function(){V.pwUp=pw.input.value});
     function keepGis(){if(c.querySelector("#gBtn"))setPending({mode:"up",first:V.first,last:V.last,email:V.email,agreed:V.agreed,at:Date.now(),gis:true})}
     var gb=c.querySelector('[data-sg="google"]');
     ag.addEventListener("change",function(){seen();V.agreed=ag.checked;agl.classList.remove("bad");keepGis();
@@ -487,17 +675,20 @@ function apply(w,host){
       if(!em.validate())firstBad=em.input;
       if(!fn.validate())firstBad=firstBad||fn.input;
       if(!ln.validate())firstBad=firstBad||ln.input;
+      if(!pw.validate())firstBad=firstBad||pw.input;
       if(!ag.checked){agl.classList.add("bad");agMsg("err","Tick the box to confirm you’re 18 or older and agree.");shake(agl);firstBad=firstBad||ag}else{agl.classList.remove("bad");agMsg()}
       if(firstBad){fxs(firstBad);return}
       V.email=em.value();V.first=fn.value();V.last=ln.value();V.agreed=true;
       sb.disabled=true;sb.setAttribute("aria-busy","true");sb.textContent="Creating your account…";
-      B.post("/api/auth/signup",{email:V.email,agree:true,passwordless:true}).then(function(r){
+      /* October 22 (Saif): an account has a password. The server makes it and signs the person in; its first code proves the inbox
+         (kind "pw": /api/auth/verify, the session's own code), unless the server is a test server (providers.signupTest): then it is
+         already confirmed and the two questions come next */
+      B.post("/api/auth/signup",{email:V.email,password:pw.value(),first:V.first,last:V.last,agree:true,passwordless:false}).then(function(r){
         if(!sb.isConnected)return;
         sb.disabled=false;sb.removeAttribute("aria-busy");sb.textContent="Create my account";
-        if(!r.ok){var t=(r.j&&r.j.error)||"Could not create the account. Try again.";if(r.j&&r.j.code==="mailbox"){em.error(t);fxs(em.input)}else{agMsg("err",t);fxs(sb)}return}
-        V.email=(r.j&&r.j.email)||V.email;V.delivery=(r.j&&r.j.delivery)||"";V.kind="up";V.view="code";V.sentAt=Date.now();V.noSend=false;
-        setCodeStep({kind:"up",email:V.email,first:V.first,last:V.last,at:V.sentAt});
-        render(true);
+        if(!r.ok){var t=(r.j&&r.j.error)||"Could not create the account. Try again.";if(r.j&&r.j.code==="mailbox"||/already has an account/i.test(t)){em.error(t);fxs(em.input)}else if(r.j&&r.j.field==="password"||/password/i.test(t)){pw.error(t);fxs(pw.input)}else{agMsg("err",t);fxs(sb)}return}
+        V.email=(r.j&&r.j.user&&r.j.user.email)||(r.j&&r.j.email)||V.email;V.delivery=(r.j&&r.j.delivery)||"";
+        V.pwUp="";afterPasswordSignup(r.j&&r.j.user);
       });
     };
     c.querySelector(".sg-to-in").onclick=function(){seen();V.view="in";render(true)};
@@ -505,47 +696,111 @@ function apply(w,host){
     if(focus){if(V.err&&!V.errTop)fxs(ag);else fx(c.querySelector("h1"))}
   }
 
+  /* after Create my account (a password account): the code that proves the inbox, or (a test server, or an address already confirmed)
+     straight to the two questions */
+  function afterPasswordSignup(u){
+    setPending(null);
+    function questions(user){setCodeStep(null);V.user=user;V.isNew=true;V.viaG=false;V.cd=null;claimDevice(user.email);saveName(V.first,V.last,user.email);V.view="q";B.signedIn(user);startQuestions()}
+    if(signupTest||(u&&u.emailVerified)){
+      if(u&&u.email){questions(Object.assign({},u,{emailVerified:true}));return}
+      w.fetch("/api/auth/me",{credentials:"same-origin"}).then(function(r){return r.ok?r.json():null}).then(function(j){
+        if(j&&j.user){questions(j.user);return}
+        V.err="Your account was made. Sign in with your email and password.";V.view="in";render(true);
+      }).catch(function(){V.err="Your account was made. Sign in with your email and password.";V.view="in";render(true)});
+      return;
+    }
+    /* a server that signs the new account in at once answers with its user: the session's own code (kind "pw"). One that waits for
+       the code (no user in the answer) gets Mohammed's emailed-code step (kind "up": /api/auth/code/verify with the address) */
+    V.user=u||null;V.kind=u?"pw":"up";V.view="code";V.sentAt=Date.now();V.noSend=false;
+    setCodeStep({kind:V.kind,email:V.email,first:V.first,last:V.last,at:V.sentAt});
+    if(u)B.signedIn(u);   /* the server signed the new account in; the gate stays until the code proves the inbox */
+    render(true);
+  }
+
   /* ---------- sign in (returning) ---------- */
   function signin(focus){
     back=function(){V.err="";V.errTop=false;V.view="up";render(true)};V.view="in";
     var hid=uid("h"),gh=googleHTML();
-    var c=shell('<div class="sg-chead"><h1 id="'+hid+'" tabindex="-1">Welcome back</h1><p class="sg-sub">We’ll email you a code. No password needed.</p></div>'+
+    /* October 22 (Saif): Email and Password, Sign in, Forgot password?; Mohammed's emailed code stays as a small "Email me a code
+       instead" (codeMode), which turns this same card into his code sign-in */
+    var cm=!!V.codeMode&&codeOn===true;
+    var c=shell('<div class="sg-chead"><h1 id="'+hid+'" tabindex="-1">Welcome back</h1><p class="sg-sub">'+(cm?'We’ll email you a code.':'Sign in to UAply.')+'</p></div>'+
       (V.err?'<p class="sg-fmsg err" role="alert" style="text-align:center">'+esc(V.err)+'</p>':'')+haveHTML()+
       (gh?gh+'<div class="sg-or">or</div>':'')+
-      '<form class="sg-stack sg-si" novalidate>'+emailFieldHTML(V.email)+
-      '<button type="submit" class="sg-btn pri wide">Email me a code</button></form>'+
-      '<p class="sg-swap">Already have a code? <button type="button" class="sg-lnk sg-typec">Type it</button></p>'+
+      '<form class="sg-stack sg-si" novalidate>'+emailFieldHTML(V.email)+(cm?'':pwFieldHTML(false))+
+      '<button type="submit" class="sg-btn pri wide">'+(cm?'Email me a code':'Sign in')+'</button></form>'+
+      (cm?'<p class="sg-swap">Already have a code? <button type="button" class="sg-lnk sg-typec">Type it</button></p><p class="sg-alt"><button type="button" class="sg-lnk sg-usepw">Use your password instead</button></p>':
+        '<p class="sg-swap"><button type="button" class="sg-lnk sg-forgot">Forgot password?</button></p>'+(codeOn===true?'<p class="sg-alt"><button type="button" class="sg-lnk sg-codeinst">Email me a code instead</button></p>':''))+
       '<p class="sg-swap">New here? <button type="button" class="sg-lnk sg-to-up">Create an account</button></p>');
     c.setAttribute("aria-labelledby",hid);
     function seen(){V.err="";V.errTop=false}
     wireHave(c,seen);
     var em=wireEmail(c.querySelector("[data-email]"),function(v){V.email=v});
+    var pf=c.querySelector(".sg-pw"),pw=pf?wirePw(pf,false):null;
+    if(pw){if(V.pwIn)pw.input.value=V.pwIn;pw.input.addEventListener("input",function(){V.pwIn=pw.input.value})}   /* memory only, as on Create */
     var gb=c.querySelector('[data-sg="google"]');
     if(gb)gb.onclick=function(){seen();V.email=em.value();goGoogle(gb,"in")};
     mountGis("in");
-    var form=c.querySelector(".sg-si"),sb=form.querySelector('[type="submit"]');
+    var form=c.querySelector(".sg-si"),sb=form.querySelector('[type="submit"]'),sbt=sb.textContent;
+    function busy(on,t){sb.disabled=on;if(on){sb.setAttribute("aria-busy","true");sb.textContent=t}else{sb.removeAttribute("aria-busy");sb.textContent=sbt}}
     form.onsubmit=function(e){
       e.preventDefault();seen();
-      if(!em.validate()){fxs(em.input);return}
+      var bad=null;if(!em.validate())bad=em.input;if(pw&&!pw.validate())bad=bad||pw.input;if(bad){fxs(bad);return}
       V.email=em.value();
-      sb.disabled=true;sb.setAttribute("aria-busy","true");sb.textContent="Sending…";
+      if(!cm){
+        busy(true,"Signing in…");
+        B.post("/api/auth/login",{email:V.email,password:pw.value()}).then(function(r){
+          if(!sb.isConnected)return;busy(false);
+          if(!r.ok||!(r.j&&r.j.user)){V.pwIn="";pw.error((r.j&&r.j.error)||"That email and password do not match. Try again, or use Forgot password?");pw.input.value="";fxs(pw.input);return}
+          var u=r.j.user;V.pwIn="";setCodeStep(null);V.user=u;V.isNew=false;V.view="signedin";B.signedIn(u);
+          saveName("","",u.email,true);render(true);
+        });
+        return;
+      }
+      busy(true,"Sending…");
       B.post("/api/auth/code/send",{email:V.email}).then(function(r){
-        if(!sb.isConnected)return;
-        sb.disabled=false;sb.removeAttribute("aria-busy");sb.textContent="Email me a code";
+        if(!sb.isConnected)return;busy(false);
         if(!r.ok){em.error((r.j&&r.j.error)||"Could not send a code. Try again.");fxs(em.input);return}
         V.kind="in";V.delivery="";V.view="code";V.sentAt=Date.now();V.noSend=false;
         setCodeStep({kind:"in",email:V.email,at:V.sentAt});
         render(true);
       });
     };
+    /* Forgot password?: the reset link goes to the address typed above (the server answers the same whether or not it has an account) */
+    var fg=c.querySelector(".sg-forgot");
+    if(fg)fg.onclick=function(){
+      seen();if(!em.validate()){fxs(em.input);return}
+      V.email=em.value();fg.disabled=true;
+      B.post("/api/auth/forgot",{email:V.email}).then(function(r){
+        fg.disabled=false;if(!c.isConnected)return;
+        var t=r.ok?"If "+V.email+" has a UAply account, we sent it a link to choose a new password. It works for an hour.":((r.j&&r.j.error)||"Could not send the link. Try again.");
+        var p=c.querySelector(".sg-fgmsg");if(!p){p=h('<p class="sg-fmsg sg-fgmsg" role="status" style="text-align:center"></p>');fg.parentNode.insertAdjacentElement("afterend",p)}
+        p.className="sg-fmsg sg-fgmsg"+(r.ok?" ok":" err");p.textContent=t;
+      });
+    };
+    /* Email me a code instead: with a good address typed, the code goes on this press; without one, the card asks for the address */
+    var ci=c.querySelector(".sg-codeinst");if(ci)ci.onclick=function(){
+      seen();V.email=em.value()||V.email;V.codeMode=true;
+      if(checkEmail(V.email).s!=="ok"){render(true);return}
+      ci.disabled=true;ci.textContent="Sending a code…";
+      B.post("/api/auth/code/send",{email:V.email}).then(function(r){
+        if(!c.isConnected)return;
+        if(!r.ok){V.err=(r.j&&r.j.error)||"Could not send a code. Try again.";render(true);return}
+        V.kind="in";V.delivery="";V.view="code";V.sentAt=Date.now();V.noSend=false;
+        setCodeStep({kind:"in",email:V.email,at:V.sentAt});
+        render(true);
+      });
+    };
+    var up=c.querySelector(".sg-usepw");if(up)up.onclick=function(){seen();V.email=em.value()||V.email;V.codeMode=false;render(true)};
     /* a code from an earlier email (another tab, or before a reload): the six boxes, and nothing is sent */
-    c.querySelector(".sg-typec").onclick=function(){
+    var tc=c.querySelector(".sg-typec");
+    if(tc)tc.onclick=function(){
       seen();if(!em.validate()){fxs(em.input);return}
       V.email=em.value();var cs=getCodeStep();
       if(cs&&cs.email.toLowerCase()===V.email.toLowerCase()){resume(cs);return}
       V.kind="in";V.delivery="";V.sentAt=0;V.noSend=true;V.view="code";render(true);
     };
-    c.querySelector(".sg-to-up").onclick=function(){seen();V.view="up";render(true)};
+    c.querySelector(".sg-to-up").onclick=function(){seen();V.codeMode=false;V.view="up";render(true)};
     if(focus)fx(c.querySelector("h1"));
   }
 
@@ -561,9 +816,12 @@ function apply(w,host){
   }
   function code(focus){
     var kind=V.kind;
-    back=function(){V.view=kind==="in"?"in":"up";if(kind==="g"){V.view="q";startQuestions();return}V.noSend=false;render(true)};   /* the card still offers "Type the code" while it works */
+    back=function(){V.view=kind==="in"?"in":"up";if(kind==="g"){V.view="q";startQuestions();return}
+      /* a password account is already made and signed in: "Use a different email" signs it out and starts over (the gate stays) */
+      if(kind==="pw"){setCodeStep(null);V.user=null;B.post("/api/auth/logout",{}).then(function(){B.signedIn(null);V.view="up";V.noSend=false;render(true)});return}
+      V.noSend=false;render(true)};   /* the card still offers "Type the code" while it works */
     var sub=V.noSend&&kind==="in"?'Type the 6-digit code from the newest UAply email to <b>'+esc(V.email)+'</b>. A code works for 10 minutes after it is sent.':
-      kind==="up"?'We sent a 6-digit code to <b>'+esc(V.email)+'</b>. It works for 10 minutes.':
+      kind==="up"||kind==="pw"?'We sent a 6-digit code to <b>'+esc(V.email)+'</b>. It works for 10 minutes.':
       kind==="g"?'Google signed you in, but it vouches only for Gmail and Google-run addresses. We sent a 6-digit code to <b>'+esc(V.email)+'</b>. It works for 10 minutes.':
       'If <b>'+esc(V.email)+'</b> has a UAply account, we sent it a 6-digit code. It works for 10 minutes.';
     var note=deliveryNote();
@@ -594,7 +852,7 @@ function apply(w,host){
     function check(){
       var cd=ins.map(function(x){return x.value}).join("");if(cd.length<6||checking)return;checking=true;
       cm.className="sg-fmsg sg-cmsg";cm.textContent="Checking…";ins.forEach(function(x){x.disabled=true});
-      var p=kind==="g"?B.post("/api/auth/verify",{code:cd}):B.post("/api/auth/code/verify",{email:V.email,code:cd,agree:agreeNow});
+      var p=kind==="g"||kind==="pw"?B.post("/api/auth/verify",{code:cd}):B.post("/api/auth/code/verify",{email:V.email,code:cd,agree:agreeNow});
       p.then(function(r){
         checking=false;if(!c.isConnected)return;
         if(!r.ok&&r.j&&r.j.needsAgree){cm.className="sg-fmsg sg-cmsg nudge";cm.textContent=r.j.error||"Tick the box to finish creating your account.";ins.forEach(function(x){x.disabled=false});askAgree();return}
@@ -602,6 +860,8 @@ function apply(w,host){
         box.classList.add("ok");cm.className="sg-fmsg sg-cmsg ok";cm.textContent="Code accepted.";
         setTimeout(function(){if(!c.isConnected)return;
           if(kind==="g"){var u=Object.assign({},V.user||srv().user||{},{emailVerified:true});V.user=u;B.signedIn(u);V.view="q";startQuestions();return}
+          if(kind==="pw"&&V.verifyOnly){V.verifyOnly=false;setCodeStep(null);V.view="";B.signedIn(Object.assign({},V.user||srv().user||{},{emailVerified:true}));try{w.top.location.reload()}catch(e){w.location.reload()}return}
+          if(kind==="pw"){var pu=Object.assign({},V.user||srv().user||{},{emailVerified:true});setCodeStep(null);V.user=pu;V.isNew=true;V.cd=null;claimDevice(pu.email||V.email);saveName(V.first,V.last,pu.email||V.email);B.signedIn(pu);V.view="q";startQuestions();return}
           var user=r.j&&r.j.user;if(!user){cm.textContent="Signed in, but the answer was incomplete. Reload the page.";return}
           setPending(null);setCodeStep(null);V.noSend=false;V.user=user;V.viaG=false;V.cd=null;if(user.googleRemoved)gGone=String(user.email||"").toLowerCase();
           if(user["new"]){V.isNew=true;claimDevice(user.email);saveName(V.first,V.last,user.email);V.view="q";B.signedIn(user);startQuestions()}
@@ -626,7 +886,7 @@ function apply(w,host){
     else{rs.querySelector("span").textContent=n;iv=setInterval(function(){if(!c.isConnected){clearInterval(iv);return}n--;if(n<=0)unlock();else rs.querySelector("span").textContent=n},1000)}
     rs.onclick=function(){
       rs.disabled=true;rs.textContent="Sending…";
-      var p=kind==="g"?B.post("/api/auth/resend",{}):B.post("/api/auth/code/send",{email:V.email});
+      var p=kind==="g"||kind==="pw"?B.post("/api/auth/resend",{}):B.post("/api/auth/code/send",{email:V.email});
       p.then(function(r){
         if(!c.isConnected)return;
         if(!r.ok){cm.className="sg-fmsg sg-cmsg err";cm.textContent=(r.j&&r.j.error)||"Could not send a new code.";rs.textContent="Resend code";rs.disabled=false;return}
@@ -760,7 +1020,7 @@ function apply(w,host){
     if(k===0&&V.pwGone)made+='<p class="sg-fine">'+PWGONE()+'</p>';
     if(k===0&&gOff(email))made+='<p class="sg-fine">'+GGONE+'</p>';
     if(k===0&&V.cleared)made+='<p class="sg-fine">This device had another account’s details (phone, resume, saved answers). They were cleared here, so your applications carry only your own.</p>';
-    if(step==="name")html=made+eyebrow+'<h2 tabindex="-1">What should employers call you?</h2><div class="sg-two">'+textFieldHTML("First name","given-name","",V.first,"sg-fn","next")+textFieldHTML("Last name","family-name","",V.last,"sg-ln","next")+'</div><p class="sg-fine">Employers need a name on every application. Kept on this device. Use the name on your resume.</p>';
+    if(step==="name")html=made+eyebrow+'<h2 tabindex="-1">What should employers call you?</h2><div class="sg-two">'+textFieldHTML("First name","given-name","",V.first,"sg-fn","next")+textFieldHTML("Last name","family-name","",V.last,"sg-ln","next")+'</div><p class="sg-fine">Employers need a name on every application. Goes on your applications. Use the name on your resume.</p>';
     if(step==="work")html=made+eyebrow+'<h2 tabindex="-1">What kind of work are you after?</h2><p class="sg-sub">We’ll show these first. You can change this later.</p><div class="sg-chips" role="group" aria-label="Kinds of work">'+WORK.map(function(x){return '<button type="button" class="sg-chip" aria-pressed="'+(V.work.indexOf(x)>-1)+'">'+x+'</button>'}).join("")+'</div>'+textFieldHTML("Something else","off","e.g. dental assistant",V.other,"","next");
     if(step==="where")html=eyebrow+'<h2 tabindex="-1">Where do you want to work?</h2>'+textFieldHTML("City or ZIP code","address-level2","Austin, TX",V.where,"","done")+'<div class="sg-chips"><button type="button" class="sg-chip sg-rem" aria-pressed="'+V.remote+'">Remote is fine</button>'+(s.near?'<button type="button" class="sg-chip sg-loc" aria-pressed="'+V.near+'">'+I.pin+' Use my location</button>':'')+'</div><p class="sg-fine sg-locmsg" aria-live="polite">'+(s.near?(V.near?"Using your device location, rounded to about a mile. It stays on this device and is never sent to our server.":"Your browser asks before it shares your location. It stays on this device and is never sent to our server."):"Kept on this device. Used to sort jobs by distance.")+'</p>';
     /* the end: honest about the app's readiness rule. Below READY_MIN a swipe right sends nothing, so this says what is missing, one tap from its field */
@@ -821,6 +1081,7 @@ function apply(w,host){
   function resetV(){V.view="";V.steps=[];V.k=0;V.work=[];V.other="";V.where="";V.remote=false;V.near=false;V.isNew=false;V.viaG=false;V.typedName=false;V.pwGone=false;V.cleared=false;back=null;wide(false)}
   function finish(){
     resetV();
+    gateSync();
     try{B.cards()}catch(e){}
     B.redraw();   /* Account now shows the app's own signed-in card */
   }
@@ -837,6 +1098,7 @@ function apply(w,host){
     [].forEach.call(c.querySelectorAll("[data-ready]"),function(b){b.addEventListener("click",function(){resetV()})});
     if(focus)fx(c.querySelector("h2"));
   }
+  gateSync();   /* up from the first frame, before the server has said who is signed in */
 }
 
 Env.FEATURES.signup={name:"Sign-up, nothing hidden",note:"Account becomes one centered card under the UAply mark: Continue with Google, or Email, First name, Last name, the 18+ tick and Create my account. No password: a 6-digit code is emailed (Google skips it for addresses it vouches for). Then two questions (kind of work, where) and you're ready to swipe, or told what the app still needs to apply. Returning: Google, or Email me a code. Needs Bottom navigation and this server's sign-up v2 (sandbox).",patch:patch,apply:apply};

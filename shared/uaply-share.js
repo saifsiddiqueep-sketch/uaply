@@ -36,7 +36,7 @@ var CSS=`
 .ushr-g{width:1em;height:1em;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;flex:none}
 .card .chead{padding-right:52px}
 .ushr-ic{position:absolute;top:12px;right:12px;z-index:1;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;padding:0;border:1px solid var(--line);background:color-mix(in srgb,var(--surface) 80%,transparent);color:var(--ink);font-size:16px;cursor:pointer}
-.ushr-ic::after{content:"";position:absolute;inset:-4px}
+.ushr-ic::after{content:"";position:absolute;left:50%;top:50%;width:46px;height:46px;transform:translate(-50%,-50%)}   /* 46 px: the card's own transform once rounded a 44 px area to 43 after a Pass */
 .ushr-ic:hover{border-color:var(--accent);color:var(--accent)}
 .ushr-line{width:100%;max-width:620px;margin:0;display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)}
 .ushr-line b{color:var(--ink)}
@@ -282,7 +282,7 @@ function apply(w){
     return t1.concat(t2).slice(0,10);
   }
   function ageTxt(n){if(typeof n!=="number")return "Posting date not listed";return n<=0?"Posted today":n===1?"Posted 1 day ago":n<7?"Posted "+n+" days ago":n<14?"Posted 1 week ago":"Posted "+Math.floor(n/7)+" weeks ago"}
-  function payTxt(j){return j.sal&&j.sal[1]>0?A.money(j.sal[0])+"–"+A.money(j.sal[1]):""}
+  function payTxt(j){if(typeof w.uaPayText==="function")return w.uaPayText(j,1)||"Pay not listed";return j.sal&&j.sal[1]>0&&j.salUnit!=="hour"?A.money(j.sal[0])+"–"+A.money(j.sal[1])+" a year":"Pay not listed"}   /* as the posting gives it, with its unit */
   function rowHTML(x){
     var j=x.j,u=viaUAply(j),pay=payTxt(j),did="ushrD"+j.id;
     return '<button type="button" class="ushr-row" data-ushr-go="'+j.id+'" data-mode="'+esc(j.mode||"")+'" aria-label="'+esc(j.role)+' at '+esc(j.co)+'" aria-describedby="'+did+'">'+

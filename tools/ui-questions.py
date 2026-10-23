@@ -6,6 +6,7 @@ change or remove one. Runs at 390x844 (phone, touch) and 1280x800 (computer, mou
 focused and keeps Send application above the keyboard. Then tools/ui-journey.js checks the apply journey's other fixes (October 22).
 Starts its own stand-in hiring system (mock-ats.py) and one UAply server (dev, test mode). Nothing leaves this computer.
   python tools/ui-questions.py [first port]        (uses 2 ports from there; default 20430)"""
+import http.cookiejar
 import json
 import os
 import shutil
@@ -50,8 +51,25 @@ def seed(data):
              "jobs": [{"role": "Data Analyst", "skills": ["Python"], "ats_job_id": "1008", "loc": "Philadelphia, PA", "type": "internship"}]}]}, f)
 
 
+# the job list answers only an account (Saif, October 22: 401 "signin" without one), so this side signs a test person up first, on a
+# test server (UAPLY_SIGNUP_TEST=1: confirmed at once), and reads the list through that session (a cookie jar)
+_opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+_signed = [False]
+
+
+def signup_first():
+    body = json.dumps({"email": "questions.ids.%d@example.com" % int(time.time() * 1000), "password": "Questions-ids-99", "first": "Ids",
+                       "last": "Reader", "agree": True}).encode()
+    req = urllib.request.Request("http://127.0.0.1:%d/api/auth/signup" % PORT, data=body, method="POST",
+                                 headers={"Content-Type": "application/json", "Origin": "http://127.0.0.1:%d" % PORT})
+    with _opener.open(req, timeout=30) as r:
+        _signed[0] = r.status == 200
+
+
 def get(path):
-    with urllib.request.urlopen("http://127.0.0.1:%d%s" % (PORT, path), timeout=30) as r:
+    if not _signed[0]:
+        signup_first()
+    with _opener.open("http://127.0.0.1:%d%s" % (PORT, path), timeout=30) as r:
         return json.loads(r.read())
 
 
@@ -62,7 +80,9 @@ try:
     seed(data)
     cfg = {"feeds": [], "delivery": "test", "smtp": {}, "google": {}, "owner_copy": "", "autofill_preview": True}
     cfg["feeds"] = ["greenhouse"]                         # only the seeded Greenhouse entries (all fresh: nothing is fetched)
-    env = dict(os.environ, UAPLY_DATA_DIR=data, UAPLY_CONFIG_JSON=json.dumps(cfg), UAPLY_ATS_BASE_GREENHOUSE="http://127.0.0.1:%d" % ATS, UAPLY_LINK_CHECK="0")
+    # UAPLY_SIGNUP_TEST=1: a test server, so the test person who signs up first (tools/gate-signup.js) is confirmed at once (Saif, October 22)
+    env = dict(os.environ, UAPLY_DATA_DIR=data, UAPLY_CONFIG_JSON=json.dumps(cfg), UAPLY_ATS_BASE_GREENHOUSE="http://127.0.0.1:%d" % ATS, UAPLY_LINK_CHECK="0",
+               UAPLY_SIGNUP_TEST="1")
     procs.append(subprocess.Popen([sys.executable, "serve.py", str(PORT), "dev", "--api"], cwd=ROOT, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
     ids = {}
     for _ in range(60):
@@ -79,8 +99,9 @@ try:
         env = dict(os.environ, PORT=str(PORT), IDS=os.path.join(TMP, "ids.json"), W=str(w), H=str(h))
         failed += subprocess.run(["node", os.path.join(HERE, "cdp.js"), os.path.join(HERE, "ui-questions.js")], cwd=ROOT, env=env).returncode != 0
     # the apply journey's fixes (October 22), on a fresh browser at phone size with touch
-    env = dict(os.environ, PORT=str(PORT), FEED_ID=str(FEED_ID), W="390", H="844")
-    failed += subprocess.run(["node", os.path.join(HERE, "cdp.js"), os.path.join(HERE, "ui-journey.js")], cwd=ROOT, env=env).returncode != 0
+    for w, h in (("390", "844"), ("1280", "800")):          # the journey at both sizes (October 22)
+        env = dict(os.environ, PORT=str(PORT), FEED_ID=str(FEED_ID), W=w, H=h)
+        failed += subprocess.run(["node", os.path.join(HERE, "cdp.js"), os.path.join(HERE, "ui-journey.js")], cwd=ROOT, env=env).returncode != 0
     code = 1 if failed else 0
 finally:
     for p in procs:
