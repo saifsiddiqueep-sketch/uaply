@@ -203,6 +203,24 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
       await ev("(()=>{const c=" + F + ".querySelector('.card.top');if(c)c.scrollTop=0})()");
     } else check("the top card has a posting link to swipe from", false);
   }
+  // the location card when location is blocked (Galaxy walk, October 22: in the installed app it gave laptop instructions, "the icon at
+  // the left of the address bar", and pushed the first job down). On a phone: the phone's settings, two lines and its two buttons, and
+  // the first job card starts below it, never under it
+  if (!process.env.LANDSCAPE) {
+    const origin = "http://127.0.0.1:" + PORT;
+    await send("Browser.setPermission", { permission: { name: "geolocation" }, setting: "denied", origin });
+    await ev("(()=>{const w=" + FW + ";try{w.localStorage.removeItem(w.__uaplyKey+'.loc')}catch(e){}})()");
+    await send("Page.navigate", { url: origin + "/" });
+    let la = null;
+    for (let i = 0; i < 40 && !la; i++) { await sleep(300); la = await ev("(()=>{try{const d=" + F + ",c=d.getElementById('locAsk');return c&&c.getClientRects().length?1:null}catch(e){return null}})()"); }
+    for (let i = 0; i < 40 && la && !(await ev("(()=>{const t=" + F + ".querySelector('.card.top');return !!t&&t.getClientRects().length>0})()")); i++) await sleep(300);   // and the first job card
+    const L = la && JSON.parse(await ev("(()=>{const d=" + F + ",w=d.defaultView,c=d.getElementById('locAsk'),p=c.querySelector('p'),cr=c.getBoundingClientRect(),t=d.querySelector('.card.top'),tr=t&&t.getBoundingClientRect(),bs=[...c.querySelectorAll('.acts .btn')].map(b=>b.getBoundingClientRect());" +
+      "const lh=parseFloat(w.getComputedStyle(p).lineHeight);return JSON.stringify({title:c.querySelector('b').textContent,text:p.textContent,lines:Math.round(p.getBoundingClientRect().height/lh),clipped:p.scrollHeight>p.clientHeight+1,h:Math.round(cr.height),bottom:Math.round(cr.bottom),cardTop:tr?Math.round(tr.top):null,oneRow:bs.length===2&&Math.abs(bs[0].top-bs[1].top)<2,btnH:bs.map(b=>Math.round(b.height))})})()"));
+    check("location blocked, on a phone: the card says to allow it in the phone's settings, then Try again (no address bar)", !!L && /phone's settings/.test(L.text) && /Try again/.test(L.text) && !/address bar/.test(L.text), JSON.stringify(L));
+    check("...in two lines of text (nothing cut off) and its two buttons side by side", !!L && L.lines <= 2 && !L.clipped && L.oneRow && L.btnH.every((h) => h >= 44), JSON.stringify(L));
+    check("...and the first job card starts below it, never under it", !!L && L.cardTop !== null && L.cardTop >= L.bottom, JSON.stringify(L));
+    await send("Browser.resetPermissions", {});
+  }
   check("no script errors", logs.length === 0, logs.join(" / ").slice(0, 200));
   console.log(bad ? "\n" + bad + " check(s) failed" : "\nEverything works on the phone");
 };

@@ -90,6 +90,62 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   const tg = JSON.parse(await ev("JSON.stringify([...(" + F + ").querySelectorAll('.sg-legal a')].map(a=>{const r=a.getBoundingClientRect();return Math.round(r.height)}))"));
   check("the links are 44 px tall targets", tg.every((h) => h >= 44), JSON.stringify(tg));
 
+  // ---- 5b. the phone's keyboard (Galaxy walk, October 22: in the installed app it covered Create my account by 133 px and Sign in by 40 px).
+  //      The installed app's window, 384 x 748, with a keyboard over the bottom 330 px that only shrinks the visual viewport (the page
+  //      itself keeps its height): the box being typed in and the card's main button below it must be in the 418 px still visible ----
+  if (phone) {
+    const KW = 384, KH = 748, KB = 330, VIS = KH - KB;
+    const fake = await send("Page.addScriptToEvaluateOnNewDocument", { source: "(()=>{if(window!==window.top||!/[?&]kb=1/.test(location.search))return;const et=new EventTarget();window.__kb=0;" +
+      "const vv={get width(){return innerWidth},get height(){return innerHeight-window.__kb},offsetTop:0,offsetLeft:0,get pageTop(){return scrollY},pageLeft:0,scale:1," +
+      "addEventListener:et.addEventListener.bind(et),removeEventListener:et.removeEventListener.bind(et),dispatchEvent:et.dispatchEvent.bind(et)};" +
+      "Object.defineProperty(window,'visualViewport',{configurable:true,get(){return vv}});window.__kbSet=(px)=>{window.__kb=px;et.dispatchEvent(new Event('resize'))}})()" });
+    await send("Emulation.setDeviceMetricsOverride", { width: KW, height: KH, deviceScaleFactor: 3, mobile: true });
+    await load("/?app=1&kb=1");
+    // where an element is on the screen (the frame's place plus its place inside the frame), and whether all of it is above the keyboard
+    const box = (sel) => ev("(()=>{const f=document.querySelector('iframe').getBoundingClientRect(),e=" + q(sel) + ";if(!e)return null;const r=e.getBoundingClientRect();return JSON.stringify({t:Math.round(f.top+r.top),b:Math.round(f.top+r.bottom)})})()").then((x) => x && JSON.parse(x));
+    const inside = (r) => !!r && r.t >= 0 && r.b <= VIS;
+    const tap = (sel) => ev("(()=>{const e=" + q(sel) + ";if(!e)return false;e.focus({preventScroll:true});return true})()");   // a tap: the box gets the focus where it is, no scrolling
+    const kb = async (px) => { await ev("window.__kbSet(" + px + ")"); await sleep(800); };
+    const pw = ".sg-su .sg-pw input", go = ".sg-su [type=submit]";
+    // the Email box, the keyboard coming up after the tap, then typing
+    await ev("(()=>{const m=" + F + ".getElementById('main');m.scrollTop=0})()");
+    await tap("[data-email] input"); await kb(KB);
+    await send("Input.insertText", { text: "kb.test@example.com" }); await sleep(400);
+    let r1 = await box("[data-email] input");
+    const fh = await ev("Math.round(document.querySelector('iframe').getBoundingClientRect().height)");
+    check("the keyboard up (" + KW + "x" + KH + ", " + KB + " px covered): the frame shrinks to the " + VIS + " px still visible", Math.abs(fh - VIS) <= 2, fh);
+    check("typing the email: the Email box stays above the keyboard", inside(r1), JSON.stringify(r1));
+    // the password box: tapped while the keyboard is already up, and typed in
+    await tap(pw); await sleep(800); await send("Input.insertText", { text: "Kb-test-pw" }); await sleep(400);
+    let rp = await box(pw), rg = await box(go);
+    check("typing the password: the Password box and Create my account are both fully above the keyboard", inside(rp) && inside(rg), JSON.stringify({ pw: rp, create: rg }));
+    // the eye: a real tap (pointer events) keeps the focus in the box (the keyboard is not closed and re-opened) and the box in view
+    const eye = await box(".sg-su .sg-eye");
+    const ex = await ev("(()=>{const f=document.querySelector('iframe').getBoundingClientRect(),r=" + q(".sg-su .sg-eye") + ".getBoundingClientRect();return JSON.stringify({x:f.left+r.left+r.width/2,y:f.top+r.top+r.height/2})})()").then(JSON.parse);
+    for (const type of ["mousePressed", "mouseReleased"]) await send("Input.dispatchMouseEvent", { type, x: ex.x, y: ex.y, button: "left", clickCount: 1 });
+    await sleep(500);
+    const ef = JSON.parse(await ev("(()=>{const d=" + F + ",i=d.querySelector(" + JSON.stringify(pw) + ");return JSON.stringify({focus:d.activeElement===i,type:i.type,caret:i.selectionStart,len:i.value.length})})()"));
+    rp = await box(pw);
+    check("the eye: the password shows, the focus never leaves the box (caret at the end), and the box is still above the keyboard",
+      !!eye && ef.focus && ef.type === "text" && ef.caret === ef.len && inside(rp), JSON.stringify({ ef, rp }));
+    // the keyboard goes: the frame is the whole window again
+    await ev("(()=>{const a=" + F + ".activeElement;if(a&&a.blur)a.blur()})()"); await kb(0);
+    const fh0 = await ev("Math.round(document.querySelector('iframe').getBoundingClientRect().height)");
+    check("the keyboard down: the frame is the whole " + KH + " px window again", Math.abs(fh0 - KH) <= 2, fh0);
+    // Sign in: its password box and the Sign in button
+    await click(".sg-to-in"); await sleep(600);
+    await ev("(()=>{const m=" + F + ".getElementById('main');m.scrollTop=0})()");
+    await tap(".sg-in-card .sg-pw input, form .sg-pw input"); await kb(KB);
+    await send("Input.insertText", { text: "Kb-test-pw" }); await sleep(400);
+    const si = await box(".sg-pw input"), sb = await ev("(()=>{const f=document.querySelector('iframe').getBoundingClientRect(),d=" + F + ",i=d.querySelector('.sg-pw input'),fm=i.closest('form')||i.closest('.sg-card'),b=[...fm.querySelectorAll('.sg-btn.pri')].find(x=>i.compareDocumentPosition(x)&4);if(!b)return null;const r=b.getBoundingClientRect();return JSON.stringify({t:Math.round(f.top+r.top),b:Math.round(f.top+r.bottom),txt:b.textContent})})()").then((x) => x && JSON.parse(x));
+    check("Sign in: the Password box and the Sign in button are both fully above the keyboard", inside(si) && inside(sb) && /Sign in/.test(sb.txt), JSON.stringify({ si, sb }));
+    await ev("(()=>{const a=" + F + ".activeElement;if(a&&a.blur)a.blur()})()"); await kb(0);
+    await send("Page.removeScriptToEvaluateOnNewDocument", { identifier: fake.result.identifier });
+    await send("Emulation.setDeviceMetricsOverride", { width: W, height: H, deviceScaleFactor: 3, mobile: true });
+    await send("Storage.clearDataForOrigin", { origin: base, storageTypes: "all" });
+    await load();
+  }
+
   // ---- 6. sign up (test mode: the server signs the person in at once, or the code from the test inbox), then the two questions ----
   const stamp = Date.now().toString(36), email = "gate." + stamp + "@example.com";
   const prov = JSON.parse(await ev("fetch('/api/auth/providers').then(r=>r.json()).then(j=>JSON.stringify(j))"));

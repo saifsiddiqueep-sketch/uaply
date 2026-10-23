@@ -6,6 +6,19 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 
+### Galaxy walk fixes (Saif, October 23): the phone keyboard, the password eye, small text, the share target, the bar colours, the location card
+- **The keyboard no longer covers the card.** The pages ask the browser to resize for it (`interactive-widget=resizes-content`); where
+  only the visual viewport shrinks (the installed app), the page around the app's frame sets the frame to the height still visible and
+  back when the keyboard goes, and the box being typed in plus the card's main button below it (Create my account, Sign in) scroll into
+  that space. `tools/ui-gate.js` proves it at 384 x 748 with the bottom 330 px covered.
+- **The password eye** keeps the focus in the box (no keyboard closing and re-opening), caret at the end, the box in view.
+- **14 px text**: the Job Tracker figures' labels and the points on each match line ("15/15"), without breaking the rows at 390.
+- **Share this job**: its tap area is exactly 44 x 44 px (was 43).
+- **Status and navigation bars**: a theme-color per light and dark mode on the app pages (the manifest keeps the light value).
+- **Location card on a phone or in the installed app**: "Allow location for UAply in your phone's settings, then tap Try again", two
+  lines and its two buttons, above the chips and never over the first job card (`tools/ui-phone.js` checks it). Laptops keep the
+  address-bar wording.
+
 ### Sign-in, server side (Saif, October 22): password sign-up with names, the code to verify and to sign in, the gate, a test mode, items 12 to 23
 - **The contract** is in `docs/ACCOUNTS.md`, "The sign-in contract": every route, field and answer, the gate and the test mode, for the
   card and the gate the front end builds.

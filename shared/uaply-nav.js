@@ -283,6 +283,11 @@ input[type=range]{accent-color:var(--accent);min-height:44px}
 #locAsk{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:100%;max-width:620px}
 #locAsk p{margin:0;color:var(--muted);font-size:13.5px}
 #locAsk .acts{display:flex;gap:8px;flex-wrap:wrap}
+/* on a phone: the title, at most two lines of text and the two buttons side by side, so the first job card keeps its place below */
+#locAsk.phone{padding:10px 12px;gap:6px}
+#locAsk.phone p{font-size:13px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+#locAsk.phone .acts{flex-wrap:nowrap}
+#locAsk.phone .acts .btn{flex:1}
 @media (max-height:740px){.swipecol{gap:8px}.tips{padding:6px 10px!important;font-size:12.5px!important;line-height:1.35}.banner{padding:4px 10px!important;font-size:12px!important;line-height:1.3}.banner button{padding:4px 0!important;min-height:32px}#locAsk{padding:8px 12px;gap:4px;border-radius:12px}#locAsk b{font-size:13.5px}#locAsk p{font-size:12px;line-height:1.35}#locAsk .acts .btn{min-height:34px;padding:5px 14px;font-size:13.5px}.filters button{padding:4px 2px!important;min-height:32px}}
 #fMilesWrap.nearbox{display:flex;flex-direction:column;gap:6px;margin-top:8px}
 #fMilesWrap .rngrow{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
@@ -865,9 +870,26 @@ function apply(w,host){
     var ask=d.getElementById("locAsk");if(ask&&(devPos()||(DEV&&DEV.skipped)))ask.remove();
     var st=d.getElementById("fLocState"),bt=d.getElementById("fLocBtn");if(!st||!bt)return;
     if(devPos()){st.textContent="Using your device location (accurate to about a mile). It stays on this device and is never sent to our server.";bt.textContent="Stop using my location";bt.setAttribute("data-mode","stop")}
-    else if(DEV&&DEV.denied){st.textContent="Location is blocked for this site. Allow it in your browser's site settings (the icon at the left of the address bar), then tap Use my location. Until then distance uses your city.";bt.textContent="Use my location";bt.setAttribute("data-mode","ask")}
+    else if(DEV&&DEV.denied){st.textContent=phoneish()?"Location is off for UAply. Allow it in your phone's settings, then tap Use my location. Until then distance uses your city.":"Location is blocked for this site. Allow it in your browser's site settings (the icon at the left of the address bar), then tap Use my location. Until then distance uses your city.";bt.textContent="Use my location";bt.setAttribute("data-mode","ask")}
     else{st.textContent="Not using your device location. Distance uses your city or ZIP code.";bt.textContent="Use my location";bt.setAttribute("data-mode","ask")}
   }
+  /* a phone, or the installed app (the Play Store app, a site added to the home screen): no address bar to point at, so the location card
+     speaks of the phone's settings and stays short (two lines and its two buttons: Galaxy walk, October 22, it pushed the first job card
+     down with laptop instructions). Laptops keep the laptop words. */
+  function phoneish(){
+    try{var t=w.top;
+      if(t.Capacitor||(t.matchMedia&&(t.matchMedia("(display-mode: standalone)").matches||t.matchMedia("(display-mode: fullscreen)").matches)))return true;
+      if(t.navigator&&t.navigator.standalone)return true;
+      if(/Android|iPhone|iPad|iPod|Mobile/i.test(t.navigator.userAgent||""))return true;
+      return !!(t.matchMedia&&t.matchMedia("(pointer: coarse)").matches&&t.innerWidth<820);
+    }catch(e){return false}
+  }
+  var LOC_PHONE={
+    ask:["See jobs near you first?","Your phone will ask to share your location. It only puts nearby jobs first and never leaves this device.","Use my location"],
+    again:["See jobs near you first?","Tap Use my location, then choose Allow. It only puts nearby jobs first.","Use my location"],
+    blocked:["Location is off for UAply","Allow location for UAply in your phone's settings, then tap Try again.","Try again"],
+    nofix:["We could not find you just now","Your phone could not tell where it is. Try again, or UAply uses your city.","Try again"]
+  };
   var LOC_TXT={
     ask:["See jobs near you first?","Your browser will ask to share your location. UAply uses it only to put nearby jobs at the top. It stays on this device and is never sent to our server. You can turn it off any time in Profile, Filters.","Use my location"],
     again:["See jobs near you first?","Tap Use my location, then choose Allow when your browser asks. UAply uses it only to put nearby jobs at the top, and it never leaves this device.","Use my location"],
@@ -888,7 +910,7 @@ function apply(w,host){
         else{DEV={asked:true,skipped:true,at:Date.now()};saveDev();c.remove();syncLocUI()}
       });
     }
-    var t=LOC_TXT[mode]||LOC_TXT.ask,yes=c.querySelector('[data-near="yes"]');
+    var T=phoneish()?LOC_PHONE:LOC_TXT,t=T[mode]||T.ask,yes=c.querySelector('[data-near="yes"]');c.classList.toggle("phone",T===LOC_PHONE);
     c.querySelector("b").textContent=t[0];c.querySelector("p").textContent=t[1];yes.textContent=t[2];yes.disabled=false;
     return c;
   }
@@ -904,7 +926,8 @@ function apply(w,host){
       var mode=why==="denied"?"blocked":why==="nofix"?"nofix":"again";
       nearBox(mode);
       /* Try again that ends the same way used to redraw the same words, so the button looked dead: say it was tried */
-      if(mode!=="again"&&was.indexOf(LOC_TXT[mode][0])===0)c.querySelector("b").textContent=LOC_TXT[mode][0]+" (still, tried again at "+new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit",second:"2-digit"})+")";
+      var TT=phoneish()?LOC_PHONE:LOC_TXT;
+      if(mode!=="again"&&was.indexOf(TT[mode][0])===0)c.querySelector("b").textContent=TT[mode][0]+" (still, tried again at "+new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit",second:"2-digit"})+")";
     });
   }
   /* The Internship and Co-op stacks: undergraduate roles before graduate-only ones (PhD, master's, MBA; the server marks them gradOnly),

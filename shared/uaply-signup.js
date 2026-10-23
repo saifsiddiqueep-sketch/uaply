@@ -238,6 +238,49 @@ function apply(w,host){
   function fx(el){if(!el)return;try{el.focus({preventScroll:true})}catch(e){try{el.focus()}catch(_){}}}
   /* error focus: bring the problem into view first (a phone shows less than the card), then focus it. Headings keep plain fx() */
   function fxs(el){if(!el)return;try{el.scrollIntoView({block:"center",behavior:RM()?"auto":"smooth"})}catch(e){}fx(el)}
+
+  /* ---------- the phone's keyboard (Galaxy walk, October 22: in the installed app it covered Create my account by 133 px and Sign in by
+     40 px; in Chrome it once covered the Email box while typing). The app runs in a frame, and the frame did not get shorter when the
+     keyboard came up, so nothing inside could scroll above it. Now: the pages ask the browser to resize for the keyboard
+     (interactive-widget=resizes-content); where it only shrinks the visual viewport instead, the page around the frame sets the
+     frame's height to what is still visible (and back when the keyboard goes); and on the card the box being typed in, and the
+     card's main button below it, are scrolled into the part of the screen that is left. ---------- */
+  function editable(el){return !!el&&(/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)||el.isContentEditable)&&!/^(button|submit|checkbox|radio|range|color|file|hidden|reset|image)$/i.test(el.type||"")}
+  function scroller(el){for(var p=el.parentElement;p&&p!==d.body;p=p.parentElement){var o=w.getComputedStyle(p).overflowY;if((o==="auto"||o==="scroll")&&p.scrollHeight>p.clientHeight+1)return p}return d.scrollingElement||d.documentElement}
+  function mainAfter(el){var f=el.closest("form")||el.closest(".sg-card");if(!f)return null;var bs=f.querySelectorAll(".sg-btn.pri");
+    for(var i=0;i<bs.length;i++){if((el.compareDocumentPosition(bs[i])&4)&&bs[i].getClientRects().length)return bs[i]}return null}
+  function inView(el){
+    if(!el||!el.getClientRects().length)return;
+    var fr=w.frameElement,top0=(fr&&fr.__sgKbVisTop)||0,bot0=w.innerHeight,M=12;
+    var sc=scroller(el),sr=sc===d.scrollingElement||sc===d.documentElement?{top:0,bottom:w.innerHeight}:sc.getBoundingClientRect();
+    var vt=Math.max(top0,sr.top)+M,vb=Math.min(bot0,sr.bottom)-M;if(vb-vt<40)return;
+    var r=el.getBoundingClientRect(),b=mainAfter(el),lo=r.bottom;
+    if(b){var br=b.getBoundingClientRect();if(br.bottom-r.top<=vb-vt)lo=br.bottom}   /* the box and its button, when both fit */
+    var dy=0;if(lo>vb)dy=lo-vb;if(r.top-dy<vt)dy=r.top-vt;
+    if(Math.abs(dy)>=1){if(sc===d.scrollingElement||sc===d.documentElement)w.scrollBy(0,dy);else sc.scrollTop+=dy}
+  }
+  function bring(){var a=d.activeElement;if(editable(a)&&a.closest(".sg"))inView(a)}
+  w.__uaplyKbBring=bring;
+  d.addEventListener("focusin",function(e){if(!editable(e.target)||!e.target.closest(".sg"))return;[60,320,650].forEach(function(t){setTimeout(bring,t)})});
+  w.addEventListener("resize",function(){setTimeout(bring,30)});
+  (function kbFrame(){
+    var fr=w.frameElement,top;try{top=fr&&fr.ownerDocument.defaultView}catch(e){}
+    if(!fr||!top)return;fr.__sgKbW=w;if(fr.__sgKb)return;fr.__sgKb=true;   /* one set of listeners per frame; a reloaded app takes them over */
+    var raf=0;
+    function fit(){
+      raf=0;var vv=top.visualViewport,iw=fr.__sgKbW;if(!vv)return;
+      var inner=null;try{inner=iw&&iw.document.activeElement}catch(e){}
+      var bottom=vv.offsetTop+vv.height,covered=top.innerHeight-bottom,t=fr.getBoundingClientRect().top;
+      /* the keyboard: a box is being typed in, the page is not pinch-zoomed, and more than 100 px at the bottom are hidden */
+      if(covered>100&&Math.abs((vv.scale||1)-1)<.01&&(editable(inner)||editable(top.document.activeElement))&&bottom-Math.max(0,t)>=160){
+        fr.style.height=Math.round(bottom-Math.max(0,t))+"px";fr.style.flex="0 0 auto";fr.__sgKbVisTop=Math.max(0,vv.offsetTop-t);fr.__sgKbOn=true;
+      }else if(fr.__sgKbOn){fr.style.height="";fr.style.flex="";fr.__sgKbVisTop=0;fr.__sgKbOn=false}
+      try{if(iw&&iw.__uaplyKbBring)setTimeout(iw.__uaplyKbBring,30)}catch(e){}
+    }
+    function soon(){if(!raf)raf=top.requestAnimationFrame(fit)}
+    if(top.visualViewport){top.visualViewport.addEventListener("resize",soon);top.visualViewport.addEventListener("scroll",soon)}
+    top.addEventListener("resize",soon);
+  })();
   function h(html){var t=d.createElement("template");t.innerHTML=html.trim();return t.content.firstElementChild}
   function topStore(){try{return w.top.sessionStorage}catch(e){return null}}
   function getPending(){try{var s=topStore(),p=s&&JSON.parse(s.getItem(PENDING));return p&&typeof p==="object"&&Date.now()-(+p.at||0)<15*60e3?p:null}catch(e){return null}}
@@ -294,7 +337,13 @@ function apply(w,host){
     '<button type="button" class="sg-eye" aria-label="Show password" aria-pressed="false" aria-controls="'+id+'">'+EYE+'</button></div>'+(isNew?'<p class="sg-fine sg-pwh" id="'+id+'h">At least 8 characters.</p>':'<span id="'+id+'h" hidden></span>')+'<p class="sg-fmsg" id="'+id+'m" aria-live="polite"></p></div>'}
   function wirePw(fld,isNew){
     var inp=fld.querySelector("input"),m=fld.querySelector(".sg-fmsg"),eye=fld.querySelector(".sg-eye");
-    eye.onclick=function(){var show=inp.type==="password";inp.type=show?"text":"password";eye.setAttribute("aria-pressed",show?"true":"false");eye.setAttribute("aria-label",show?"Hide password":"Show password");eye.innerHTML=show?EYEX:EYE;fx(inp)};
+    /* the eye (Galaxy walk, October 22): a tap must not take the focus from the box (that closed and re-opened the phone's keyboard,
+       and the box could end up under it). pointerdown keeps the focus where it is; the click shows or hides the password, puts the caret
+       back at the end when the box was being typed in, and keeps the box (and the button below it) in view */
+    function keep(e){e.preventDefault()}
+    eye.addEventListener("pointerdown",keep);eye.addEventListener("mousedown",keep);
+    eye.onclick=function(){var had=d.activeElement===inp,show=inp.type==="password";inp.type=show?"text":"password";eye.setAttribute("aria-pressed",show?"true":"false");eye.setAttribute("aria-label",show?"Hide password":"Show password");eye.innerHTML=show?EYEX:EYE;
+      if(had){try{var n=inp.value.length;inp.setSelectionRange(n,n)}catch(e){}}inView(inp)};
     function set(t){fld.classList.toggle("bad",!!t);if(t)inp.setAttribute("aria-invalid","true");else inp.removeAttribute("aria-invalid");m.textContent=t||""}
     inp.addEventListener("input",function(){if(fld.classList.contains("bad")&&(!isNew||inp.value.length>=8))set("")});
     return {input:inp,value:function(){return inp.value},error:set,
