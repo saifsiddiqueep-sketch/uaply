@@ -170,3 +170,16 @@ unknown user id, a rate limit) and `tools/check-careeronestop.py` to check the k
    and every advert must carry the word "Adzuna" (at least 116 x 23 pixels) linking to Adzuna. Ask Adzuna for a license before building it.
 8. **Careerjet** (optional). https://www.careerjet.com/partners/ : a partner (publisher) program. Its attribution and commercial
    terms were not checked here; read them before signing up.
+
+## What the app is sent (October 23, 2026)
+
+- `GET /api/jobs`: the whole list, gzip-compressed when the browser takes it (every browser does), compact JSON. A feed job leaves out
+  what no card shows (`jobs_api.LIST_DROP`): its description, the credit line (`credit`), the update date and its age (`updated`,
+  `updatedDays`), the USAJOBS announcement; of `ats` only `kind` stays. The server reads all of these from its own copy anyway.
+  Measured on 14,326 jobs: 13.3 MB of JSON (1.43 MB compressed) before, 10.9 MB (1.29 MB) after.
+- `GET /api/jobs?size=200&page=1`: the same list a page at a time, in the same order: `{"jobs", "total", "page", "size", "next",
+  "sources", "merged", "aged_out", "pending", "fetched_at"}`. `?cursor=<next>` gives the page after (it carries on where the last one
+  ended even if the list was rebuilt; then `"changed": true`, and the app tells jobs apart by id). `?type=internship,coop` keeps the
+  deck's stacks (`job`, `parttime`, `internship`, `coop`), and `total` counts only those. Size 200 by default, at most 1,000. A first
+  page of 200 is about 230 KB of JSON, 36 KB compressed.
+- `GET /api/jobs/<id>`: one job with every field (`{"job": ...}`), or 404 `{"code": "gone"}`. Behind the sign-in gate like the list.

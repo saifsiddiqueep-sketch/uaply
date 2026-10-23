@@ -1,7 +1,9 @@
 """Tiny static server: python serve.py PORT ROOT [--api] [urlpath=file ...]
 Serves ROOT; each urlpath=file alias maps one URL to a file outside ROOT (e.g. /prod-index.html to prod/index.html).
 --api also exposes the back end used by sandbox and dev (prod does not):
-  GET  /api/jobs          real postings (jobs_api.py)
+  GET  /api/jobs          real postings (jobs_api.py), gzip-compressed when the browser takes it
+  GET  /api/jobs?size=200&page=1 (or &cursor=<next>, &type=internship,coop)   the same list a page at a time, with "total" and "next"
+  GET  /api/jobs/<id>     one job with the fields the list leaves out (description, credit line, update date, announcement)
   GET  /api/apply/config  delivery mode
   POST /api/apply         swipe right: deliver an application (uaply_api.py)
   POST /api/decision      swipe left or right: record the swipe
@@ -41,7 +43,7 @@ Serves ROOT; each urlpath=file alias maps one URL to a file outside ROOT (e.g. /
   GET  /.well-known/assetlinks.json   the Play Store app's link to this site, from UAPLY_ASSETLINKS_SHA256 (404 when unset; HEAD too)
   GET  /uaply.webmanifest, /uaply-sw.js, /uaply-offline.html, /uaply-icon-*.png   the installable website (shared/)
 Accounts use an HttpOnly session cookie. When a signed-in user swipes right, a receipt goes to their email."""
-import sys, os, re, json, http.server, base64, hmac, threading, time, signal, random, shutil, urllib.parse
+import sys, os, re, json, http.server, base64, hmac, threading, time, signal, random, shutil, urllib.parse, gzip
 import ui_rules
 
 LEGAL_NAME = re.compile(r"^[A-Za-z0-9_-]+\.(html|css|png)$")       # the files in legal/: terms.html, style.css, favicon-32.png ...
@@ -83,7 +85,7 @@ SIGNUP_TEST = False      # UAPLY_SIGNUP_TEST=1: sign-up makes a verified account
 # 403 {"error": "Confirm your email first.", "code": "verify"} (docs/ACCOUNTS.md, "The sign-in contract"). Every /api/auth/* route stays
 # open to that session, so it can type the code, ask for a new one or sign out. Owner pages keep their own owner check instead.
 GATED_GET = ("/api/jobs",)
-GATED_GET_PREFIX = ("/api/employer/logo/",)
+GATED_GET_PREFIX = ("/api/employer/logo/", "/api/jobs/")
 GATED_POST = ("/api/apply", "/api/apply/plan", "/api/apply/mark", "/api/decision", "/api/chat", "/api/feedback", "/api/profile/resume", "/api/consent",
               "/api/employer/company", "/api/employer/job", "/api/employer/job/status", "/api/employer/applicant", "/api/employer/import")
 SIGNIN_FIRST = {"error": "Sign in first.", "code": "signin"}
@@ -1006,6 +1008,21 @@ class H(http.server.SimpleHTTPRequestHandler):
                 return self._send(*held)
         if api:
             try:
+                if p == "/api/jobs" and "?" in self.path:
+                    # the paged form (jobs_api.get_page): ?size=200&page=1, or ?cursor=<the "next" of the page before>, and ?type=internship,coop
+                    # for the deck's stacks. The same jobs in the same order as the whole list; any other query is the whole list, as before.
+                    q = urllib.parse.parse_qs(self.path.split("?", 1)[1])
+                    if any(k in q for k in ("page", "size", "cursor", "type")):
+                        one = lambda k: (q.get(k) or [""])[0][:40]
+                        body = jobs_api.get_page(one("size"), one("page"), one("cursor"), [x.strip() for x in one("type").split(",") if x.strip()])
+                        if "gzip" in (self.headers.get("Accept-Encoding") or "").lower() and len(body) > 1024:
+                            return self._send(200, gzip.compress(body, 5), headers=[("Content-Encoding", "gzip"), ("Vary", "Accept-Encoding")])
+                        return self._send(200, body, headers=[("Vary", "Accept-Encoding")])
+                if p.startswith("/api/jobs/"):
+                    # one job with every field the list leaves out (jobs_api.LIST_DROP: its description, credit line, update date, announcement)
+                    raw = p[len("/api/jobs/"):]
+                    job = jobs_api.job_full(int(raw) if raw.isdigit() and len(raw) < 20 else raw[:80]) if raw else None
+                    return self._send(200, {"job": job}) if job else self._send(404, {"error": "That job is no longer listed.", "code": "gone"})
                 if p == "/api/jobs":
                     # a few thousand jobs are megabytes of JSON: sent compressed to any browser that says it takes gzip (all of them do)
                     if "gzip" in (self.headers.get("Accept-Encoding") or "").lower():
