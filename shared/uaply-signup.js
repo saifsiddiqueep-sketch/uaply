@@ -441,16 +441,26 @@ function apply(w,host){
     else if(was===true){if(V.view==="signedin")resetV();try{B.cards()}catch(e){}}
   }
   /* any data route answering 401 "signin" (the session ended, or was never there): back to the gate */
-  var f0=w.fetch;
-  if(typeof f0==="function")w.fetch=function(){
-    return f0.apply(this,arguments).then(function(r){
-      if(r&&r.status===401){try{r.clone().json().then(function(j){if(j&&j.code==="signin"){if(srv().user)B.signedIn(null);else gateSync()}},function(){})}catch(e){}}
-      /* 403 "verify": signed in, but the address is not proven yet. The card's "Check your email" code step (the session's own code,
-         kind "pw"), not the sign-up; once the code is accepted the app loads (a fresh start, so the job list comes now) */
-      if(r&&r.status===403){try{r.clone().json().then(function(j){if(j&&j.code==="verify")needCode()},function(){})}catch(e){}}
-      return r;
-    });
-  };
+  /* the app's own window and the page around it (shared/uaply-live.js reads the job list from there): each is watched once, and its
+     answers go to the app of the moment (__uaplyGateHook), so a sandbox rebuilding its app never talks to an old one */
+  function onAnswer(status,j){
+    if(!j)return;
+    if(status===401&&j.code==="signin"){if(srv().user)B.signedIn(null);else gateSync()}
+    else if(status===403&&j.code==="verify")needCode();   /* signed in, the address not proven yet: the card's code step (kind "pw") */
+  }
+  function watch(win){
+    win.__uaplyGateHook=onAnswer;
+    var f0=win.fetch;
+    if(typeof f0!=="function"||f0.__uaplyGateWatch)return;
+    var wrapped=function(){
+      return f0.apply(this,arguments).then(function(r){
+        if(r&&(r.status===401||r.status===403)){try{r.clone().json().then(function(j){if(win.__uaplyGateHook)win.__uaplyGateHook(r.status,j)},function(){})}catch(e){}}
+        return r;
+      });
+    };
+    wrapped.__uaplyGateWatch=true;win.fetch=wrapped;
+  }
+  watch(w);try{if(w.top&&w.top!==w)watch(w.top)}catch(e){}
   function needCode(){
     var u=srv().user;if(!u||(V.view==="code"&&V.kind==="pw"))return;
     var cs=getCodeStep();

@@ -159,6 +159,11 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
 
   // ---- Sign out in the app (no reload): the next person on this device starts from an empty card ----
   await click("[data-auth=sout]"); await sleep(1500);
+  // since October 22 (Reviewer 3) Sign out lands on Welcome back (sign in); its "Create an account" opens the empty sign-up card
+  const W0 = await text();
+  check("Sign out lands on Welcome back, with an empty email box and Create an account as the link", /Welcome back/.test(W0) && /Create an account/.test(W0) &&
+    (await ev("(()=>{const e=" + F + ".querySelector('[data-email] input');return !!e&&e.value===''})()")), W0.slice(0, 200));
+  await click(".sg-to-up"); await sleep(400);
   const E = JSON.parse(await ev("(()=>{const d=" + F + ",v=(s)=>{const e=d.querySelector(s);return e?(e.type==='checkbox'?e.checked:e.value):null};return JSON.stringify({card:!!d.querySelector('.sg-su'),email:v('[data-email] input'),first:v('.sg-fn input'),last:v('.sg-ln input'),ticked:v('.sg-ag'),me:null})})()"));
   E.me = await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>j.user)");
   check("Sign out in the app, then the card: no email, no name, the box unticked (the next person's tick is their own)",
