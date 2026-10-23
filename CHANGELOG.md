@@ -5,6 +5,7 @@ build: it is what the hosted site and the phone apps run. Each version is tagged
 production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
+- Hosted preview pages (Mohammed): share/build-share.js now embeds every experiment script the sandbox and dev pages list (sign-up card, Share this job, and any future uaply-*.js) instead of a fixed list, so the Render preview truly runs what is switched on; uaply-live.js stays out of the hosted copy as before because it needs the server.
 - Phone apps, before the testers (Mohammed): Android Back goes back one screen and quits only from the first screen on a second press; the CSV, calendar and backup exports work inside the apps (saved with the file plugin and shared, or copied when the plugin is missing) and Delete all my data removes those files; the iPhone app is locked to portrait and carries its privacy manifest; app plugin calls always go through the top page's bridge, since Android drops calls from frames.
 
 ### A swipe right that submits, phase A (Saif, October 23; the consent box and Terms section 3 are pending the lawyer)
