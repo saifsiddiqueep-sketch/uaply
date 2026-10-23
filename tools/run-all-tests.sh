@@ -72,6 +72,9 @@ run "receipt and owner copy emails" python tools/test-emails.py
 run "email as the mail service sees it: headers, daily quota (250/300), refusals, held mail, bounce webhook" python tools/test-mail-limits.py 2538 18799
 run "help requests from the assistant reach the support inbox" python tools/test-support.py
 run "the sign-in contract: password sign-up with names, the code to verify and to sign in, the gate, the test mode, items 12 to 23" python tools/test-signin-contract.py 18964
+run "the consent record: the box's words are the server's, kept on the account with the time, the address and their SHA-256; nothing is sent without it" python tools/test-consent.py 18970
+run "apply by email: only a posting's own \"send your resume to\" address at the employer's domain; reply-to, receipt, limits, the stop link, bounces, test mode" python tools/test-email-route.py 18973
+run "the outreach queue: who to invite each week, and it can never send" python tools/test-outreach-queue.py
 run "the Help chat sends to the AI only after the person said Continue (checked on the server)" python tools/test-chat.py
 run "applications go straight into employers' hiring systems (Greenhouse, Lever)" python tools/test-ats.py
 run "applications go straight into an employer's Ashby" python tools/test-ats-ashby.py

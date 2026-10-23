@@ -9,6 +9,8 @@ with the emailed code, a Word resume read into the profile, one swipe right per 
   ats-*        each connected hiring system received one complete application: the name, email and phone from the resume, the resume
                file itself, and no voluntary answer
   email        the employer who agreed to email got one message with the resume attached and no voluntary answer
+  email-posting a job posting that itself asks for applications by email (apply by email, October 23): one message to the posting's own
+               address with the resume, the person's email as the reply address and the stop link; the person got the confirmation
   handoff      nothing reached anyone; Applied says Finish on their site with both links; the copied block is right (browser half)
   question     a required question only the person can answer: nothing was sent before the answer, then one application with it
   cannot-ask   a required file UAply cannot ask for: an honest hand-off, nothing sent, never dropped
@@ -46,6 +48,25 @@ MAIL = os.path.join(TMP, "mail.jsonl")
 RESUME = os.path.join(HERE, "fixtures", "resumes", "newgrad.docx")
 EEO_WORDS = ("Non-binary", "protected veteran", "Native Hawaiian", "I have a disability")      # the voluntary answers the browser half sets
 COUNT = {}
+sys.path.insert(0, ROOT)
+os.environ.update(UAPLY_CONFIG_FILE="none", UAPLY_DATA_DIR=DATA)
+import jobs_api  # noqa: E402
+
+# a public posting that asks for applications by email at the employer's own address: every Greenhouse board is seeded "fresh" (nothing is
+# read from the internet) and the first one lists this posting
+POST_SRC = [s_ for s_ in jobs_api.SOURCES if s_[0] == "greenhouse"][0]
+POST_ADDR = "jobs@%s.com" % "".join(ch for ch in POST_SRC[2].lower() if ch.isalnum())
+POSTING = jobs_api._normalize(dict(id="9101", title="Marketing Analyst", company=POST_SRC[2], loc="Boston, MA", remote=None,
+                                   url="https://job-boards.greenhouse.io/%s/jobs/9101" % POST_SRC[1], salary_text="", posted=int(time.time()),
+                                   text="SQL and Excel reporting for campaigns, with some Python. Plan campaigns with the team. 1 year of experience. To apply, send your resume to %s." % POST_ADDR),
+                              "greenhouse", POST_SRC[2], POST_SRC[1])
+_cache = {"_version": jobs_api.CACHE_VERSION}
+for _k, _b, _n in jobs_api.SOURCES:
+    if _k == "greenhouse":
+        _cache["%s|%s|%s" % (_k, _b, _n)] = {"at": time.time(), "jobs": [], "status": "0 jobs"}
+_cache["greenhouse|%s|%s" % POST_SRC[1:]]["jobs"] = [POSTING]
+with open(os.path.join(DATA, "jobs-cache.json"), "w", encoding="utf-8") as _f:
+    json.dump(_cache, _f)
 
 
 def t(path, name, ok, extra=""):
@@ -129,11 +150,11 @@ ATS_JOBS = sum(len(e["jobs"]) for e in EMPLOYERS if e.get("ats"))
 JOBS = {"gh": jid("Acme Robotics", "Marketing Coordinator"), "question": jid("Acme Robotics", "Brand Storyteller"), "file": jid("Acme Robotics", "Portfolio Designer"),
         "lever": jid("Acme Lever", "Social Media Coordinator"), "ashby": jid("Acme Ashby", "Content Marketing Intern"),
         "sr": jid("City of Philadelphia", "Communications Assistant"), "wk": jid("Acme Works", "Marketing Assistant"),
-        "mail": jid("Mail Co", "Marketing Associate"), "handoff": jid("Handoff Co", "Growth Marketer")}
+        "mail": jid("Mail Co", "Marketing Associate"), "handoff": jid("Handoff Co", "Growth Marketer"), "postmail": POSTING["id"]}
 with open(os.path.join(DATA, "uaply-partners.json"), "w", encoding="utf-8") as f:
     json.dump({"employers": EMPLOYERS}, f)
 
-CFG = {"feeds": [], "delivery": "live", "grace_seconds": 0, "daily_limit": 100, "google": {}, "owner_copy": "", "anthropic_api_key": "",
+CFG = {"feeds": ["greenhouse"], "delivery": "live", "grace_seconds": 0, "daily_limit": 100, "google": {}, "owner_copy": "", "anthropic_api_key": "",
        "smtp": {"host": "127.0.0.1", "port": SMTP, "starttls": False, "from_addr": "uaply@example.com"}}
 ENV = dict(os.environ, UAPLY_DATA_DIR=DATA, UAPLY_CONFIG_FILE="none", UAPLY_DNS_CHECK="off", UAPLY_REQUEST_LOG="off",
            **{"UAPLY_ATS_BASE_" + k: "http://127.0.0.1:%d" % MOCK for k in ("GREENHOUSE", "LEVER", "ASHBY", "SMARTRECRUITERS", "WORKABLE")})
@@ -192,8 +213,9 @@ try:
     st = get(APP, "/api/status").get("apply") or {}
     t("status", "/api/status says the apply engine is healthy (its records folder is writable) in live delivery", st.get("ok") is True and st.get("mode") == "live", st)
     cl, cf = st.get("classes") or {}, st.get("configured") or {}
-    t("status", "...with jobs for each configured way of applying: hiring systems %d, email %d, hand-off %d" % (ATS_JOBS, len(by_name["Mail Co"]["jobs"]), len(by_name["Handoff Co"]["jobs"])),
-      (cl.get("ats"), cl.get("email"), cl.get("handoff"), cf.get("ats"), cf.get("email")) == (ATS_JOBS, len(by_name["Mail Co"]["jobs"]), len(by_name["Handoff Co"]["jobs"]), True, True), st)
+    t("status", "...with jobs for each configured way of applying: hiring systems %d, email %d (one a posting's own address), hand-off %d" % (ATS_JOBS, len(by_name["Mail Co"]["jobs"]) + 1, len(by_name["Handoff Co"]["jobs"])),
+      (cl.get("ats"), cl.get("email"), cl.get("postingEmail"), cl.get("handoff"), cf.get("ats"), cf.get("email"))
+      == (ATS_JOBS, len(by_name["Mail Co"]["jobs"]) + 1, 1, len(by_name["Handoff Co"]["jobs"]), True, True), st)
 
     # ---------- the person, in Chrome ----------
     env = dict(os.environ, PORT=str(APP), SMTP_FILE=MAIL, E2E_JOBS=json.dumps(JOBS), RESUME=RESUME, MOCK_PORT=str(MOCK), W="390", H="844", CDP_LIMIT_MS="480000")
@@ -266,6 +288,20 @@ try:
         t("email", "...about this job, from the person", "Marketing Associate" in raw and "Elena Rossi" in raw and "elena.rossi@example.com" in raw, raw[:300])
         t("email", "...with the resume attached", "Content-Disposition: attachment" in raw and "newgrad.docx" in raw, "")
         t("email", "...and no voluntary answer", not any(w.lower() in raw.lower() for w in EEO_WORDS), "")
+    # a posting that asks for applications by email: one message to its own address
+    to_post = [m for m in mails() if POST_ADDR in [x.lower() for x in (m.get("to") or [])]]
+    if t("email-posting", "the posting's own address got exactly one message", len(to_post) == 1, len(to_post)):
+        raw = to_post[0]["raw"]
+        import email as _email
+        import email.policy as _policy
+        _msg = _email.message_from_string(raw, policy=_policy.default)
+        body = (_msg.get_body(preferencelist=("plain",)) or _msg).get_content()
+        t("email-posting", "...about this job, from the person, with their email as the reply address", "Marketing Analyst" in body and "Elena Rossi" in body
+          and "elena.rossi@example.com" in str(_msg.get("Reply-To")), str(_msg.get("Reply-To")))
+        t("email-posting", "...with the resume attached", "Content-Disposition: attachment" in raw and "newgrad.docx" in raw, "")
+        t("email-posting", "...saying why it came, with the stop link", "asks for applications by email at this address" in " ".join(body.split()) and "/employer/stop?a=" in body, body[-300:])
+        t("email-posting", "...and no voluntary answer", not any(w.lower() in raw.lower() for w in EEO_WORDS), "")
+    t("email-posting", "the person got the confirmation email for it", any("Marketing Analyst" in m.get("raw", "") for m in mails() if "elena.rossi@example.com" in [x.lower() for x in (m.get("to") or [])]), "")
     t("email", "the hiring systems got exactly the 6 applications the person made (5 swipes + 1 after the answer), nothing twice or extra",
       len([g for g in got]) == 6, [(g.get("system"), g.get("job") or g.get("posting")) for g in got])
 
@@ -359,7 +395,8 @@ try:
     app = server(cfg2)
     call("/api/auth/login", {"email": "elena.rossi@example.com", "password": summary["password"]})
     s, b = call("/api/billing/status")
-    sent_run = 7 + len(sent_into) + sum(1 for k2, v in outs.items() if k2.endswith("|mail") and v.get("got") == "sent")
+    # the first browser half sent 8: five hiring systems, the email employer, the email posting and the answered question
+    sent_run = 8 + len(sent_into) + sum(1 for k2, v in outs.items() if k2.endswith("|mail") and v.get("got") == "sent")
     t("limit", "Plan and billing shows the week used up on Free: %d of 50 (the 50 above plus the %d sent in this run)" % (50 + sent_run, sent_run),
       (s, b.get("used"), b.get("cap"), b.get("plan")) == (200, 50 + sent_run, 50, "free"), b)
     before = len(get(MOCK, "/__received"))

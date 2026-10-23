@@ -40,8 +40,11 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
   for (let i = 0; i < 10 && !(await ev("!!" + F + ".getElementById('kcYes')")); i++) await sleep(300);
   const agree = String(await ev("((" + F + ").getElementById('kitConsent')||{}).innerText||''"));
   check("a clean browser is asked for the agreement at first open, before any swipe", /Before you start swiping/.test(agree), agree.slice(0, 60));
-  check("the agreement says what is sent (resume file included), that voluntary answers are never sent, and links the legal pages",
-    /resume file/.test(agree) && /voluntary answers .* are never sent/.test(agree) && /never emails a company that has not agreed/.test(agree) &&
+  check("the agreement says how a swipe sends (the resume included), where email goes, that voluntary questions are never answered, how to stop it, the match line, the Automatic submit tick (off), and links How matching works, the Terms and the Privacy Policy",
+    /emails your application and resume there/.test(agree) && /never answers questions about race, gender, veteran status or disability/.test(agree) &&
+    /publishes an email address for applications/.test(agree) && /turn off Send applications for me in Profile, Account/.test(agree) &&
+    /Automatic submit:/.test(agree) && (await ev("!(" + F + ").getElementById('kcAuto').checked")) &&
+    /The match percentage is worked out automatically/.test(agree) && /only if you turn on Automatic submit below/.test(agree) &&
     (await ev("(" + F + ").querySelectorAll('#kitConsent a[href*=legal]').length")) === 3, agree.slice(0, 120));
   await scan("the first screen, with the agreement open");
   await ev(F + ".getElementById('kcYes').click()"); await sleep(500);
@@ -173,7 +176,7 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
   check("no agreement box at the first swipe right (it was answered at first open)", !(await ev("!!" + F + ".getElementById('kcYes')")));
   await ev("(()=>{const m=" + F + ".getElementById('kcYes');if(m)m.click()})()"); await sleep(2200);
   const after = await pageText();
-  check("swiping right on a real job says only that it was saved (or applied), never 'Finish on their site'", /Saved .+ to Applied · \d+% match|Applied to/.test(after) && !/finish on their site|not sent yet|finish now/i.test(after.slice(-200)), after.slice(-160));
+  check("swiping right on a real job says only that it was saved (or applied), never 'Finish on their site'", /Saved .+ to Applied · \d+% match|Saved to Job Tracker\. One tap to finish on their site|Applied to/.test(after) && !/finish on their site|not sent yet|finish now/i.test(after.slice(-200)), after.slice(-160));
   await ev(F + ".getElementById('nb-dash').click()"); await sleep(400);
   await sub("Applied"); await sleep(600);
   check("the swiped job appears under Job Tracker > Applied", (await ev(F + ".querySelectorAll('.app,.appitem,[data-app],article,.row').length")) > 0 || /intern/i.test(await pageText()));

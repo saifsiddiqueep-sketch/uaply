@@ -417,10 +417,10 @@
     el.focus();
     var ctl = el.closest("[class*='control' i]") || el;
     ctl.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
-    await sleep(60);
+    await sleep(30);
     if (el.getAttribute("aria-expanded") !== "true" && typeof TouchEvent === "function") {   /* React Select on a phone opens on touchend, not mousedown */
       try { var tch = new Touch({ identifier: Date.now(), target: ctl, clientX: 1, clientY: 1 }); ctl.dispatchEvent(new TouchEvent("touchend", { bubbles: true, cancelable: true, changedTouches: [tch] })); } catch (e) {}
-      await sleep(60);
+      await sleep(30);
     }
     if (el.getAttribute("aria-expanded") === "false") el.click();
   }
@@ -430,7 +430,11 @@
     try {
       await comboOpen(el); el.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
       var opts = [];
-      for (var i = 0; i < 6 && !opts.length; i++) { await sleep(120); opts = listOptions(); }
+      /* looked at often (one tap, October 23: the form is ready seconds after the swipe), for as long as before (0.7 s) */
+      for (var i = 0; i < 24 && !opts.length; i++) {
+        await sleep(30); opts = listOptions();
+        if (!opts.length && i >= 4 && el.getAttribute("aria-expanded") !== "true") break;     /* it did not open: a list that only searches */
+      }
       var texts = opts.map(function (o) { return clean(o.innerText); }).filter(Boolean);
       comboClose(el); el.blur();
       return texts.length > 300 ? texts.slice(0, 300) : texts;
@@ -442,14 +446,14 @@
       await comboOpen(el);
       if (text) setValue(el, text, true); else el.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
       var hit = null, opts = [];
-      for (var i = 0; i < 16 && !hit; i++) {
-        await sleep(150);
+      for (var i = 0; i < 40 && !hit; i++) {      /* every 60 ms, for as long as before (2.4 s): a list that is there at once is picked at once */
+        await sleep(i ? 60 : 30);
         opts = listOptions();
         if (opts.some(function (o) { return EEO_OPT.test(o.innerText || ""); })) { comboClose(el); return "eeo"; }
         var at = opts.length ? chooser(opts.map(function (o) { return clean(o.innerText); })) : -1;
         if (at >= 0) hit = opts[at];
       }
-      if (hit) { hit.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })); hit.click(); await sleep(100); return "picked"; }
+      if (hit) { hit.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })); hit.click(); await sleep(60); return "picked"; }
       comboClose(el);
       return el.value && text && norm(el.value) === norm(text) ? "typed" : "no";
     } catch (e) { return "no"; }
@@ -459,8 +463,8 @@
     if (!re) return false;
     var box = el.closest(".application-field") || (el.parentElement && el.parentElement.parentElement) || el.parentElement;
     if (!box || !box.querySelector("[class*='dropdown' i],[class*='suggest' i],[class*='results' i],[class*='autocomplete' i],[role=listbox]")) return false;
-    for (var i = 0; i < 24; i++) {
-      await sleep(150);
+    for (var i = 0; i < 60; i++) {           /* every 60 ms for 3.6 s, as long as before: the suggestions come from the employer's server */
+      await sleep(60);
       var c = [].slice.call(box.querySelectorAll("[class*='dropdown' i] *,[class*='suggest' i] *,[class*='results' i] *,[role=option]")).filter(function (x) {
         return x !== el && !x.children.length && (x.offsetParent || x.getClientRects().length) && re.test(x.textContent || "") && (x.textContent || "").length < 120;
       })[0];
@@ -674,14 +678,32 @@
     } else rep.resumeInput = !!resumeInput();
     var sb = submitButton();
     rep.submit = !!sb;
-    if (sb && !dry) { sb.scrollIntoView({ block: "center" }); sb.style.outline = "3px solid #E11D48"; sb.style.outlineOffset = "3px"; }
     var hc = humanCheck();
     rep.humanCheck = hc.present; rep.checkKind = hc.kind; rep.checkShown = hc.shown;
+    if (sb && !dry) {
+      sb.style.outline = "3px solid #E11D48"; sb.style.outlineOffset = "3px";
+      /* one tap (October 23): the page is scrolled to what the person does next. A check the page shows as a box: the box's own place on
+         the page (its container, never anything inside it: UAply does not fill, start or touch a check); otherwise the Submit button */
+      var box = hc.shown ? checkBox() : null;
+      (box || sb).scrollIntoView({ block: "center" });
+      rep.scrolledTo = box ? "check" : "submit";
+    }
     rep.ms = Date.now() - t0;
-    if (!dry && opts.banner !== false) banner(rep.leftReq ? "Filled from your UAply profile. Answer the " + rep.leftReq + " question" + (rep.leftReq === 1 ? "" : "s") + " left, review it, then tap Submit." :
-      hc.shown ? "Filled from your UAply profile. Review it, complete the check, then tap Submit." : "Filled from your UAply profile. Review it, then tap Submit.");
+    var leftLine = rep.leftReq ? "Answer the " + rep.leftReq + " question" + (rep.leftReq === 1 ? "" : "s") + " left, " : "";
+    if (!dry && opts.banner !== false) banner(hc.present ? ONE_TAP + " " + (leftLine ? leftLine + "complete the check, then tap Submit." : "Review it, complete the check, then tap Submit.") :
+      leftLine ? "Filled from your UAply profile. " + leftLine + "review it, then tap Submit." : "Filled from your UAply profile. Review it, then tap Submit.");
     if (!dry) LAST = rep;
     return rep;
+  }
+  /* the line a form with a human check shows when it opens (Saif, October 23): the person, not UAply, answers the check */
+  var ONE_TAP = "One tap to finish: this employer asks you to confirm you are a person.";
+  /* the element a shown check sits in on the page (the widget's own box, not its frame's inside), to scroll to: null when none is shown */
+  function checkBox() {
+    var el = [].slice.call(document.querySelectorAll(CHECK_SEL)).filter(function (e) {
+      if (e.closest(".grecaptcha-badge")) return false;
+      var r = e.getBoundingClientRect(); return r.width >= 120 && r.height >= 60 && getComputedStyle(e).visibility !== "hidden" && getComputedStyle(e).position !== "fixed";
+    })[0];
+    return el ? (el.tagName === "IFRAME" && el.parentElement ? el.parentElement : el) : null;
   }
   /* the scan: what the profile cannot answer on this form, to ask in UAply's question box before the form opens. Changes nothing
      (lists are opened to read their choices and closed again). */
@@ -691,12 +713,45 @@
      kind on the page (looked at again right now), only with nothing required left and the resume attached where the form takes one */
   function submitIfAllowed(mode, rep) {
     rep = rep || LAST;
-    if (mode !== "automatic" || !rep) return false;
-    var hc = humanCheck();
-    if (hc.present || rep.humanCheck || rep.leftReq > 0 || (rep.resumeInput && !rep.resumeAttached)) return false;
+    if (!mayAuto(mode, rep)) return false;
     var sb = submitButton(); if (!sb) return false;
     sb.click();
     return true;
+  }
+  /* every condition of automatic submit, looked at again right now: "automatic" (the per-system switch, and the person's own tick on
+     record: the app passes it only with both), no human check of any kind on the page, nothing required left (a consent or certification
+     box counts: the person ticks those), the resume attached where the form takes one, and a Submit button */
+  function mayAuto(mode, rep) {
+    if (mode !== "automatic" || !rep) return false;
+    var hc = humanCheck();
+    return !(hc.present || rep.humanCheck || rep.leftReq > 0 || rep.consentReq > 0 || (rep.resumeInput && !rep.resumeAttached) || !submitButton());
+  }
+  /* automatic submit with the notice (October 23): "Submitting for you in 3" and a Cancel the person can press; at 0 every condition is
+     looked at again and only then is Submit pressed. Resolves "submitted", "cancelled" or "refused" (a condition did not hold: the bar
+     says to review it and tap Submit, as in assisted mode). Sent is still said only on the employer's confirmation page. */
+  function autoSubmit(mode, rep, wait) {
+    rep = rep || LAST;
+    if (!mayAuto(mode, rep)) return Promise.resolve("refused");
+    var left = Math.max(1, Math.min(10, wait == null ? 3 : wait | 0));
+    return new Promise(function (done) {
+      var old = document.getElementById("uaplyAssistBar"); if (old) old.remove();
+      var b = document.createElement("div"); b.id = "uaplyAssistBar"; b.setAttribute("role", "status");
+      b.style.cssText = "position:fixed;left:8px;right:8px;bottom:8px;z-index:2147483647;background:#2A1218;color:#fff;font:600 15px/1.35 system-ui,sans-serif;padding:10px 10px 10px 14px;border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.3);display:flex;gap:10px;align-items:center";
+      var t = document.createElement("span"); t.style.flex = "1";
+      var c = document.createElement("button"); c.type = "button"; c.id = "uaplyAssistCancel"; c.textContent = "Cancel";
+      c.style.cssText = "font:700 15px system-ui,sans-serif;min-height:44px;min-width:88px;border-radius:12px;border:0;background:#fff;color:#2A1218";
+      b.appendChild(t); b.appendChild(c); document.body.appendChild(b);
+      var timer = null, over = false;
+      function end(how) { if (over) return; over = true; clearInterval(timer); if (how !== "submitted") banner("Not submitted. Review it, then tap Submit when you are ready."); done(how); }
+      c.addEventListener("click", function (e) { e.stopPropagation(); end("cancelled"); });
+      function step() {
+        if (over) return;
+        if (left <= 0) { end(submitIfAllowed(mode, rep) ? "submitted" : "refused"); return; }
+        t.textContent = "Submitting for you in " + left + "... Filled from your UAply profile; nothing voluntary was answered.";
+        left--;
+      }
+      step(); timer = setInterval(step, 1000);
+    });
   }
 
   /* the employer's confirmation page: only then does UAply say Sent */
@@ -727,9 +782,10 @@
     if (C.act === "fill") {
       STATE.ran = location.href; STATE.rep = null;
       fill(C.p || {}, { job: C.j || {}, banner: true }).then(function (r) {
-        STATE.rep = JSON.stringify({ seen: r.seen, filled: r.filled, leftReq: r.leftReq, eeoSkipped: r.eeoSkipped, resumeAttached: r.resumeAttached,
-          humanCheck: r.humanCheck, checkKind: r.checkKind, submit: r.submit, ms: r.ms });
-        if (C.mode === "automatic") submitIfAllowed("automatic", r);
+        var out = { seen: r.seen, filled: r.filled, leftReq: r.leftReq, eeoSkipped: r.eeoSkipped, resumeAttached: r.resumeAttached,
+          humanCheck: r.humanCheck, checkKind: r.checkKind, submit: r.submit, scrolledTo: r.scrolledTo || "", ms: r.ms };
+        STATE.rep = JSON.stringify(out);
+        if (C.mode === "automatic") autoSubmit("automatic", r).then(function (how) { out.auto = how; STATE.rep = JSON.stringify(out); });
       }, function () { STATE.rep = JSON.stringify({ error: true }); });
       return "filling";
     }
@@ -739,6 +795,6 @@
   if (KEY) {   /* only run, under the name the page cannot guess, and fixed: the page can neither replace it nor wrap it */
     Object.defineProperty(window, NAME, { value: Object.freeze({ run: run }), enumerable: false, writable: false, configurable: false });
   } else {
-    window.UAplyAssist = { fill: fill, scan: scan, confirmed: confirmed, submitIfAllowed: submitIfAllowed, humanCheck: humanCheck, keyOf: keyOf, answerKey: akey, savedAnswer: savedAnswer, ynOf: ynOf, eeo: EEO, eeoOption: EEO_OPT, labelOf: labelOf, run: run };
+    window.UAplyAssist = { fill: fill, scan: scan, confirmed: confirmed, submitIfAllowed: submitIfAllowed, autoSubmit: autoSubmit, humanCheck: humanCheck, keyOf: keyOf, answerKey: akey, savedAnswer: savedAnswer, ynOf: ynOf, eeo: EEO, eeoOption: EEO_OPT, labelOf: labelOf, run: run };
   }
 })();

@@ -85,6 +85,8 @@ module.exports = async ({ ev, sleep, send }) => {
     check(sys + ": the form is not taken for a confirmation page", (await ev("UAplyAssist.confirmed()")) === false);
     check(sys + ": assisted mode never submits", (await ev("UAplyAssist.submitIfAllowed('assisted')")) === false && (await mock()).submits === 0);
     if (kind) check(sys + ": automatic mode refuses a page with a human check", (await ev("UAplyAssist.submitIfAllowed('automatic')")) === false && (await mock()).submits === 0);
+    if (kind) check(sys + ": ...and never shows the automatic notice there", (await ev("UAplyAssist.autoSubmit('automatic',null,1)")) === "refused" && (await mock()).submits === 0 &&
+      !(await ev("!!document.getElementById('uaplyAssistCancel')")));
     table.push([sys, r.seen, r.filled, r.leftReq, r.eeoSkipped, r.ms]);
     if (sys === "ashby") {
       check("ashby: automatic mode refuses while a required question is left", r.leftReq > 0 && (await ev("UAplyAssist.submitIfAllowed('automatic')")) === false && (await mock()).submits === 0, "leftReq " + r.leftReq);
@@ -92,7 +94,24 @@ module.exports = async ({ ev, sleep, send }) => {
       await ev("(()=>{const t=document.getElementById('tell');const d=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value');d.set.call(t,'A help center I rebuilt');t.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('[name=ack]').click()})()");
       const r2 = await fill({ banner: false });
       check("ashby: nothing left after the person's answers", r2.leftReq === 0, "leftReq " + r2.leftReq + " " + r2.left.join(" / "));
-      check("ashby: automatic mode submits a complete page with no human check", (await ev("UAplyAssist.submitIfAllowed('automatic')")) === true && (await mock()).submits === 1);
+      // automatic submit with its notice (October 23): "Submitting for you in N" and a Cancel; Cancel stops it, nothing is sent
+      check("ashby: assisted mode never starts the automatic notice", (await ev("UAplyAssist.autoSubmit('assisted',null,1)")) === "refused" && (await mock()).submits === 0);
+      await ev("window.__auto=UAplyAssist.autoSubmit('automatic',null,3);1");
+      await sleep(400);
+      const note = await ev("(document.getElementById('uaplyAssistBar')||{}).textContent||''");
+      check("ashby: automatic mode first says 'Submitting for you in 3' with a Cancel button", /Submitting for you in [23]/.test(note) && (await ev("!!document.getElementById('uaplyAssistCancel')")), note);
+      await ev("document.getElementById('uaplyAssistCancel').click();1");
+      check("ashby: Cancel stops it: nothing submitted, the bar says to review it and tap Submit", (await ev("window.__auto")) === "cancelled" && (await mock()).submits === 0 &&
+        /Not submitted\. Review it, then tap Submit/.test(await ev("(document.getElementById('uaplyAssistBar')||{}).textContent||''")));
+      await sleep(1500);
+      check("ashby: ...and stays stopped (no submit after the countdown would have ended)", (await mock()).submits === 0);
+      // the same complete page with a human check added (Reviewer 3, October 23: the fixtures had no page where the check was the only
+      // thing missing, so taking the check out of the rule went unnoticed): automatic refuses, and says nothing about submitting
+      await ev("(()=>{const f=document.createElement('iframe');f.id='r3check';f.src='about:blank#recaptcha';f.title='reCAPTCHA';f.style.cssText='width:304px;height:78px';document.body.appendChild(f);return 1})()");
+      check("ashby: a complete page that shows a human check: automatic refuses (no submit, no notice)", (await ev("UAplyAssist.submitIfAllowed('automatic')")) === false &&
+        (await ev("UAplyAssist.autoSubmit('automatic',null,1)")) === "refused" && (await mock()).submits === 0);
+      await ev("(()=>{const f=document.getElementById('r3check');if(f)f.remove();const b=document.getElementById('uaplyAssistBar');if(b)b.remove();return 1})()");
+      check("ashby: automatic mode submits a complete page with no human check once the notice runs out", (await ev("UAplyAssist.autoSubmit('automatic',null,1)")) === "submitted" && (await mock()).submits === 1);
       await sleep(200);
       check("ashby: the thank-you page counts as confirmed (Job Tracker: Sent)", (await ev("UAplyAssist.confirmed()")) === true);
     } else {
@@ -156,6 +175,29 @@ module.exports = async ({ ev, sleep, send }) => {
     check(sys + " bridge: nothing required left at the form but the consent the person ticks there", r.leftReq - r.consentReq === 0, "leftReq " + r.leftReq + ", required consent " + r.consentReq + ": " + r.left.join(" / "));
     check(sys + " bridge: answers counted as the person's", r.fromAnswers === items.length, "fromAnswers " + r.fromAnswers);
   }
+  // ---------- one tap (Saif, October 23): right after the swipe the form opens filled, scrolled to the check or Submit, with one line;
+  // timed the way the phone app opens it: the scan pass (a load, the app's ask every 150 ms, the scan), then the form again (a load,
+  // the ask, the fill). The person's own time (any question box, the check, Submit) is not in it. ----------
+  const ASK = 150;              // AssistActivity.FAST: how often the app asks the page while the form loads
+  const ONE = /One tap to finish: this employer asks you to confirm you are a person\./;
+  const times = [];
+  for (const [sys, kind] of CASES.map((c) => [c[0], c[1]])) {
+    const t0 = Date.now();
+    await open(sys); await sleep(ASK); await ev(ENGINE);
+    const sc = JSON.parse(await ev("UAplyAssist.scan(" + JSON.stringify(H.assistShape(PERSON)) + ",{job:{co:'Example Co',role:'Analyst'}}).then(r=>JSON.stringify({ms:r.ms}))"));
+    await open(sys); await sleep(ASK); await ev(ENGINE);
+    const r = JSON.parse(await ev("UAplyAssist.fill(" + JSON.stringify(PERSON) + ",{job:{co:'Example Co',role:'Analyst'}}).then(r=>JSON.stringify(r))"));
+    const ms = Date.now() - t0;
+    times.push([sys, ms, sc.ms, r.ms]);
+    const bar = await ev("(document.getElementById('uaplyAssistBar')||{}).textContent||''");
+    if (kind) check(sys + " one tap: the form says it asks you to confirm you are a person, then tap Submit, and is scrolled to the check or Submit",
+      ONE.test(bar) && /tap Submit/.test(bar) && (r.scrolledTo === "submit" || r.scrolledTo === "check"), bar + " | " + r.scrolledTo);
+    else check(sys + ": no human check, so no 'confirm you are a person' line", !ONE.test(bar), bar);
+    check(sys + " one tap: Submit is on screen", await ev("(()=>{const b=[...document.querySelectorAll('button,input[type=submit]')].filter(b=>/^(submit|apply|send)/i.test((b.innerText||b.value||'').trim())).pop();if(!b)return false;const q=b.getBoundingClientRect();return q.top>=0&&q.bottom<=innerHeight})()"));
+    check(sys + " one tap: the check is never touched while the form opens and fills", (await mock()).checkTouched === 0 && (await mock()).submits === 0);
+    check(sys + " one tap: the form is ready " + ms + " ms after the app opens it (target under 3 s)", ms < 3000, ms + " ms");
+  }
+  console.log("ONE-TAP-TIMES " + JSON.stringify(times));
   check("yes/no read from words: 'I will not require sponsorship' is a no", (await ev("UAplyAssist.ynOf('I will not require sponsorship')")) === "no");
   check("yes/no read from words: 'Yes, I am' is a yes; 'Decline to answer' is neither", (await ev("UAplyAssist.ynOf('Yes, I am')")) === "yes" && (await ev("UAplyAssist.ynOf('Decline to answer')")) === "");
   // labels that share a word with a profile answer but ask something else (all seen on real forms, October 21, 2026)
