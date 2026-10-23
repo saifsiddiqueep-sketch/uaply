@@ -66,10 +66,21 @@ def call(port, path, body=None, cookie=""):
 
 
 def account(srv):
-    """A verified account (ui@example.com), the way a person makes one: sign up, then type the emailed code."""
+    """A verified account (ui@example.com), the way a person makes one: sign up, then type the emailed code. The servers run in
+    sign-up test mode (UAPLY_SIGNUP_TEST=1), which confirms the account at once; the live one does not, and its code is read from the mail.
+    Returns the session cookie: the sign-in gate keeps the job list for signed-in, confirmed people."""
     port = PORTS[srv]
-    _, hdrs = call(port, "/api/auth/signup", {"email": "ui@example.com", "password": "test pass 12345", "agree": True})
+    for i in range(60):                    # the server may still be starting
+        try:
+            out, hdrs = call(port, "/api/auth/signup", {"email": "ui@example.com", "password": "test pass 12345", "first": "Sam", "last": "Rivera", "agree": True})
+            break
+        except OSError:
+            if i == 59:
+                raise
+            time.sleep(0.5)
     ck = hdrs["Set-Cookie"].split(";")[0]
+    if (out.get("user") or {}).get("emailVerified"):
+        return ck
     time.sleep(0.5)
     text = ""
     mail = os.path.join(TMP, srv, "mail.jsonl")
@@ -80,6 +91,7 @@ def account(srv):
     c.close()
     code = re.findall(r"verification code is:\s+(\d{6})", text)[-1]
     call(port, "/api/auth/verify", {"code": code}, ck)
+    return ck
 
 
 procs = [subprocess.Popen([sys.executable, os.path.join(HERE, "mock-ats.py"), str(ATS)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)]
@@ -94,17 +106,23 @@ try:
             procs.append(subprocess.Popen([sys.executable, os.path.join(HERE, "fake-smtp.py"), str(SMTP), os.path.join(data, "mail.jsonl")],
                                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
         env = dict(os.environ, UAPLY_DATA_DIR=data, UAPLY_CONFIG_JSON=json.dumps(cfg), UAPLY_ATS_BASE_GREENHOUSE="http://127.0.0.1:%d" % ATS,
-                   UAPLY_ATS_BASE_LEVER="http://127.0.0.1:%d" % ATS, UAPLY_ATS_JSON=json.dumps([{"kind": "greenhouse", "board": "dropbox", "api_key": "gh-secret-key-123"}]))
+                   UAPLY_ATS_BASE_LEVER="http://127.0.0.1:%d" % ATS, UAPLY_ATS_JSON=json.dumps([{"kind": "greenhouse", "board": "dropbox", "api_key": "gh-secret-key-123"}]),
+                   UAPLY_SIGNUP_TEST="" if srv == "devlive" else "1")
+        # sign-up test mode (never public) confirms ui@example.com at once, but it also sends no mail at all, so the live server, whose
+        # job is to send applications to the stand-in mail server, runs without it and its account is confirmed with the emailed code
         procs.append(subprocess.Popen([sys.executable, "serve.py", str(port), INST[srv], "--api"], cwd=ROOT, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
     for srv, port in PORTS.items():
+        ck = account(srv)                  # first: the job list is behind the sign-in gate
+        ids = None
         for _ in range(60):
             try:
-                ids = {"%s|%s" % (j["co"], j["role"]): j["id"] for j in call(port, "/api/jobs")[0]["jobs"]}
+                ids = {"%s|%s" % (j["co"], j["role"]): j["id"] for j in call(port, "/api/jobs", cookie=ck)[0]["jobs"]}
                 break
             except Exception:
                 time.sleep(0.5)
+        if ids is None:
+            raise SystemExit("the %s server never answered /api/jobs for a signed-in person" % srv)
         json.dump(ids, open(os.path.join(TMP, "ids-%s.json" % srv), "w"))
-        account(srv)
     failed = 0
     for srv, port in PORTS.items():
         env = dict(os.environ, SRV=srv, PORT=str(port), IDS=os.path.join(TMP, "ids-%s.json" % srv), W="390", H="844")

@@ -218,7 +218,8 @@ def browser_checks(port):
     data = tempfile.mkdtemp(prefix="uaply-types-server-")
     with open(os.path.join(data, "jobs-cache.json"), "w", encoding="utf-8") as f:
         json.dump({"|".join(city): {"at": time.time(), "jobs": jobs, "status": "%d jobs" % len(jobs)}, "_version": J.CACHE_VERSION}, f)
-    env = dict(os.environ, UAPLY_CONFIG_FILE="none", UAPLY_DATA_DIR=data, HOST="127.0.0.1", UAPLY_FEEDS="smartrecruiters", UAPLY_CONFIG_JSON="{}")
+    env = dict(os.environ, UAPLY_CONFIG_FILE="none", UAPLY_DATA_DIR=data, HOST="127.0.0.1", UAPLY_FEEDS="smartrecruiters", UAPLY_CONFIG_JSON="{}",
+               UAPLY_SIGNUP_TEST="1")          # sign-up test mode (never public): the sign-in gate's test person is confirmed at once
     env.pop("OWNER_PASSWORD", None)
     root = os.path.dirname(HERE)
     log = open(os.path.join(data, "server.log"), "w")
@@ -231,7 +232,9 @@ def browser_checks(port):
                 break
             except Exception:
                 time.sleep(0.25)
-        listing = json.loads(urllib.request.urlopen("http://127.0.0.1:%d/api/jobs" % port, timeout=30).read())
+        sys.path.insert(0, HERE)
+        import gate_session                    # the sign-in gate: the job list needs a signed-in, confirmed person
+        listing = gate_session.get_json(gate_session.session("http://127.0.0.1:%d" % port), "http://127.0.0.1:%d/api/jobs" % port)
         t("HTTP: every job in the list carries its jobType", sorted(j.get("jobType") for j in listing["jobs"]), sorted(j["jobType"] for j in jobs))
         if not shutil.which("node"):
             print("SKIP browser: node is not installed")

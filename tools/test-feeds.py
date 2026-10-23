@@ -391,16 +391,19 @@ def http_checks(port):
         dated = [{k: v for k, v in x.items() if k != "updated"} for x in dated]
         json.dump({"|".join(CITY): {"at": time.time(), "jobs": dated, "status": "67 jobs"}, "_version": J.CACHE_VERSION}, f)
     env = dict(os.environ, UAPLY_CONFIG_FILE="none", UAPLY_DATA_DIR=data, HOST="127.0.0.1",
-               UAPLY_CONFIG_JSON=json.dumps({"feeds": ["smartrecruiters", "usajobs"], "delivery": "test", "smtp": {}, "google": {}, "owner_copy": ""}))
+               UAPLY_CONFIG_JSON=json.dumps({"feeds": ["smartrecruiters", "usajobs"], "delivery": "test", "smtp": {}, "google": {}, "owner_copy": ""}),
+               UAPLY_SIGNUP_TEST="1")          # sign-up test mode (never public): the sign-in gate's test person is confirmed at once
     env.pop("OWNER_PASSWORD", None)
     log = open(os.path.join(TMP, "server.log"), "w")
     srv = subprocess.Popen([sys.executable, os.path.join(copy, "serve.py"), str(port), os.path.join(copy, "dev"), "--api"], env=env, stdout=log, stderr=log)
     base = "http://127.0.0.1:%d" % port
 
-    def call(method, path, body=None, origin=base):
+    def call(method, path, body=None, origin=base, cookie=""):
         h = {"Content-Type": "application/json"}
         if origin:
             h["Origin"] = origin
+        if cookie:
+            h["Cookie"] = cookie
         rq = urllib.request.Request(base + path, data=json.dumps(body).encode() if body is not None else None, headers=h, method=method)
         try:
             with urllib.request.urlopen(rq, timeout=30) as r:
@@ -427,7 +430,9 @@ def http_checks(port):
             t("HTTP: the keys landed in the throwaway copy's settings file", json.load(f).get("feed_keys"), {"usajobs": KEY, "muse": MUSE})
         s, page = call("GET", "/setup")
         t("HTTP: /setup has the Job feed keys box and never the keys", (s, 'id="feeds"' in page, KEY in page, MUSE in page), (200, True, False, False))
-        s, body = call("GET", "/api/jobs")
+        sys.path.insert(0, HERE)
+        import gate_session                    # the sign-in gate: the job list needs a signed-in, confirmed person
+        s, body = call("GET", "/api/jobs", cookie=gate_session.cookie(base))
         data_out = json.loads(body)
         city = [j for j in data_out["jobs"] if j.get("via") == "City of Philadelphia on SmartRecruiters"]
         t("HTTP: the job list serves the City's 40 jobs from the last 60 days (not the 27 older ones; two postings with one title stay two), each with its via label and postedDays",

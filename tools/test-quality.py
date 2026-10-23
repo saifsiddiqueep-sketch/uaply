@@ -215,7 +215,8 @@ def browser_checks(port):
     data = tempfile.mkdtemp(prefix="uaply-quality-server-")
     with open(os.path.join(data, "jobs-cache.json"), "w", encoding="utf-8") as f:
         json.dump({"|".join(city): {"at": time.time(), "jobs": jobs, "status": "6 jobs"}, "_version": J.CACHE_VERSION}, f)
-    env = dict(os.environ, UAPLY_CONFIG_FILE="none", UAPLY_DATA_DIR=data, HOST="127.0.0.1", UAPLY_FEEDS="smartrecruiters", UAPLY_CONFIG_JSON="{}")
+    env = dict(os.environ, UAPLY_CONFIG_FILE="none", UAPLY_DATA_DIR=data, HOST="127.0.0.1", UAPLY_FEEDS="smartrecruiters", UAPLY_CONFIG_JSON="{}",
+               UAPLY_SIGNUP_TEST="1")          # sign-up test mode (never public): the browser half signs a test person up past the sign-in gate
     env.pop("OWNER_PASSWORD", None)
     log = open(os.path.join(data, "server.log"), "w")
     srv = subprocess.Popen([sys.executable, os.path.join(ROOT, "serve.py"), str(port), os.path.join(ROOT, "dev"), "--api"], env=env, stdout=log, stderr=log)
@@ -227,6 +228,11 @@ def browser_checks(port):
                 break
             except Exception:
                 time.sleep(0.25)
+        sys.path.insert(0, HERE)
+        import gate_session                    # the sign-in gate: the job list needs a signed-in, confirmed person
+        base = "http://127.0.0.1:%d" % port
+        listing = gate_session.get_json(gate_session.session(base), base + "/api/jobs")
+        t("HTTP: a signed-in person gets all 6 internships from the server" , len(listing["jobs"]), 6)
         if not shutil.which("node"):
             print("SKIP browser: node is not installed")
             return
