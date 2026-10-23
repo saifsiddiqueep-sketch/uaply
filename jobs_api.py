@@ -1287,7 +1287,16 @@ def _iter_raw(kind, token, name):
                        force_type="parttime" if re.search(r"part", j.get("employment_type") or "", re.I) else
                                   ("internship" if re.search(r"intern", j.get("employment_type") or "", re.I) else None))
     elif kind == "recruitee":
-        for j in _get_items("https://%s.recruitee.com/api/offers/" % urllib.parse.quote(token, safe=""), "offers"):
+        # the careers site's own robots.txt first, as for every careers site (_robots_for: read once a day; a site whose robots.txt
+        # cannot be read is not read at all), and nothing when it does not allow the offers list
+        host = "%s.recruitee.com" % token.lower()
+        url = "https://%s/api/offers/" % host
+        rp = _robots_for(host)
+        if rp is None:
+            raise PermissionError("robots.txt could not be read")
+        if not rp.can_fetch(CP_UA, url):
+            raise PermissionError("robots.txt does not allow it")
+        for j in _get_items(url, "offers"):
             r = _recruitee_raw(j, name)
             if r:
                 yield r

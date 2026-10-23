@@ -299,12 +299,32 @@ def fake_items(url, key=None):
     raise OSError("unexpected request " + url)
 
 
-J._get_items = fake_items
+ROBOTS = {"acmedental.recruitee.com": ["User-agent: *", "Disallow: /v/"], "closeddental.recruitee.com": ["User-agent: *", "Disallow: /api/"]}
+real_robots = J._robots_for
+
+
+def fake_robots(host):
+    RC_CALLS.append(("robots", host))
+    if host not in ROBOTS:
+        return None                                       # robots.txt could not be read
+    rp = J.RobotsTxt()
+    rp.parse(ROBOTS[host])
+    return rp
+
+
+J._get_items, J._robots_for = fake_items, fake_robots
 RCS = ("recruitee", "acmedental", "Acme Dental Group")
 rjobs, rstatus = J._fetch_source(RCS)
-J._get_items = real_items
+t("Recruitee: robots.txt is asked first, then one request for the careers site's own offers list", RC_CALLS, [("robots", "acmedental.recruitee.com"), ("https://acmedental.recruitee.com/api/offers/", "offers")])
+RC_CALLS.clear()
+closed = J._fetch_source(("recruitee", "closeddental", "Closed Dental"))
+t("Recruitee: a site whose robots.txt disallows /api/ is not read (no jobs, no request for the offers)", (closed[0], RC_CALLS, "robots" in closed[1]),
+  ([], [("robots", "closeddental.recruitee.com")], True))
+RC_CALLS.clear()
+unread = J._fetch_source(("recruitee", "unreadable", "Unreadable"))
+t("Recruitee: a site whose robots.txt cannot be read is not read either", (unread[0], RC_CALLS), ([], [("robots", "unreadable.recruitee.com")]))
+J._get_items, J._robots_for = real_items, real_robots
 by = {j["role"]: j for j in rjobs}
-t("Recruitee: one request, the careers site's own offers list", RC_CALLS, [("https://acmedental.recruitee.com/api/offers/", "offers")])
 t("Recruitee: the US offers are kept; London, an offer with a bad slug and a draft are not", sorted(by), ["Billing Specialist", "Dental Hygienist", "Front Desk Intern", "Practice Office Manager"])
 t("Recruitee: the status line counts them", rstatus, "4 jobs")
 hy = by["Dental Hygienist"]
