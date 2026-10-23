@@ -1,8 +1,9 @@
 """The sign-in contract (docs/ACCOUNTS.md, "The sign-in contract"; Saif, October 22, 2026) and the server-side open items 12 to 23 of the
 sign-in record. Sign-up is email, first and last name and a password; the emailed code verifies the address after sign-up and is the other
 way to sign in; nobody reaches site data without an account; UAPLY_SIGNUP_TEST=1 (never on a public server) signs a filler account in at
-once. In this process (auth_api, uaply_api, emails) and over HTTP against three throwaway servers it starts and stops:
-  python tools/test-signin-contract.py [port]      (default 20460; uses that port and the next three)"""
+once, and no email of any kind leaves a test-mode server; an account whose address is not confirmed yet gets 403 "verify" from every
+gated route. In this process (auth_api, uaply_api, emails) and over HTTP against four throwaway servers it starts and stops:
+  python tools/test-signin-contract.py [port]      (default 20460; uses that port and the next four)"""
 import http.client
 import json
 import os
@@ -84,6 +85,22 @@ err, guser, gtok = auth_api.oauth_login("google", "g-contract-1", "gina@gmail.co
 s, out = auth_api.change_password(gtok, "whatever", "a new password 1", IP)
 t("...and names Google only when a Google login is linked", (s, "or with Google" in out["error"]), (400, True))
 
+t("the accounts that pass the gate at once: a Google account Google vouches for, and a code sign-in (it proved the inbox)",
+  (guser["emailVerified"], auth_api.user_for(tok3)["emailVerified"]), (True, True))
+
+# ---------- test mode sends no email of any kind (Saif, October 22: his sandbox has real email settings; filler must never send or bounce) ----------
+os.environ["UAPLY_CONFIG_JSON"] = json.dumps({"smtp": {"host": "127.0.0.1", "port": 9, "starttls": False, "from_addr": "uaply@example.com"}})
+try:
+    ready_before = uaply_api.mail_ready()
+    uaply_api.NO_MAIL = True
+    t("test mode (uaply_api.NO_MAIL): with real email settings present nothing counts as able to send (codes, resets, receipts, reminders, help)",
+      (ready_before, uaply_api.mail_ready(), uaply_api._smtp_ready(uaply_api.config()), uaply_api.send_finish_digests()), (True, False, False, 0))
+    t("...a code goes to the test inbox instead of the mail server", uaply_api.send_verification_mail(me["id"], "dana.lee@example.com", "123456"), "delivered_test")
+    t("...and a help request is only saved", uaply_api.send_support_ticket({"email": "dana.lee@example.com", "message": "hi"}, me), "saved")
+finally:
+    uaply_api.NO_MAIL = False
+    os.environ["UAPLY_CONFIG_JSON"] = "{}"
+
 # ---------- item 23: whether Google is linked ----------
 t("google_linked: true for the Google account, false for a code or password account",
   (auth_api.google_linked(guser["id"]), auth_api.google_linked(me["id"]), auth_api.google_linked(auth_api.user_for(tok3)["id"])), (True, False, False))
@@ -162,6 +179,7 @@ def req(port, method, path, body=None, cookie="", addr="127.0.0.1", public=False
 def start(port, data, cfg, extra=None, public=False):
     env = dict(os.environ, UAPLY_DATA_DIR=data, UAPLY_CONFIG_JSON=json.dumps(cfg), UAPLY_CF_RANGES="0", UAPLY_DNS_CHECK="off", **(extra or {}))
     env.pop("UAPLY_SIGNUP_TEST", None) if not (extra or {}).get("UAPLY_SIGNUP_TEST") else None
+    env.pop("RENDER", None) if "RENDER" not in (extra or {}) else None
     if public:
         env.update(HOST="127.0.0.2", OWNER_PASSWORD="ownerpw")
     PROCS.append(subprocess.Popen([sys.executable, os.path.join(ROOT, "serve.py"), str(port), "dev", "--api"], cwd=ROOT, env=env,
@@ -176,6 +194,32 @@ def start(port, data, cfg, extra=None, public=False):
 
 
 MAILS = os.path.join(TMP, "mail.jsonl")
+
+
+def inbox_text(port):
+    """The test inbox page (/outbox) as plain text: what a test-mode server 'sent'."""
+    raw = req(port, "GET", "/outbox")[1]
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", raw if isinstance(raw, str) else ""))
+
+
+def inbox_code(port, addr, kind, wait=6.0):
+    end = time.time() + wait
+    while time.time() < end:
+        m = re.search(r"([0-9]{6}) is your UAply %s code to %s" % (kind, re.escape(addr)), inbox_text(port))
+        if m:
+            return m.group(1)
+        time.sleep(0.1)
+    return ""
+
+
+def smtp_got(addr):
+    try:
+        return any(addr in json.dumps(json.loads(x).get("to")) for x in open(MAILS, encoding="utf-8") if x.strip())
+    except (OSError, ValueError):
+        return False
+
+
+VERIFY = {"error": "Confirm your email first.", "code": "verify"}
 
 
 def mail_code(addr, kind, after="", wait=6.0):
@@ -196,10 +240,11 @@ def mail_code(addr, kind, after="", wait=6.0):
 try:
     PROCS.append(subprocess.Popen([sys.executable, os.path.join(HERE, "fake-smtp.py"), str(PORT + 2), MAILS], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
     SMTP = {"host": "127.0.0.1", "port": PORT + 2, "starttls": False, "from_addr": "uaply@example.com"}
-    # A: this computer, test mode on
-    start(PORT, os.path.join(TMP, "a"), {"feeds": [], "smtp": {}, "owner_copy": ""}, {"UAPLY_SIGNUP_TEST": "1"})
+    # A: this computer, test mode on, with real email settings present (as Saif's sandbox has): still nothing may leave
+    start(PORT, os.path.join(TMP, "a"), {"feeds": [], "smtp": SMTP, "owner_copy": ""}, {"UAPLY_SIGNUP_TEST": "1"})
     s, prov, _ = req(PORT, "GET", "/api/auth/providers")
-    t("test mode: providers says signupTest (and codeSignin) on this computer", (prov.get("signupTest"), prov.get("codeSignin")), (True, True))
+    t("test mode: providers says signupTest and testMode (and codeSignin) on this computer", (prov.get("signupTest"), prov.get("testMode"), prov.get("codeSignin")),
+      (True, True, True))
     s, out, ck = req(PORT, "POST", "/api/auth/signup", {"email": "filler@example.com", "password": "filler pass 1", "agree": True, "first": "Fill", "last": "Er"})
     t("test mode: sign-up makes a verified account and signs it in at once, no email", (s, out["user"]["emailVerified"], bool(ck), out.get("delivery"), out.get("testMode")),
       (200, True, True, "none", True))
@@ -210,6 +255,20 @@ try:
     t("...signed in, it answers", (s, "jobs" in jobs), (200, True))
     s, me1, _ = req(PORT, "GET", "/api/auth/me", cookie=ck[0])
     t("/api/auth/me gives first, last and googleLinked", ((me1["user"] or {}).get("first"), me1["user"].get("last"), me1["user"].get("googleLinked")), ("Fill", "Er", False))
+    s, _, _ = req(PORT, "POST", "/api/auth/code/send", {"email": "filler@example.com"})
+    t("test mode, Email me a code: the sign-in code lands in the test inbox", (s, bool(inbox_code(PORT, "filler@example.com", "sign-in"))), (200, True))
+    s, _, _ = req(PORT, "POST", "/api/auth/forgot", {"email": "filler@example.com"})
+    end = time.time() + 6
+    while time.time() < end and "?reset=" not in inbox_text(PORT):
+        time.sleep(0.1)
+    t("...Forgot password: the link lands in the test inbox", (s, "?reset=" in inbox_text(PORT)), (200, True))
+    s, out, _ = req(PORT, "POST", "/api/auth/signup", {"email": "code.only@example.com", "agree": True, "passwordless": True})
+    code_only = inbox_code(PORT, "code.only@example.com", "verification")
+    s, out, ck3 = req(PORT, "POST", "/api/auth/code/verify", {"email": "code.only@example.com", "code": code_only, "agree": True})
+    t("...a code-only sign-up: its code is in the test inbox, and the code proves the address, so the job list answers",
+      (bool(code_only), s, req(PORT, "GET", "/api/jobs", cookie=(ck3 or [""])[0])[0]), (True, 200, 200))
+    t("...and not one of those emails reached the mail server, though its settings are present",
+      (smtp_got("filler@example.com"), smtp_got("code.only@example.com")), (False, False))
     # B: a public server with email (as the live site)
     start(PORT + 1, os.path.join(TMP, "b"), {"feeds": [], "smtp": SMTP, "owner_copy": "", "public_url": "https://uaply.example"}, {"UAPLY_SIGNUP_TEST": "1"}, public=True)
     s, prov, _ = req(PORT + 1, "GET", "/api/auth/providers", addr="127.0.0.2", public=True)
@@ -219,11 +278,25 @@ try:
                                                             "first": "Real", "last": "Person"}, addr="127.0.0.2", public=True)
     t("sign-up answers 200 with the account (names kept, not yet verified) and signs in", (s, out["user"]["first"], out["user"]["emailVerified"], bool(ck), out.get("delivery")),
       (200, "Real", False, True, "sent"))
+    pub = {"addr": "127.0.0.2", "public": True}
+    t("unconfirmed: the job list and a logo answer 403 'Confirm your email first.' (code verify)",
+      (req(PORT + 1, "GET", "/api/jobs", cookie=ck[0], **pub)[:2], req(PORT + 1, "GET", "/api/employer/logo/1", cookie=ck[0], **pub)[:2]),
+      ((403, VERIFY), (403, VERIFY)))
+    t("...and so do the gated POST routes (plan, decision, chat, feedback, an employer route)",
+      [req(PORT + 1, "POST", r, {"x": 1}, cookie=ck[0], **pub)[:2] for r in ("/api/apply/plan", "/api/decision", "/api/chat", "/api/feedback", "/api/employer/job")],
+      [(403, VERIFY)] * 5)
+    s_me, me_u, _ = req(PORT + 1, "GET", "/api/auth/me", cookie=ck[0], **pub)
+    t("...while /api/auth/* stays open to it, the open routes answer and the owner pages keep their own check",
+      (s_me, (me_u.get("user") or {}).get("emailVerified"), req(PORT + 1, "GET", "/api/apply/config", cookie=ck[0], **pub)[0],
+       req(PORT + 1, "GET", "/api/status", cookie=ck[0], **pub)[0], req(PORT + 1, "GET", "/api/outbox", cookie=ck[0], **pub)[0]),
+      (200, False, 200, 200, 401))
+    t("...signed out, the same routes still answer 401 signin (not 403)", req(PORT + 1, "GET", "/api/jobs", **pub)[:2], (401, {"error": "Sign in first.", "code": "signin"}))
     code, raw = mail_code("real.person@example.com", "verification")
     t("...then the verification code is emailed (after the answer)", bool(code), True)
     s, out, _ = req(PORT + 1, "POST", "/api/auth/verify", {"code": code}, cookie=ck[0], addr="127.0.0.2", public=True)
     me2 = req(PORT + 1, "GET", "/api/auth/me", cookie=ck[0], addr="127.0.0.2", public=True)[1]
     t("...and verifies the address", (s, out.get("ok"), (me2.get("user") or {}).get("emailVerified")), (200, True, True))
+    t("...after which the same session reaches the job list", req(PORT + 1, "GET", "/api/jobs", cookie=ck[0], **pub)[0], 200)
     s, out, _ = req(PORT + 1, "POST", "/api/auth/code/send", {"email": "real.person@example.com"}, addr="127.0.0.2", public=True)
     code2, raw2 = mail_code("real.person@example.com", "sign-in", after=code)
     t("Email me a code: a sign-in code, under its own subject (item 21; the wording is checked above)", (s, bool(code2)), (200, True))
@@ -246,6 +319,14 @@ try:
       (503, {"error": "Signing in with an emailed code is not available right now. Use Continue with Google, or try again later.", "code": "mail_off"}))
     s, out, ck = req(PORT + 3, "POST", "/api/auth/signup", {"email": "pw.only@example.com", "password": "pw only 123", "agree": True}, addr="127.0.0.2", public=True)
     t("...the password sign-up still works there (unverified, as before)", (s, out["user"]["emailVerified"], bool(ck)), (200, False, True))
+    t("...and until the address is confirmed the job list answers 403 verify", req(PORT + 3, "GET", "/api/jobs", cookie=ck[0], addr="127.0.0.2", public=True)[:2],
+      (403, VERIFY))
+    # D: this computer's address, UAPLY_SIGNUP_TEST=1, but Render's own RENDER variable is set: never test mode, even if HOST were wrong
+    start(PORT + 4, os.path.join(TMP, "d"), {"feeds": [], "smtp": {}, "owner_copy": ""}, {"UAPLY_SIGNUP_TEST": "1", "RENDER": "true"})
+    s, prov, _ = req(PORT + 4, "GET", "/api/auth/providers")
+    s, out, ck = req(PORT + 4, "POST", "/api/auth/signup", {"email": "on.render@example.com", "password": "on render 123", "agree": True, "first": "On", "last": "Render"})
+    t("with RENDER set: no signupTest, no testMode, and sign-up makes an unconfirmed account (test mode never takes effect on Render)",
+      (prov.get("signupTest", False), prov.get("testMode", False), s, out["user"]["emailVerified"], out.get("testMode", False)), (False, False, 200, False, False))
 finally:
     for p in PROCS:
         try:

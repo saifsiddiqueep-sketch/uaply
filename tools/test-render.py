@@ -236,12 +236,16 @@ try:
     t("session cookie: HttpOnly, Secure, SameSite=Lax, whole site, 30 days", all(x in cookie for x in ("HttpOnly", "; Secure", "SameSite=Lax", "Path=/", "Max-Age=2592000")), True)
     session = cookie.split(";", 1)[0]
     s, h, body = req("GET", "/api/jobs", headers={"Cookie": session})
-    t("job list answers on a fresh disk, signed in", (s, "jobs" in json.loads(body)), (200, True))
+    t("...until its address is confirmed the job list answers 403 verify", (s, json.loads(body).get("code")), (403, "verify"))
     for _ in range(50):                                 # the sign-up answers first and emails its code a moment later
         if os.path.exists(mail_file) and "render@example.com" in open(mail_file, encoding="utf-8").read():
             break
         time.sleep(0.1)
     t("the sign-up code email reached the mail server", os.path.exists(mail_file) and "render@example.com" in open(mail_file, encoding="utf-8").read(), True)
+    found = re.findall(r"([0-9]{6}) is your UAply verification code", open(mail_file, encoding="utf-8").read()) if os.path.exists(mail_file) else []
+    t("...and typing it confirms the address", req("POST", "/api/auth/verify", {"code": found[-1] if found else ""}, headers={"Cookie": session})[0], 200)
+    s, h, body = req("GET", "/api/jobs", headers={"Cookie": session})
+    t("job list answers on a fresh disk, signed in", (s, "jobs" in json.loads(body)), (200, True))
     for path in ("/outbox", "/api/outbox", "/feedback", "/setup"):
         t("%s: closed without the owner password, closed with a wrong one, open with it" % path,
           (req("GET", path)[0], req("GET", path, headers=owner("wrong"))[0], req("GET", path, headers=owner())[0]), (401, 401, 200))

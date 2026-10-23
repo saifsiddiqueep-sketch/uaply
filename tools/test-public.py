@@ -165,6 +165,20 @@ t("...and the sign-in itself stays open: sign-up and sign-in answer without a se
   (req("POST", "/api/auth/login", {"email": "nobody.here@example.com", "password": "not the one 1"})[0], req("POST", "/api/auth/forgot", {"email": "x@example.com"})[0]),
   (401, 200))
 JAR = {"Cookie": cookie.split(";", 1)[0]}                         # the session of the sign-up at the top
+s0, _, b0 = req("GET", "/api/jobs", headers=JAR)
+t("...a session whose address is not confirmed yet answers 403 'Confirm your email first.' (code verify)", (s0, json.loads(b0 or b"{}")),
+  (403, {"error": "Confirm your email first.", "code": "verify"}))
+import time  # noqa: E402
+code_ = ""
+for _ in range(60):                     # this server sends no email: the code is in the owner's test inbox, emailed just after the answer
+    page_ = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", req("GET", "/outbox", headers=auth("ownerpw"))[2].decode("utf-8", "replace")))
+    m_ = re.search(r"([0-9]{6}) is your UAply verification code to pub1@example\.com", page_)
+    if m_:
+        code_ = m_.group(1)
+        break
+    time.sleep(0.1)
+t("...and once its code is typed, the same session reaches the job list", (req("POST", "/api/auth/verify", {"code": code_}, headers=JAR)[0],
+                                                                         req("GET", "/api/jobs", headers=JAR)[0]), (200, 200))
 s1, h1, b1 = req("GET", "/api/jobs", headers=dict(JAR, **{"Accept-Encoding": "gzip, deflate, br"}))
 s2, h2, b2 = req("GET", "/api/jobs", headers=JAR)
 plain = json.loads(b2)

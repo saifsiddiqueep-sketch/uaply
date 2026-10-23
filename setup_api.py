@@ -342,6 +342,8 @@ def test_mail():
     to = uaply_api._owner_copy(cfg) or (s.get("from_addr") or "")
     if not (s.get("host") and s.get("from_addr")):
         return 200, {"ok": False, "message": "Email sending is not set up yet. Fill in the Connect email box on this page first."}
+    if uaply_api.NO_MAIL:                       # test mode (UAPLY_SIGNUP_TEST=1): the settings are kept, but nothing leaves this server
+        return 200, {"ok": False, "message": "Test mode is on (UAPLY_SIGNUP_TEST=1), so this server sends no email: every message is in the test inbox (/outbox). Start it without test mode to send a test."}
     if not uaply_api.mail_ready():
         return 200, {"ok": False, "message": "Email sending has no password or key yet. Add one in the Connect email box on this page."}
     if not to:

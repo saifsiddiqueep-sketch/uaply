@@ -14,7 +14,7 @@ session is the HttpOnly cookie `uaply_<instance>_session` (`SameSite=Lax`, `Secu
 
 | Route | Send | Answer |
 |---|---|---|
-| `GET /api/auth/providers` | | Google's settings, plus `codeSignin: true` when "Email me a code" can be offered (absent on a public server without email) and `signupTest: true` only in test mode (absent on a public server, always). |
+| `GET /api/auth/providers` | | Google's settings, plus `codeSignin: true` when "Email me a code" can be offered (absent on a public server without email) and `signupTest: true, testMode: true` only in test mode (absent on a public server and on Render, always). |
 | `POST /api/auth/signup` | `{email, password, first, last, agree: true}` | **200** `{user: {id, email, hasPassword: true, emailVerified: false, plan, first, last}, delivery: "sent" or "delivered_test"}` and the session cookie: signed in at once. The 6-digit verification code is emailed **after** the answer. **400** `{error}` (an address that cannot exist, no tick, a password under 8 or over 128 characters or equal to the email, `code: "mailbox"` for a throwaway or dead domain). **409** "That email already has an account. Sign in instead." **429** `{error, code: "signup_limit" or "signup_email_limit"}`, the same words for every address. `first` and `last` are cleaned and cut to 60 characters; the server accepts them empty, the card requires them. |
 | `POST /api/auth/verify` | `{code}` with the session | **200** `{ok: true}` (the address is verified), **400** `{error}` (wrong: tries left; `expired: true`: send a new one), **429**. Full-width and Arabic-Indic digits count as the digits they are. |
 | `POST /api/auth/resend` | with the session | **200** `{ok, message}`; **429** `{error}` (3 an hour per account, 6 a day per address, the site's hour). |
@@ -30,7 +30,11 @@ session is the HttpOnly cookie `uaply_<instance>_session` (`SameSite=Lax`, `Secu
 **The gate.** Without a session these answer **401** `{"error": "Sign in first.", "code": "signin"}`: `GET /api/jobs`,
 `GET /api/employer/logo/*`, and `POST /api/apply`, `/api/apply/plan`, `/api/apply/mark`, `/api/decision`, `/api/chat`, `/api/feedback`,
 `/api/profile/resume`, `/api/employer/company`, `/api/employer/job`, `/api/employer/job/status`, `/api/employer/applicant`,
-`/api/employer/import` (`/api/employer/me` answers its own "sign in" itself). Open without a session: `/` and the page's own files,
+`/api/employer/import` (`/api/employer/me` answers its own "sign in" itself). With a session whose account has `emailVerified: false`
+(a password sign-up whose emailed code is not typed yet) the same routes answer **403** `{"error": "Confirm your email first.", "code":
+"verify"}`: the card shows the code step. Every `/api/auth/*` route stays open to that session (verify, resend, me, logout, delete, Email
+me a code), and so do the open routes below; the owner pages keep their own check. Accounts that pass at once: Google when Google vouches
+for the address, a code sign-in or code sign-up (typing the code proves the address), test mode's filler accounts. Open without a session: `/` and the page's own files,
 `/healthz`, `/api/status`, every `/api/auth/*` route, `/api/apply/config`, `/api/chat/config`, `/api/billing/status`, the legal pages,
 `/help/articles.json`, the support page, the service worker, the manifest and the offline page. `/sitemap.xml` lists only the home page
 and the legal pages, and the home page's JSON-LD only names the site. The owner pages (`/outbox`, `/api/outbox`, `/feedback`, `/setup`,
@@ -38,8 +42,11 @@ and the legal pages, and the home page's JSON-LD only names the site. The owner 
 test inbox is how a code is read before anyone is signed in.
 
 **Test mode.** `UAPLY_SIGNUP_TEST=1` on a server that is not public (this computer): `POST /api/auth/signup` makes the account already
-verified, signs it in at once and emails nothing (`delivery: "none", testMode: true`), and providers says `signupTest: true`. On a public
-server the setting is ignored, always. `UAPLY_CODE_SIGNIN=0` switches the code routes off (a test server that checks the password routes
+verified, signs it in at once and emails nothing (`delivery: "none", testMode: true`), and providers says `signupTest: true, testMode:
+true`. In test mode no email of any kind leaves the server, even when real email settings are present (Saif's sandbox has them): codes
+from "Email me a code" and from a code sign-up, Forgot password links and receipts (a hand-off's too, in place of the day's reminder) land in the test inbox (`/outbox`)
+only, a help request is only saved, and the setup page's test email says test mode is on. On a public server the setting is ignored,
+always, and so it is wherever Render's own `RENDER` variable is set (any value), even if `HOST` were wrong. `UAPLY_CODE_SIGNIN=0` switches the code routes off (a test server that checks the password routes
 alone); nothing else does. `tools/test-signin-contract.py` tests all of this.
 
 ## The promise

@@ -75,14 +75,19 @@ SHARED = os.path.join(HERE, "shared")
 SHARED_ALIAS_RE = re.compile(r"^/(uaply(?:-[A-Za-z0-9_-]+)?\.(?:js|css|webmanifest|json|html|png))$")
 SHARED_NAME_RE = re.compile(r"^[A-Za-z0-9_-][A-Za-z0-9_.-]*\.(?:js|css|webmanifest|json|html|png|svg|txt)$")
 CODE_SIGNIN = False      # code sign-in ("Email me a code"): set below, on wherever the server runs (UAPLY_CODE_SIGNIN=0 switches it off)
-SIGNUP_TEST = False      # UAPLY_SIGNUP_TEST=1: sign-up makes a verified account and signs it in at once, no email (never on a public server)
+SIGNUP_TEST = False      # UAPLY_SIGNUP_TEST=1: sign-up makes a verified account and signs it in at once, no email (never on a public server,
+                         # never on Render), and no email of any kind leaves the server: codes, reset links, receipts and reminders go to the
+                         # test inbox (/outbox) only, even with real email settings (uaply_api.NO_MAIL)
 # Saif, October 22: nobody reaches site data without an account. Without a session these answer 401 {"error": "Sign in first.",
-# "code": "signin"} (docs/ACCOUNTS.md, "The sign-in contract"). Owner pages keep their own owner check instead.
+# "code": "signin"}; with a session whose account never confirmed its address (a password sign-up whose emailed code is not typed yet),
+# 403 {"error": "Confirm your email first.", "code": "verify"} (docs/ACCOUNTS.md, "The sign-in contract"). Every /api/auth/* route stays
+# open to that session, so it can type the code, ask for a new one or sign out. Owner pages keep their own owner check instead.
 GATED_GET = ("/api/jobs",)
 GATED_GET_PREFIX = ("/api/employer/logo/",)
 GATED_POST = ("/api/apply", "/api/apply/plan", "/api/apply/mark", "/api/decision", "/api/chat", "/api/feedback", "/api/profile/resume",
               "/api/employer/company", "/api/employer/job", "/api/employer/job/status", "/api/employer/applicant", "/api/employer/import")
 SIGNIN_FIRST = {"error": "Sign in first.", "code": "signin"}
+VERIFY_FIRST = {"error": "Confirm your email first.", "code": "verify"}
 CODE_PATHS = ("/api/auth/code/send", "/api/auth/code/verify")      # sign-up v2: POST routes that exist only while CODE_SIGNIN is on
 # browsers and crawlers ask for /favicon.ico whatever the page says: answer with the instance's own icon (a PNG; every browser takes it)
 alias.setdefault("/favicon.ico", next((f for f in (os.path.join(root, "favicon-32.png"), os.path.join(HERE, "legal", "favicon-32.png"))
@@ -146,7 +151,11 @@ if api:
     # A public server that cannot send email still refuses to pretend to send codes (code_signin_live). UAPLY_CODE_SIGNIN=0 switches the
     # code routes off (a test server that checks the password routes alone).
     CODE_SIGNIN = os.environ.get("UAPLY_CODE_SIGNIN", "") != "0"
-    SIGNUP_TEST = os.environ.get("UAPLY_SIGNUP_TEST", "") == "1" and not PUBLIC      # test mode: never on a public server, whatever is set
+    SIGNUP_TEST = os.environ.get("UAPLY_SIGNUP_TEST", "") == "1" and not PUBLIC and "RENDER" not in os.environ   # test mode: never on a
+    # public server, whatever is set, and never on Render (its own RENDER variable, any value), even if HOST were wrong. Filler addresses
+    # must never make a real send or a bounce, so in test mode nothing is emailed, whatever email settings are present (Saif's sandbox has
+    # real ones): every message lands in the test inbox instead.
+    uaply_api.NO_MAIL = SIGNUP_TEST
     chat_api.init(os.path.basename(root))
     billing_api.PUBLIC = PUBLIC                                     # Plan and billing: buy buttons on a public server only when Stripe keys are set
     uaply_api.hide_errors = jobs_api.hide_errors = PUBLIC       # a hosted server never shows visitors raw error text; the owner's own computer still does
@@ -781,6 +790,17 @@ class H(http.server.SimpleHTTPRequestHandler):
         """The session token from this instance's cookie ('' if there is none)."""
         return self._cookie_value(auth_api.cookie_name())
 
+    def _gate(self):
+        """The gate's answer for a gated route, or None when it may go on: (401, SIGNIN_FIRST) with no live session, (403, VERIFY_FIRST)
+        when the session's account has emailVerified false. Google (when Google vouches for the address), a code sign-in and test mode
+        all make verified accounts, so only a password sign-up waiting for its emailed code is held here."""
+        u = auth_api.user_for(self._token())
+        if not u:
+            return 401, SIGNIN_FIRST
+        if not u.get("emailVerified"):
+            return 403, VERIFY_FIRST
+        return None
+
     def _cookie(self, token):
         secure = "; Secure" if (self.headers.get("X-Forwarded-Proto") == "https") else ""
         age = auth_api.SESSION_SECONDS if token else 0
@@ -972,8 +992,10 @@ class H(http.server.SimpleHTTPRequestHandler):
             if not OWNER_PASSWORD:
                 return self._send(403, {"error": "Owner pages are off on this server. Set OWNER_PASSWORD to use them."})
             return self._send(401, {"error": "Owner password required."}, headers=[("WWW-Authenticate", 'Basic realm="UAply owner"')])
-        if api and (p in GATED_GET or p.startswith(GATED_GET_PREFIX)) and not auth_api.user_for(self._token()):
-            return self._send(401, SIGNIN_FIRST)
+        if api and (p in GATED_GET or p.startswith(GATED_GET_PREFIX)):
+            held = self._gate()
+            if held:
+                return self._send(*held)
         if api:
             try:
                 if p == "/api/jobs":
@@ -1008,8 +1030,8 @@ class H(http.server.SimpleHTTPRequestHandler):
                     out = google_auth.public_config(*self._origin_parts())
                     if code_signin_live():                                          # "Email me a code" can be offered
                         out = dict(out, codeSignin=True)
-                    if SIGNUP_TEST:                                                 # test mode: sign-up signs in at once (never public)
-                        out = dict(out, signupTest=True)
+                    if SIGNUP_TEST:                                 # test mode: sign-up signs in at once, nothing is emailed (never public)
+                        out = dict(out, signupTest=True, testMode=True)
                     return self._send(200, out)
                 if p in ("/api/auth/google/start", "/api/auth/google/callback"):
                     return self._google(p)
@@ -1120,8 +1142,10 @@ class H(http.server.SimpleHTTPRequestHandler):
         if origin not in ("http://" + host, "https://" + host) or (PUBLIC and origin != "https://" + host and
                                                                   self.headers.get("X-Forwarded-Proto") == "https"):
             return self._refuse(403, {"error": "cross-site request refused"})
-        if p in GATED_POST and not auth_api.user_for(self._token()):
-            return self._refuse(401, SIGNIN_FIRST)
+        if p in GATED_POST:
+            held = self._gate()
+            if held:
+                return self._refuse(*held)
         if p == "/api/profile/resume":
             return self._resume_upload()
         try:

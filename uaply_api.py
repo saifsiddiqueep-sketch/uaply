@@ -84,6 +84,8 @@ def config():
 
 
 def _smtp_ready(cfg):
+    if NO_MAIL:                                         # test mode: every message goes to the test inbox, even with real email settings
+        return False
     s = cfg.get("smtp") or {}
     pw = s.get("password") if isinstance(s.get("password"), str) else ""
     if s.get("user") and (not pw.strip() or pw.strip().lower().startswith("a gmail app password")):
@@ -160,6 +162,7 @@ def _load():
 
 
 PUBLIC = False             # serve.py sets this on a hosted server (the live site): see _mail_ctx
+NO_MAIL = False            # serve.py sets this in test mode (UAPLY_SIGNUP_TEST, never public): no email leaves, whatever the settings say
 hide_errors = False        # serve.py sets this on a hosted server: visitors then see a plain sentence, never a mail server's or an employer's raw error text
 
 
