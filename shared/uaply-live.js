@@ -52,6 +52,7 @@ function writeCache(jobs,decided){
 
 /* ---------------- live ---------------- */
 function patch(s){
+  s=once(s,'var q=queue(),deck=$("deck");','var q=queue(),deck=$("deck");if(window.__uaplyNearEnd)window.__uaplyNearEnd(q.length);');   /* paging: the cards left */
   var cached=readCache();
   var extra=cached.length?","+JSON.stringify(cached).slice(1,-1).replace(/<\//g,"<\\/"):"";
   s=once(s,'regional cookbooks."}','regional cookbooks."}'+extra);
@@ -123,11 +124,22 @@ function apply(w,host){
   say("Loading real postings…");
   /* On a fresh start the server answers within seconds with the boards it has read so far and says how many are still loading
      ("pending"): the app asks again a few times and adds what came in, so the first visitor never waits for every board. */
-  function loadJobs(round){
-  return fetch("/api/jobs").then(function(r){
-    /* a plain web host with no UAply server (a 404, or an HTML page): a preview. Show the example jobs and say so; a 5xx stays an outage */
-    if(r.status===404||(r.ok&&/text\/html/i.test(r.headers.get("content-type")||""))){var pe=new Error("preview");pe.preview=true;throw pe}
-    if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}).then(function(data){
+  /* the job list a page at a time (October 23: 16,000 postings were a 14.8 MB answer and about 3 s before the first card). The first
+     page of PAGE jobs comes at sign-in; the next one is asked for in the background when the person is within NEAR cards of the end of
+     the stack on screen (renderDeck tells __uaplyNearEnd how many are left, after every filter), one stack at a time (?type=, its own
+     "next" cursor). __uaplyJobs.add keeps one copy of each id, so a page that overlaps another (the list rebuilt meanwhile, a stack's
+     own first page) never shows a card twice. The whole list (GET /api/jobs, no query) stays for other callers. */
+  var PAGE=200,NEAR=20,PG=null,pgBusy=false,pgWait=0;
+  function stackType(){try{var t=w.__uaply.getType&&w.__uaply.getType();return /^(job|parttime|internship|coop)$/.test(t)?t:""}catch(e){return ""}}
+  /* a shared job (Share this job, ?job=<id>) may be on any page: it is read by itself first (GET /api/jobs/<id>) and goes in with the
+     first page, so the friend's landing finds it in that answer (shared/uaply-share.js keeps the landing in the top page's sessionStorage) */
+  function sharedId(){
+    try{var m=/[?&]job=(\d{6,16})(?:&|$)/.exec(w.top.location.search);if(m)return +m[1]}catch(e){}
+    try{var k=w.top.sessionStorage.getItem("uaply.share.landing"),o=k&&JSON.parse(k);if(o&&/^\d{6,16}$/.test(String(o.id))&&Date.now()-(+o.at||0)<30*60000)return +o.id}catch(e){}
+    return 0;
+  }
+  function oneJob(id){return fetch("/api/jobs/"+id).then(function(r){return r.ok?r.json():null}).then(function(d){return d&&d.job||null},function(){return null})}
+  function took(data){
     w.__uaplyLoadingJobs=false;
     var now=Date.now(),fresh=(data.jobs||[]).map(function(j){j.seen=now;return j});
     if(fresh.length>=5)w.__uaplyHideSamples=true;      /* set before adding, so the deck renders once */
@@ -141,14 +153,36 @@ function apply(w,host){
     writeCache(all,(w.__uaply&&w.__uaply.S&&w.__uaply.S.decisions)||null);
     var src=Object.keys(data.sources||{}).map(function(k){return k+": "+data.sources[k]}).join(" · ");
     say("Real postings: "+fresh.length+" loaded ("+added+" new). "+src);
+  }
+  w.__uaplyNearEnd=function(left){
+    if(!PG||left>NEAR||pgBusy||Date.now()<pgWait)return;
+    var t=stackType(),cur=PG[t]||(t?null:PG[""]);
+    if(cur&&!cur.next)return;                                   /* this stack has every page it can get */
+    pgBusy=true;
+    var u="/api/jobs?size="+PAGE+(t?"&type="+t:"")+(cur?"&cursor="+encodeURIComponent(cur.next):"&page=1");
+    fetch(u).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}).then(function(data){
+      PG[t]={next:data.next||null,total:data.total};pgBusy=false;took(data);   /* add() redraws the deck, which asks again if it is still short */
+    }).catch(function(){pgBusy=false;pgWait=Date.now()+10000});   /* a page that failed: tried again on a later swipe, 10 s on */
+  };
+  function loadJobs(round){
+  var want=round===0?sharedId():0;
+  return Promise.resolve(want?oneJob(want):null).then(function(one){
+  return fetch("/api/jobs?size="+PAGE+"&page=1").then(function(r){
+    /* a plain web host with no UAply server (a 404, or an HTML page): a preview. Show the example jobs and say so; a 5xx stays an outage */
+    if(r.status===404||(r.ok&&/text\/html/i.test(r.headers.get("content-type")||""))){var pe=new Error("preview");pe.preview=true;throw pe}
+    if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}).then(function(data){
+    if(one&&!(data.jobs||[]).some(function(x){return +x.id===+one.id}))(data.jobs=data.jobs||[]).push(one);
+    PG={"":{next:data.next||null,total:data.total}};pgWait=0;   /* a first page (again, while boards load): every stack's paging starts over */
+    took(data);
     if(data.pending>0&&round<15){
       setTimeout(function(){loadJobs(round+1)},round<3?5000:15000);
-      if(fresh.length<5){w.__uaplyLoadingJobs=true;try{w.__uaply.renderAll()}catch(x){}}   /* "Finding jobs for you…", not an empty deck */
+      if((data.jobs||[]).length<5){w.__uaplyLoadingJobs=true;try{w.__uaply.renderAll()}catch(x){}}   /* "Finding jobs for you…", not an empty deck */
     }
   }).catch(function(e){if(round>0)return;   /* a later round that fails changes nothing: the jobs already shown stay */
     w.__uaplyLoadingJobs=false;
     if(e&&e.preview){w.__uaplyPreviewOn=true;w.__uaplyHideSamples=false;w.__uaplyJobsFailed=false;try{w.__uaply.renderAll()}catch(x){}say(w.__uaplyPreviewText||"Preview: example jobs only.");return}
     if(REL)w.__uaplyJobsFailed=true;if(REL){try{w.__uaply.renderAll()}catch(x){}}say(REL?"Could not load jobs ("+e.message+"). Check your connection and try again.":"Could not load real postings ("+e.message+"). Showing the example jobs.")});
+  });
   }
   /* the sign-in gate (shared/uaply-signup.js): no request for the job list while nobody is signed in; it is asked for once the gate lifts */
   /* (asked again each time the gate lifts: after a code that confirmed the address, the list that answered 403 "verify" comes now) */
