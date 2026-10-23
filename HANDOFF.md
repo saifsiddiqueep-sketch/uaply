@@ -1,4 +1,4 @@
-# Handoff: where UAply stands and how we work (updated October 22, 2026)
+# Handoff: where UAply stands and how we work (updated October 23, 2026)
 
 Read this first when continuing the work in a new session. It carries what the earlier sessions knew: the owner's rules, the state of
 every instance, what is waiting to be released, and what only the owner can do. Launch day itself is `docs/runbook-launch.md`; the
@@ -15,19 +15,25 @@ work of each release is in `CHANGELOG.md`. The live record of tasks is the Trell
   says: server, hosting, email, domain, backups, releases and anything needing Saif's keys are Saif's side.
 - Detailed pull requests in the CONTRIBUTING.md shape (what changed, why, how tested, what could go wrong, what is not done, where it
   is going). Show proof: test counts, log lines, screenshots.
-- Work moves sandbox, then dev (the release build), always through a pull request. Hiring mode (employer side) and the emailed-code
-  sign-up stay sandbox-only (the code checks the instance name) until the owner says otherwise.
+- Work moves sandbox, then dev (the release build), always through a pull request. GitHub enforces it on `dev` and `main`: the
+  ruleset "Live branches: owner only" (id 25654532, since October 22) asks for a pull request with 1 approval, no force-push and no
+  deletion, with only the repository's admin role (Saif) able to bypass it; `sandbox` has no rule. Hiring mode (employer side) stays
+  sandbox-only (the code checks the instance name) until the owner says otherwise; the sign-in gate and the sign-up card are on every
+  front end since the October 23 release.
+- Pro Mode (CLAUDE.md, Saif's side): off by default; "go pro" switches it on (GOAL / DONE WHEN / BUDGET on every order, Sonnet for
+  test runs and log reading, a fresh session per milestone with a handoff, this file and the handbook updated after every merge,
+  two reviewers for changes under 100 lines). One task per chat on Saif's side starts with it, Monday October 26.
 - After a merge to dev: trigger the deploy if it did not start, run the live checks, tag `v1.0.0-rc.N`, add the CHANGELOG entry.
 - Never automate a job board's apply flow (LinkedIn, Indeed, ZipRecruiter, Handshake). Never submit into a hiring system without a
   key the employer created. Never answer a question the profile cannot. Never send voluntary self-identification. Never get past a
   bot wall or a human check.
 
 ## Instances and where they run
-| Instance | Branch | Where | State (October 22) |
+| Instance | Branch | Where | State (October 23) |
 |---|---|---|---|
-| Live site | `dev` | https://uaply.net through Cloudflare (CNAMEs `@` and `www` to `uaply.onrender.com`, **Proxied**, SSL/TLS **Full (strict)**) → Render service `uaply` (`srv-db9i3i6q1p3s738b5b4g`, workspace `tea-db9duku1egvs73et93k0`, Starter, Virginia, https://uaply.onrender.com) | Runs **rc.13** (`e6aced4`, PR #45). `/api/status`: persistent disk, email (Brevo) on, Google sign-in on, payments on in Stripe **test** mode, AI answers off, owner pages on. Health check `/healthz`. |
-| Sandbox | `sandbox` | the owner's computer only (`python serve.py 8766 sandbox --api`); no sandbox service on Render | Everything past rc.13: the next release candidate (below). |
-| Hosted previews | `sandbox`, `dev` | https://saifsiddiqueep-sketch.github.io/uaply/sandbox.html and /dev.html (GitHub Pages); second copy: https://uaply-sandbox-preview.onrender.com/sandbox.html | Back on October 22 while the repository is public until launch: `.github/workflows/pages.yml` builds them with `node share/build-share.js --full` on each push. Static copies with example jobs and no server; they say so (preview wording). |
+| Live site | `dev` | https://uaply.net through Cloudflare (CNAMEs `@` and `www` to `uaply.onrender.com`, **Proxied**, SSL/TLS **Full (strict)**) → Render service `uaply` (`srv-db9i3i6q1p3s738b5b4g`, workspace `tea-db9duku1egvs73et93k0`, Starter, Virginia, https://uaply.onrender.com) | Runs **`9b76822`** (rc.14: the sign-in gate v2, deployed October 23; not tagged yet, the tags are `v1.0.0-rc.1` to `v1.0.0-rc.13`). `/api/status`: persistent disk, email (Brevo) on, Google sign-in on, payments on in Stripe **test** mode, AI answers off, owner pages on. Health check `/healthz`. |
+| Sandbox | `sandbox` | the owner's computer only (`python serve.py 8766 sandbox --api`); no sandbox service on Render | Tip `74441b7` (October 23): swipe phase A (de96435), the paged job list (`/api/jobs` list and paged forms, one job at `/api/jobs/<id>`, 282adbf), Mohammed's PRs #61 and #63, and the ui-gate wording fix (2612f1a). |
+| Hosted previews | `sandbox`, `dev` | https://saifsiddiqueep-sketch.github.io/uaply/sandbox.html and /dev.html (GitHub Pages); second copy: https://uaply-sandbox-preview.onrender.com/sandbox.html | Back on October 22 while the repository is public until launch: `.github/workflows/pages.yml` builds them with `node share/build-share.js --full` on each push. Static copies with example jobs and no server; they say so (preview wording). The GitHub Pages copies exist only while the repository is public. Since PR #63 the build embeds every shared script the pages list, the sign-up card included; with no server the card is not used and Account says it is a preview. |
 | Owner's computer | all | 8765 prod (`main`), 8766 sandbox, 8767 dev (`start-uaply.bat`) | The full suite (`bash tools/run-all-tests.sh`) and the Galaxy phone walk (`node tools/phone-walk.js`) run here. |
 
 Render's Environment for `uaply` (names only; the values are the owner's): `OWNER_PASSWORD`, `UAPLY_CONFIG_JSON` (Brevo SMTP, Google
@@ -40,7 +46,7 @@ reference for a fresh setup, not what runs. Deploys: if Events shows none within
 Behind Cloudflare, `serve.client_ip` takes the visitor's address from `CF-Connecting-IP` only when the last hop is one of Cloudflare's
 published ranges (read at start and every 24 hours), and from the host's own last hop otherwise.
 
-## What the next release (rc.14) carries
+## What rc.14 carried (live since October 23, `9b76822`)
 In plain words, from `CHANGELOG.md` "Unreleased (sandbox)": job feeds rounds 1 to 3 (about 20,000 jobs across every state, employers'
 own careers sites and Workday, per-source health, a human-check scan), readiness (a swipe right only sends a complete application; the
 minimum to apply is checked on the server too), the Job Tracker name and its rows kept, phone fit on the Galaxy (44 px targets, the
