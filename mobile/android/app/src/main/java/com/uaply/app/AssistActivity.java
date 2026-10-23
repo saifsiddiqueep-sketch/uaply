@@ -55,6 +55,9 @@ public class AssistActivity extends AppCompatActivity {
      *  an allowed https host; then 'none' while the script is not in the page yet. tools/test-assist-hostile.js runs this very text. */
     static final String CALL = "(function(C){var h=location.hostname,a=C.allow||[],ok=false;if(location.protocol==='https:')for(var i=0;i<a.length;i++)if(a[i]===h)ok=true;if(!ok)return 'off';var E=window[C.name];if(!E||typeof E.run!=='function')return 'none';return E.run(C)})";
     private static final int PICK_FILE = 41;
+    /* one tap (October 23): until the form at this address is read or filled, the page is asked every 150 ms, so the filled
+       form is ready about a second after it loads (tools/test-assist.js measures it); after that, every 1.5 s as before */
+    private static final int FAST = 150, SLOW = 1500;
     private final String key = newKey();   // the name the script lives under in the page: random, new every time this screen opens
     private WebView web;
     private final Handler tick = new Handler(Looper.getMainLooper());
@@ -62,6 +65,7 @@ public class AssistActivity extends AppCompatActivity {
     private boolean finished = false;
     private boolean scanMode = false;   // the bridge's first pass: read the form behind a cover, return its questions
     private long scanDeadline = 0;
+    private boolean quick = true;   // nothing read or filled at the page in front yet (or the scan is still reading): asked every 150 ms
     private ValueCallback<Uri[]> pendingChooser = null;
     private WebChromeClient.FileChooserParams pendingParams = null;
 
@@ -135,7 +139,7 @@ public class AssistActivity extends AppCompatActivity {
         root.addView(stack, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
         setContentView(root);
         web.loadUrl(url);
-        tick.postDelayed(this::poll, 1500);
+        tick.postDelayed(this::poll, FAST);
     }
 
     private static String newKey() {
@@ -188,7 +192,7 @@ public class AssistActivity extends AppCompatActivity {
         if (finished || web == null) return;
         if (!onAllowedHost()) {   // another site (a redirect, a link the person tapped): nothing is asked of it or put into it
             if (scanMode && System.currentTimeMillis() > scanDeadline) { finishScan("{\"questions\":[]}"); return; }
-            tick.postDelayed(this::poll, 1500);
+            tick.postDelayed(this::poll, quick ? FAST : SLOW);   // the page is still on its way (no address yet), or a redirect
             return;
         }
         web.evaluateJavascript(call("ask", null), v -> {
@@ -199,6 +203,7 @@ public class AssistActivity extends AppCompatActivity {
                 }
                 if (v.equals("\"none\"")) { inject(); return; }
                 JSONObject o = new JSONObject(new JSONObject("{\"s\":" + v + "}").getString("s"));
+                quick = !o.optBoolean("ran") || (scanMode && o.isNull("scan"));
                 if (!o.isNull("rep")) lastReport = o.optString("rep");
                 if (o.optBoolean("c")) {   // the employer's confirmation page: leave it on screen a moment, then report Sent
                     finished = true;
@@ -215,7 +220,7 @@ public class AssistActivity extends AppCompatActivity {
                 if (!o.optBoolean("ran") && o.optInt("n") > 3) fill();
             } catch (Exception ignored) {
             } finally {
-                if (!finished) tick.postDelayed(this::poll, 1500);
+                if (!finished) tick.postDelayed(this::poll, quick ? FAST : SLOW);
             }
         });
     }

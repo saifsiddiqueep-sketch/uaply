@@ -84,8 +84,8 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   const summary = { statuses: {}, password: PASSWORD };   /* the Python half signs in again for the weekly-limit check */
 
   // ---------- 2. connected hiring systems and the email employer: Sent ----------
-  for (const [label, key] of [["greenhouse", "gh"], ["lever", "lever"], ["ashby", "ashby"], ["smartrecruiters", "sr"], ["workable", "wk"], ["email", "mail"]]) {
-    const path = label === "email" ? "email" : "ats-" + label;
+  for (const [label, key] of [["greenhouse", "gh"], ["lever", "lever"], ["ashby", "ashby"], ["smartrecruiters", "sr"], ["workable", "wk"], ["email", "mail"], ["email-posting", "postmail"]]) {
+    const path = label.startsWith("email") ? label : "ats-" + label;
     const id = JOBS[key];
     check(path, "the job is in the deck (an employer who agreed)", (await swipe(id)) === "ok");
     const st = await status(id);
@@ -105,7 +105,7 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
     const st = await status(id); summary.statuses.handoff = st;
     const t = await toastText();
     check("handoff", "nothing is sent: the server says hand-off", st === "handoff", st);
-    check("handoff", "the message is only 'Saved <company> to Applied · N% match' (never 'Finish on their site')", /^Saved .+ to Applied · \d+% match ?Undo$/.test(t), t);
+    check("handoff", "the message is the hand-off's: 'Saved to Job Tracker. One tap to finish on their site.' (never Applied or Sent)", /^Saved to Job Tracker\. One tap to finish on their site\. ?Undo$/.test(t), t);
     const r = await rowOf(id);
     check("handoff", "Applied shows the status Finish on their site", r && r.chip === "Finish on their site", JSON.stringify(r));
     check("handoff", "...with See the job posting, Finish applying on their site and Mark as applied", r && JSON.stringify(r.links) === JSON.stringify(["See the job posting ↗", "Finish applying on their site ↗", "Mark as applied"]), JSON.stringify(r));

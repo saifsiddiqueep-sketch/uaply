@@ -142,7 +142,7 @@ ap = st.get("apply") or {}
 t("/api/status apply: only a yes/no, the delivery mode and job counts per way of applying",
   (sorted(ap), isinstance(ap.get("ok"), bool), ap.get("mode") in ("test", "live"), all(isinstance(v, int) for v in (ap.get("classes") or {}).values()),
    all(isinstance(v, bool) for v in (ap.get("configured") or {}).values()), sorted(ap.get("classes") or {})),
-  (["classes", "configured", "mode", "ok"], True, True, True, True, ["ats", "email", "handoff", "webhook"]))
+  (["classes", "configured", "mode", "ok"], True, True, True, True, ["ats", "email", "handoff", "postingEmail", "webhook"]))
 t("/api/status shows the question types employers asked only to the owner", ("questions" in st, "questions" in json.loads(req("GET", "/api/status", headers=auth("ownerpw"))[2])), (False, True))
 t("/api/status says what this server has on (public, owner pages on, email off)", (st.get("public"), st.get("ownerPages"), st.get("email")), (True, True, False))
 t("/api/status holds no secret or folder name", any(x in body.decode() for x in ("ownerpw", "uaply-", "/", "\\\\")), False)

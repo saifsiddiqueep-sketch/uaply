@@ -547,6 +547,10 @@ function apply(w,host){
       if(x.status==="needs_answers")return '<small class="sent todo">Not sent yet: '+e(o.j.co)+'\'s form asks something only you can answer. '+again+'Answer now</button></small>';
       return "";
     }
+    /* the date beside the status (October 23): "Sent" only for an application that went (UAply's send, a test send, the person's own on the
+       employer's site); "Saved" for everything else (a hand-off, one waiting, one not sent yet) */
+    function whenLine(o){var x=o.x.sent,went=!!(x&&(x.status==="sent"||x.status==="delivered_test"||x.status==="self"));
+      return (went?"Sent ":"Saved ")+new Date(went&&x.at?x.at:o.x.at).toLocaleDateString(undefined,{month:"short",day:"numeric"})}
     /* what the row is at a glance: the tracking stage once the person set one, otherwise what happened to the application */
     function isHandoff(o){var x=o.x.sent;return !x||x.status==="handoff"}     /* nothing was sent (no server said so): finish on their site */
     function stChip(o){
@@ -568,7 +572,7 @@ function apply(w,host){
     function row(o,acts,view){
       var t=A.tone(o.x.pct),e=A.esc;
       return '<div class="row"><div class="logo" aria-hidden="true" style="background:hsl('+A.hue(o.j.id)+' 60% 46%)">'+e(o.j.co.charAt(0))+'</div><div class="info"><b>'+e(o.j.role)+'</b>'+modeChip(o.j)+'<small>'+e(o.j.co)+' · '+e(o.j.loc)+' · '+TYPE_LABEL[o.j.type||"job"]+(o.j.live&&w.__uaplyRouteWord?'<span class="rtword"> · '+e(w.__uaplyRouteWord(o.j))+'</span>':'')+'</small>'+
-        (view!=="passed"?'<small>Applied '+new Date(o.x.at).toLocaleDateString(undefined,{month:"short",day:"numeric"})+'</small>':'')+
+        (view!=="passed"?'<small>'+whenLine(o)+'</small>':'')+
         detLine(o,view)+(view!=="passed"?stChip(o):'')+sentLine(o)+(view!=="passed"?jobLinks(o):'')+'</div><span class="pill tone-'+t+'">'+o.x.pct+'%</span>'+
         '<div class="acts">'+extraActs(o,acts,view).map(function(a,i){return '<button type="button" class="btn'+(i?' ghost':'')+'" data-act="'+a[0]+'" data-id="'+o.j.id+'" aria-label="'+a[1]+': '+e(o.j.role)+' at '+e(o.j.co)+'">'+a[1]+'</button>'}).join("")+'</div>'+(OPEN[o.j.id]&&view!=="passed"?detForm(o,view):"")+'</div>';
     }
@@ -632,12 +636,16 @@ function apply(w,host){
   function assistOnly(p,sc,asked){var o={answers:{}},own=Object.prototype.hasOwnProperty;if(!p||!sc)return o;(sc.keys||[]).forEach(function(k){if(own.call(ASSIST_NEED,k))ASSIST_NEED[k].split(" ").forEach(function(f){if(own.call(p,f)&&f!=="answers"&&f!=="resume")o[f]=p[f]})});var want={};(sc.answerKeys||[]).concat(asked||[]).forEach(function(k){want[String(k)]=1});Object.keys(p.answers||{}).forEach(function(k){if(own.call(want,k))o.answers[k]=p.answers[k]});if(sc.resume===true&&p.resume)o.resume=p.resume;return o}
   function assistHosts(cfg,url){var out=[],add=function(h){h=String(h||"").toLowerCase();if(/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(h)&&out.indexOf(h)<0)out.push(h)},s=cfg&&cfg.systems||{};Object.keys(s).forEach(function(k){var hs=s[k]&&s[k].hosts;if(Array.isArray(hs))hs.forEach(add)});try{var u=new w.URL(url);if(u.protocol==="https:")add(u.hostname)}catch(e){}return out}
   w.__uaplyAssistShape=assistShape;w.__uaplyAssistOnly=assistOnly;w.__uaplyAssistHosts=assistHosts;   /* for the browser tests */
+  /* Automatic submit needs the person's own tick, on record at the server for the current agreement (consent_api.py): the answer of the
+     agreement just given on this device (__uaplyConsentRec), else what /api/auth/me said. Without it the app never presses Submit */
+  function autoConsent(){if(SRV.user&&SRV.user.sendForMe===false)return false;var c=("__uaplyConsentRec" in w)?w.__uaplyConsentRec:(SRV.user&&SRV.user.consent);return !!(c&&c.v===w.__uaplyConsentV&&c.auto===true)}
+  w.__uaplyAutoConsent=autoConsent;   /* for the browser test */
   var assistBusy=false;
   function assistedApply(j,AP){
     var prof=w.__uaplyAssistProfile&&w.__uaplyAssistProfile(j);if(!prof||assistBusy)return false;
     assistBusy=true;var sys=atsOf(j.url),url=handoffURL(j.url);
     Promise.all([w.fetch("/uaply-assist.js").then(function(r){if(!r.ok)throw 0;return r.text()}),w.fetch("/assist-systems.json").then(function(r){return r.ok?r.json():{}}).catch(function(){return {}})]).then(function(r){
-      var base={url:url,engine:r[0],allow:assistHosts(r[1],url),job:{co:j.co,role:j.role},system:sys,mode:assistMode(r[1],sys)};
+      var base={url:url,engine:r[0],allow:assistHosts(r[1],url),job:{co:j.co,role:j.role},system:sys,mode:assistMode(r[1],sys)==="automatic"&&autoConsent()?"automatic":"assisted"};
       /* the bridge: the app reads the form first (scan, nothing changed, with stand-ins for the person's details) and returns what the
          profile cannot answer and which profile items the form asks for; UAply asks those in its own question box (required first, then
          the optional ones, which may be left blank), keeps the answers like every question-box answer, and only then opens the form,
@@ -664,6 +672,18 @@ function apply(w,host){
     },function(){assistBusy=false;if(w.__uaplyOpen)w.__uaplyOpen(handoffURL(j.url))});   /* the app could not open it: the employer's page as before */
     return true;
   }
+  /* one swipe (Saif, October 23): in the phone app, a swipe right that is a hand-off on a hiring system the app fills opens that employer's
+     own form at once, filled and scrolled to the check or Submit ("One tap to finish", shared/uaply-assist.js); the person completes any
+     check and taps Submit, and Job Tracker says Sent on the confirmation page. Backing out leaves it as Finish on their site. Not on the
+     website, not for SmartRecruiters (its bot wall) or an employer's own careers site: those wait for Finish on their site */
+  var ONE_TAP_SYS={greenhouse:1,lever:1,workable:1,ashby:1};
+  w.__uaplyOneTap=function(j){
+    if(!j||!j.url||!/^https:\/\//.test(j.url)||!ONE_TAP_SYS[atsOf(j.url)])return false;
+    if(SRV.user&&SRV.user.sendForMe===false)return false;   /* Send applications for me is off: the swipe only saves the job */
+    var AP=plug("UAplyAssist");if(!AP)return false;
+    w.__uaplyOneTapAt=Date.now();          /* for the measurement in tools/ui-apply-paths.js: swipe answered, form asked for */
+    return assistedApply(j,AP);
+  };
   function finishOnSite(id){
     var j=A.JOBS.filter(function(x){return x.id===id})[0];if(!j||!j.url||!/^https:\/\//.test(j.url))return;
     var AP=plug("UAplyAssist");if(AP&&assistedApply(j,AP))return;
@@ -1973,6 +1993,14 @@ function apply(w,host){
   }
   acctSec.addEventListener("change",function(e){
     var t=e.target;
+    if(t.id==="aSendForMe"){var want=!!t.checked;t.disabled=true;
+      apiPost("/api/auth/send-for-me",{on:want}).then(function(r){
+        if(r.ok&&r.j&&SRV.user)SRV.user.sendForMe=r.j.sendForMe!==false;
+        renderAcct("account");
+        msg(r.ok?(want?"Send applications for me is on: a swipe right sends your application wherever UAply can.":"Send applications for me is off: swipes right only save the job to Job Tracker.")
+          :(r.j&&r.j.error)||"Could not change it. Try again.");
+      });
+      return}
     if(t.id==="aEnf"){acct.enforce=t.checked;saveA();msg(acct.enforce?"Limits are now enforced.":"Limits are off.")}
     else if(t.id==="aImp"&&t.files[0]){
       var g=t.files[0];if(g.size>3145728){msg("That file is too large.");return}
@@ -2280,6 +2308,16 @@ function apply(w,host){
       '<div class="acts"><button type="button" class="btn" data-auth="sdelsend">Send and continue</button><button type="button" class="btn ghost" data-auth="sdelskip">Skip survey</button></div>'+
       '<div class="acts"><button type="button" class="linkbtn" data-auth="sdelno">Keep my account</button></div></div>';
   }
+  /* Send applications for me (Terms, section 3): on, a swipe right sends the application wherever UAply can; off, every swipe right only
+     saves the job to Job Tracker, and the server honors it (uaply_api.submit), so it holds on every device. Kept on the account */
+  function sendForMeHTML(){
+    var on=!(SRV.user&&SRV.user.sendForMe===false);
+    return '<div class="field" id="aSendWrap" style="margin:4px 0"><label for="aSendForMe" style="display:flex;gap:10px;align-items:center;min-height:44px;cursor:pointer">'+
+      '<input type="checkbox" id="aSendForMe" role="switch" aria-describedby="aSendNote"'+(on?' checked':'')+' style="min-width:22px;min-height:22px;margin:0"><b>Send applications for me</b></label>'+
+      '<small id="aSendNote">'+(on?'On: a swipe right sends your application wherever UAply can (see the Terms, section 3). Turn it off and swipes right only save the job to Job Tracker.'
+        :'Off: swipes right only save the job to Job Tracker. Nothing is sent to any employer for you until you turn it on again.')+'</small></div>';
+  }
+  w.__uaplySendOff=function(){return !!(SRV.user&&SRV.user.sendForMe===false)};
   function deleteHTML(){
     if(AUI.survey)return surveyHTML();
     if(AUI.delOpen){
@@ -2300,7 +2338,7 @@ function apply(w,host){
     if(!SRV.user&&AUI.forgot&&AUI.sMode==="in")return forgotHTML();
     if(SRV.user)return '<div class="plan" style="display:flex;flex-direction:column;gap:8px"><b>You are signed in</b><small>'+E(SRV.user.email)+(SRV.user.emailVerified===false?' · email not verified yet':' · email verified')+'</small>'+verifyHTML()+
       '<p class="note" style="margin:0">'+(SRV.user.emailVerified===false?'Once your email is verified, each swipe right sends a confirmation to it':'Every time you swipe right, a confirmation goes to this email')+(SRV.canEmail?'':SRV.testInbox?' (no real email is connected here yet, so it is saved in the <a href="/outbox" target="_blank" rel="noopener noreferrer">test inbox</a>; <a href="/setup#gmail" target="_blank" rel="noopener noreferrer">connect Gmail</a> to send real ones)':' (email is not switched on for this site yet, so no confirmation goes out for now)')+'.</p>'+
-      (AUI.survey||AUI.delOpen?'':'<div class="acts"><button type="button" class="btn ghost" data-auth="sout">Sign out</button></div>'+changeHTML())+
+      (AUI.survey||AUI.delOpen?'':sendForMeHTML()+'<div class="acts"><button type="button" class="btn ghost" data-auth="sout">Sign out</button></div>'+changeHTML())+
       deleteHTML()+
       '</div>';
     var up=AUI.sMode!=="in";

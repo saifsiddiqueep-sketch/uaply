@@ -23,8 +23,9 @@ TYPE_LABEL = {"job": "Full-time", "parttime": "Part-time", "internship": "Intern
 MODE_LABEL = {"remote": "Remote", "hybrid": "Hybrid", "onsite": "On-site"}
 
 SWIPE_MEANING = ("Swiping right means: I want this job. UAply saves it to your Applied list and, if the employer accepts applications "
-                 "through UAply, sends them your profile. If the employer takes applications only on its own site, UAply gives you the "
-                 "link and your details so you can finish there. Swiping left only hides the job; nothing is sent.")
+                 "through UAply or the job posting asks for applications by email, sends them your profile. If the employer takes applications "
+                 "only on its own site, UAply gives you the link and your details so you can finish there. Swiping left only hides the job; "
+                 "nothing is sent.")
 NOT_SHARED = "Your voluntary answers (such as race, gender, veteran or disability status) are never sent."
 NEXT_STEPS = [
     "The employer reviews applications in its own time, and many employers get a lot of them, so you may not hear from every one.",
@@ -71,12 +72,19 @@ def _summary_rows(job, match):
     return [(k, v) for k, v in rows if v]
 
 
-def _headline(status, job, test):
+# an emailed application counts as sent when UAply's email service accepts it for delivery (Terms, section 3)
+EMAIL_SENT = "It counts as sent when UAply's email service accepts it for delivery; UAply cannot see whether the employer read it."
+
+
+def _headline(status, job, test, channels=(), to=""):
     co, role = job.get("co", "the employer"), job.get("role", "this job")
     if status == "handoff":
         return ("One more step: finish your application to %s" % co,
                 "You swiped right on %s at %s. Your application is not complete yet: %s takes applications on its own site, so UAply "
                 "could not send it for you. Use the button below; your details are listed further down, ready to copy." % (role, co, co))
+    if status == "sent" and any(str(c).startswith("email") for c in channels or ()):
+        return ("Your application was sent to %s" % co,
+                "You swiped right on %s at %s, and UAply emailed your application to the employer%s. %s" % (role, co, (" at %s" % to) if to else "", EMAIL_SENT))
     if status == "sent":
         return ("Your application was sent to %s" % co,
                 "You swiped right on %s at %s, and UAply sent your application to the employer." % (role, co))
@@ -129,7 +137,7 @@ def applicant_receipt(ctx):
     """ctx keys: test, status, cand, job, at, match, to, rows (application details as (label, value) pairs), note, user_email,
     base_url, support_email. Returns (subject, text, html)."""
     status, job, cand, test = ctx["status"], ctx["job"], ctx["cand"], ctx["test"]
-    head, lead = _headline(status, job, test)
+    head, lead = _headline(status, job, test, ctx.get("channels"), ctx.get("to") or "")
     subject = subject_for(status, job, test)
     posting = _https(job.get("url"))
     track = (ctx.get("base_url") or "").rstrip("/")

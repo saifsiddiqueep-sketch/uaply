@@ -130,11 +130,22 @@ def init(instance):
         c.execute("""CREATE TABLE IF NOT EXISTS stripe_events(
             id TEXT PRIMARY KEY,
             at INTEGER NOT NULL)""")                     # Stripe event ids already handled (billing_api.webhook), so a resent event is done once
+        c.execute("""CREATE TABLE IF NOT EXISTS consents(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            version INTEGER NOT NULL,
+            at INTEGER NOT NULL,
+            ip TEXT NOT NULL,
+            text_sha256 TEXT NOT NULL,
+            auto INTEGER NOT NULL DEFAULT 0)""")         # the first-swipe agreement, one row each time it is given (consent_api.py)
         for col in ("terms_at INTEGER", "has_password INTEGER NOT NULL DEFAULT 1", "email_verified INTEGER NOT NULL DEFAULT 0",
                     "first_name TEXT NOT NULL DEFAULT ''", "last_name TEXT NOT NULL DEFAULT ''",
                     "plan TEXT NOT NULL DEFAULT 'free'", "plan_status TEXT NOT NULL DEFAULT ''", "plan_renews INTEGER NOT NULL DEFAULT 0",
                     "plan_cancel INTEGER NOT NULL DEFAULT 0", "stripe_customer TEXT NOT NULL DEFAULT ''", "stripe_sub TEXT NOT NULL DEFAULT ''",
-                    "plan_failed INTEGER NOT NULL DEFAULT 0"):      # databases made before these columns existed
+                    "plan_failed INTEGER NOT NULL DEFAULT 0",
+                    # Send applications for me (Profile, Account; Terms section 3): on unless the person turns it off; off, every swipe right
+                    # only saves the job to Job Tracker (uaply_api.submit). send_for_me_at: when it was last changed
+                    "send_for_me INTEGER NOT NULL DEFAULT 1", "send_for_me_at INTEGER NOT NULL DEFAULT 0"):      # databases made before these columns existed
             try:
                 c.execute("ALTER TABLE users ADD COLUMN " + col)
             except sqlite3.OperationalError:
@@ -363,7 +374,8 @@ def public_user(row):
     keys = row.keys()
     return {"id": row["id"], "email": row["email"], "hasPassword": bool(row["has_password"]), "emailVerified": bool(row["email_verified"]),
             "plan": (row["plan"] if "plan" in keys and row["plan"] in ("free", "plus", "pro") else "free"),
-            "first": (row["first_name"] if "first_name" in keys else "") or "", "last": (row["last_name"] if "last_name" in keys else "") or ""}
+            "first": (row["first_name"] if "first_name" in keys else "") or "", "last": (row["last_name"] if "last_name" in keys else "") or "",
+            "sendForMe": bool(row["send_for_me"]) if "send_for_me" in keys else True}
 
 
 def clean_name(v):
@@ -509,6 +521,48 @@ def login(email, password, ip):
     return 200, {"user": public_user(row)}, token
 
 
+def set_send_for_me(token, on):
+    """POST /api/auth/send-for-me {on}: the signed-in account's Send applications for me switch (Profile, Account). Off, every swipe right
+    only saves the job to Job Tracker: nothing is sent to any employer for this person (uaply_api.submit). Returns (status, body)."""
+    user = user_for(token)
+    if not user:
+        return 401, {"error": "Sign in first.", "code": "signin"}
+    if not isinstance(on, bool):
+        return 400, {"error": "Say on or off."}
+    with _lock, _db() as c:
+        c.execute("UPDATE users SET send_for_me=?, send_for_me_at=? WHERE id=?", (1 if on else 0, int(time.time()), user["id"]))
+    return 200, {"ok": True, "sendForMe": on}
+
+
+CONSENT_ROWS = 20                # the most agreements kept per account (the latest one counts; older ones show what was agreed before)
+
+
+def record_consent(user_id, version, ip, text_sha256, auto=False):
+    """Keep one first-swipe agreement on the account (consent_api.py): its version, the time on this server's clock, the visitor's address
+    (the last hop, as every limit reads it) and the SHA-256 of the exact words agreed to. Version 0 records that the person took it back.
+    The rows go with the account when it is deleted. Returns consent_for(user_id)."""
+    uid = int(user_id)
+    with _lock, _db() as c:
+        c.execute("INSERT INTO consents(user_id, version, at, ip, text_sha256, auto) VALUES(?,?,?,?,?,?)",
+                  (uid, int(version), int(time.time()), str(ip or "")[:64], str(text_sha256 or "")[:64], 1 if auto else 0))
+        c.execute("DELETE FROM consents WHERE user_id=? AND id NOT IN (SELECT id FROM consents WHERE user_id=? ORDER BY id DESC LIMIT ?)",
+                  (uid, uid, CONSENT_ROWS))
+    return consent_for(uid)
+
+
+def consent_for(user_id):
+    """The account's latest agreement {v, at, auto}, or None (never agreed, or took it back)."""
+    try:
+        uid = int(user_id)
+    except (TypeError, ValueError):
+        return None
+    with _lock, _db() as c:
+        row = c.execute("SELECT version, at, auto FROM consents WHERE user_id=? ORDER BY id DESC LIMIT 1", (uid,)).fetchone()
+    if not row or not row["version"]:
+        return None
+    return {"v": int(row["version"]), "at": int(row["at"]), "auto": bool(row["auto"])}
+
+
 def user_by_id(user_id):
     """The account with this id ({id, email, emailVerified, ...}), or None when there is none (deleted, or not a number)."""
     try:
@@ -516,7 +570,7 @@ def user_by_id(user_id):
     except (TypeError, ValueError):
         return None
     with _lock, _db() as c:
-        row = c.execute("SELECT id, email, has_password, email_verified, plan, first_name, last_name FROM users WHERE id=?", (uid,)).fetchone()
+        row = c.execute("SELECT id, email, has_password, email_verified, plan, first_name, last_name, send_for_me FROM users WHERE id=?", (uid,)).fetchone()
     return public_user(row) if row else None
 
 
@@ -524,7 +578,7 @@ def user_for(token):
     if not isinstance(token, str) or not (20 <= len(token) <= 100):
         return None
     with _lock, _db() as c:
-        row = c.execute("SELECT u.id, u.email, u.has_password, u.email_verified, u.plan, u.first_name, u.last_name FROM sessions s JOIN users u ON u.id=s.user_id "
+        row = c.execute("SELECT u.id, u.email, u.has_password, u.email_verified, u.plan, u.first_name, u.last_name, u.send_for_me FROM sessions s JOIN users u ON u.id=s.user_id "
                         "WHERE s.token_hash=? AND s.expires_at>?",
                         (hashlib.sha256(token.encode()).hexdigest(), int(time.time()))).fetchone()
     return public_user(row) if row else None

@@ -84,7 +84,7 @@ SIGNUP_TEST = False      # UAPLY_SIGNUP_TEST=1: sign-up makes a verified account
 # open to that session, so it can type the code, ask for a new one or sign out. Owner pages keep their own owner check instead.
 GATED_GET = ("/api/jobs",)
 GATED_GET_PREFIX = ("/api/employer/logo/",)
-GATED_POST = ("/api/apply", "/api/apply/plan", "/api/apply/mark", "/api/decision", "/api/chat", "/api/feedback", "/api/profile/resume",
+GATED_POST = ("/api/apply", "/api/apply/plan", "/api/apply/mark", "/api/decision", "/api/chat", "/api/feedback", "/api/profile/resume", "/api/consent",
               "/api/employer/company", "/api/employer/job", "/api/employer/job/status", "/api/employer/applicant", "/api/employer/import")
 SIGNIN_FIRST = {"error": "Sign in first.", "code": "signin"}
 VERIFY_FIRST = {"error": "Confirm your email first.", "code": "verify"}
@@ -141,7 +141,7 @@ if api:
                      ("/uaply-icon-maskable-192.png", "shared/uaply-icon-maskable-192.png"),
                      ("/uaply-icon-maskable-512.png", "shared/uaply-icon-maskable-512.png")):
         alias.setdefault(url, os.path.join(HERE, rel))
-    import jobs_api, uaply_api, auth_api, chat_api, google_auth, setup_api, billing_api, employers_api, resume_parse
+    import jobs_api, uaply_api, auth_api, chat_api, google_auth, setup_api, billing_api, employers_api, resume_parse, consent_api
     uaply_api.init(os.path.basename(root))
     employers_api.init(os.path.basename(root))                    # Hiring mode: on for the sandbox only
     auth_api.init(os.path.basename(root))
@@ -1022,6 +1022,11 @@ class H(http.server.SimpleHTTPRequestHandler):
                     return self._send(200, uaply_api.outbox_json())
                 if p == "/outbox":
                     return self._send(200, uaply_api.outbox_html(), "text/html; charset=utf-8")
+                if p == "/employer/stop":
+                    # the link in an application emailed to a posting's address: a page that asks first (a mail scanner opening the
+                    # link changes nothing); its button posts to /api/employer/stop
+                    qs = urllib.parse.parse_qs(self.path.split("?", 1)[1] if "?" in self.path else "")
+                    return self._send(200, uaply_api.employer_stop_page((qs.get("a") or [""])[0], (qs.get("s") or [""])[0]), "text/html; charset=utf-8")
                 if p == "/api/status":
                     facts = status_facts()
                     if self._owner_ok():          # the owner (this computer, or OWNER_PASSWORD): which questions employers asked, by kind,
@@ -1031,6 +1036,7 @@ class H(http.server.SimpleHTTPRequestHandler):
                     me = auth_api.user_for(self._token())
                     if me:                                                          # whether a Google login opens it (item 23)
                         me = dict(me, googleLinked=auth_api.google_linked(me["id"]))
+                        me["consent"] = auth_api.consent_for(me["id"])               # the agreement on record: {v, at, auto} or null
                     if CODE_SIGNIN and me and auth_api.google_hint(me["id"]):      # what the Google sign-in a moment ago said
                         me = dict(me, google=auth_api.google_hint(me["id"]))
                     return self._send(200, {"user": me})
@@ -1139,10 +1145,10 @@ class H(http.server.SimpleHTTPRequestHandler):
                 code, out = 500, {"error": OOPS}
             return self._send(code, out, headers=[("WWW-Authenticate", 'Basic realm="uaply"')] if code == 401 else ())
         if not api or p not in ("/api/apply", "/api/apply/plan", "/api/apply/mark", "/api/decision", "/api/auth/signup", "/api/auth/login", "/api/auth/logout",
-                                "/api/auth/delete", "/api/auth/forgot", "/api/auth/reset", "/api/auth/change-password",
+                                "/api/auth/delete", "/api/auth/forgot", "/api/auth/reset", "/api/auth/change-password", "/api/auth/send-for-me",
                                 "/api/setup/test-mail", "/api/setup/save-mail", "/api/setup/save-google", "/api/setup/save-ats", "/api/setup/remove-ats", "/api/setup/test-ats", "/api/setup/save-stripe", "/api/setup/save-feed-keys", "/api/auth/google/token", "/api/auth/verify", "/api/auth/resend", "/api/chat", "/api/feedback", "/api/billing/checkout", "/api/billing/portal",
                                 "/api/employer/company", "/api/employer/job", "/api/employer/job/status", "/api/employer/applicant",
-                                "/api/employer/import", "/api/profile/resume") + (CODE_PATHS if CODE_SIGNIN else ()):
+                                "/api/employer/import", "/api/profile/resume", "/api/consent", "/api/employer/stop") + (CODE_PATHS if CODE_SIGNIN else ()):
             return self._refuse(404, {"error": "not found"})
         # Only accept requests made by this site's own pages (blocks cross-site forms and scripts).
         origin = self.headers.get("Origin")
@@ -1320,6 +1326,10 @@ class H(http.server.SimpleHTTPRequestHandler):
             if p == "/api/auth/change-password":
                 code, out = auth_api.change_password(self._token(), payload.get("current"), payload.get("password"), ip)
                 return self._send(code, out)
+            if p == "/api/auth/send-for-me":
+                # Send applications for me (Profile, Account): off, every swipe right only saves the job to Job Tracker
+                code, out = auth_api.set_send_for_me(self._token(), payload.get("on"))
+                return self._send(code, out)
             if p == "/api/auth/logout":
                 auth_api.logout(self._token())
                 return self._send(200, {"ok": True}, headers=self._cookie(""))
@@ -1332,7 +1342,13 @@ class H(http.server.SimpleHTTPRequestHandler):
                     chat_api.forget_user(uid)
                     return self._send(code, out, headers=self._cookie(""))
                 return self._send(code, out)
-            if p == "/api/chat":
+            if p == "/api/consent":
+                # the first-swipe agreement, kept on the account with the time, this visitor's address and the words' SHA-256 (consent_api.py)
+                code, out = consent_api.post(auth_api.user_for(self._token()), payload, ip, auth_api.record_consent)
+            elif p == "/api/employer/stop":
+                # the link at the end of an application emailed to a posting's address: its owner asks UAply to stop (uaply_api.employer_stop)
+                code, out = uaply_api.employer_stop(payload.get("a"), payload.get("s"))
+            elif p == "/api/chat":
                 code, out = chat_api.chat(payload, ip)
             elif p == "/api/feedback":
                 code, out = chat_api.feedback(payload, ip, auth_api.user_for(self._token()), notify=uaply_api.send_support_ticket)

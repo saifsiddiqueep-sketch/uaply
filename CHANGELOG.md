@@ -6,6 +6,45 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 
+### A swipe right that submits, phase A (Saif, October 23; the consent box and Terms section 3 are pending the lawyer)
+- **Reviewer 3's review fixes.** The Automatic submit tick says where it applies from `shared/assist-systems.json` (today "where a hiring
+  system allows it; none is switched on yet"; it names a system once one is switched on), and sits right after the four ways, above "By
+  continuing you agree", on screen at 375 px. Job Tracker says "Saved Oct 23" for a hand-off and "Sent Oct 23" only for a send. A
+  hand-off says "Saved to Job Tracker. One tap to finish on their site.", and the sandbox's filled-in preview of a public posting is shown
+  as the hand-off it is (only a send says Applied or Sent). Reviewer 3's three missing tests are merged.
+- **Reviewer 3's words.** The first-swipe box (version 4) and Terms section 3 are Reviewer 3's drafts: the authorization, the four ways a
+  swipe right goes (the third, UAply pressing Submit, only with the Automatic submit tick, which stays the extra line), and how to stop
+  it; the match-percentage line and its How matching works link stay, under the authorization. An emailed application counts as sent
+  when UAply's email service accepts it for delivery; UAply cannot see whether the employer read it (the Terms and the receipt say so).
+- **Send applications for me** (Profile, Account): on unless the person turns it off; off, every swipe right only saves the job to Job
+  Tracker, and the server honors it for every route (`POST /api/auth/send-for-me`, kept on the account: no email, no hiring system, no
+  simulated send, no employer's form read, no automatic or one-tap opening).
+- **The agreement is kept on the account.** The first-swipe box is version 4 (`CONSENT_V` 4; everyone sees it once more), in Reviewer 3's
+  words (below), with a separate **Automatic submit** tick, off by default. Agreeing posts the exact words to `POST /api/consent`; the server
+  checks them against its own copy (`consent_api.py`) and keeps the version, the time, the visitor's address and the words' SHA-256 on the
+  account (`/api/auth/me` shows `consent`). **No application leaves UAply without it** (403 `consent`); a device that agreed before sends its
+  agreement once and retries. Not agreeing when the box is shown again takes it back. Pending the lawyer (LEGAL-REVIEW.md, section 12).
+- **Apply by email.** A posting whose own text asks for applications by email ("send your resume to ...") at an address on the employer's
+  own domain is now Ready: a swipe right emails the application and resume there, with the person's email as the reply address, a line on
+  why it came and a stop link; the person gets the confirmation and Job Tracker says Sent. The server reads the address from the posting
+  itself (never the browser's), and never takes a free mailbox, an agency's, or an accommodations, questions or privacy address. One per
+  person per job, at most 10 a day per employer domain and UAply's own daily limit (past them: a hand-off); an address that bounces or
+  whose owner presses the stop link is a hand-off again at once. Test mode sends nothing. `docs/apply-by-email.md`.
+- **One tap.** In the phone app, a hand-off on Greenhouse, Lever, Workable or Ashby opens the employer's form right after the swipe, filled,
+  scrolled to the check or Submit, with "One tap to finish: this employer asks you to confirm you are a person." UAply never touches the
+  check; backing out keeps Finish on their site. The app asks the page every 150 ms until the form is filled (it was 1.5 s), and the fill
+  looks at lists more often for the same time, so the form is ready in about 1 to 2.5 s on the mock forms.
+- **Automatic submit, built and off.** Phone app only, with the person's tick on record and the per-system switch (`counsel_approved`
+  stays false everywhere: Saif decides): every condition is checked again, "Submitting for you in 3" with Cancel, Sent only on the
+  employer's confirmation page.
+- **Terms section 3** rewritten to match (draft): sent straight to the employer, sent by email, one tap, submitted for you only if you
+  turn it on.
+- **Outreach queue** (`tools/outreach-queue.py`): the week's employers to invite to connect, SmartRecruiters first, and where each
+  invitation stands. It sends nothing.
+- Tests: `tools/test-consent.py`, `tools/test-email-route.py`, `tools/test-outreach-queue.py`; the email-posting path in
+  `tools/test-swipe-e2e.py`; one tap, the automatic notice and its timing in `tools/test-assist.js`; one tap in the app (with a stand-in
+  plugin) and the sign-in gate in `tools/ui-apply-paths.py`, now at 390 and 1280.
+
 ### Pay as the posting gives it (Saif, October 23, the recommendations list): never guessed, never converted
 - **A job with no pay** says "Pay not listed" in the pay line's place (and "Not listed" on its Salary line and in the receipt's Pay line).
 - **Hourly pay is shown as hourly**: the feeds now keep an hourly range with its unit (`salUnit: "hour"`: USAJOBS "PH", SmartRecruiters
