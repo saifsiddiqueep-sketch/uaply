@@ -15,6 +15,10 @@ module.exports = async ({ ev, sleep, nav }) => {
   const ready = async () => { for (let i = 0; i < 60; i++) { if (await ev("!!(" + FW + "&&" + FW + ".__uaply&&" + F + ".getElementById('bnav'))").catch(() => false)) return true; await sleep(250); } return false; };
   const agree = () => ev("(()=>{const m=" + F + ".getElementById('kcYes');if(m){m.click();return true}return false})()");
 
+  // the test person signs up first (October 22, Saif: nobody reaches anything on the site without an account)
+  await nav(base + "healthz"); await sleep(300);
+  const su = await ev("fetch('/api/auth/signup',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'tracker.'+Date.now()+'@example.com',password:'Signup-first-99',first:'Test',last:'Person',agree:true,passwordless:false})}).then(r=>r.status)");
+  check("the test person signs up first (POST /api/auth/signup), so the app opens behind the sign-in gate", su === 200, su);
   await nav(base); await ready(); await sleep(800); await agree(); await sleep(500);
   const KEY = await ev("window.__uaplyBuildKey");
   const DAY = 864e5, now = Date.now();

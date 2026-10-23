@@ -53,6 +53,10 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
   // bottom bar and the agreement, in the system font. Before, a font stylesheet in the head stopped every script until it arrived.
   await send("Fetch.enable", { patterns: [{ urlPattern: "*fonts.googleapis.com*" }, { urlPattern: "*fonts.gstatic.com*" }] });
   on("Fetch.requestPaused", (p) => { setTimeout(() => send("Fetch.continueRequest", { requestId: p.requestId }), 8000); });
+  // the test person signs up first (October 22, Saif: on the sandbox nobody reaches anything without an account; the same everywhere)
+  await send("Page.navigate", { url: "http://127.0.0.1:" + PORT + "/healthz" }); await sleep(400);
+  const su = await ev("fetch('/api/auth/signup',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'phonefit.'+Date.now()+'@example.com',password:'Signup-first-99',first:'Test',last:'Person',agree:true,passwordless:false})}).then(r=>r.status)");
+  check("0. the test person signs up first (POST /api/auth/signup)", su === 200, su);
   const t0 = Date.now();
   await send("Page.navigate", { url: "http://127.0.0.1:" + PORT + "/" });
   let upAt = 0;

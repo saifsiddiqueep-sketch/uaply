@@ -217,8 +217,11 @@ module.exports = async ({ ev, sleep, nav, send, logs, on }) => {
   const job9 = await q("const c=d.querySelector('.card.top');return c?JSON.stringify({id:+c.getAttribute('data-id'),co:c.querySelector('.chead p').textContent.trim()}):''");
   const j9 = job9 ? JSON.parse(job9) : {};
   await q("w.__walkToasts=[];new w.MutationObserver(()=>{const t=d.getElementById('kitToast')||d.querySelector('.toast');if(t&&t.innerText)w.__walkToasts.push(t.innerText.replace(/\\s+/g,' '))}).observe(d.body,{childList:true,subtree:true,characterData:true});return 1");
+  // (nothing left open from sections 7 and 8 over the card: the Help panel, the rating question)
+  await q("const x=d.getElementById('uaChatX');if(x&&x.offsetParent)x.click();const n=d.getElementById('uaNudge');if(n&&!n.hidden){const b=[...n.querySelectorAll('button')].find(b=>/not now|close|later/i.test(b.innerText));if(b)b.click()}return 1"); await sleep(400);
   await swipeRight(j9.id);
-  const st9 = await waitFor("const x=w.__uaply.S.decisions[" + j9.id + "];return x&&x.sent&&x.sent.status?x.sent.status:''", 8000);
+  const st9 = await waitFor("const x=w.__uaply.S.decisions[" + j9.id + "];return x&&x.sent&&x.sent.status?x.sent.status:''", 15000);
+  if (st9 !== "handoff") console.log("     after the swipe: " + await q("const x=w.__uaply.S.decisions[" + j9.id + "];return JSON.stringify({dec:x||null,dialogs:[...d.querySelectorAll('[role=dialog]')].filter(e=>e.offsetParent).map(e=>e.innerText.slice(0,140).replace(/\s+/g,' ')),toasts:w.__walkToasts.slice(0,3)})"));
   await sleep(600);
   const toasts9 = JSON.parse(await q("return JSON.stringify(w.__walkToasts)") || "[]");
   check("9. the swiped job is a hand-off (the server says it takes applications on its own site)", st9 === "handoff", st9 + " " + JSON.stringify(j9));
