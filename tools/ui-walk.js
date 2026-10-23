@@ -249,7 +249,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, on }) => {
   const toasts9 = JSON.parse(await q("return JSON.stringify(w.__walkToasts)") || "[]");
   check("9. the swiped job is a hand-off (the server says it takes applications on its own site)", st9 === "handoff", st9 + " " + JSON.stringify(j9));
   check("9. no message after the swipe says 'Finish on their site' or 'Not sent yet'", toasts9.length > 0 && !toasts9.some((t) => /finish on their site|not sent yet|finish now/i.test(t)), JSON.stringify(toasts9));
-  check("9. the message is the hand-off's 'Saved <company> to Job Tracker.' (one tap is promised only where the app opens the form) with Undo", toasts9.some((t) => /^Saved \S.* to Job Tracker\. ?Undo$/.test(t)), JSON.stringify(toasts9));
+  check("9. the message is the hand-off's 'Saved <company> to Job Tracker.' (one tap is promised only where the app opens the form) with Undo", toasts9.some((t) => /^Saved [^.]+ to Job Tracker\. ?Undo$/.test(t)), JSON.stringify(toasts9));
   await menu("nb-dash", "applied"); await sleep(500);
   const row9 = await q("const b=d.querySelector('#track [data-finish=\"" + j9.id + "\"]')||d.querySelector('[data-finish=\"" + j9.id + "\"]');const r=b&&b.closest('.row');if(!r)return '';return JSON.stringify({txt:r.innerText.replace(/\\s+/g,' '),chip:(r.querySelector('.stchip')||{}).textContent||'',links:[...r.querySelectorAll('.joblinks .linkbtn')].map(x=>x.innerText.trim()),open:(r.querySelector('[data-open]')||{getAttribute:()=>''}).getAttribute('data-open'),url:(w.__uaply.JOBS.find(j=>j.id===" + j9.id + ")||{}).url})");
   const r9 = row9 ? JSON.parse(row9) : {};

@@ -163,6 +163,9 @@ if api:
     uaply_api.hide_errors = jobs_api.hide_errors = PUBLIC       # a hosted server never shows visitors raw error text; the owner's own computer still does
     jobs_api.link_check_on = PUBLIC          # a hosted server checks every source's apply links in the background (UAPLY_LINK_CHECK=0: off)
     uaply_api.PUBLIC = PUBLIC                                   # the live site never labels a real hand-off email [TEST]
+    jobs_api.RECRUITEE_SUBMIT[0] = uaply_api.recruitee_on()     # Recruitee postings say Ready while the owner's switch is on
+    import connect_api
+    jobs_api.CONNECTIONS_FILE[0] = connect_api.path()           # keys employers gave on the connect page (/employers/connect)
     uaply_api.start_mail_worker()                               # sends receipts and copies held back by the daily email limit (mailer.py)
     # the job-list warm-up starts after the port is bound (at the end of this file), so the health check passes at once
 
@@ -1039,11 +1042,16 @@ class H(http.server.SimpleHTTPRequestHandler):
                     return self._send(200, uaply_api.outbox_json())
                 if p == "/outbox":
                     return self._send(200, uaply_api.outbox_html(), "text/html; charset=utf-8")
+                if p == "/employers/connect":
+                    # the employer's page from the outreach email (connect_api.py): only a valid, unexpired link shows the form
+                    qs = urllib.parse.parse_qs(self.path.split("?", 1)[1] if "?" in self.path else "")
+                    g = lambda k: (qs.get(k) or [""])[0]
+                    return self._send(200, connect_api.page(g("k"), g("b"), g("e"), g("s")).encode("utf-8"), "text/html; charset=utf-8")
                 if p == "/employer/stop":
                     # the link in an application emailed to a posting's address: a page that asks first (a mail scanner opening the
                     # link changes nothing); its button posts to /api/employer/stop
                     qs = urllib.parse.parse_qs(self.path.split("?", 1)[1] if "?" in self.path else "")
-                    return self._send(200, uaply_api.employer_stop_page((qs.get("a") or [""])[0], (qs.get("s") or [""])[0]), "text/html; charset=utf-8")
+                    return self._send(200, uaply_api.employer_stop_page((qs.get("a") or [""])[0], (qs.get("s") or [""])[0]).encode("utf-8"), "text/html; charset=utf-8")
                 if p == "/api/status":
                     facts = status_facts()
                     if self._owner_ok():          # the owner (this computer, or OWNER_PASSWORD): which questions employers asked, by kind,
@@ -1165,7 +1173,8 @@ class H(http.server.SimpleHTTPRequestHandler):
                                 "/api/auth/delete", "/api/auth/forgot", "/api/auth/reset", "/api/auth/change-password", "/api/auth/send-for-me",
                                 "/api/setup/test-mail", "/api/setup/save-mail", "/api/setup/save-google", "/api/setup/save-ats", "/api/setup/remove-ats", "/api/setup/test-ats", "/api/setup/save-stripe", "/api/setup/save-feed-keys", "/api/auth/google/token", "/api/auth/verify", "/api/auth/resend", "/api/chat", "/api/feedback", "/api/billing/checkout", "/api/billing/portal",
                                 "/api/employer/company", "/api/employer/job", "/api/employer/job/status", "/api/employer/applicant",
-                                "/api/employer/import", "/api/profile/resume", "/api/consent", "/api/employer/stop") + (CODE_PATHS if CODE_SIGNIN else ()):
+                                "/api/employer/import", "/api/profile/resume", "/api/consent", "/api/employer/stop",
+                                "/api/employer/connect/test", "/api/employer/connect/save", "/api/setup/connect-invite") + (CODE_PATHS if CODE_SIGNIN else ()):
             return self._refuse(404, {"error": "not found"})
         # Only accept requests made by this site's own pages (blocks cross-site forms and scripts).
         origin = self.headers.get("Origin")
@@ -1259,6 +1268,14 @@ class H(http.server.SimpleHTTPRequestHandler):
                 if PUBLIC:
                     return self._send(403, {"ok": False, "message": "On a hosted server, add the Stripe keys in the host's dashboard (STRIPE_SECRET_KEY and the others), not here."})
                 code, out = setup_api.save_stripe(payload)
+                return self._send(code, out)
+            if p == "/api/setup/connect-invite":             # the owner makes an employer's connect link for the outreach email
+                if not self._owner_ok():
+                    return self._send(403, {"error": "Owner pages are off or need the owner password."})
+                code, out = connect_api.invite(self._site_base(), str(payload.get("kind") or "").lower(), str(payload.get("board") or ""))
+                return self._send(code, out)
+            if p in ("/api/employer/connect/test", "/api/employer/connect/save"):
+                code, out = (connect_api.test if p.endswith("/test") else connect_api.save)(payload)
                 return self._send(code, out)
             if p == "/api/setup/test-ats":                  # reads only: on a hosted server it tests the keys saved in the dashboard (none typed)
                 if not self._owner_ok():
