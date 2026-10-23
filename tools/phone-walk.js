@@ -137,10 +137,11 @@ module.exports = async ({ ev, sleep, nav, send }) => {
   // where a CSS point of the page is on the phone's screen: measured with one tap on a part of the page that does nothing (the header's
   // logo), because the address bar's height above the page differs between phones and changes when the bar hides
   let dpr = 1, top = 0, left = 0;
+  // the first one on show: under the sign-in gate .brand is hidden, so the card's logo (.sg-bb .sg-lg) or its heading is used
   const calibrate = async (finder) => {
     dpr = await ev("devicePixelRatio");
     await ev("window.__pd=null;const f=" + F + ";const hit=e=>{if(!window.__pd)window.__pd=[e.clientX,e.clientY,e.view===window?0:1]};addEventListener('pointerdown',hit,true);if(f&&f.contentWindow)f.contentWindow.addEventListener('pointerdown',hit,true);1");
-    const p = JSON.parse(await ev("(()=>{const f=" + F + ";const d=f?f.contentDocument:document;const e=" + (finder || "d.getElementById('kcH')||d.querySelector('.brand')||d.querySelector('h1')") + ";const r=e.getBoundingClientRect(),o=f?f.getBoundingClientRect():{left:0,top:0};return JSON.stringify({x:o.left+r.left+Math.min(r.width/2,30),y:o.top+r.top+r.height/2})})()"));
+    const p = JSON.parse(await ev("(()=>{const f=" + F + ";const d=f?f.contentDocument:document;const e=" + (finder || "[d.getElementById('kcH'),d.querySelector('.brand'),d.querySelector('.sg-bb .sg-lg'),d.querySelector('.sg-card h1,.sg-card h2'),d.querySelector('h1')].find(e=>e&&e.getClientRects().length&&e.getBoundingClientRect().width>0)") + ";const r=e.getBoundingClientRect(),o=f?f.getBoundingClientRect():{left:0,top:0};return JSON.stringify({x:o.left+r.left+Math.min(r.width/2,30),y:o.top+r.top+r.height/2})})()"));
     const guessTop = Math.round((await ev("screen.height")) * dpr - (await ev("innerHeight")) * dpr - 134);
     const X = Math.round(p.x * dpr), Y = Math.round(guessTop + p.y * dpr);
     wake(); adb("shell", "input", "tap", String(X), String(Y)); await sleep(700);
