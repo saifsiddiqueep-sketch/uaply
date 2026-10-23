@@ -386,6 +386,10 @@ production page and only changes when the owner decides.
   (28 checks in Chrome at 390 px with touch: the computed tap highlight of every element on every page, no ring after a real touch,
   the keyboard ring, the retries against a /healthz answering 503). Run against the code before this change, 23 of its first 25 checks failed.
 
+### Sign-in concepts, a look-around page (sandbox only)
+- **Five sign-in and sign-up designs to click through** before one is chosen: `sandbox/signin-concepts.html` (rose scheme, each design live in a desktop and a phone frame, Auto/Light/Dark and Reduce motion). It is a preview only and says so at the top: nothing on it signs anyone in, creates an account or sends anything, and the app's real sign-in is unchanged. The brand fonts no longer hold up drawing, so it opens offline in the system fonts.
+- A **Sign-in concepts** button next to All on / All off in the sandbox's controls opens it in a new tab. The sandbox server serves it from its own folder; the hosted sandbox copy gets it from `.github/workflows/pages.yml`; dev never has it (404) and never links to it (`check.js` checks both).
+- Tests: `tools/test-signin-lab.py` (22 checks), in `tools/run-all-tests.sh`; 2 more checks in `check.js`.
 ### Google Play listing pack
 - `mobile/store/play/`: app name, short (80) and full (3,5xx of 4,000) descriptions in the app's own honest wording, the 512 px icon, the
   1024 x 500 feature graphic, five phone and five 7-inch tablet screenshots at 1080 x 1920 (Jobs, Dashboard, Profile setup, Filters, Help),

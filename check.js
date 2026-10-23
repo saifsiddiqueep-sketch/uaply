@@ -120,7 +120,9 @@ try {
   /* allowed in dev since October 17: Learns from your swipes (its file must load) and consent before the first swipe. Still sandbox-only:
      Hiring mode's file and the sandbox's controls bar (All on / All off / Clear saved swipes) */
   !P.includes("learn") || dev.includes('<script src="uaply-learn.js"></script>') ? ok("Learns from your swipes is promoted and its file loads in dev") : bad("dev promotes learn but does not load uaply-learn.js");
-  !dev.includes("uaply-employers.js") && !/id="(all|none|reset|feats)"/.test(dev) ? ok("dev loads neither Hiring mode nor the sandbox's controls") : bad("dev loads uaply-employers.js or the sandbox controls");
+  !dev.includes("uaply-employers.js") && !/id="(all|none|reset|feats|concepts)"/.test(dev) ? ok("dev loads neither Hiring mode nor the sandbox's controls") : bad("dev loads uaply-employers.js or the sandbox controls");
+  /* the sign-in concepts are a sandbox look-around page: served from sandbox/ only, never from dev/ and never linked from dev */
+  !fs.existsSync("dev/signin-concepts.html") && !dev.includes("signin-concepts") ? ok("dev has no sign-in concepts page and no link to one (sandbox only)") : bad("dev/ has signin-concepts.html or links to it; it belongs to the sandbox only");
   /consentFirst:\s*true/.test(dev) ? ok("dev asks for the agreement before the first swipe (consentFirst)") : bad("dev/index.html lost consentFirst:true");
   const devErr = build(P.concat(NEEDS.submit));
   devErr ? bad("the release build does not assemble: " + devErr) : ok("the release build (dev's PROMOTED list) assembles and parses");
@@ -173,6 +175,9 @@ console.log("Hosted icons");
       else ok(dir + "/" + f + " exists and is published");
     });
   });
+  /* the sandbox's Sign-in concepts button opens a page next to it: it must exist and be copied into the hosted sandbox folder */
+  if (fs.readFileSync("sandbox/index.html", "utf8").includes('href="signin-concepts.html"'))
+    fs.existsSync("sandbox/signin-concepts.html") && pages.includes("cp sb/sandbox/signin-concepts.html site/sandbox/") ? ok("sandbox/signin-concepts.html exists and is published") : bad("the sandbox links signin-concepts.html but it is missing or not copied by .github/workflows/pages.yml");
 }
 
 console.log("Hosted copies build");

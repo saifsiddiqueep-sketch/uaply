@@ -84,6 +84,7 @@ run "applications go straight into an employer's Workable" python tools/test-ats
 run "swipe right to apply instantly, end to end" python tools/test-ats-flow.py
 run "paid plans: Stripe checkout, signed webhook, limits" python tools/test-billing.py
 run "the public address (UAPLY_PUBLIC_URL): 301 to uaply.net for pages only, never /api/ or /healthz, canonical links, sitemap, plans hidden" python tools/test-public-url.py 18820
+run "the sign-in concepts page: 200 on the sandbox, linked from its controls; 404 on dev and never linked there; nothing sent from it" python tools/test-signin-lab.py 18840
 run "Stripe Checkout form filler of ui-live.js: card fields inside another site's iframe, Save my info, a decline, test cards only" node tools/cdp.js tools/ui-stripe-form.js
 run "autofill: real employers' forms answered from the profile, questions asked once" python tools/test-autofill.py
 run "Hiring mode: company, postings, feed, applicants (sandbox only)" python tools/test-employers.py

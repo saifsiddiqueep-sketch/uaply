@@ -54,6 +54,8 @@ jobs:
           # the pages ask for these icons next to themselves; without the copies the browser shows a plain globe
           cp sb/sandbox/favicon-32.png sb/sandbox/favicon-192.png sb/sandbox/apple-touch-icon.png site/sandbox/
           cp dv/dev/favicon-32.png dv/dev/favicon-192.png dv/dev/apple-touch-icon.png site/dev/
+          # the sandbox's Sign-in concepts button opens this look-around page next to it (sandbox only; dev never gets it)
+          if [ -f sb/sandbox/signin-concepts.html ]; then cp sb/sandbox/signin-concepts.html site/sandbox/; fi
           cp sb/sandbox/favicon-32.png sb/sandbox/favicon-192.png sb/sandbox/apple-touch-icon.png site/
           cp -r sb/legal site/legal
           cat > site/index.html <<'HTML'

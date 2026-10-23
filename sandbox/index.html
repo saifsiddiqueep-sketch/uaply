@@ -29,7 +29,8 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--ink);fo
 .badge{font:700 11px ui-monospace,Menlo,monospace;letter-spacing:.08em;padding:3px 8px;border-radius:6px;background:#E8A317;color:#2A1A00}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 button{font:inherit;cursor:pointer}
-.chips button,.row>button,.seg button{border:1px solid var(--line);background:var(--surface);color:var(--muted);padding:5px 12px;border-radius:999px;font-weight:600}
+.chips button,.row>button,.row>a.lnkbtn,.seg button{border:1px solid var(--line);background:var(--surface);color:var(--muted);padding:5px 12px;border-radius:999px;font-weight:600}
+.row>a.lnkbtn{text-decoration:none;line-height:inherit}
 .chips button[aria-pressed="true"],.seg button[aria-pressed="true"]{background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);border-color:transparent}
 .seg{display:flex;gap:4px}
 .note{margin:0;color:var(--muted);min-height:1.4em}
@@ -51,7 +52,7 @@ body.app iframe{border:0;border-radius:0;width:100%!important}
 <div class="top">
   <div class="row"><span class="badge">SANDBOX</span><b>UAply</b><span class="note" style="flex:1 1 200px">Experiment freely. Reads a copy of index.html (prod); prod is never changed.</span>
     <div class="seg" id="size"><button data-s="desktop" aria-pressed="true">Desktop</button><button data-s="phone" aria-pressed="false">Phone</button></div>
-    <button id="all" type="button">All on</button><button id="none" type="button">All off</button><button id="reset" type="button">Clear saved swipes</button><button id="fold" type="button" aria-expanded="true">Hide controls</button></div>
+    <button id="all" type="button">All on</button><button id="none" type="button">All off</button><a class="lnkbtn" id="concepts" href="signin-concepts.html" target="_blank" rel="noopener" title="Five sign-in and sign-up designs to click through and compare. A preview only: the app's real sign-in is unchanged.">Sign-in concepts</a><button id="reset" type="button">Clear saved swipes</button><button id="fold" type="button" aria-expanded="true">Hide controls</button></div>
   <div class="chips" id="feats" role="group" aria-label="Experiments"></div>
   <p class="note" id="note">Pick an experiment to see what it does.</p>
 </div>
