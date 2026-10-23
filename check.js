@@ -115,6 +115,15 @@ try {
     const off = hooks.filter((s) => count(s) !== 1);
     off.length ? bad("shared/uaply-nav.js: sign-up v2 hooks missing or doubled: " + off.join(", ")) : ok("shared/uaply-nav.js has each sign-up v2 hook exactly once");
   }
+  /* Share this job's landing key: one name (UAplyEnv.SHARE_KEY in shared/uaply-envs.js), read by shared/uaply-live.js (the shared job
+     comes with the first page of the job list) and written by shared/uaply-share.js; a second spelling would lose the friend's job */
+  {
+    const files = ["envs", "live", "share"].map((f) => fs.readFileSync("shared/uaply-" + f + ".js", "utf8"));
+    const lit = files.map((t) => t.split('"uaply.share.landing"').length - 1);
+    E.SHARE_KEY === "uaply.share.landing" && lit[0] === 1 && lit[1] === 0 && lit[2] === 0 && /UAplyEnv\.SHARE_KEY/.test(files[1]) && /UAplyEnv\.SHARE_KEY/.test(files[2])
+      ? ok("Share this job's landing key has one name (UAplyEnv.SHARE_KEY), used by uaply-live.js and uaply-share.js")
+      : bad("the shared-job landing key must be defined once in shared/uaply-envs.js (UAplyEnv.SHARE_KEY) and read from there by uaply-live.js and uaply-share.js");
+  }
   /* the hosted copies (share/build-share.js) have no server, so they leave the sign-up card out */
   !/uaply-signup/.test(fs.readFileSync("share/build-share.js", "utf8")) ? ok("the hosted copies leave out sign-up v2 (it needs the server)") : bad("share/build-share.js inlines uaply-signup.js, which needs a server");
   /* allowed in dev since October 17: Learns from your swipes (its file must load) and consent before the first swipe. Still sandbox-only:
