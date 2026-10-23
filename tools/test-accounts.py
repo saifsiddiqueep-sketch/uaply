@@ -443,11 +443,16 @@ def main():
             with sqlite3.connect(HDB) as c:
                 return [r[0] for r in c.execute("SELECT user_id FROM identities WHERE provider='google' AND subject=?", (sub,))]
 
-        def code_for(email):
-            with sqlite3.connect(HDB) as c:
-                row = c.execute("SELECT subject FROM user_mail WHERE to_addr=? ORDER BY id DESC LIMIT 1", (email,)).fetchone()
-            m = re.match(r"\s*(\d{6})", row[0] if row else "")
-            return m.group(1) if m else ""
+        def code_for(email, wait=5.0):
+            # a sign-up answers first and emails its code a moment later: wait up to `wait` seconds for it
+            end = time.time() + wait
+            while True:
+                with sqlite3.connect(HDB) as c:
+                    row = c.execute("SELECT subject FROM user_mail WHERE to_addr=? ORDER BY id DESC LIMIT 1", (email,)).fetchone()
+                m = re.match(r"\s*(\d{6})", row[0] if row else "")
+                if m or time.time() > end:
+                    return m.group(1) if m else ""
+                time.sleep(0.1)
 
         # 6 over HTTP
         s, out, ck = signup("Hal@Example.com")

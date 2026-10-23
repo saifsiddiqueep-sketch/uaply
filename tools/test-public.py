@@ -149,8 +149,24 @@ t("/api/status holds no secret or folder name", any(x in body.decode() for x in 
 
 # the job list is sent gzip-compressed to a browser that takes it, plain otherwise; the owner's feed health lists every source
 import gzip  # noqa: E402
-s1, h1, b1 = req("GET", "/api/jobs", headers={"Accept-Encoding": "gzip, deflate, br"})
-s2, h2, b2 = req("GET", "/api/jobs")
+# nobody reaches site data without an account (Saif, October 22): signed out, every data route answers 401 "Sign in first."
+SIGNIN = {"error": "Sign in first.", "code": "signin"}
+gated = [("GET", "/api/jobs", None), ("GET", "/api/employer/logo/1", None)] + [("POST", p_, {"x": 1}) for p_ in (
+    "/api/apply", "/api/apply/plan", "/api/apply/mark", "/api/decision", "/api/chat", "/api/feedback", "/api/profile/resume",
+    "/api/employer/company", "/api/employer/job", "/api/employer/job/status", "/api/employer/applicant", "/api/employer/import")]
+outs = [(m_, p_, req(m_, p_, b_)) for m_, p_, b_ in gated]
+t("signed out, every route with job data or a person's data answers 401 'Sign in first.' (code signin)",
+  [(m_, p_) for m_, p_, r_ in outs if (r_[0], json.loads(r_[2] or b"{}")) != (401, SIGNIN)], [])
+t("...and so does a session that is not valid", req("GET", "/api/jobs", headers={"Cookie": "uaply_dev_session=" + "x" * 43})[0], 401)
+opened = {p_: req("GET", p_)[0] for p_ in ("/", "/healthz", "/api/status", "/api/auth/me", "/api/auth/providers", "/api/apply/config", "/api/chat/config",
+                                         "/api/billing/status", "/legal/terms.html", "/help/articles.json", "/uaply-sw.js", "/uaply.webmanifest", "/uaply-offline.html")}
+t("...while the page, its files, help, legal, the health check and the sign-in routes stay open", [p_ for p_, s_ in opened.items() if s_ != 200], [])
+t("...and the sign-in itself stays open: sign-up and sign-in answer without a session",
+  (req("POST", "/api/auth/login", {"email": "nobody.here@example.com", "password": "not the one 1"})[0], req("POST", "/api/auth/forgot", {"email": "x@example.com"})[0]),
+  (401, 200))
+JAR = {"Cookie": cookie.split(";", 1)[0]}                         # the session of the sign-up at the top
+s1, h1, b1 = req("GET", "/api/jobs", headers=dict(JAR, **{"Accept-Encoding": "gzip, deflate, br"}))
+s2, h2, b2 = req("GET", "/api/jobs", headers=JAR)
 plain = json.loads(b2)
 t("/api/jobs: compressed for a browser that takes gzip, the same list as the plain answer",
   (s1, h1.get("content-encoding"), json.loads(gzip.decompress(b1))["sources"] == plain["sources"] if h1.get("content-encoding") == "gzip" else None, s2, h2.get("content-encoding")),

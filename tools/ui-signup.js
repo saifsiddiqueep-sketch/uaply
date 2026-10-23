@@ -17,7 +17,7 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   const typeIn = (sel, v) => ev("(()=>{const e=" + q(sel) + ";if(!e)return false;e.focus();e.value=" + JSON.stringify(v) + ";e.dispatchEvent(new Event('input',{bubbles:true}));return true})()");
   const click = (sel) => ev("(()=>{const e=" + q(sel) + ";if(!e)return false;e.click();return true})()");
   const key = (sel, k) => ev("(()=>{const e=" + q(sel) + "||" + F + ".activeElement;e.dispatchEvent(new KeyboardEvent('keydown',{key:" + JSON.stringify(k) + ",bubbles:true,cancelable:true}));return true})()");
-  const codeFromInbox = () => ev("fetch('/outbox').then(r=>r.text()).then(t=>{const m=t.match(/([0-9]{6}) is your UAply verification code/);return m?m[1]:''})");
+  const codeFromInbox = () => ev("fetch('/outbox').then(r=>r.text()).then(t=>{const m=t.match(/([0-9]{6}) is your UAply (?:verification|sign-in) code/);return m?m[1]:''})");
   const typeCode = (c) => typeIn(".sg-code input", c);
   const openAccount = async () => {
     await ev("(()=>{const b=[...(" + F + ").querySelectorAll('button')].find(x=>x.offsetParent&&x.innerText.trim()==='Not now');if(b)b.click()})()"); await sleep(400);

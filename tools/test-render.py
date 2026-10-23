@@ -229,13 +229,18 @@ try:
     t("health check: 200 {\"ok\": true}, quick (20 in %.2f s), and HEAD works too" % (time.time() - t0),
       ([x[0] for x in hz] == [200] * 20, json.loads(hz[0][2]), time.time() - t0 < 2, req("HEAD", "/healthz")[:3:2]), (True, {"ok": True}, True, (200, b"")))
     t("/api/status names the deployed commit (the short id of RENDER_GIT_COMMIT)", json.loads(req("GET", "/api/status")[2]).get("commit"), COMMIT[:7])
-    s, h, body = req("GET", "/api/jobs")
-    t("job list answers on a fresh disk", (s, "jobs" in json.loads(body)), (200, True))
-    s, h, body = req("POST", "/api/auth/signup", {"email": "render@example.com", "password": "correct horse 99", "agree": True})
+    t("signed out, the job list asks for an account (Saif, October 22: nobody reaches site data without one)", req("GET", "/api/jobs")[0], 401)
+    s, h, body = req("POST", "/api/auth/signup", {"email": "render@example.com", "password": "correct horse 99", "agree": True, "first": "Render", "last": "Test"})
     cookie = h.get("set-cookie", "")
     t("sign-up behind Render's proxy", s, 200)
     t("session cookie: HttpOnly, Secure, SameSite=Lax, whole site, 30 days", all(x in cookie for x in ("HttpOnly", "; Secure", "SameSite=Lax", "Path=/", "Max-Age=2592000")), True)
     session = cookie.split(";", 1)[0]
+    s, h, body = req("GET", "/api/jobs", headers={"Cookie": session})
+    t("job list answers on a fresh disk, signed in", (s, "jobs" in json.loads(body)), (200, True))
+    for _ in range(50):                                 # the sign-up answers first and emails its code a moment later
+        if os.path.exists(mail_file) and "render@example.com" in open(mail_file, encoding="utf-8").read():
+            break
+        time.sleep(0.1)
     t("the sign-up code email reached the mail server", os.path.exists(mail_file) and "render@example.com" in open(mail_file, encoding="utf-8").read(), True)
     for path in ("/outbox", "/api/outbox", "/feedback", "/setup"):
         t("%s: closed without the owner password, closed with a wrong one, open with it" % path,
@@ -248,8 +253,9 @@ try:
     s, h, body = req("POST", "/api/apply", {"consent": True, "job": job, "profile": {"ext": {"phone": "215-555-0100"}, "name": "Render Test", "email": "render@example.com"}},
                      headers={"Cookie": session})
     t("swipe right is recorded", s, 200)
-    t("swipe left is recorded", req("POST", "/api/decision", {"dir": "pass", "jobId": 900002, "session": "s1", "co": "X", "role": "Y", "pct": 40})[0], 200)
-    t("feedback is recorded", req("POST", "/api/feedback", {"rating": 5, "text": "render feedback one", "source": "chat"})[0], 200)
+    t("swipe left is recorded", req("POST", "/api/decision", {"dir": "pass", "jobId": 900002, "session": "s1", "co": "X", "role": "Y", "pct": 40},
+                                    headers={"Cookie": session})[0], 200)
+    t("feedback is recorded", req("POST", "/api/feedback", {"rating": 5, "text": "render feedback one", "source": "chat"}, headers={"Cookie": session})[0], 200)
     inst = os.path.join(DISK, "dev")
     for f in ("uaply.db", "applications.jsonl", "decisions.jsonl", "feedback.jsonl"):
         t("written on the disk: dev/%s" % f, os.path.exists(os.path.join(inst, f)), True)
@@ -268,7 +274,7 @@ try:
     sock = socket.create_connection(("127.0.0.1", PORT), timeout=30)
     payload = json.dumps({"dir": "apply", "jobId": 900003, "session": "s1", "co": "X", "role": "Y", "pct": 70}).encode()
     sock.sendall(("POST /api/decision HTTP/1.1\r\nHost: %s\r\nOrigin: https://%s\r\nX-Forwarded-Proto: https\r\nContent-Type: application/json\r\n"
-                  "Content-Length: %d\r\n\r\n" % (HOSTNAME, HOSTNAME, len(payload))).encode())
+                  "Cookie: %s\r\nContent-Length: %d\r\n\r\n" % (HOSTNAME, HOSTNAME, session, len(payload))).encode())
     time.sleep(0.5)                                     # the server is now inside this request, waiting for its body
     t0 = time.time()
     try:
@@ -342,7 +348,7 @@ try:
     s, h, body = req("GET", "/api/outbox", headers=owner())
     t("redeploy: the outbox still has the application", len(json.loads(body).get("applications", [])), 1)
     t0 = time.time()
-    s, h, body = req("GET", "/api/jobs")
+    s, h, body = req("GET", "/api/jobs", headers={"Cookie": session})
     took = time.time() - t0
     got = json.loads(body)
     t("redeploy: jobs come at once from the saved copy on the disk, while every board refreshes behind it (%d boards, %.2f s)" % (len(srcs) - 1, took),

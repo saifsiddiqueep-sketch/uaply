@@ -86,8 +86,8 @@ post(b, "/api/auth/signup", {"email": "pw1@gmail.com", "password": "correct hors
 post(b, "/api/auth/logout", {})
 # the account's address was never proven, so joining it needs this person's own 18+ / Terms tick (auth_api.oauth_login answers "agree"):
 # without it nothing is linked and nobody is signed in
-t("Google into an unproven account WITHOUT the 18+ / Terms tick is refused with 'agree'",
-  sign_in(b, False, {"email": "pw1@gmail.com", "sub": "502", "verified": "1"}), "/?auth_error=agree")
+t("Google into an unproven account WITHOUT the 18+ / Terms tick is refused with 'agree_owner' (the owner's own tick, on every server now)",
+  sign_in(b, False, {"email": "pw1@gmail.com", "sub": "502", "verified": "1"}), "/?auth_error=agree_owner")
 t("...nobody is signed in, and the Google identity was not linked (the account still has its password)",
   (me(b), post(b, "/api/auth/login", {"email": "pw1@gmail.com", "password": "correct horse 99"})[0]), (None, 200))
 post(b, "/api/auth/logout", {})

@@ -55,7 +55,8 @@ import urllib.parse
 import urllib.request
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,190}\.[A-Za-z]{2,24}$")
+# every domain label starts and ends with a letter or digit, so a@example..com, a@.example.com and a@-x.com are refused (item 19)
+EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]{1,64}@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,24}$")
 ITER = 600000
 SESSION_SECONDS = 30 * 86400
 MAX_FAILS = 5
@@ -130,6 +131,7 @@ def init(instance):
             id TEXT PRIMARY KEY,
             at INTEGER NOT NULL)""")                     # Stripe event ids already handled (billing_api.webhook), so a resent event is done once
         for col in ("terms_at INTEGER", "has_password INTEGER NOT NULL DEFAULT 1", "email_verified INTEGER NOT NULL DEFAULT 0",
+                    "first_name TEXT NOT NULL DEFAULT ''", "last_name TEXT NOT NULL DEFAULT ''",
                     "plan TEXT NOT NULL DEFAULT 'free'", "plan_status TEXT NOT NULL DEFAULT ''", "plan_renews INTEGER NOT NULL DEFAULT 0",
                     "plan_cancel INTEGER NOT NULL DEFAULT 0", "stripe_customer TEXT NOT NULL DEFAULT ''", "stripe_sub TEXT NOT NULL DEFAULT ''",
                     "plan_failed INTEGER NOT NULL DEFAULT 0"):      # databases made before these columns existed
@@ -183,7 +185,7 @@ def canonical_email(v):
     if any(ch.isspace() or unicodedata.category(ch).startswith("C") for ch in e):     # spaces, tabs, line breaks, NUL, zero-width marks
         return ""
     e = e.lower()
-    return e if e.isascii() and EMAIL_RE.fullmatch(e) else ""
+    return e if e.isascii() and len(e) <= 254 and EMAIL_RE.fullmatch(e) else ""
 
 
 _clean_email = canonical_email
@@ -360,7 +362,17 @@ def _new_session(c, user_id):
 def public_user(row):
     keys = row.keys()
     return {"id": row["id"], "email": row["email"], "hasPassword": bool(row["has_password"]), "emailVerified": bool(row["email_verified"]),
-            "plan": (row["plan"] if "plan" in keys and row["plan"] in ("free", "plus", "pro") else "free")}
+            "plan": (row["plan"] if "plan" in keys and row["plan"] in ("free", "plus", "pro") else "free"),
+            "first": (row["first_name"] if "first_name" in keys else "") or "", "last": (row["last_name"] if "last_name" in keys else "") or ""}
+
+
+def clean_name(v):
+    """A first or last name as given at sign-up: plain text, at most 60 characters, no control characters, inner spaces kept single."""
+    if not isinstance(v, str):
+        return ""
+    v = unicodedata.normalize("NFKC", v)
+    v = "".join(ch for ch in v if not unicodedata.category(ch).startswith("C"))
+    return " ".join(v.split())[:60].strip()
 
 
 def billing_row(user_id):
@@ -424,9 +436,11 @@ def signup(email, password, ip, agree=False, check_dns=False, per_hour=None):
     return signup_with_code(email, password, ip, agree, check_dns, per_hour)[:3]
 
 
-def signup_with_code(email, password, ip, agree=False, check_dns=False, per_hour=None):
+def signup_with_code(email, password, ip, agree=False, check_dns=False, per_hour=None, first="", last="", verified=False):
     """signup() that also makes the first 6-digit code in the SAME locked transaction that creates the account. Returns
     (status, body, token, mail) where mail is (user_id, email, digits) to send, or None.
+    first, last: the names typed at sign-up, kept on the account (/api/auth/me). verified: the test-mode switch (serve.py
+    UAPLY_SIGNUP_TEST, never on a public server): the account is made already verified and no code is made or sent.
 
     Why one step: a "Continue with Google" for the same Gmail address can arrive between "account created" and "code made". Google is
     the authority there, so oauth_login (under the same lock) removes the unproven password and ends this new session; asking for the
@@ -454,17 +468,20 @@ def signup_with_code(email, password, ip, agree=False, check_dns=False, per_hour
         salt = secrets.token_bytes(16)
         pw_hash = _hash(password, salt)
         now = int(time.time())
+        first, last = clean_name(first), clean_name(last)
         try:
             with _db() as c:
-                cur = c.execute("INSERT INTO users(email, salt, hash, created_at, last_login, terms_at) VALUES(?,?,?,?,?,?)",
-                                (email, salt, pw_hash, now, now, now))
+                cur = c.execute("INSERT INTO users(email, salt, hash, created_at, last_login, terms_at, first_name, last_name, email_verified) "
+                                "VALUES(?,?,?,?,?,?,?,?,?)", (email, salt, pw_hash, now, now, now, first, last, 1 if verified else 0))
                 uid = cur.lastrowid
                 token = _new_session(c, uid)
-                digits = _new_code(c, uid)
-            _count_site_code()                          # its first code email counts toward the site's hour (never refused here)
+                digits = None if verified else _new_code(c, uid)
+            if not verified:
+                _count_site_code()                      # its first code email counts toward the site's hour (never refused here)
         except sqlite3.IntegrityError:
             return 409, {"error": "That email already has an account. Sign in instead."}, None, None
-    return 200, {"user": {"id": uid, "email": email, "hasPassword": True, "emailVerified": False}}, token, (uid, email, digits)
+    user = {"id": uid, "email": email, "hasPassword": True, "emailVerified": bool(verified), "plan": "free", "first": first, "last": last}
+    return 200, {"user": user}, token, (None if verified else (uid, email, digits))
 
 
 def login(email, password, ip):
@@ -499,7 +516,7 @@ def user_by_id(user_id):
     except (TypeError, ValueError):
         return None
     with _lock, _db() as c:
-        row = c.execute("SELECT id, email, has_password, email_verified, plan FROM users WHERE id=?", (uid,)).fetchone()
+        row = c.execute("SELECT id, email, has_password, email_verified, plan, first_name, last_name FROM users WHERE id=?", (uid,)).fetchone()
     return public_user(row) if row else None
 
 
@@ -507,7 +524,7 @@ def user_for(token):
     if not isinstance(token, str) or not (20 <= len(token) <= 100):
         return None
     with _lock, _db() as c:
-        row = c.execute("SELECT u.id, u.email, u.has_password, u.email_verified, u.plan FROM sessions s JOIN users u ON u.id=s.user_id "
+        row = c.execute("SELECT u.id, u.email, u.has_password, u.email_verified, u.plan, u.first_name, u.last_name FROM sessions s JOIN users u ON u.id=s.user_id "
                         "WHERE s.token_hash=? AND s.expires_at>?",
                         (hashlib.sha256(token.encode()).hexdigest(), int(time.time()))).fetchone()
     return public_user(row) if row else None
@@ -656,9 +673,11 @@ def _check_new_password(password, email=""):
     return ""
 
 
-def request_reset(email, ip):
+def request_reset(email, ip, defer=False):
     """Start a password reset. Always answers the same way so nobody can use this to find out who has an account.
-    Returns (status, body, mail) where mail is (user_id, email, token) when a link should be sent, else None."""
+    Returns (status, body, mail) where mail is (user_id, email, token) when a link should be sent, else None.
+    defer (serve.py, item 20): the token is not written here; mail is (user_id, email, None) and issue_reset_token writes it on the
+    background thread that sends the email, so an address with an account does no more work before the answer than one without."""
     ok = (200, {"ok": True, "message": "If that email has an account, a reset link is on its way. It works for one hour."})
     email = _clean_email(email)
     if not email:
@@ -672,12 +691,29 @@ def request_reset(email, ip):
             row = c.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
             if not row:
                 return ok[0], ok[1], None
+            if defer:
+                return ok[0], ok[1], (row["id"], email, None)
             token = secrets.token_urlsafe(32)
             now = int(time.time())
             c.execute("DELETE FROM password_resets WHERE expires_at < ? OR user_id=?", (now, row["id"]))
             c.execute("INSERT INTO password_resets(token_hash, user_id, expires_at) VALUES(?,?,?)",
                       (hashlib.sha256(token.encode()).hexdigest(), row["id"], now + RESET_SECONDS))
     return ok[0], ok[1], (row["id"], email, token)
+
+
+def issue_reset_token(user_id):
+    """The reset link's token for a request_reset(..., defer=True) answer, written just before it is emailed: (user_id, email, token),
+    or None when the account is gone by then."""
+    with _lock, _db() as c:
+        row = c.execute("SELECT id, email FROM users WHERE id=?", (user_id,)).fetchone()
+        if not row:
+            return None
+        token = secrets.token_urlsafe(32)
+        now = int(time.time())
+        c.execute("DELETE FROM password_resets WHERE expires_at < ? OR user_id=?", (now, row["id"]))
+        c.execute("INSERT INTO password_resets(token_hash, user_id, expires_at) VALUES(?,?,?)",
+                  (hashlib.sha256(token.encode()).hexdigest(), row["id"], now + RESET_SECONDS))
+    return row["id"], row["email"], token
 
 
 def reset_password(token, new_password, ip):
@@ -720,7 +756,8 @@ def change_password(token, current, new_password, ip):
     if not user:
         return 401, {"error": "You are not signed in."}
     if not user["hasPassword"]:
-        return 400, {"error": "This account signs in with Google. Use Forgot password to add a password."}
+        how = "with a code sent to your email" + (" or with Google" if google_linked(user["id"]) else "")
+        return 400, {"error": "This account has no password: you sign in %s. Use Forgot password to add one." % how, "code": "no_password"}
     err = _check_new_password(new_password, user["email"])
     if err:
         return 400, {"error": err}
@@ -796,7 +833,7 @@ def verify_code(token, code, ip):
         return 401, {"error": "You are not signed in."}
     if user["emailVerified"]:
         return 200, {"ok": True, "already": True}
-    digits = "".join(ch for ch in (code if isinstance(code, str) else "") if ch.isdigit())
+    digits = _code_digits(code)
     if len(digits) != 6:
         return 400, {"error": "Enter the 6-digit code from your email."}
     with _lock:
@@ -833,7 +870,8 @@ def verify_code(token, code, ip):
 # address and stay signed in to it. Here the session only starts when the code from that inbox is typed in (login_with_code).
 CODE_SENDS_PER_EMAIL = 3         # code emails per address and hour, whether or not the address has an account (so a 429 reveals nothing)
 CODE_LOGIN_FAILS = 20            # codes that did not sign in, from one visitor address in FAIL_WINDOW (that connection only, never the account)
-CODE_LIMIT_MSG = "Too many codes requested. Check your inbox and spam folder, or try again in an hour."
+CODE_LIMIT_MSG = ("Too many sign-ups or codes in the last hour, from this connection or for this email. Try again later, or use "
+                  "Continue with Google.")       # one sentence for both causes, the same for every address (item 15)
 # Every code email the site sends in an hour, from every route and every visitor together (UAPLY_CODE_SENDS_PER_HOUR, default 500): a
 # ceiling on how much mail anyone can make UAply send to other people's inboxes, whatever addresses or connections they use.
 try:
@@ -909,12 +947,31 @@ _code_day = {}       # ("send", email) or ("known", email) -> timestamps in the 
 _code_day_pruned = [0.0]
 
 
+def _code_digits(code):
+    """The digits of a typed code as plain 0-9: full-width (U+FF10..) and Arabic-Indic (U+0660..) digits count as the digits they are,
+    so a right code typed on a Japanese, Chinese or Arabic keyboard is not a wrong try (item 17). Anything that is not a digit is dropped."""
+    out = []
+    for ch in (code if isinstance(code, str) else "")[:64]:
+        d = unicodedata.decimal(ch, None)
+        if d is not None:
+            out.append(str(d))
+    return "".join(out)
+
+
+CODE_DAY_MAX = 20000     # day counters kept at most (item 13); the site's hour of code emails already keeps them far below this
+
+
 def _code_day_recent(key):
     """The last day's timestamps for `key` (and, at most once a minute, every key quiet for a day is forgotten). Call with _lock held."""
     now = time.time()
     if now - _code_day_pruned[0] >= 60 or now < _code_day_pruned[0]:
         _code_day_pruned[0] = now
         for k in [k for k, v in _code_day.items() if not v or now - v[-1] > DAY]:
+            del _code_day[k]
+    if key not in _code_day and len(_code_day) >= CODE_DAY_MAX:
+        # full: the counters quiet for longest go first (a tenth at a time), whoever's address they are, so the answer to the next
+        # request never depends on whether an address has an account
+        for k in sorted(_code_day, key=lambda k: _code_day[k][-1] if _code_day[k] else 0)[:max(1, CODE_DAY_MAX // 10)]:
             del _code_day[k]
     return _recent(_code_day, key, DAY)
 
@@ -1002,7 +1059,7 @@ def resend_code_daily(token, ip):
     return status, body, mail
 
 
-def signup_passwordless(email, ip, agree=False, check_dns=False, per_hour=None, device="", session=""):
+def signup_passwordless(email, ip, agree=False, check_dns=False, per_hour=None, device="", session="", first="", last=""):
     """Create my account with no password. Returns (status, body, mail) where mail is (user_id, email, digits) to send, or None.
 
     A new address gets an account with no usable password (has_password=0, the same kind "Continue with Google" makes), terms_at set to
@@ -1034,15 +1091,17 @@ def signup_passwordless(email, ip, agree=False, check_dns=False, per_hour=None, 
                 if row:
                     uid = row["id"]
                 else:
-                    cur = c.execute("INSERT INTO users(email, salt, hash, created_at, last_login, terms_at, has_password, email_verified) "
-                                    "VALUES(?,?,?,?,?,?,0,0)", (email, secrets.token_bytes(16), secrets.token_bytes(32), now, now, now))
+                    cur = c.execute("INSERT INTO users(email, salt, hash, created_at, last_login, terms_at, has_password, email_verified, first_name, last_name) "
+                                    "VALUES(?,?,?,?,?,?,0,0,?,?)", (email, secrets.token_bytes(16), secrets.token_bytes(32), now, now, now,
+                                                                    clean_name(first), clean_name(last)))
                     uid = cur.lastrowid
                 digits = _new_code(c, uid)
         except sqlite3.IntegrityError:               # a sign-up for the same address won the race: send that account a sign-in code
             with _db() as c:
                 uid = c.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()["id"]
                 digits = _new_code(c, uid)
-    return 200, {"ok": True, "email": email}, (uid, email, digits)
+    # (the 4th part says which email: "signin" for an address that already had an account, "confirm" for a new one; the answer is the same)
+    return 200, {"ok": True, "email": email}, (uid, email, digits, "signin" if row else "confirm")
 
 
 def send_login_code(email, ip, device="", defer=False, session=""):
@@ -1100,7 +1159,7 @@ def login_with_code(email, code, ip, agree=False):
     answer is needsAgree, after the code is checked (so it reveals nothing to someone without the code), and the code stays usable for
     the ticked retry. body["user"]["googleRemoved"] is True when a Google sign-in was taken off the account here."""
     email = _clean_email(email)
-    digits = "".join(ch for ch in (code if isinstance(code, str) else "") if ch.isdigit())
+    digits = _code_digits(code)
     if not email:
         return 400, {"error": "Enter a valid email address."}, None
     if len(digits) != 6:
@@ -1190,6 +1249,15 @@ def oauth_login_ticked(provider, subject, email, agree=False, trusted=True):
 # database. Google is asked for "openid email" only, so no name comes from Google (asking for its "profile" scope is a question for Saif).
 NAME_HINT_SECONDS = 600
 _google_hints = {}   # user id -> (new, expires)
+
+
+def google_linked(user_id):
+    """True when a Google login opens this account (an identities row)."""
+    try:
+        with _lock, _db() as c:
+            return c.execute("SELECT 1 FROM identities WHERE user_id=? AND provider='google' LIMIT 1", (int(user_id),)).fetchone() is not None
+    except (TypeError, ValueError, sqlite3.Error):
+        return False
 
 
 def remember_google(user_id, new):

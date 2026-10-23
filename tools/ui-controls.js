@@ -331,7 +331,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
   // ---- signed in: an account on this server (the test inbox gives the code), then Account again, and Hiring mode in the sandbox
   const email = "controls." + Date.now() + "@example.com";
   const su = await ev("fetch('/api/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'" + email + "',password:'controls test 12345',agree:true})}).then(r=>r.status)");
-  const code = await ev("fetch('/outbox').then(r=>r.text()).then(t=>{const m=t.match(/([0-9]{6}) is your UAply verification code/);return m?m[1]:''})");
+  const code = await ev("fetch('/outbox').then(r=>r.text()).then(t=>{const m=t.match(/([0-9]{6}) is your UAply (?:verification|sign-in) code/);return m?m[1]:''})");
   const vf = await ev("fetch('/api/auth/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:'" + code + "'})}).then(r=>r.status)");
   check("a test account is created and verified on this server", su === 200 && vf === 200, su + "/" + vf);
   await reload();

@@ -354,8 +354,8 @@ t("...and it does not claim to have made the account (the code sign-up did): no 
 auth_api.remember_google(user["id"], True)
 t("the page's hint holds only 'new or not' (no name from Google)", auth_api.google_hint(user["id"]), {"new": True})
 with sqlite3.connect(auth_api._path) as db:
-    cols = [r_[1] for r_ in db.execute("PRAGMA table_info(users)").fetchall()]
-t("...and the account table has no name column (nothing from Google beyond email and account number)", any("name" in c_ for c_ in cols), False)
+    names = db.execute("SELECT first_name, last_name FROM users WHERE id=?", (user["id"],)).fetchone()
+t("...and the account keeps no name from Google (only the names a person types at sign-up are kept, Saif, October 22)", tuple(names), ("", ""))
 
 # the old password sign-up is unchanged
 s, out, tok = auth_api.signup("old@example.com", "", "10.8.0.1", True)
@@ -416,7 +416,7 @@ def inbox_code(port, before=""):
     """The newest code in the test inbox (waiting a moment for one that differs from `before`: "Email me a code" sends after it answers)."""
     for _ in range(40):
         s, page, _ = req(port, "GET", "/outbox")
-        m = re.search(r"([0-9]{6}) is your UAply verification code", page if isinstance(page, str) else "")
+        m = re.search(r"([0-9]{6}) is your UAply (?:verification|sign-in) code", page if isinstance(page, str) else "")
         if m and m.group(1) != before:
             return m.group(1)
         time.sleep(0.1)
@@ -486,7 +486,7 @@ class Sink:
         while time.time() < end:
             with self.lock:
                 for to, data, at in reversed(self.msgs):
-                    m = re.search(r"([0-9]{6}) is your UAply verification code", data)
+                    m = re.search(r"([0-9]{6}) is your UAply (?:verification|sign-in) code", data)
                     if addr in to and m:
                         return m.group(1)
             time.sleep(0.05)
@@ -503,7 +503,7 @@ try:
     s, j, _ = req(PORT, "GET", "/api/auth/providers")
     t("sandbox: providers says codeSignin", j.get("codeSignin"), True)
     s, j, _ = req(DEV_PORT, "GET", "/api/auth/providers")
-    t("dev: providers is exactly as before (no codeSignin key)", "codeSignin" in j, False)
+    t("dev: providers says codeSignin too (code sign-in runs wherever the server runs, Saif, October 22)", j.get("codeSignin"), True)
 
     s, j, ck = req(PORT, "POST", "/api/auth/signup", {"email": "web@example.com", "agree": True, "passwordless": True})
     t("sandbox: sign-up without a password answers 200", (s, j.get("ok"), j.get("email")), (200, True, "web@example.com"))
@@ -529,17 +529,18 @@ try:
     s, j, ck = req(PORT, "POST", "/api/auth/signup", {"email": "pw-web@example.com", "password": "correct horse 99", "agree": True})
     t("sandbox: today's password sign-up still works", (s, bool(ck)), (200, True))
 
-    s, j, ck = req(DEV_PORT, "POST", "/api/auth/signup", {"email": "dev@example.com", "agree": True, "passwordless": True})
-    t("dev: sign-up without a password is still refused (unchanged)", (s, j.get("error"), ck), (400, "Use a password between 8 and 128 characters.", ""))
-    for path in ("/api/auth/code/send", "/api/auth/code/verify"):
-        s, j, _ = req(DEV_PORT, "POST", path, {"email": "dev@example.com", "code": "123456"})
-        t("dev: %s does not exist (404)" % path, s, 404)
-        s, j, _ = req(DEV_PORT, "POST", path, {"email": "dev@example.com"}, origin="https://evil.example")
-        t("dev: %s is 404 even before the same-site check (exactly as before)" % path, s, 404)
-    s, j, ck = req(DEV_PORT, "POST", "/api/auth/signup", {"email": "dev@example.com", "password": "correct horse 99", "agree": True})
-    t("dev: password sign-up signs in at once, as before", (s, "uaply_dev_session=" in ck, j["user"]["hasPassword"]), (200, True, True))
+    # dev and the live site run the same sign-in now (Saif, October 22): a password sign-up first, the code to verify and to sign in
+    s, j, ck = req(DEV_PORT, "POST", "/api/auth/signup", {"email": "dev@example.com", "password": "correct horse 99", "agree": True,
+                                                         "first": "Dev", "last": "Person"})
+    t("dev: password sign-up signs in at once, with the names kept", (s, "uaply_dev_session=" in ck, (j.get("user") or {}).get("hasPassword"),
+                                                                     (j.get("user") or {}).get("first"), (j.get("user") or {}).get("last")), (200, True, True, "Dev", "Person"))
     s, j, _ = req(DEV_PORT, "GET", "/api/auth/me", cookie=ck.split(";", 1)[0])
-    t("dev: /api/auth/me has no Google hint key", "google" in (j.get("user") or {}), False)
+    t("dev: /api/auth/me gives the names and whether Google is linked", ((j.get("user") or {}).get("first"), (j.get("user") or {}).get("googleLinked")), ("Dev", False))
+    for path in ("/api/auth/code/send", "/api/auth/code/verify"):
+        s, j, _ = req(DEV_PORT, "POST", path, {"email": "dev@example.com"}, origin="https://evil.example")
+        t("dev: %s exists, and another site cannot use it" % path, s, 403)
+    s, j, _ = req(DEV_PORT, "POST", "/api/auth/code/send", {"email": "nobody.dev@example.com"})
+    t("dev: Email me a code works here too (the plain answer)", (s, j), (200, {"ok": True}))
 
     # finding 1 over HTTP (the reviewer's repro): 15 guesses with no code out, then the owner's freshly emailed code signs in
     s, j, _ = req(PORT, "POST", "/api/auth/signup", {"email": "victim@example.com", "agree": True, "passwordless": True})

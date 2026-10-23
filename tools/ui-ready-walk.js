@@ -60,6 +60,7 @@ module.exports = async ({ ev, sleep, nav, send, shot, logs }) => {
   }
   const vf = await post("/api/auth/verify", { code });
   check("a new account with a verified email", su.s === 200 && vf.s === 200, JSON.stringify([su.s, vf.s]));
+  await boot();      // signed in now: the job list loads only for an account (Saif, October 22: nobody reaches site data without one)
   // the half-finished student: name, email, school and major, a city, no phone, no resume, no work authorization; every other job
   // already passed, so this employer's job is the one on top
   await q(`const K=w.__uaplyKey,S=JSON.parse(w.localStorage.getItem(K)||'{}');S.profile=Object.assign({},S.profile||{},{custom:true,name:'Sam Rivera',email:${JSON.stringify(EMAIL)},

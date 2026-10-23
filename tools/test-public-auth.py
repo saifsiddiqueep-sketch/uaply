@@ -110,12 +110,17 @@ def db():
     return c
 
 
-def last_code(email):
-    """The newest 6-digit code in the server's test inbox (no real email is connected in this test)."""
-    with db() as c:
-        row = c.execute("SELECT subject FROM user_mail WHERE to_addr=? ORDER BY id DESC LIMIT 1", (email,)).fetchone()
-    m = re.match(r"\s*(\d{6})", row["subject"] if row else "")
-    return m.group(1) if m else ""
+def last_code(email, wait=5.0):
+    """The newest 6-digit code in the server's test inbox (no real email is connected in this test). A sign-up answers first and emails its
+    code a moment later, so this waits up to `wait` seconds for one to be there."""
+    end = time.time() + wait
+    while True:
+        with db() as c:
+            row = c.execute("SELECT subject FROM user_mail WHERE to_addr=? ORDER BY id DESC LIMIT 1", (email,)).fetchone()
+        m = re.match(r"\s*(\d{6})", row["subject"] if row else "")
+        if m or time.time() > end:
+            return m.group(1) if m else ""
+        time.sleep(0.1)
 
 
 try:
@@ -180,7 +185,7 @@ try:
     attacker = jar(ack)
     # ... then the real owner arrives with Google: their own 18+ / Terms tick first, since the one on record is whoever opened the account
     s, out, rck, _ = req("POST", "/api/auth/google/token", {"credential": gtoken(email="owner.of.this@gmail.com", sub="7002")})
-    t("Google joining an account whose address was never proven asks for the owner's own tick first (and signs nobody in)", (s, out.get("code"), session_of(rck)), (400, "agree", ""))
+    t("Google joining an account whose address was never proven asks for the owner's own tick first (and signs nobody in)", (s, out.get("code"), session_of(rck)), (400, "agree_owner", ""))
     t("...and changes nothing yet: the password is still there", (me(attacker) or {}).get("hasPassword"), True)
     before = int(time.time())
     s, out, rck, _ = req("POST", "/api/auth/google/token", {"credential": gtoken(email="owner.of.this@gmail.com", sub="7002"), "agree": True})
@@ -382,7 +387,7 @@ try:
             except (OSError, ValueError):
                 rows = []
             for r in reversed(rows):
-                m = re.search(r"([0-9]{6}) is your UAply verification code", r.get("raw", ""))
+                m = re.search(r"([0-9]{6}) is your UAply (?:verification|sign-in) code", r.get("raw", ""))
                 if addr in json.dumps(r.get("to")) and m:
                     if m.group(1) != after:
                         return m.group(1)
