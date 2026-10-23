@@ -312,8 +312,13 @@ try:
     t("the manifest: name and short_name UAply, start_url and scope /, display standalone",
       (man.get("name"), man.get("short_name"), man.get("start_url"), man.get("scope"), man.get("display")) == ("UAply", "UAply", "/", "/", "standalone"),
       json.dumps(man)[:300])
-    t("the manifest's theme and background colours are the app's own background token (%s)" % bg_token,
-      (str(man.get("theme_color")).upper(), str(man.get("background_color")).upper()) == (bg_token, bg_token), "%s %s" % (man.get("theme_color"), man.get("background_color")))
+    # the manifest has one colour for both schemes and the installed app's Android navigation bar follows it, so it is the dark one (bcba7da):
+    # it reads on light pages too, while the status bar follows each page's light and dark theme-color metas
+    dark = re.search(r'<meta name="theme-color" content="(#[0-9A-Fa-f]{6})" media="\(prefers-color-scheme: dark\)">', sb_html)
+    dark_token = dark.group(1).upper() if dark else "(no dark theme-color meta on the sandbox page)"
+    t("the manifest's theme and background colours are the app's dark background (%s), the dark theme-color meta's value" % dark_token,
+      (str(man.get("theme_color")).upper(), str(man.get("background_color")).upper()) == (dark_token, dark_token) and dark_token != bg_token,
+      "%s %s" % (man.get("theme_color"), man.get("background_color")))
     icons, icon_bad = man.get("icons") or [], []
     for ic in icons:
         s2, c2, b2, _, _ = get(A, ic.get("src", ""))
