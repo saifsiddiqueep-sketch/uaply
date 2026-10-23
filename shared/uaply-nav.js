@@ -1163,13 +1163,15 @@ function apply(w,host){
   function paywall(why){
     if(d.getElementById("paywall"))return;
     var o=d.createElement("div");o.id="paywall";
-    o.innerHTML='<div role="dialog" aria-modal="true" aria-label="Plan required"><h2 style="margin:0 0 6px;font:800 20px var(--display)">Choose a plan to keep applying</h2><p style="margin:0 0 16px;color:var(--muted)">'+E(why)+' Passing on jobs and your Job Tracker still work.</p><div style="display:flex;gap:10px;justify-content:flex-end"><button class="btn ghost" id="pwNo" type="button">Not now</button><button class="btn" id="pwYes" type="button">See plans</button></div></div>';
+    /* in the store apps no plan can be chosen, so the box says when applying works again and offers no plans to pick */
+    var APP=storeApp(),ttl=APP?"Weekly limit reached":"Choose a plan to keep applying";
+    o.innerHTML='<div role="dialog" aria-modal="true" aria-label="'+ttl+'"><h2 style="margin:0 0 6px;font:800 20px var(--display)">'+ttl+'</h2><p style="margin:0 0 16px;color:var(--muted)">'+E(why)+' Passing on jobs and your Job Tracker still work.</p><div style="display:flex;gap:10px;justify-content:flex-end">'+(APP?'<button class="btn" id="pwNo" type="button">OK</button>':'<button class="btn ghost" id="pwNo" type="button">Not now</button><button class="btn" id="pwYes" type="button">See plans</button>')+'</div></div>';
     d.body.appendChild(o);
-    var yes=d.getElementById("pwYes");yes.focus();
+    var yes=d.getElementById("pwYes");(yes||d.getElementById("pwNo")).focus();
     function close(){o.remove()}
     d.getElementById("pwNo").onclick=close;
     o.addEventListener("keydown",function(e){if(e.key==="Escape")close()});
-    yes.onclick=function(){close();sub.prof="plan";cur="prof";go("prof")};
+    if(yes)yes.onclick=function(){close();sub.prof="plan";cur="prof";go("prof")};
   }
 
   /* When the owner's "Application profile" experiment is on (uaply-profile.js), it owns phone, links, summary, resume
@@ -1789,8 +1791,23 @@ function apply(w,host){
   function earlyAccess(){return BILL.early===true}   /* the server says so: a public server with no Stripe keys (billing_api.buttons). No prices to choose, no checkout, no payment links */
   var LINKOF={plus:"starter",pro:"pro"};   /* the Payment Links fallback (OPTS.stripeLinks), used when the server has no Stripe keys but offers the buttons (the owner's own computer) */
   function testMode(){return !!BILL.test||(!BILL.enabled&&!!BILL.buttons&&!!(PAYLINK.starter||PAYLINK.pro))}
+  /* App Store and Google Play: an app may not send people to an outside payment page (Stripe checkout, Payment Links or the billing
+     portal) until the store's payment rules are met. Inside the store apps the Plan screen says what each plan includes, with no buy,
+     switch or billing button and no paid price; the website keeps every button. The store apps are:
+     - the Capacitor builds (Capacitor reports "ios" or "android"), and
+     - the Google Play app, a Trusted Web Activity (mobile/twa, package com.uaply.app): plain Chrome with no Capacitor. Chrome opens it with
+       the referrer android-app://com.uaply.app (or the start address carries ?src=twa); later pages lose the referrer, so it is
+       remembered for the session. Any other referrer (Gmail's app, a browser) is the website */
+  var STORE_LEAD="What each plan includes.",STORE_NOTE="Plus and Pro cannot be bought or changed in this app. Plans are available on uaply.net.",TWA_KEY="uaply.storeApp";
+  function twaApp(){
+    var t=w;try{if(w.top&&w.top.document)t=w.top}catch(e){}
+    try{if(/^android-app:\/\/com\.uaply\.app(\/|$)/.test(t.document.referrer||"")||/[?&]src=twa(&|$)/.test(t.location.search||"")){try{w.sessionStorage.setItem(TWA_KEY,"twa")}catch(e){}return true}}catch(e){}
+    try{return w.sessionStorage.getItem(TWA_KEY)==="twa"}catch(e){return false}
+  }
+  function storeApp(){var c=null;try{c=w.top.Capacitor}catch(e){}c=c||w.Capacitor;try{var p=c&&c.getPlatform&&c.getPlatform();if(p==="ios"||p==="android")return true}catch(e){}return twaApp()}
+  w.__uaplyStoreApp=storeApp;   /* uaply-live.js words the weekly-limit message for the apps with it */
   function billingHTML(){
-    var who=SRV.user?SRV.user.id:0;
+    var who=SRV.user?SRV.user.id:0,APP=storeApp();
     if(HELP&&BILL._failed){
       if(!BILL._loading&&!BILL._retried){BILL._retried=true;setTimeout(loadBilling,0)}   /* one automatic retry per failure, when the screen opens */
       return '<div class="plan" id="billFail" role="alert" style="display:flex;flex-direction:column;gap:8px"><b>Plans could not load just now</b>'+
@@ -1800,29 +1817,30 @@ function apply(w,host){
     if(!!BILL.signedIn!==!!SRV.user&&BILL._asked!==who){BILL._asked=who;loadBilling()}       /* signed in or out since the plan was last read: read it again (the screen redraws when it arrives) */
     if(earlyAccess())return '<div class="plan" data-cur="true" style="display:flex;flex-direction:column;gap:6px"><b>Current plan: Free (early access)</b>'+
       '<ul><li>No weekly limit on applications</li><li>The full Job Tracker</li><li>Every filter</li><li>Message the hiring manager</li></ul>'+
-      '<small>Nothing is charged and no card is ever asked for. Before any paid plan starts, you will see its price here first.</small>'+(BILL.hidden?'<small id="plansSoon"><b>Plus and Pro are coming soon.</b></small>':'')+'</div>';
+      '<small>Nothing is charged and no card is ever asked for. Before any paid plan starts, you will see its price '+(APP?'on uaply.net':'here')+' first.</small>'+(BILL.hidden?'<small id="plansSoon"><b>Plus and Pro are coming soon.</b></small>':'')+'</div>';
     var keys=["free","plus","pro"],cur=BILL.plan||"free",P=BILL.plans;
     /* a free-only launch (billing_api.hidden): only Free, and an existing paid plan's own card so Manage billing stays reachable; no Choose buttons */
     if(BILL.hidden)keys=cur==="free"?["free"]:["free",cur];
     var h='<div class="plan" style="display:flex;flex-direction:column;gap:6px">'+(testMode()?'<span class="tag">Test mode: no real charges</span>':'')+'<b>Current plan: '+E(P[cur].name)+(BILL.canceling?' (ends '+new Date(BILL.renews*1000).toLocaleDateString()+')':'')+'</b>'+
-      (BILL.signedIn?'<small>'+(P[cur].cap?(BILL.used||0)+' of '+P[cur].cap+' applications used this week':(BILL.used||0)+' applications this week, no limit')+(cur!=="free"&&BILL.renews&&!BILL.canceling?' · renews '+new Date(BILL.renews*1000).toLocaleDateString():'')+'</small>'+(P[cur].cap?'<div class="bar"><i style="width:'+Math.min(100,Math.round((BILL.used||0)/P[cur].cap*100))+'%"></i></div>':''):'<small>Sign in to choose a plan. Your plan is saved to your account.</small>')+
+      (BILL.signedIn?'<small>'+(P[cur].cap?(BILL.used||0)+' of '+P[cur].cap+' applications used this week':(BILL.used||0)+' applications this week, no limit')+(cur!=="free"&&BILL.renews&&!BILL.canceling?' · renews '+new Date(BILL.renews*1000).toLocaleDateString():'')+'</small>'+(P[cur].cap?'<div class="bar"><i style="width:'+Math.min(100,Math.round((BILL.used||0)/P[cur].cap*100))+'%"></i></div>':''):'<small>'+(APP?'Sign in to see your plan.':'Sign in to choose a plan.')+' Your plan is saved to your account.</small>')+
       /* a renewal failed (billing_api._problem): Stripe retries the card; after the third failed try the plan is paused until a payment works */
-      (BILL.problem==="retrying"?'<small role="alert"><b>Your last payment did not go through.</b> Stripe will try your card again. To keep your plan, update your card in Manage billing.</small><div class="acts"><button type="button" class="btn ghost" data-bill="portal">Update card</button></div>':
-       BILL.problem==="paused"?'<small role="alert"><b>Your plan is paused because your card was declined.</b> Update your card in Manage billing and it comes back as soon as the payment goes through. Nothing extra is charged.</small><div class="acts"><button type="button" class="btn" data-bill="portal">Update card</button></div>':'')+
+      (BILL.problem==="retrying"?'<small role="alert"><b>Your last payment did not go through.</b> Stripe will try your card again. To keep your plan, update your card in Manage billing'+(APP?' on uaply.net.</small>':'.</small><div class="acts"><button type="button" class="btn ghost" data-bill="portal">Update card</button></div>'):
+       BILL.problem==="paused"?'<small role="alert"><b>Your plan is paused because your card was declined.</b> Update your card in Manage billing'+(APP?' on uaply.net':'')+' and it comes back as soon as the payment goes through. Nothing extra is charged.</small>'+(APP?'':'<div class="acts"><button type="button" class="btn" data-bill="portal">Update card</button></div>'):'')+
       '</div><div class="plans">';
     keys.forEach(function(k){
       var p=PLANS[k==="free"?"trial":k==="plus"?"starter":"pro"],isCur=cur===k;
-      var btn=k==="free"?(isCur?'<small>Your current plan</small>':''):
+      var btn=k==="free"||APP?(isCur?'<small>Your current plan</small>':''):
         (isCur?'<button type="button" class="btn ghost" data-bill="portal">Manage billing</button>':
           (!BILL.enabled&&BILL.buttons&&PAYLINK[LINKOF[k]]?'<button type="button" class="btn" data-bill="'+k+'">Choose '+p.name+'</button>':
           !BILL.enabled?'<small>Payments are not switched on yet.'+(SRV.testInbox?' Connect Stripe in <a href="/setup#billing" target="_blank" rel="noopener noreferrer">setup</a>.':'')+'</small>':
           (!BILL.signedIn?'<button type="button" class="btn" data-bill="signin">Sign in to choose '+p.name+'</button>':
           (cur!=="free"||BILL.problem?'<button type="button" class="btn ghost" data-bill="portal">Switch in Manage billing</button>':'<button type="button" class="btn" data-bill="'+k+'">Choose '+p.name+'</button>'))));
-      h+='<div class="plan" data-cur="'+isCur+'"><b>'+p.name+'</b><span class="pr">'+(p.price?"$"+p.price.toFixed(2)+'<small>/month</small>':"$0")+'</span><ul>'+p.perks.map(function(x){return '<li>'+E(x)+'</li>'}).join("")+'</ul>'+btn+'</div>';
+      h+='<div class="plan" data-cur="'+isCur+'"><b>'+p.name+'</b>'+(APP&&p.price?'':'<span class="pr">'+(p.price?"$"+p.price.toFixed(2)+'<small>/month</small>':"$0")+'</span>')+'<ul>'+p.perks.map(function(x){return '<li>'+E(x)+'</li>'}).join("")+'</ul>'+btn+'</div>';
     });
     /* hidden: a past subscriber (a Stripe customer now on Free) keeps Manage billing for invoices; a paid plan's own card already has it */
-    if(BILL.hidden)return h+'</div><p class="note" id="plansSoon"><b>Plus and Pro are coming soon.</b> You will see their prices here before anything can be bought.'+(cur==="free"&&!BILL.hasCustomer?' Nothing is charged and no card is asked for.':'')+'</p>'+
-      (cur==="free"&&BILL.hasCustomer?'<div class="acts"><button type="button" class="btn ghost" data-bill="portal">Manage billing</button></div>':'');
+    if(BILL.hidden)return h+'</div><p class="note" id="plansSoon"><b>Plus and Pro are coming soon.</b>'+(APP?'':' You will see their prices here before anything can be bought.')+(cur==="free"&&!BILL.hasCustomer?' Nothing is charged and no card is asked for.':'')+'</p>'+
+      (APP?'<p class="note" id="storeNote">'+STORE_NOTE+'</p>':cur==="free"&&BILL.hasCustomer?'<div class="acts"><button type="button" class="btn ghost" data-bill="portal">Manage billing</button></div>':'');
+    if(APP)return h+'</div><p class="note" id="storeNote">'+STORE_NOTE+'</p>';
     return h+'</div><p class="note">Payments are handled by Stripe on its own secure page. UAply never sees or stores your card number. Cancel any time in Manage billing; the plan stays until the end of the paid month.</p>';
   }
   /* Data and privacy: "You agreed to the Terms and Privacy Policy on <date>" (the date this browser said yes) */
@@ -1835,6 +1853,7 @@ function apply(w,host){
   function billingAction(k,btn){
     if(k==="signin"){sub.prof="account";renderAcct("account");return}
     if(k==="retry"){btn.disabled=true;btn.textContent="Loading…";BILL._retried=true;loadBilling().then(function(){if(BILL._failed!==false&&!BILL.plans){renderAcct("plan")}});return}
+    if(storeApp()){msg(STORE_NOTE);return}   /* the apps never open Stripe, even from a button left over on screen */
     if(!BILL.enabled&&PAYLINK[LINKOF[k]]){   /* no keys on this server: Stripe's own test Payment Link (test mode, no real money) */
       var u=PAYLINK[LINKOF[k]],em=(d.getElementById("pEmail")||{}).value||"";
       if(/^[^@\s]{1,64}@[^@\s]+\.[A-Za-z]{2,}$/.test(em))u+="?prefilled_email="+encodeURIComponent(em);
@@ -1944,7 +1963,7 @@ function apply(w,host){
     function sync(){
       var ok=autoAllowed(),cb=d.getElementById("aAutoMsg");
       cb.disabled=!ok;cb.checked=ok&&!!acct.fAuto;
-      d.getElementById("aAutoPlans").hidden=ok||REL;
+      d.getElementById("aAutoPlans").hidden=ok||REL||storeApp();   /* the apps offer no plan to buy */
       d.getElementById("aAutoNote").textContent=ok
         ?"Off until you turn it on. The message is written from your profile and the job (a template for now) and goes out with your application, only to employers that accept applications through UAply. An application cannot be unsent."
         :"A Plus and Pro feature. Plus and Pro members can turn this on.";
@@ -1992,7 +2011,7 @@ function apply(w,host){
     fill();
   })();
   function renderAcct(v){
-    var h='<h3>'+label("prof",v)+'</h3><p class="lead">'+(v==="plan"&&earlyAccess()?EARLY:leadOf(v))+'</p>';
+    var h='<h3>'+label("prof",v)+'</h3><p class="lead">'+(v==="plan"&&earlyAccess()?EARLY:v==="plan"&&storeApp()?STORE_LEAD:leadOf(v))+'</p>';
     /* preview: the release build shows only the preview note; the sandbox keeps its simulated sign-in below it */
     /* sign-up v2 (shared/uaply-signup.js): when that file is loaded and the server signs in by emailed code, its card replaces the signed-out Account screen and its two questions run here just after sign-up; it answers false to keep the card below. Without that file nothing changes */
     acctSec.classList.remove("sgnOn");if(v==="account"&&(SRV.up||(w.__uaplyGated&&w.__uaplyGated()))&&!AUI.reset&&!preview()&&w.__uaplySignCard){acctSec.innerHTML=h+(typeof shieldsLine==="function"?shieldsLine():"")+'<div id="sgnHost"></div><p class="note" id="aMsg" role="status"></p>';if(w.__uaplySignCard(d.getElementById("sgnHost"),SRV.user)!==false){acctSec.classList.add("sgnOn");paintHeader();return}}
@@ -2006,12 +2025,13 @@ function apply(w,host){
       h+='<div class="plan" style="display:flex;flex-direction:column;gap:6px"><span class="tag">SANDBOX · TEST MODE</span><b>Current plan: '+E(ps.plan.name)+(acct.canceled&&acct.plan!=="trial"?" (ends "+new Date(acct.renews).toLocaleDateString()+")":"")+'</b>'+
         '<small>'+(ps.cap?ps.used+" of "+ps.cap+" applications used this week":ps.used+" applications this week, no limit")+(acct.plan!=="trial"&&!acct.canceled?" · renews "+new Date(acct.renews).toLocaleDateString():"")+'</small>'+
         (ps.cap?'<div class="bar"><i style="width:'+Math.min(100,Math.round(ps.used/ps.cap*100))+'%"></i></div>':"")+(ps.ok?"":'<p class="note" style="margin:0">'+E(ps.why)+'</p>')+'</div><div class="plans">';
+      var APP=storeApp();
       Object.keys(PLANS).forEach(function(k){
         var p=PLANS[k],cur=acct.plan===k;
-        h+='<div class="plan" data-cur="'+cur+'"><b>'+p.name+'</b><span class="pr">'+(p.price?"$"+p.price.toFixed(2)+'<small>/month</small>':"$0")+'</span><ul>'+p.perks.map(function(x){return '<li>'+E(x)+'</li>'}).join("")+'</ul>'+
-          (k==="trial"?(cur?'<small>Your current plan</small>':''):(cur?(acct.canceled?'<button type="button" class="btn" data-a="resub">Resume subscription</button>':'<button type="button" class="btn ghost" data-a="cancel">Cancel plan</button>'):'<button type="button" class="btn" data-plan="'+k+'">'+(acct.plan==="trial"?"Choose ":"Switch to ")+p.name+(PAYLINK[k]?'':' (test)')+'</button>'))+'</div>';
+        h+='<div class="plan" data-cur="'+cur+'"><b>'+p.name+'</b>'+(APP&&p.price?'':'<span class="pr">'+(p.price?"$"+p.price.toFixed(2)+'<small>/month</small>':"$0")+'</span>')+'<ul>'+p.perks.map(function(x){return '<li>'+E(x)+'</li>'}).join("")+'</ul>'+
+          (k==="trial"||APP?(cur?'<small>Your current plan</small>':''):(cur?(acct.canceled?'<button type="button" class="btn" data-a="resub">Resume subscription</button>':'<button type="button" class="btn ghost" data-a="cancel">Cancel plan</button>'):'<button type="button" class="btn" data-plan="'+k+'">'+(acct.plan==="trial"?"Choose ":"Switch to ")+p.name+(PAYLINK[k]?'':' (test)')+'</button>'))+'</div>';
       });
-      h+='</div><p class="note">'+(PAYLINK.starter?'Choose opens Stripe\'s secure checkout page. It is in test mode: use the card 4242 4242 4242 4242 with any future date and any 3 digits, and no real money moves. UAply never sees or stores card numbers.':'In the live app, paid plans open a secure checkout from a payment provider. UAply never sees or stores card numbers. In the sandbox, choosing a plan only records a test payment.')+'</p>'+
+      h+='</div><p class="note"'+(APP?' id="storeNote">'+STORE_NOTE:'>'+(PAYLINK.starter?'Choose opens Stripe\'s secure checkout page. It is in test mode: use the card 4242 4242 4242 4242 with any future date and any 3 digits, and no real money moves. UAply never sees or stores card numbers.':'In the live app, paid plans open a secure checkout from a payment provider. UAply never sees or stores card numbers. In the sandbox, choosing a plan only records a test payment.'))+'</p>'+
         '<h3>Payments</h3>'+(acct.pay.length?acct.pay.slice().reverse().map(function(p){return '<div class="todo"><span>'+new Date(p.at).toLocaleDateString()+' · '+E(PLANS[p.plan]?PLANS[p.plan].name:"Plan")+'</span><span>$'+(+p.amt||0).toFixed(2)+(p.stripe?' (Stripe test)':' (test)')+'</span></div>'}).join(""):'<p class="note">No payments yet.</p>')+
         '<h3>Sandbox controls</h3><label class="toggle"><input type="checkbox" id="aEnf"'+(acct.enforce?" checked":"")+'> Enforce plan limits (shows the paywall when the weekly limit runs out)</label><div class="acts"><button type="button" class="btn ghost" data-a="rtrial">Go back to Free</button></div>';
     }else{
@@ -2061,6 +2081,7 @@ function apply(w,host){
     if(e.target.closest("[data-csv]"))return exportCsv();
     if(pb){
       var k=pb.getAttribute("data-plan");if(!PLANS[k]||k==="trial")return;
+      if(storeApp()){msg(STORE_NOTE);return}
       if(PAYLINK[k]){                       /* hosted sandbox: pay on Stripe's own page; it sends the person back here when done */
         var u=PAYLINK[k],em=(d.getElementById("pEmail")||{}).value||"";
         if(/^[^@\s]{1,64}@[^@\s]+\.[A-Za-z]{2,}$/.test(em))u+="?prefilled_email="+encodeURIComponent(em);

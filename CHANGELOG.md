@@ -119,6 +119,23 @@ production page and only changes when the owner decides.
   `shared/uaply-nav.js` (`shareJob`), `check.js` builds it, and `tools/ui-share.js` runs at 390x844 and 1280x720 in
   `tools/run-all-tests.sh`.
 
+### No buy buttons inside the phone apps until the store payment rules are met (Mohammed, October 22)
+- **Plan & billing in the iPhone and Android apps** (Capacitor reports `ios` or `android`, and the Google Play app, a Trusted Web
+  Activity with no Capacitor: Chrome opens it with the referrer `android-app://com.uaply.app` or a start address with `?src=twa`, remembered
+  for the session; a link from any other app is the website): no Choose, Sign in to choose, Switch, Manage
+  billing or Update card button, nothing that opens Stripe (checkout, Payment Links or the billing portal), and no paid price. The screen
+  still shows the current plan, the weekly count and what Free, Plus and Pro include, and says "Plus and Pro cannot be bought or changed
+  in this app. Plans are available on uaply.net." A failed renewal says to update the card in Manage billing on uaply.net. A Stripe button
+  that reached the screen some other way does nothing in the apps. The website (uaply.net in a browser) keeps every button.
+  `shared/uaply-nav.js` (`storeApp()`, shared with `uaply-live.js` as `__uaplyStoreApp`), the same way Google is already hidden inside the apps.
+- **The weekly limit inside the apps** (only once payments are on): the server's "Choose a bigger plan in Profile, Plan and billing" and
+  the See plans button are replaced by "The limit counts the last 7 days, so you can apply again as older applications drop off."
+  (`shared/uaply-live.js`). The sandbox's own limit box says "Weekly limit reached" with only OK. The simulated sandbox Plan screen hides
+  paid prices in the apps too. The "Message the hiring manager" field's See plans button is hidden in the apps as well.
+- Tests: `tools/ui-store-checkout.js` 29 on the sandbox, 24 on dev (new; Google Play app, weekly limit and no-server sandbox cases fail
+  without their fix; each Plan screen is read only once the server's billing status is on it, never the placeholder shown while it
+  loads), in `tools/run-all-tests.sh`; ui-plans-hidden 6, apply paths all passed.
+
 ### Terms and help say what the app does (October 22)
 - **Terms of Service, section 3: "Applications on your behalf"** (the consent version 3 sentence, drafted in LEGAL-REVIEW.md;
   Saif decided on October 21 that it goes in the Terms). **Pending the lawyer's read before launch.** The list under it names the
