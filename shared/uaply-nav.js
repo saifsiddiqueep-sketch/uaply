@@ -133,6 +133,8 @@ body{padding-bottom:calc(12px + var(--safe-b))}
    The height is measured each time (cardCover below); nothing is added when the row does not reach the card. */
 #deck[data-covered] .card.top::after{content:"";flex:none;height:var(--card-cover,0px)}
 #pane-track .stats{grid-template-columns:repeat(4,1fr)}
+/* four figures in a row need about 460 px for "Interviews" at 14 px; narrower, they sit two by two so no label breaks inside a word */
+@media (max-width:460px){#pane-track .stats{grid-template-columns:repeat(2,1fr)}}
 #pane-track .row{flex-wrap:wrap}
 #pane-track .acts{display:flex;gap:6px;flex-wrap:wrap;flex-basis:100%}
 #pane-track .acts .btn{padding:6px 12px;font-size:13px}
@@ -162,7 +164,7 @@ body{padding-bottom:calc(12px + var(--safe-b))}
 .hdrbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 #pane-track .info>b{display:inline}
 #pane-track .info>small{display:block}
-.mchip{display:inline-block;margin-left:8px;padding:2px 9px;border-radius:999px;font:600 11px var(--mono,inherit);letter-spacing:.02em;vertical-align:2px;border:1px solid var(--line);white-space:nowrap}
+.mchip{display:inline-block;margin-left:8px;padding:2px 9px;border-radius:999px;font:600 14px/1.3 var(--mono,inherit);letter-spacing:.02em;vertical-align:2px;border:1px solid var(--line);white-space:nowrap}
 .mchip.m-remote{background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);border-color:transparent}
 .mchip.m-hybrid{background:color-mix(in srgb,var(--accent2) 18%,transparent);color:var(--ink);border-color:transparent}
 .mchip.m-onsite{background:var(--bg);color:var(--muted)}

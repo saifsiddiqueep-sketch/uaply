@@ -6,6 +6,8 @@
 <meta name="description" content="UAply: swipe right to apply to jobs that match your profile.">
 <title>UAply</title>
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=2">   <!-- a plain host has no /favicon.ico to fall back on -->
+<meta name="theme-color" content="#FDF0F2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#190B10" media="(prefers-color-scheme: dark)">
 <script>
 /* The site itself (October 22, 2026, Saif: nobody reaches anything on the site without an account): opened as the top page by a UAply
    server, this page hands over to app.html, the release app behind the sign-in gate (the same build as dev). Inside the frame the apps
@@ -108,7 +110,7 @@ main{flex:1;min-height:0;overflow-y:auto;max-width:1100px;width:100%;margin-inli
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .stat{background:var(--bg);border-radius:12px;padding:10px 8px;text-align:center}
 .stat b{display:block;font:800 22px/1.1 var(--display)}
-.stat small{font-size:14px;line-height:1.25;color:var(--muted);overflow-wrap:anywhere}
+.stat small{font-size:14px;line-height:1.25;color:var(--muted);overflow-wrap:normal;word-break:normal;hyphens:none}
 .next{display:flex;flex-direction:column;gap:14px;margin:0;padding:0;list-style:none}
 .next li{display:flex;gap:12px;align-items:center;font-size:15px}
 .next .logo{width:40px;height:40px;border-radius:11px;font-size:18px}
