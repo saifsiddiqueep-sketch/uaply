@@ -33,6 +33,16 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot }) => {
     await sleep(900);
   };
   const decided = () => ev("Object.keys(" + FW + ".__uaply.S.decisions).length");
+  // a screenshot of the top card with its ring (and the place a learned line would be) in sight: notices above the deck, such as the
+  // location box, push the ring under Pass / Undo / Apply. Scroll it to the middle for the picture, then put every scroll back as it was
+  // so the drags that follow touch the same spot as before
+  const snapRing = async (name) => {
+    await ev("(()=>{const c=" + F + ".querySelector('.card.top .ring');if(!c)return;const s=[];for(let e=c.parentElement;e;e=e.parentElement)s.push([e,e.scrollTop]);" +
+      "const w=" + FW + ";s.push([null,w.scrollY]);window.__uaplyRingScroll=s;c.scrollIntoView({block:'center'})})()");
+    await sleep(400); await snap(name);
+    await ev("(()=>{const s=window.__uaplyRingScroll||[],w=" + FW + ";s.forEach(([e,t])=>{if(e)e.scrollTop=t;else w.scrollTo(0,t)});window.__uaplyRingScroll=null})()");
+    await sleep(300);
+  };
 
   await gateSignup({ ev, sleep, nav }, "http://127.0.0.1:" + PORT, "learn");
   await nav("http://127.0.0.1:" + PORT + "/?app=1");
@@ -61,6 +71,50 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot }) => {
     JSON.stringify((before || []).map((x) => x.mode + " " + x.fit)));
   const fits = await J("(()=>{const q=" + FW + ".__uaplyQueue();const r={remote:[],onsite:[]};q.forEach(x=>r[x.j.mode].push(x.m.pct));return {r:Math.max(...r.remote),o:Math.min(...r.onsite)}})()");
   check("every on-site job matches the profile better than every remote one (" + fits.o + "% or more vs " + fits.r + "% or less)", fits.o > fits.r);
+
+  // A new person's first two right swipes (card Vgip6Itd, October 22): nothing may move yet, and nothing may claim a pass. Before the fix
+  // Filters said "You passed on 0 of 1 software engineer roles" here, and a few swipes later a card lost points "because" of a pass
+  // that never happened. Then Reset, so the 30-swipe run below starts from nothing as before.
+  // Every card's score is recorded BEFORE the swipes (the whole deck, so remote cards below 100% are compared too, not only the 100%
+  // on-site ones at the top). Note: the old learner also left the deck alone after 2 swipes (the deck order already waited for 8), so on
+  // the old code it is the Filters text check below that fails here; this one guards the scores from now on.
+  const fit0 = await J("(()=>{const r={};" + FW + ".__uaplyQueue().forEach(x=>{r[x.j.id]=x.m.pct});return r})()");
+  for (let i = 0; i < 2; i++) { const n0 = await decided(); await sleep(300); await drag(170); if ((await decided()) !== n0 + 1) bad++; }
+  const early = await J("(()=>{return " + FW + ".__uaplyQueue().map(x=>({id:x.j.id,pct:x.m.pct,learn:x.m.learn||null}))})()"), e1 = await top();
+  const under = early.filter((x) => fit0[x.id] < 100), moved0 = early.filter((x) => x.pct !== fit0[x.id] || (x.learn && (x.learn.delta || x.learn.why)));
+  check("after a new person's first 2 right swipes every card keeps the score it had before them (" + early.length + " cards, " + under.length + " of them below 100%), with no learned line",
+    (await J(FW + ".__uaplyLearn.state().ev.map(e=>e.k).join('')")) === "RR" && early.length > 20 && under.length > 5 && !moved0.length && e1 && !e1.line,
+    JSON.stringify(moved0.slice(0, 5).map((x) => x.id + ": " + fit0[x.id] + " -> " + x.pct)) + " " + (e1 && e1.ring + " " + e1.line));
+  await snapRing("learn-0-after-2-right-swipes.png");
+  check("Profile, Filters opens after 2 swipes", await pick("nb-prof", "Filters")); await sleep(600);
+  const esum = await ev(F + ".getElementById('lrnSum').textContent");
+  check("Filters says nothing changes yet and claims no pass ('" + esum + "')",
+    /^2 swipes so far, on this device only\. No score changes until 8 swipes with at least one yes and one no/.test(esum) && !/passed on|liked \d/.test(esum));
+  await ev(F + ".getElementById('lrnBox').scrollIntoView()"); await sleep(300);
+  await snap("learn-0b-filters-after-2-right-swipes.png");
+  await ev(F + ".getElementById('lrnReset').click()"); await sleep(500);
+  check("Reset after the first 2 swipes leaves nothing learned", (await J(FW + ".__uaplyLearn.state().ev.length")) === 0);
+  await pick("nb-svc", "Full-time"); await sleep(800);
+
+  // An eager new person taps Undo (review round 1, October 22): 8 right swipes, then Undo of the 8th. An Undo is never a pass, so nothing
+  // may move and nothing may say "passed on". Before this fix the card just undone read "Learned from your swipes: -10. You've passed on
+  // 1 of 2 product design roles." and 7 of the next 12 cards claimed a pass. Then Reset again, so the 30-swipe walk starts from nothing.
+  for (let i = 0; i < 8; i++) { const n0 = await decided(); await sleep(300); await drag(170); if ((await decided()) !== n0 + 1) bad++; }
+  await ev(F + ".getElementById('btnUndo').click()"); await sleep(1200);
+  const ukinds = await J(FW + ".__uaplyLearn.state().ev.map(e=>e.k).join('')"), u1 = await top(), unext = await J(FW + ".__uaplyLearn.peek(12)");
+  const ulines = await J("[..." + F + ".querySelectorAll('.card .learned')].map(e=>e.textContent)");
+  await snapRing("learn-0c-after-8-right-and-undo.png");
+  check("8 right swipes then Undo (" + ukinds + "): the card brought back and the next 12 keep their match scores, and no card says 'passed on'",
+    ukinds === "RRRRRRRU" && u1 && !u1.line && unext.length === 12 && unext.every((x) => !x.delta && !x.why && x.pct === x.fit) && !ulines.some((l) => /passed on/.test(l)),
+    JSON.stringify({ top: u1 && u1.ring + " " + u1.line, claims: unext.filter((x) => x.why).map((x) => x.why), lines: ulines }));
+  check("Profile, Filters opens after the Undo", await pick("nb-prof", "Filters")); await sleep(600);
+  const usum = await ev(F + ".getElementById('lrnSum').textContent");
+  check("Filters counts 7 swipes (an Undo is not one), says nothing changes yet and claims no pass ('" + usum + "')",
+    /^7 swipes so far, on this device only\. No score changes until 8 swipes with at least one yes and one no/.test(usum) && !/passed on|liked \d/.test(usum));
+  await ev(F + ".getElementById('lrnBox').scrollIntoView()"); await sleep(300);
+  await snap("learn-0d-filters-after-undo.png");
+  await ev(F + ".getElementById('lrnReset').click()"); await sleep(500);
+  await pick("nb-svc", "Full-time"); await sleep(800);
 
   // 30 real swipes: right on remote, left on everything else
   const tally = { remoteRight: 0, otherLeft: 0 };
@@ -93,6 +147,8 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot }) => {
     rem.length && rem.reduce((s, x) => s + x.pct - x.fit, 0) > 0 && ons.every((x) => x.pct < x.fit));
   check("any remote card that ended below its fit says why with another attribute it has, never remote (" + fell.length + " such cards)",
     fell.every((x) => x.key && x.key !== "m:remote" && /^You've passed on /.test(x.why)), JSON.stringify(fell.map((x) => x.key + ": " + x.why)));
+  check("no card's reason claims a pass or a like that did not happen ('passed on 0 of', 'liked 0 of')",
+    next.every((x) => !/(passed on|liked) 0 of/.test(x.why)), JSON.stringify(next.map((x) => x.why)));
 
   // the line on the card
   const c1 = await top();
@@ -135,7 +191,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot }) => {
     back.every((x, i) => (i === 0 || back[i - 1].fit >= x.fit) && !x.delta && !x.explore && x.pct === x.fit) && c2 && !c2.line && back[0].mode === "onsite",
     JSON.stringify(back.map((x) => x.mode + " " + x.fit + "/" + x.pct)) + " " + (c2 && c2.line));
   const swipesKept = await decided();
-  check("Reset leaves the swipes themselves alone (35 decisions still in Applied / Passed)", swipesKept === 35, swipesKept);
+  check("Reset leaves the swipes themselves alone (44 decisions still in Applied / Passed: the first 2, 8 minus the 1 undone, then 35)", swipesKept === 44, swipesKept);
 
   // no script errors at any point
   const errs = logs.filter((l) => l.startsWith("EXC") || l.startsWith("ERR"));
