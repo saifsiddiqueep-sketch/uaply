@@ -205,7 +205,7 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   check("after the questions the gate is gone and the cards are on screen", !(await gated()) && (await ev("!" + F + ".getElementById('pane-swipe').hidden")) && (await ev("!!" + q("#bnav") + "&&" + q("#bnav") + ".getClientRects().length>0")));
   const consent = await ev("(()=>{const b=" + q("#kitConsent") + ";return b?b.innerText:''})()");
   check("the first-swipe agreement does not ask the age again (the sign-up tick did), and keeps the authorization sentence",
-    !consent || (!/18 or older/.test(consent) && /authorize UAply/.test(consent)), consent.slice(0, 300));
+    !consent || (!/18 or older/.test(consent) && /authorizes UAply to submit your application on your behalf/.test(consent)), consent.slice(0, 300));
   await load();
   check("a reload, signed in: the app as before, no gate", !(await gated()) && (await me()) === email);
 
