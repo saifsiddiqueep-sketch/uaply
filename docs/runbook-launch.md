@@ -71,6 +71,11 @@ sends no email and changes nothing on the site. In order it runs:
    wording, Continue with Google leading to Google's page (it never signs in), Plan and billing, the help assistant. It waits up to
    60 s for the first job card and says how long it took. `--read-only` answers every request that could change the site in the
    browser instead of sending it (the Pass swipe's record, for one) and lists them.
+4. when the server reports the sign-in gate on (`"gate": true` in `/api/status` or `/api/auth/providers`; or `GATE=1` in that
+   terminal), `tools/ui-gate-live.js` at both sizes: signed out, the first paint is the sign-up card and nothing else, no job's title
+   anywhere in the page, the Password row under First and Last name, Terms, Privacy, deletion and Help and support open without an
+   account, every data address answers 401 while `/healthz`, `/api/auth/providers`, `/api/apply/config`, `/api/chat/config` and
+   `/api/billing/status` answer 200, and the service worker keeps no page. Read only like the rest.
 It ends with one summary block (counts per tool, healthz time, the commit the site runs, the local time, every SKIP with its reason)
 and writes it, with both tools' full output, to `launch-smoke-<time>.txt`. With the owner password in that terminal only
 (`UAPLY_OWNER_PASSWORD`, never on the command line) it also reads `/api/status`'s self-check.

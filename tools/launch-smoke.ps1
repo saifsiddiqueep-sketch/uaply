@@ -31,6 +31,14 @@ Write-Output "live-check.py ..."
 $lc = (& python tools/live-check.py --base $Base --expect all --no-rate-limit 2>&1 | Out-String)
 Write-Output "ui-live.js (390x844 and 1280x800, read only) ..."
 $ul = (& node tools/cdp.js tools/ui-live.js --base $Base --read-only 2>&1 | Out-String)
+# 3b. the sign-in gate, when the server says it is on (/api/status or /api/auth/providers "gate": true), or $env:GATE = "1"
+$gl = ""; $glc = "not run (the server does not report the gate on)"; $gateOn = $false
+foreach ($p in "/api/status", "/api/auth/providers") { try { if ((Invoke-WebRequest -Uri "$Base$p" -UseBasicParsing -TimeoutSec 30).Content -match '"gate"\s*:\s*true') { $gateOn = $true } } catch {} }
+if ($gateOn -or $env:GATE -eq "1") {
+  Write-Output "ui-gate-live.js (390x844 and 1280x800, read only) ..."
+  $gl = (& node tools/cdp.js tools/ui-gate-live.js --base $Base 2>&1 | Out-String)
+  $m = [regex]::Matches($gl, '(?m)^\d+ passed, \d+ failed, \d+ waiting'); $glc = if ($m.Count) { $m[$m.Count - 1].Value } else { "no summary (see below)" }
+}
 
 # 4. what the site says it runs, and the owner's self-check when the password is in this window
 $commit = "no /api/status answer"
@@ -44,7 +52,7 @@ if ($env:UAPLY_OWNER_PASSWORD) {
   } catch { $self = "no answer" }
 }
 
-$failLines = @(($lc + "`n" + $ul) -split "`r?`n" | Where-Object { $_ -match '^(FAIL|TEST SCRIPT FAILED)' })
+$failLines = @(($lc + "`n" + $ul + "`n" + $gl) -split "`r?`n" | Where-Object { $_ -match '^(FAIL|TEST SCRIPT FAILED)' })
 $skipLines = @(($lc + "`n" + $ul) -split "`r?`n" | Where-Object { $_ -match '^SKIP' })
 $lcc = Counts $lc; $ulc = Counts $ul
 $summary = @(
@@ -54,10 +62,11 @@ $summary = @(
   "  site runs       $commit",
   "  live-check.py   $(if ($lcc) { $lcc } else { 'no summary (see below)' })",
   "  ui-live.js      $(if ($ulc) { $ulc } else { 'no summary (see below)' })   (390x844 and 1280x800, read only)",
+  "  ui-gate-live.js $glc",
   "  owner check     $self",
   "  result          $(if ($failLines.Count -eq 0) { 'no FAIL' } else { "$($failLines.Count) FAIL line(s): see below" })"
 ) + ($failLines | ForEach-Object { "    $_" }) + @("  skips (each with its reason):") + ($skipLines | ForEach-Object { "    $_" })
 $summary | ForEach-Object { Write-Output $_ }
-(($summary -join "`r`n") + "`r`n`r`n===== live-check.py`r`n" + $lc + "`r`n===== ui-live.js --read-only`r`n" + $ul) | Out-File -FilePath $file -Encoding utf8
+(($summary -join "`r`n") + "`r`n`r`n===== live-check.py`r`n" + $lc + "`r`n===== ui-live.js --read-only`r`n" + $ul + "`r`n===== ui-gate-live.js`r`n" + $gl) | Out-File -FilePath $file -Encoding utf8
 Write-Output "written to $file"
 if ($failLines.Count -eq 0) { exit 0 } else { exit 1 }

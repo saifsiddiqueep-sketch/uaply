@@ -20,7 +20,7 @@ mkdir -p "$DIR" || exit 2
 STAMP="$(date +%Y-%m-%d-%H%M%S)"
 FILE="$DIR/launch-smoke-$STAMP.txt"
 LC="$(mktemp)"; UL="$(mktemp)"
-trap 'rm -f "$LC" "$UL"' EXIT
+trap 'rm -f "$LC" "$UL" "$GL"' EXIT
 
 counts() {  # counts <log>: "P passed, F failed, S skipped" from the tool's own last summary line
   grep -Eo '^[0-9]+ passed, [0-9]+ failed, [0-9]+ skipped' "$1" | tail -1
@@ -40,6 +40,16 @@ echo "ui-live.js (390x844 and 1280x800, read only) ..."
 node tools/cdp.js tools/ui-live.js --base "$BASE" --read-only > "$UL" 2>&1
 ULC="$(counts "$UL")"
 
+# 3b. the sign-in gate, when the server says it is on (/api/status or /api/auth/providers "gate": true), or GATE=1 in this terminal
+GL="$(mktemp)"; GLC="not run (the server does not report the gate on)"
+GATE_ON="$(curl -s -m 30 "$BASE/api/status" "$BASE/api/auth/providers" | python -c "import sys,json,re
+t=sys.stdin.read(); print('yes' if re.search(r'\"gate\"\s*:\s*true', t) else 'no')")"
+if [ "$GATE_ON" = yes ] || [ "$GATE" = 1 ]; then
+  echo "ui-gate-live.js (390x844 and 1280x800, read only) ..."
+  node tools/cdp.js tools/ui-gate-live.js --base "$BASE" > "$GL" 2>&1
+  GLC="$(grep -Eo '^[0-9]+ passed, [0-9]+ failed, [0-9]+ waiting' "$GL" | tail -1)"
+fi
+
 # 4. what the site says it runs (public), and the owner's self-check when the password is in this terminal
 STATUS="$(curl -s -m 30 "$BASE/api/status")"
 COMMIT="$(printf '%s' "$STATUS" | python -c "import sys,json
@@ -54,7 +64,7 @@ try:
 except Exception: print('no answer')")"
 fi
 
-FAILS=$(( $(grep -c '^FAIL' "$LC") + $(grep -c '^FAIL' "$UL") + $(grep -c '^TEST SCRIPT FAILED' "$UL") ))
+FAILS=$(( $(grep -c '^FAIL' "$LC") + $(grep -c '^FAIL' "$UL") + $(grep -c '^TEST SCRIPT FAILED' "$UL") + $(grep -c '^FAIL\|^TEST SCRIPT FAILED' "$GL") ))
 {
   echo "UAply launch smoke check of $BASE"
   echo "  local time      $(date '+%Y-%m-%d %H:%M:%S %Z')"
@@ -62,14 +72,15 @@ FAILS=$(( $(grep -c '^FAIL' "$LC") + $(grep -c '^FAIL' "$UL") + $(grep -c '^TEST
   echo "  site runs       $COMMIT"
   echo "  live-check.py   ${LCC:-no summary (see below)}"
   echo "  ui-live.js      ${ULC:-no summary (see below)}   (390x844 and 1280x800, read only)"
+  echo "  ui-gate-live.js ${GLC:-no summary (see below)}"
   echo "  owner check     $SELF"
   echo "  result          $( [ "$FAILS" -eq 0 ] && echo "no FAIL" || echo "$FAILS FAIL line(s): see below")"
-  grep -E '^(FAIL|TEST SCRIPT FAILED)' "$LC" "$UL" | sed 's/^[^:]*://; s/^/    /'
+  grep -E '^(FAIL|TEST SCRIPT FAILED)' "$LC" "$UL" "$GL" | sed 's/^[^:]*://; s/^/    /'
   echo "  skips (each with its reason):"
   grep -hE '^SKIP' "$LC" "$UL" | sed 's/^/    /'
 } > "$FILE.summary"
 cat "$FILE.summary"
-{ cat "$FILE.summary"; echo; echo "===== live-check.py"; cat "$LC"; echo; echo "===== ui-live.js --read-only"; cat "$UL"; } > "$FILE"
+{ cat "$FILE.summary"; echo; echo "===== live-check.py"; cat "$LC"; echo; echo "===== ui-live.js --read-only"; cat "$UL"; echo; echo "===== ui-gate-live.js"; cat "$GL"; } > "$FILE"
 rm -f "$FILE.summary"
 echo "written to $FILE"
 [ "$FAILS" -eq 0 ]
