@@ -60,6 +60,8 @@ const T = "Broker Dealer Operations, Associate", C = "Coinbase";
 const LINK = BASE + "?job=" + SHARED + "&t=" + encodeURIComponent(T) + "&c=" + encodeURIComponent(C);
 
 module.exports = async ({ ev, sleep, nav, send, on, shot, logs }) => {
+  // the sign-in gate (October 22, Saif): nobody reaches the jobs without an account, so a fresh test person signs up first (tools/gate-signup.js)
+  await require("./gate-signup.js")({ ev, sleep, nav }, "http://127.0.0.1:" + (process.env.PORT || "8767"), "share");
   const F = "document.querySelector('iframe').contentDocument", FW = "document.querySelector('iframe').contentWindow";
   let pass = 0, total = 0;
   const check = (name, ok, extra) => { total++; if (ok) pass++; console.log((ok ? "PASS " : "FAIL ") + name + (extra ? "  " + String(extra).slice(0, 300) : "")); };

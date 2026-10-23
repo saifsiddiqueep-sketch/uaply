@@ -4,6 +4,8 @@
 //   PORT=<port> W=390 H=844 node tools/cdp.js tools/ui-intern-order.js     (tools/test-quality.py <port> starts a server and runs this)
 const PORT = process.env.PORT || "8766";
 module.exports = async ({ ev, sleep, nav }) => {
+  // the sign-in gate (October 22, Saif): nobody reaches the jobs without an account, so a fresh test person signs up first (tools/gate-signup.js)
+  await require("./gate-signup.js")({ ev, sleep, nav }, "http://127.0.0.1:" + (process.env.PORT || "8767"), "intern", { api: true });
   const F = "document.querySelector('iframe').contentDocument";
   const W = "document.querySelector('iframe').contentWindow";
   const check = (name, ok, got) => console.log((ok ? "PASS " : "FAIL ") + name + (ok ? "" : "  -> " + got));

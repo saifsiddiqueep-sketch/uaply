@@ -5,12 +5,18 @@
 // Clerk, like the jobs, so "Hide roles that do not match my target titles" (on by default) hides none of them.
 const PORT = process.env.PORT || "8766";
 module.exports = async ({ ev, sleep, nav }) => {
+  // the sign-in gate (October 22, Saif): nobody reaches the jobs without an account, so a fresh test person signs up first (tools/gate-signup.js)
+  await require("./gate-signup.js")({ ev, sleep, nav }, "http://127.0.0.1:" + (process.env.PORT || "8767"), "places", { api: true });
   const F = "document.querySelector('iframe').contentDocument";
   const W = "document.querySelector('iframe').contentWindow";
   const check = (name, ok, got) => console.log((ok ? "PASS " : "FAIL ") + name + (ok ? "" : "  -> " + got));
   const clickSub = (sub) => ev("(()=>{const e=[...(" + F + ").querySelectorAll('button,a,[role=tab]')].find(b=>b.offsetParent&&b.innerText.split(/\\s+/).join(' ').trim().startsWith(" + JSON.stringify(sub) + "));if(!e)return false;e.click();return true})()");
   await nav("http://127.0.0.1:" + PORT + "/");
   for (let i = 0; i < 30 && (await ev("(()=>{try{return !!" + F + ".querySelector('.card .facts .via')}catch(e){return false}})()")) !== true; i++) await sleep(500);
+  // the made-up City jobs only: the test server also reads real SmartRecruiters boards (job-boards.json) in the background, and since the
+  // sign-in gate (a sign-up first) those can already be in the list when the page asks for it
+  await ev("(()=>{const w=" + W + ",A=w.__uaply,J=w.__uaplyJobs,city=(j)=>!j.live||j.co==='City of Philadelphia';if(J&&!J.cityOnly){const add=J.add;J.add=function(list){return add.call(J,(list||[]).filter(city))};J.cityOnly=true}" +
+    "const keep=A.JOBS.filter(city);A.JOBS.splice(0,A.JOBS.length,...keep);A.renderAll();return keep.length})()"); await sleep(400);   // and any the page adds later (another stack's answer)
   for (let i = 0; i < 10 && (await ev("(()=>{const n=" + F + ".getElementById('kcNo');if(n&&n.offsetParent){n.click();return true}return false})()")) !== true; i++) await sleep(300);
   await ev(F + ".getElementById('nb-prof').click()"); await sleep(400);
   await clickSub("Filters"); await sleep(600);

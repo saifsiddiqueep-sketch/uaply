@@ -3,12 +3,18 @@
 // The server's job list has, in the City's place: 3 full-time, 2 contract, 2 part-time, 2 internship, 1 co-op job.
 const PORT = process.env.PORT || "8766";
 module.exports = async ({ ev, sleep, nav, shot }) => {
+  // the sign-in gate (October 22, Saif): nobody reaches the jobs without an account, so a fresh test person signs up first (tools/gate-signup.js)
+  await require("./gate-signup.js")({ ev, sleep, nav }, "http://127.0.0.1:" + (process.env.PORT || "8767"), "jobtype", { api: true });
   const F = "document.querySelector('iframe').contentDocument";
   const W = "document.querySelector('iframe').contentWindow";
   const check = (name, ok, got) => console.log((ok ? "PASS " : "FAIL ") + name + (ok ? "" : "  -> " + got));
   const clickSub = (sub) => ev("(()=>{const e=[...(" + F + ").querySelectorAll('button,a,[role=tab]')].find(b=>b.offsetParent&&b.innerText.split(/\\s+/).join(' ').trim().startsWith(" + JSON.stringify(sub) + "));if(!e)return false;e.click();return true})()");
   await nav("http://127.0.0.1:" + PORT + "/");
   for (let i = 0; i < 30 && (await ev("(()=>{try{return !!" + F + ".querySelector('.card .facts .via')}catch(e){return false}})()")) !== true; i++) await sleep(500);
+  // the made-up City jobs only: the test server also reads real SmartRecruiters boards (job-boards.json) in the background, and since the
+  // sign-in gate (a sign-up first) those can already be in the list when the page asks for it
+  await ev("(()=>{const w=" + W + ",A=w.__uaply,J=w.__uaplyJobs,city=(j)=>!j.live||j.co==='City of Philadelphia';if(J&&!J.cityOnly){const add=J.add;J.add=function(list){return add.call(J,(list||[]).filter(city))};J.cityOnly=true}" +
+    "const keep=A.JOBS.filter(city);A.JOBS.splice(0,A.JOBS.length,...keep);A.renderAll();return keep.length})()"); await sleep(400);   // and any the page adds later (another stack's answer)
   const top = await ev("(()=>{const c=" + F + ".querySelector('.card.top')||" + F + ".querySelector('.card');return c?[...c.querySelectorAll('.facts span')].map(s=>s.textContent).join(' | '):''})()");
   console.log("top card facts:", top);
   // the one-time swipe agreement opens on a first visit: "Not now" closes it (this test swipes nothing)

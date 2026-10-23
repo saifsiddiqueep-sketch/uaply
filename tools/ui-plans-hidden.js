@@ -15,6 +15,7 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
     const base = "http://127.0.0.1:" + port;
     await nav(base + "/healthz");
     await send("Storage.clearDataForOrigin", { origin: base, storageTypes: "all" });
+    await require("./gate-signup.js")({ ev, sleep, nav }, base, "plans");   // behind the sign-in gate (October 22): a fresh test person first
     await nav(base + "/");
     await waitFor("return d.getElementById('nb-prof')", 20000);
     await click("d.getElementById('kcYes')");

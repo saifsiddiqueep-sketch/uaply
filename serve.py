@@ -684,6 +684,14 @@ def _midnight_loop():
 _stopping = threading.Event()                    # set at SIGTERM: /healthz answers 503 from then on
 
 
+
+
+def _signup_cap():
+    """Sign-ups per visitor address and hour: SIGNUPS_PER_HOUR on a public server; on this computer 10 (SIGNUPS_PER_HOUR_LOCAL), except
+    in sign-up test mode (UAPLY_SIGNUP_TEST=1, never public), where every browser test signs a fresh person up behind the sign-in gate
+    and a full test run makes far more than 10 from 127.0.0.1."""
+    return auth_api.SIGNUPS_PER_HOUR if PUBLIC else (100000 if SIGNUP_TEST else None)
+
 class H(http.server.SimpleHTTPRequestHandler):
     extensions_map = dict(http.server.SimpleHTTPRequestHandler.extensions_map, **{".webmanifest": "application/manifest+json"})
     server_version = "UAply"                     # not "SimpleHTTP/0.6 Python/3.12.7": no version for a scanner to match (Render passes it on)
@@ -1173,7 +1181,7 @@ class H(http.server.SimpleHTTPRequestHandler):
             if CODE_SIGNIN and p == "/api/auth/signup" and payload.get("passwordless") is True:
                 self._stat = "skip"                              # counted as a sign-up once its code is typed (/api/auth/code/verify)
                 code, out, mail = auth_api.signup_passwordless(payload.get("email"), ip, payload.get("agree"), dns_check(),
-                                                               auth_api.SIGNUPS_PER_HOUR if PUBLIC else None, self._known(), self._token(),
+                                                               _signup_cap(), self._known(), self._token(),
                                                                payload.get("first"), payload.get("last"))
                 if mail:                                         # new address or not, a code goes out, so the wait is the same
                     out = dict(out, delivery=uaply_api.send_verification_mail(*mail))
@@ -1198,7 +1206,7 @@ class H(http.server.SimpleHTTPRequestHandler):
                 # sign-up can never leave it half made. The answer goes first and the code is emailed after it; in test mode
                 # (UAPLY_SIGNUP_TEST, never public) the account is verified at once and nothing is emailed.
                 code, out, token, mail = auth_api.signup_with_code(payload.get("email"), payload.get("password"), ip, payload.get("agree"),
-                                                                   dns_check(), auth_api.SIGNUPS_PER_HOUR if PUBLIC else None,
+                                                                   dns_check(), _signup_cap(),
                                                                    payload.get("first"), payload.get("last"), verified=SIGNUP_TEST)
                 if code == 200 and SIGNUP_TEST:
                     out = dict(out, delivery="none", testMode=True)
