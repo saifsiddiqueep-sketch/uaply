@@ -82,7 +82,8 @@ employer's confirmation page.
 
 ## c. One tap
 
-A hand-off says "Saved to Job Tracker. One tap to finish on their site." and its Job Tracker row "Saved Oct 23" (only a send says Applied
+A hand-off says "Saved to Job Tracker. One tap to finish on their site." only when the phone app has just opened the employer's form;
+anywhere else (the website, a system the app does not fill) it says "Saved <company> to Job Tracker." Its Job Tracker row "Saved Oct 23" (only a send says Applied
 or Sent). In the phone app, a swipe right that is a hand-off on Greenhouse, Lever, Workable or Ashby opens the employer's form at once (the same
 assisted flow as Finish applying: the scan, UAply's question box for anything the profile lacks, then the form filled). A form with a human
 check says "One tap to finish: this employer asks you to confirm you are a person." and is scrolled to the check's box (or to Submit when
