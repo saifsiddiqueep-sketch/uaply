@@ -140,6 +140,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
   const onBtns = await ev("(()=>{const d=" + F + ";const out=[];for(const id of ['btnNo','btnUndo','btnYes']){const e=d.getElementById(id),r=e.getBoundingClientRect();if(r.bottom>innerHeight||r.top<0)continue;for(const [fx,fy] of [[.5,.5],[.2,.3],[.8,.3],[.2,.7],[.8,.7]]){const h=d.elementFromPoint(r.left+r.width*fx,r.top+r.height*fy);if(h&&!(h===e||e.contains(h))&&h.closest('.toast')){out.push(id);break}}}return out.join(',')})()");
   check("the message after a swipe does not cover Pass, Undo or Apply", onBtns === "", onBtns);
   screens.push(["right after a swipe (message showing)", await coverage("after swipe")]);
+  fits.push(["Jobs right after a Pass (the next card's buttons, Share this job's included, still 44 px)", await fit("after pass")]);
   for (const [name, covered] of screens) check("nothing covers a button: " + name, covered.length === 0, covered.slice(0, 4).join("; "));
   for (const [name, list] of fits) check("fits the phone: " + name + " (44 px targets, nothing off the edge, Help covers nothing)", list.length === 0, list.slice(0, 4).join("; "));
   await shot((process.env.OUT || require("os").tmpdir()) + "/phone-after-swipe.png");
