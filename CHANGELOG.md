@@ -5,6 +5,7 @@ build: it is what the hosted site and the phone apps run. Each version is tagged
 production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
+- Phone apps, before the testers (Mohammed): Android Back goes back one screen and quits only from the first screen on a second press; the CSV, calendar and backup exports work inside the apps (saved with the file plugin and shared, or copied when the plugin is missing) and Delete all my data removes those files; the iPhone app is locked to portrait and carries its privacy manifest; app plugin calls always go through the top page's bridge, since Android drops calls from frames.
 
 ### A swipe right that submits, phase A (Saif, October 23; the consent box and Terms section 3 are pending the lawyer)
 - **Reviewer 3's review fixes.** The Automatic submit tick says where it applies from `shared/assist-systems.json` (today "where a hiring

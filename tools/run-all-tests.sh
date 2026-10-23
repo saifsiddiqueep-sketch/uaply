@@ -31,6 +31,7 @@ run "node check.js" node check.js
 run "audit of every file (JSON, Python, JS, HTML, links, XML, images, secrets, git hygiene)" python tools/audit-files.py
 run "every page and email renders, every script parses, no line break JavaScript would join, shell scripts parse" python tools/test-pages.py
 run "taps and focus: the one rule (shared/uaply-focus.css) word for word in every page UAply serves" python tools/test-focus.py
+run "phone apps' native settings: iPhone portrait only, the privacy manifest in the app, Android backup off, the Back and export plugins in both builds" python tools/test-mobile-native.py
 run "taps and focus in Chrome at phone size: no default tap highlight anywhere, no ring after a tap, a keyboard ring, the starting-up retries" env W=390 H=844 node tools/cdp.js tools/ui-focus.js
 run "assisted apply on a mock form of each hiring system: every field lands, nothing voluntary, never Submit; filled from only what the scan saw" env W=390 H=844 node tools/cdp.js tools/test-assist.js
 run "assisted apply against hostile pages: a page's own UAplyAssist, a redirect to another site and a look-alike host receive nothing" env W=390 H=844 node tools/cdp.js tools/test-assist-hostile.js
@@ -124,6 +125,8 @@ run "dev: every way of swiping, and what each sends (LinkedIn, resume, one email
 run "dev: the app copes when the server fails, goes offline or sends garbage" env W=390 H=844 PORT=18767 node tools/cdp.js tools/ui-errors.js
 run "the installable website: Chrome can install it; its offline screen when the server is down, during a deploy (502) and offline, never for a slow page" node tools/cdp.js tools/ui-installable.js
 run "dev: skill chips, the empty Add button and the file downloads" env W=390 H=844 PORT=18767 node tools/cdp.js tools/ui-effects.js
+run "dev in the phone apps (a stand-in Capacitor): Android Back goes back one screen and leaves only on a second press; the export buttons share a file, or copy and say so" env W=390 H=844 PORT=18767 node tools/cdp.js tools/ui-native-back-export.js
+run "sandbox in the phone apps: the same" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-native-back-export.js
 run "sandbox: the first-application agreement shows once, swipes throw no error" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-consent-once.js
 run "dev: the first-application agreement shows once, swipes throw no error" env W=390 H=844 PORT=18767 node tools/cdp.js tools/ui-consent-once.js
 run "sandbox: every profile checklist item lands on its field" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-checklist.js
