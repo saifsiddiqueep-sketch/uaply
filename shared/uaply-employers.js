@@ -252,7 +252,7 @@ window.UAplyJobImport=IMP;
 
 var CSS=[
 /* header pill, Fiverr-style */
-".modesw{margin-left:auto;display:inline-flex;align-items:center;gap:7px;min-height:44px;padding:6px 15px;border-radius:999px;border:1.5px solid color-mix(in srgb,var(--accent) 45%,var(--line));background:var(--surface);color:var(--ink);font:700 13.5px var(--body);cursor:pointer;white-space:nowrap}",
+".modesw{margin-left:auto;display:inline-flex;align-items:center;gap:7px;min-height:44px;padding:6px 15px;border-radius:999px;border:1.5px solid color-mix(in srgb,var(--accent) 45%,var(--line));background:var(--surface);color:var(--ink);font:700 14px var(--body);cursor:pointer;white-space:nowrap}",
 ".modesw:hover{border-color:var(--accent)}.modesw:focus-visible{outline:3px solid var(--accent);outline-offset:2px}.modesw svg{width:16px;height:16px;flex:none;stroke:var(--accent);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}",
 ".modesw+.hdrbtn{margin-left:8px}.modetag{font:700 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;padding:4px 9px;border-radius:7px;background:var(--ink);color:var(--surface)}",
 "@media (max-width:520px){.modesw .lg{display:none}.modesw{padding:6px 11px}}",

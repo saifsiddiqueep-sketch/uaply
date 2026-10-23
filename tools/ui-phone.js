@@ -48,7 +48,13 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
     await send("Emulation.setTouchEmulationEnabled", { enabled: true });
   }
   const FIT = require("./phone-walk.js").FIT;
-  const fit = async (label) => JSON.parse(await ev("(()=>{const fit=" + FIT + ";return JSON.stringify(fit(" + F + ",''))})()")).map((x) => x.replace(/^: /, ""));
+  // text under 14 px (the owner's rule): the phone walk's own test (tools/phone-walk.js SMALL), every text on the screen, not its first four
+  const SMALL = require("./phone-walk.js").SMALL.replace(".slice(0,4)", ""), smalls = [];
+  const fit = async (label) => {
+    const sm = JSON.parse(await ev("(()=>{const sm=" + SMALL + ";return JSON.stringify(sm(" + F + ",''))})()")).map((x) => x.replace(/^: /, ""));
+    smalls.push([label, sm]);
+    return JSON.parse(await ev("(()=>{const fit=" + FIT + ";return JSON.stringify(fit(" + F + ",''))})()")).map((x) => x.replace(/^: /, ""));
+  };
   const fits = [];
   // Google Fonts held back for 8 s (a slow phone connection; 6 to 10 s were seen on October 21): the app must still come up at once, with its
   // bottom bar and the agreement, in the system font. Before, a font stylesheet in the head stopped every script until it arrived.
@@ -143,6 +149,10 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
   fits.push(["Jobs right after a Pass (the next card's buttons, Share this job's included, still 44 px)", await fit("after pass")]);
   for (const [name, covered] of screens) check("nothing covers a button: " + name, covered.length === 0, covered.slice(0, 4).join("; "));
   for (const [name, list] of fits) check("fits the phone: " + name + " (44 px targets, nothing off the edge, Help covers nothing)", list.length === 0, list.slice(0, 4).join("; "));
+  {
+    const all = []; for (const [label, list] of smalls) for (const x of list) if (!all.includes(x)) all.push(x + " (" + label + ")");
+    check("no text under 14 px on any screen walked (" + smalls.length + " screens)", all.length === 0, all.join("; "));
+  }
   await shot((process.env.OUT || require("os").tmpdir()) + "/phone-after-swipe.png");
   check("the screen changed when menus were tapped (sanity)", (await ev("(" + F + ").body.innerText.length")) !== before);
 
@@ -233,8 +243,11 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
     const L = la && JSON.parse(await ev("(()=>{const d=" + F + ",w=d.defaultView,c=d.getElementById('locAsk'),p=c.querySelector('p'),cr=c.getBoundingClientRect(),t=d.querySelector('.card.top'),tr=t&&t.getBoundingClientRect(),bs=[...c.querySelectorAll('.acts .btn')].map(b=>b.getBoundingClientRect());" +
       "const lh=parseFloat(w.getComputedStyle(p).lineHeight);return JSON.stringify({title:c.querySelector('b').textContent,text:p.textContent,lines:Math.round(p.getBoundingClientRect().height/lh),clipped:p.scrollHeight>p.clientHeight+1,h:Math.round(cr.height),bottom:Math.round(cr.bottom),cardTop:tr?Math.round(tr.top):null,oneRow:bs.length===2&&Math.abs(bs[0].top-bs[1].top)<2,btnH:bs.map(b=>Math.round(b.height))})})()"));
     check("location blocked, on a phone: the card says to allow it in the phone's settings, then Try again (no address bar)", !!L && /phone's settings/.test(L.text) && /Try again/.test(L.text) && !/address bar/.test(L.text), JSON.stringify(L));
-    check("...in two lines of text (nothing cut off) and its two buttons side by side", !!L && L.lines <= 2 && !L.clipped && L.oneRow && L.btnH.every((h) => h >= 44), JSON.stringify(L));
+    const fl = await fit("location blocked");   /* its buttons' tap areas (an invisible ::after on short screens) are 44 px: the fit check measures them */
+    check("...in two lines of text (nothing cut off) and its two buttons side by side, each a 44 px target", !!L && L.lines <= 2 && !L.clipped && L.oneRow && fl.filter((x) => /small tap target/.test(x)).length === 0, JSON.stringify(L) + " " + fl.join("; "));
     check("...and the first job card starts below it, never under it", !!L && L.cardTop !== null && L.cardTop >= L.bottom, JSON.stringify(L));
+    const smL = JSON.parse(await ev("(()=>{const sm=" + SMALL + ";return JSON.stringify(sm(" + F + ",''))})()")).map((x) => x.replace(/^: /, ""));
+    check("...and no text on that screen (the location card, its buttons, the chips) is under 14 px", smL.length === 0, smL.join("; "));
     await send("Browser.resetPermissions", {});
   }
   check("no script errors", logs.length === 0, logs.join(" / ").slice(0, 200));

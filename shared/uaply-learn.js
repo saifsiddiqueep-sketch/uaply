@@ -225,7 +225,7 @@ function lineHTML(m){
   return t?'<p class="learned"'+(L.explore?' data-explore="1"':'')+'>'+t+'</p>':"";
 }
 
-var CSS=".learned{margin:-4px 0 0;font-size:13px;line-height:1.4;color:var(--muted)}.learned b{color:var(--ink);font-weight:700}.learned .lx{color:var(--accent)}"+
+var CSS=".learned{margin:-4px 0 0;font-size:14px;line-height:1.4;color:var(--muted)}.learned b{color:var(--ink);font-weight:700}.learned .lx{color:var(--accent)}"+
   "#lrnBox{display:flex;flex-direction:column;gap:6px}#lrnSum{color:var(--muted)}";
 
 function patch(s){
