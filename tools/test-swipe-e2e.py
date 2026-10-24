@@ -139,7 +139,7 @@ for st in STATES:
             want = "ask"                                        # Greenhouse 1002 asks "Are you legally authorized to work in the United States?"
             READY["asks"][key] = "authorized"
         READY["expect"][key] = want
-        READY["cards"][key] = {"profile": "^Finish your profile$", "ask": "^1 answer needed$", "ask-file": "^1 answer needed$",
+        READY["cards"][key] = {"profile": "", "ask": "^1 answer needed$", "ask-file": "^1 answer needed$",
                                "handoff": "^Ready$", "sent": "^Ready" + ("$" if path == "mail" else " to apply$")}[want]
 for path, co, ats_id in QPATHS:
     key = "question|" + path

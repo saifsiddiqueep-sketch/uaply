@@ -1,6 +1,6 @@
 // A student with a half-finished profile tries to apply, with a finger, at phone size (390x844) or laptop size (1280x800). Run by
 // tools/test-swipe-e2e.py (it starts the server, the stand-in hiring systems and mail, and checks what Greenhouse received):
-//   1. the top card says "Finish your profile"; a swipe right opens "Finish your profile first" naming what is missing, and the card stays
+//   1. the top card has no profile badge; a swipe right saves it to Job Tracker as Needs profile, with one Complete profile line
 //   2. one tap on Add next to Phone number opens Profile setup with the phone field ready; the number is typed and saved
 //   3. back on the job, the card says "2 answers needed" (the employer's form wants a resume and asks about work authorization)
 //   4. Send now opens the question box with just those two; the answer is kept and Open Profile goes to the resume step
@@ -71,8 +71,9 @@ module.exports = async ({ ev, sleep, nav, send, shot, logs }) => {
   await boot();
   const top = await waitFor("const c=d.querySelector('#deck .card.top');return c?+c.getAttribute('data-id'):0", 8000);
   check("the employer's job is on top of the deck", top === JOB, top + " vs " + JOB);
-  const b1 = await waitFor("const s=d.querySelector('#deck .card.top .facts .rdy');return s?s.textContent:''", 8000);
-  check("1. the card says Finish your profile", b1 === "Finish your profile", b1);
+  await sleep(1500);
+  const b1 = await q("const s=d.querySelector('#deck .card.top .facts .rdy');return s?s.textContent:''");
+  check("1. the card has no profile badge (no per-card nagging)", b1 === "", b1);
   await snap("1-card");
   // 1. a finger swipe right (Saif, October 24: an incomplete profile never blocks it): saved to Job Tracker, and one line says so
   await q("try{w.sessionStorage.removeItem('uaply.np')}catch(e){}w.__uaplyNPTold=false;return 1");

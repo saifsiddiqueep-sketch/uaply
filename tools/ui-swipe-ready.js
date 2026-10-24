@@ -9,7 +9,7 @@
 //   ask       the question box with only what is missing; answered, the application is sent (and the employer side is checked by Python)
 //   ask-file  the box needs a resume file: Not now leaves it in Job Tracker as "Not sent yet" with Answer now, nothing sent
 //   sent      sent at once (the employer's form needs nothing more)       handoff   nothing sent, finish on their site
-// Cards say so before the swipe ("Finish your profile", "Ready", "Ready to apply", "N answers needed"). The last line is a JSON summary.
+// Cards say so before the swipe ("Ready", "Ready to apply", "N answers needed"). The last line is a JSON summary.
 const PORT = process.env.PORT, BASE = "http://127.0.0.1:" + PORT, MOCK = process.env.MOCK_PORT;
 const R = JSON.parse(process.env.E2E_READY || "{}");            // {jobs: {"<state>|<path>": id}, ...}
 module.exports = async ({ ev, sleep, nav, send, logs }) => {
@@ -93,8 +93,9 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   await sleep(500);
   const rd = JSON.parse(await q("return JSON.stringify(w.__uaplyReadiness())") || "{}");
   check("below-min", "the profile is below the minimum (name, email, phone or resume)", rd.min === false && /a phone number or a resume/.test((rd.missing || []).join("|")), JSON.stringify(rd).slice(0, 200));
-  const badge = await waitFor("const s=d.querySelector('#deck .card.top .facts .rdy');return s?s.textContent:''", 6000);
-  check("below-min", "the top card (" + topJob + ") says Finish your profile", badge === "Finish your profile" && (await q("return +d.querySelector('#deck .card.top').getAttribute('data-id')")) === topJob, badge);
+  await sleep(1500);
+  const badge = await q("const s=d.querySelector('#deck .card.top .facts .rdy');return s?s.textContent:''");
+  check("below-min", "the top card (" + topJob + ") has no profile badge (no per-card nagging)", badge === "" && (await q("return +d.querySelector('#deck .card.top').getAttribute('data-id')")) === topJob, badge);
   const before = await received(), top0 = await q("return +d.querySelector('#deck .card.top').getAttribute('data-id')");
   // Saif, October 24: an incomplete profile never blocks a swipe. A swipe right saves it to Job Tracker as "Needs profile", and one line says so
   await q("try{w.sessionStorage.removeItem('uaply.np')}catch(e){}w.__uaplyNPTold=false;d.getElementById('btnYes').click();return 1"); await sleep(1500);

@@ -963,7 +963,7 @@ function kitApply(w,host){
      A job whose employer connected its hiring system: the posting's own form is read ahead (POST /api/apply/plan: the same reading a swipe
      right does, nothing recorded or sent), kept per posting until the profile or a saved answer changes, and the card says "Ready to apply"
      or "N answers needed". An employer who takes email, and every hand-off: "Ready" once the profile has READY_MIN. Below it, every card
-     says "Finish your profile", and a swipe right opens "Finish your profile first" instead of applying (__uaplyReadyGate). */
+     shows nothing, and a swipe right saves it to Job Tracker as "Needs profile" (quietApply). */
   var RDY={},RDYQ={};
   function rdyApplies(job){return !!(job&&w.__uaplySubmitOn&&w.__uaplyMode&&!(w.__uaplyPreview&&w.__uaplyPreview())&&(job.live||w.__uaplyMode==="test"))}
   function rdyConnected(job){return !!(job.live&&job.instant&&!job.contact&&!job.webhook)}
@@ -990,7 +990,7 @@ function kitApply(w,host){
   /* the card's state now (null: nothing to show yet); a connected employer's form is read once per posting and profile */
   function rdyState(job,then){
     var r=w.__uaplyReadiness?w.__uaplyReadiness():{min:true};
-    if(!r.min)return {k:"need",t:"Finish your profile"};
+    if(!r.min)return null;          /* no per-card nagging (Saif, October 24): the saved line and the Job Tracker badge say it */
     if(!rdyReadsForm(job))return {k:"ok",t:"Ready"};
     var pl=rdyPayload(job),sig=rdySig(pl),c=RDY[job.id];
     if(c&&c.sig===sig)return c.st;
