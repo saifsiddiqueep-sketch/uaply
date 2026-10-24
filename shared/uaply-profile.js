@@ -101,11 +101,11 @@ function apply(w){
 
   /* the country belongs with the home address (city, state and ZIP code), so it is asked right after the ZIP code */
   var zipF=d.getElementById("adZip");if(zipF&&zipF.closest(".field"))zipF.closest(".field").after(el("country").closest(".field"));
-  /* asked once (Saif, October 24): employers' "willing to relocate?" is the Willing to relocate box under Work style in step 3, and
+  /* asked once (Saif, October 24): employers' "willing to relocate?" is Yes when the Willing to relocate box under Work style in step 3 is ticked (unticked: asked each time), and
      "willing to work from the office?" is Yes when Hybrid or On-site is ticked there, No when only Remote is (nothing ticked: asked each time) */
   function officeAndReloc(x){
     var c=function(i){var b=d.getElementById(i);return !!(b&&b.checked)},rb=d.getElementById("pReloc");
-    if(rb)x.relocate=rb.checked?"yes":"no";
+    if(rb&&rb.checked)x.relocate="yes";else delete x.relocate;   /* not ticked: unanswered, so a form that asks is asked each time */
     x.office=c("pm-hybrid")||c("pm-onsite")?"yes":c("pm-remote")?"no":"";
     if(!x.office)delete x.office;
     return x;

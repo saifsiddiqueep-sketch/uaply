@@ -45,7 +45,9 @@ module.exports = async ({ ev, sleep, send, nav, logs }) => {
   let e = await setWs({ "pm-remote": false, "pm-hybrid": false, "pm-onsite": true, pReloc: true });
   check("On-site and Willing to relocate ticked: forms get relocate Yes and office Yes", e.relocate === "yes" && e.office === "yes" && e.sent.relocate === "yes" && e.sent.office === "yes", JSON.stringify(e));
   e = await setWs({ "pm-remote": true, "pm-hybrid": false, "pm-onsite": false, pReloc: false });
-  check("only Remote ticked, relocate not ticked: forms get relocate No and office No", e.relocate === "no" && e.office === "no" && e.sent.relocate === "no" && e.sent.office === "no", JSON.stringify(e));
+  check("only Remote ticked, relocate not ticked: office No, and relocate left unanswered (a form that asks it asks the person each time)", e.relocate === undefined && e.office === "no" && e.sent.relocate === undefined && e.sent.office === "no", JSON.stringify(e));
+  const ap = await J("const p=w.__uaplyAssistProfile({co:'Polish Test Co'});return p?p.relocate:null");
+  check("...and the one-tap form fill has no relocate answer either", ap === "", JSON.stringify(ap));
   e = await setWs({ "pm-remote": true, "pm-hybrid": true, "pm-onsite": false, pReloc: false });
   check("Remote and Hybrid ticked: office Yes", e.office === "yes", JSON.stringify(e));
 
