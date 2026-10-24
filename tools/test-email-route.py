@@ -175,7 +175,7 @@ def account(port, email, consent=True, auto=False):
         req(port, "POST", "/api/auth/verify", {"code": code}, cookie)
     if consent:
         import consent_api
-        req(port, "POST", "/api/consent", {"version": consent_api.VERSION, "text": consent_api.full_text(auto), "auto": auto}, cookie)
+        req(port, "POST", "/api/consent", {"version": consent_api.VERSION, "text": consent_api.full_text(auto), "auto": auto, "ticks": {"authorize": True, "accurate": True}}, cookie)
     return cookie
 
 

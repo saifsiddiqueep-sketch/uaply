@@ -25,7 +25,7 @@ module.exports = async ({ ev, sleep, send, nav, logs }) => {
   await ev("(()=>{const w=" + FW + ";if(w.__uaplyConsentAgain)w.__uaplyConsentAgain(function(){})})()"); await sleep(500);
   const box = await J("const b=d.getElementById('kitConsent');return b?b.innerText:''");
   check("the agreement box no longer says You only see this once", !/You only see this once/.test(box || ""), String(box).slice(-160));
-  await ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b)b.click()})()"); await sleep(400);
+  await ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b){b.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});b.disabled=false;b.click()}})()"); await sleep(400);
 
   // ---- step 3 is Location and pay; step 5 asks no relocation or office question ----
   await ev(FW + ".__uaplyOpenProf('where')"); await sleep(900);

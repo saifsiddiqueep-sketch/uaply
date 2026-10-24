@@ -26,7 +26,7 @@ module.exports = async ({ ev, sleep, nav, shot, logs }) => {
   // behind the sign-in gate: wait until the session is known and the app (not the card) is on screen, so nothing redraws Profile setup after
   for (let i = 0; i < 40 && !(await ev("(()=>{try{const d=" + F + ";return !!d.getElementById('bnav')&&!d.body.classList.contains('sgGated')}catch(e){return false}})()")); i++) await sleep(250);
   await sleep(800);
-  await ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b)b.click()})()"); await sleep(300);
+  await ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b){b.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});b.disabled=false;b.click()}})()"); await sleep(300);
   await ev("(()=>{" + W + ".__uaplyOpenProf('back')})()"); await sleep(800);
   const step = await ev("(()=>{const c=" + F + ".querySelector('.wzDots button[aria-current=step]');return c?c.getAttribute('aria-label'):''})()");
   check("Profile setup opens on Background and links", /Background and links/.test(step), step);
@@ -99,7 +99,7 @@ module.exports = async ({ ev, sleep, nav, shot, logs }) => {
   // a business student, fresh browser: the latest job is part-time (Barista), so it fills the job fields, not the target title
   await ev("localStorage.clear()");
   await nav("http://127.0.0.1:" + PORT + "/?app=1"); await sleep(3500);
-  await ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b)b.click()})()"); await sleep(300);
+  await ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b){b.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});b.disabled=false;b.click()}})()"); await sleep(300);
   await ev("(()=>{" + W + ".__uaplyOpenProf('back')})()"); await sleep(800);
   const BIZ = fs.readFileSync(path.join(__dirname, "fixtures", "resumes", "business.pdf")).toString("base64");
   await ev("(()=>{const w=" + W + ",d=w.document,i=d.getElementById('rsFile');const b=Uint8Array.from(atob(" + JSON.stringify(BIZ) + "),c=>c.charCodeAt(0));const dt=new w.DataTransfer();" +

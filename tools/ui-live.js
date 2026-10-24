@@ -72,7 +72,7 @@ async function main(api) {
   const appText = () => ev("(()=>{try{return (" + F + ").body.innerText.split(" + NL + ").join(' ')}catch(e){return ''}})()");
   const secText = (sel) => ev("(()=>{try{const e=" + F + ".querySelector(" + JSON.stringify(sel) + ");return e?e.innerText.split(/\\s+/).join(' '):''}catch(x){return ''}})()");
   const has = (sel) => ev("(()=>{try{return !!" + F + ".querySelector(" + JSON.stringify(sel) + ")}catch(e){return false}})()");
-  const click = (sel) => ev("(()=>{try{const e=" + F + ".querySelector(" + JSON.stringify(sel) + ");if(!e)return false;e.click();return true}catch(x){return false}})()");
+  const click = (sel) => ev("(()=>{try{const d0=" + F + ",e=d0.querySelector(" + JSON.stringify(sel) + ");if(!e)return false;if(e.id==='kcYes')d0.querySelectorAll('.kcTick').forEach(c=>{c.checked=true;c.dispatchEvent(new Event('change'))});e.click();return true}catch(x){return false}})()");   // the consent box: both ticks first (version 6)
   const setVal = (id, v) => ev("(()=>{const e=" + F + ".getElementById('" + id + "');if(!e)return false;e.value=" + JSON.stringify(v) + ";e.dispatchEvent(new Event('input',{bubbles:true}));return true})()");
   const tick = (id) => ev("(()=>{const c=" + F + ".getElementById('" + id + "');if(!c)return false;c.checked=true;c.dispatchEvent(new Event('change',{bubbles:true}));return true})()");
   const json = (p, opts) => ev("fetch(" + JSON.stringify(p) + (opts ? "," + JSON.stringify(opts) : "") + ").then(async r=>({s:r.status,j:await r.json().catch(()=>null)})).catch(e=>({s:0,j:null}))");

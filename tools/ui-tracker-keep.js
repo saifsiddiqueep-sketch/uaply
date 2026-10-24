@@ -14,7 +14,7 @@ module.exports = async ({ ev, sleep, nav }) => {
   const check = (name, ok, extra) => { ok ? pass++ : fail++; console.log((ok ? "PASS " : "FAIL ") + "[tracker] " + name + (ok || extra === undefined ? "" : "  | " + String(extra).slice(0, 300))); };
   const base = "http://127.0.0.1:" + PORT + "/";
   const ready = async () => { for (let i = 0; i < 60; i++) { if (await ev("!!(" + FW + "&&" + FW + ".__uaply&&" + F + ".getElementById('bnav'))").catch(() => false)) return true; await sleep(250); } return false; };
-  const agree = () => ev("(()=>{const m=" + F + ".getElementById('kcYes');if(m){m.click();return true}return false})()");
+  const agree = () => ev("(()=>{const m=" + F + ".getElementById('kcYes');if(m){m.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});m.disabled=false;m.click();return true}return false})()");
 
   // the test person signs up first (October 22, Saif: nobody reaches anything on the site without an account)
   const who = await gateSignup({ ev, sleep, nav }, base, "tracker");

@@ -20,7 +20,7 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   await send("Page.navigate", { url: base + "/" });
   for (let i = 0; i < 80 && !(await ev("(()=>{try{const w=" + FW + ";return !!(w.__uaply&&w.__uaplyJobs&&w.document.getElementById('bnav'))}catch(e){return false}})()")); i++) await sleep(250);
   await sleep(1500);
-  await ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b)b.click()})()"); await sleep(800);
+  await ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b){b.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});b.disabled=false;b.click()}})()"); await sleep(800);
   await ev("(()=>{const b=[...(" + F + ").querySelectorAll('#locAsk button')].find(x=>/Not now/.test(x.innerText));if(b)b.click()})()");
 
   // the three postings, and nothing else in the deck; the profile asks for $100k a year

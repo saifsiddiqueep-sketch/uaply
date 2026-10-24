@@ -75,7 +75,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
   // the agreement's Agree button is on screen without scrolling (on a 692 px tall Galaxy it was 21 px below the bottom edge)
   const agree = JSON.parse(await ev("(()=>{const d=" + F + ",b=d.getElementById('kcYes');if(!b)return 'null';const r=b.getBoundingClientRect();return JSON.stringify({t:Math.round(r.top),b:Math.round(r.bottom),h:d.defaultView.innerHeight})})()"));
   check("the agreement's Agree button is on screen at first open with room below it, nothing to scroll", !!agree && agree.t >= 0 && agree.b <= agree.h - 8, JSON.stringify(agree));
-  await ev("(()=>{const m=" + F + ".getElementById('kcYes');if(m)m.click()})()");
+  await ev("(()=>{const m=" + F + ".getElementById('kcYes');if(m){m.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});m.disabled=false;m.click()}})()");
   await sleep(1200);
   fits.push(["Jobs at first open, after Agree", await fit("jobs")]);
   if (process.env.LANDSCAPE) {      // turned: the card and Pass / Undo / Apply side by side, the buttons never on top of the card
@@ -170,7 +170,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
     const at = await ev("(()=>{const f=document.querySelector('iframe').getBoundingClientRect();const e=" + F + ".elementFromPoint(" + c.x + "-f.left," + c.y + "-f.top);return e?(e.closest('.card.top')?'card':(e.id||e.className||e.tagName)):'none'})()");
     if (at !== "card") console.log("   (the finger lands on " + at + ", not the card)");
     await touch(path(c.x, c.y, dx, dy, steps, bend), ms); await sleep(1100);
-    await ev("(()=>{const m=" + F + ".getElementById('kcYes');if(m)m.click()})()"); await sleep(300);
+    await ev("(()=>{const m=" + F + ".getElementById('kcYes');if(m){m.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});m.disabled=false;m.click()}})()"); await sleep(300);
     await ev("(()=>{const o=" + F + ".getElementById('kitAsk');if(o){const n=" + F + ".getElementById('kaNo');if(n)n.click()}})()"); await sleep(300);
     const d1 = await decisions(), k1 = await topKey();
     // a swipe right counts as understood when it was recorded, or when the application went out for that job even if the employer's

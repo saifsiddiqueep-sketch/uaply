@@ -51,7 +51,7 @@ function patch(s){
   s=once(s,'</style>','.outside{margin:0;font-size:14px;line-height:1.4;font-weight:700;color:var(--muted)}.npDot{display:inline-block;min-width:8px;height:8px;border-radius:4px;background:var(--accent);margin-left:6px;vertical-align:middle}</style>');
   s=once(s,'<h2>You have seen every job</h2><p>Jobs you passed on can come back, and your applications are in the Applied tab.</p>',
     `<h2>'+(window.__uaplyLoadingJobs?"Finding jobs for you…":window.__uaplyJobsFailed?"Could not load jobs":window.__uaplyLimitHit===new Date().toDateString()?"You reached today's limit":(window.__uaplyEmpty||function(){return ["You have seen every one of these"]})(JOBS,S,TYPE)[0])+'</h2><p>'+(window.__uaplyLoadingJobs?"Looking for current postings. This takes a few seconds.":window.__uaplyJobsFailed?"Check your internet connection, then close and reopen UAply.":window.__uaplyLimitHit===new Date().toDateString()?"UAply can send more tomorrow. The jobs you saved are in Job Tracker.":(window.__uaplyEmpty||function(){return ["","Jobs you passed on can come back, and your applications are in the Job Tracker."]})(JOBS,S,TYPE)[1])+'</p>`);
-  s=once(s,'title:String(x.title||"")};','title:String(x.title||""),st:(x.st==="interview"||x.st==="accepted"||x.st==="rejected")?x.st:"applied",sent:(x.sent&&typeof x.sent==="object")?{at:+x.sent.at||0,to:String(x.sent.to||"").slice(0,120),status:String(x.sent.status||"").slice(0,20),prev:String(x.sent.prev||"").slice(0,20),once:x.sent.once===true}:undefined};');
+  s=once(s,'title:String(x.title||"")};','title:String(x.title||""),st:(x.st==="interview"||x.st==="accepted"||x.st==="rejected")?x.st:"applied",sent:(x.sent&&typeof x.sent==="object")?{at:+x.sent.at||0,to:String(x.sent.to||"").slice(0,120),status:String(x.sent.status||"").slice(0,20),via:/^(ats|email|form|assist)$/.test(x.sent.via||"")?x.sent.via:undefined,prev:String(x.sent.prev||"").slice(0,20),once:x.sent.once===true}:undefined};');
   /* profile gets an email so a recruiter can reply */
   s=once(s,'salary:100000,loc:"New York",','salary:100000,loc:"New York",email:"jordan.lee@example.com",');
   s=once(s,'loc:typeof p.loc==="string"?p.loc:"",','loc:typeof p.loc==="string"?p.loc:"",email:typeof p.email==="string"?p.email.slice(0,200):"",');
@@ -555,6 +555,9 @@ function apply(w,host){
     function sentLine(o){
       var x=o.x.sent,e=A.esc;if(!x)return "";
       if(x.status==="sent"&&x.via==="assist")return '<small class="sent ok">Sent on '+e(o.j.co)+'\'s own page: their confirmation page appeared</small>';
+      /* the channel it went by (Saif, October 24): their hiring system, or email */
+      if(x.status==="sent"&&x.via==="ats")return '<small class="sent ok">Submitted into their hiring system: '+e(x.to||o.j.co)+'</small>';
+      if(x.status==="sent"&&x.via==="email")return '<small class="sent ok">Sent by email to '+e(x.to||o.j.co)+'</small>';
       if(x.status==="sent")return '<small class="sent ok">Application sent to '+e(x.to||o.j.co)+'</small>';
       if(x.status==="delivered_test")return '<small class="sent ok">Sent to '+e((x.to||"the test inbox").replace(/ \(simulated\)$/,""))+' (test, nothing reached '+e(o.j.co)+')</small>';
       if(x.status==="handoff")return '<small class="sent todo">Not sent yet: '+e(o.j.co)+' takes applications on its own site.</small>';

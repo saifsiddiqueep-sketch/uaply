@@ -69,7 +69,7 @@ module.exports = async ({ ev, sleep, nav, shot, send }) => {
   if (process.env.SHOTS) await shot(process.env.SHOTS + "-" + size + "-1-first.png");
 
   // after Agree (the location prompt may appear now): same, and a real tap reaches each button
-  if (consent) { await ev("(" + F + ").getElementById('kcYes').click()"); await sleep(900); }
+  if (consent) { await ev("(" + F + ").querySelectorAll('.kcTick,#kcYes').forEach(c=>{if(c.id==='kcYes'){c.disabled=false;c.click()}else c.checked=true})"); await sleep(900); }
   let B = await boxes();
   allVisible("after Agree", B);
   const cov = await reachable();

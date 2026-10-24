@@ -224,7 +224,7 @@ module.exports = async ({ ev, sleep, send }) => {
 
   // the switch: shipped "assisted" everywhere, and the rule that turns "automatic" on
   const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "shared", "assist-systems.json"), "utf8"));
-  check("assist-systems.json: every system ships assisted, none approved by counsel", Object.values(cfg.systems).every((s) => s.mode === "assisted" && s.counsel_approved === false));
+  check("assist-systems.json (October 24 review): Greenhouse, Lever, Ashby and Workable automatic and approved; SmartRecruiters (its terms) and other assisted, not approved", ["greenhouse", "lever", "ashby", "workable"].every((k) => cfg.systems[k].mode === "automatic" && cfg.systems[k].counsel_approved === true) && ["smartrecruiters", "other"].every((k) => cfg.systems[k].mode === "assisted" && cfg.systems[k].counsel_approved === false));
   const nav = fs.readFileSync(path.join(__dirname, "..", "shared", "uaply-nav.js"), "utf8");
   const src = /function assistMode\(cfg,sys\)\{[^\n]*?\}(?=\n)/.exec(nav);
   check("uaply-nav.js has the mode rule", !!src);

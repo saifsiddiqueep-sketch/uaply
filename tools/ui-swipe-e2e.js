@@ -23,7 +23,7 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   const boot = async () => {
     await nav(BASE + "/?app=1");
     await waitFor("return d.defaultView.__uaply&&d.getElementById('nb-prof')?1:0", 20000);
-    await q("const y=d.getElementById('kcYes');if(y)y.click();const n=[...d.querySelectorAll('#locAsk button')].find(x=>/Not now/.test(x.innerText));if(n)n.click();const t=d.getElementById('tipsClose');if(t)t.click();return 1");
+    await q("const y=d.getElementById('kcYes');if(y){y.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});y.disabled=false;y.click()};const n=[...d.querySelectorAll('#locAsk button')].find(x=>/Not now/.test(x.innerText));if(n)n.click();const t=d.getElementById('tipsClose');if(t)t.click();return 1");
     await sleep(500);
   };
   const post = (p, body) => q("const r=await w.fetch(" + JSON.stringify(p) + ",{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(" + JSON.stringify(body) + ")});return JSON.stringify({s:r.status,j:await r.json().catch(()=>null)})").then((x) => { try { return JSON.parse(x); } catch (e) { return { s: 0, j: x }; } });
