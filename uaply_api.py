@@ -45,6 +45,7 @@ import ats_api
 import autofill
 import jobs_api
 import auth_api
+import consent_api
 import emails
 import mailer
 
@@ -506,7 +507,7 @@ class MailNotSent(Exception):
         super().__init__(("that address is on the bounce list (%s)" % why) if status == "suppressed" else self.REASONS.get(why, "it could not be sent (%s)" % why))
 
 
-def _application_message(cfg, to, cand, job, note, original="", resume=None):
+def _application_message(cfg, to, cand, job, note, original="", resume=None, stop=""):
     msg = EmailMessage()
     msg["From"] = _from(cfg)
     msg["To"] = to
@@ -516,7 +517,10 @@ def _application_message(cfg, to, cand, job, note, original="", resume=None):
     test = _redirect(cfg) == to
     msg["Subject"] = mailer.header("%sApplication: %s - %s" % ("[TEST] " if test else "", job["role"], cand["name"]), 250)
     extra = ("\nTest redirect: this would have gone to %s.\n" % (original or "the company's application page")) if test else ""
-    msg.set_content("%s\n\n--\nSent through UAply on behalf of %s <%s>.\nPosting: %s\n%s" % (_application_text(cand, job, note), cand["name"], cand["email"], job["url"], extra))
+    # an application emailed to the address a posting asks for (apply by email): why it came, and how its owner stops UAply sending more
+    why = ("UAply sent this because the job posting asks for applications by email at this address. To stop UAply sending applications "
+           "here: %s\n" % stop) if stop else ""
+    msg.set_content("%s\n\n--\nSent through UAply on behalf of %s <%s>.\nPosting: %s\n%s%s" % (_application_text(cand, job, note), cand["name"], cand["email"], job["url"], why, extra))
     if resume:                                                 # the resume the person uploaded goes along as a real attachment
         meta, data = resume
         maintype, subtype = meta["type"].split("/", 1)
@@ -524,19 +528,19 @@ def _application_message(cfg, to, cand, job, note, original="", resume=None):
     return msg
 
 
-def _send_email(cfg, to, cand, job, note, original="", resume=None):
-    status, why = mailer.send(cfg, _application_message(cfg, to, cand, job, note, original, resume), "application")
+def _send_email(cfg, to, cand, job, note, original="", resume=None, stop=""):
+    status, why = mailer.send(cfg, _application_message(cfg, to, cand, job, note, original, resume, stop), "application")
     if status != "sent":                                       # an application is never held: the record says failed and the person can send it again
         raise MailNotSent(status, why)
 
 
-def _deliver(cfg, target, cand, job, note, contact, resume_meta, resume_bytes, hook, rec, ats=None):
+def _deliver(cfg, target, cand, job, note, contact, resume_meta, resume_bytes, hook, rec, ats=None, stop=""):
     """Send one application over every channel the employer opted into: email, a signed webhook, or both. The application counts as
     sent when at least one channel accepted it. Returns (status, error_text_or_None, channels_that_worked)."""
     done, errors = [], []
     if target:
         try:
-            _send_email(cfg, target, cand, job, note, contact, (resume_meta, resume_bytes) if resume_meta else None)
+            _send_email(cfg, target, cand, job, note, contact, (resume_meta, resume_bytes) if resume_meta else None, stop)
             done.append("email")
         except Exception as e:
             errors.append("email: %s" % str(e)[:120])
@@ -1048,7 +1052,11 @@ def submit(p, user=None, site=""):
     job["type"] = _pick(known.get("type") or pj.get("type"), ("job", "parttime", "internship", "coop")) or "job"
     job["mode"] = _pick(known.get("mode") or pj.get("mode"), ("remote", "hybrid", "onsite"))
     sal = known.get("sal") or pj.get("sal")
-    job["sal"] = [int(sal[0]), int(sal[1])] if isinstance(sal, list) and len(sal) == 2 and all(isinstance(x, (int, float)) for x in sal) else [0, 0]
+    hourly = (known.get("salUnit") if known.get("sal") else pj.get("salUnit")) == "hour"
+    job["sal"] = ([round(float(sal[0]), 2), round(float(sal[1]), 2)] if hourly else [int(sal[0]), int(sal[1])]) \
+        if isinstance(sal, list) and len(sal) == 2 and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in sal) else [0, 0]
+    if hourly and job["sal"][1] > 0:
+        job["salUnit"] = "hour"                           # the summary says "an hour", as the posting does
     job["desc"] = _s(known.get("desc") or known.get("blurb") or pj.get("blurb"), 900)
     # where the posting came from ("via USAJOBS; apply on the official announcement"), from this server's own copy only: kept in the record and named in the receipt
     if known.get("credit"):
@@ -1091,6 +1099,17 @@ def submit(p, user=None, site=""):
         # a real posting (examples have small numbers) that this server no longer lists, for example one that left the employer's board:
         # nothing can be sent to anyone, so it is a hand-off in test mode too (test mode used to report it as delivered)
         policy = "link"
+    if policy == "email":
+        # the posting itself asks for applications by email at the employer's own address (jobs_api.apply_address): that address, as this
+        # server read it from the posting, is the only one used (the browser's copy never is)
+        contact = jobs_api.known_contact(job["id"])
+        if not contact:
+            policy = "link"
+    # Send applications for me is off (Profile, Account; Terms section 3): every swipe right only saves the job to Job Tracker. Nothing is
+    # sent to anyone for this person, nothing is put into an employer's system, simulated or not, and no employer's form is read
+    send_off = bool(user) and user.get("sendForMe") is False
+    if send_off:
+        policy, contact = "link", ""
     hook = jobs_api.known_webhook(job["id"]) if policy == "direct" else None      # the HTTPS address the employer registered, if any
     ats = jobs_api.known_ats(job["id"]) if policy == "direct" else None           # the employer's own hiring system and key, if they connected
     answers = autofill.clean_answers(p.get("answers"), job.get("co") or "")      # the person's own answers to questions employers' forms asked before
@@ -1099,14 +1118,14 @@ def submit(p, user=None, site=""):
         for a in APPS:
             if a["job"]["id"] == job["id"] and a["candidate"]["email"] == cand["email"] and a["status"] != "failed":
                 # "was" is what happened the first time, so the app can show it again (after an undo, or on another device)
-                return 200, {"status": "duplicate", "id": a["id"], "to": a.get("to", ""), "mode": a["mode"], "was": a["status"]}
+                return 200, {"status": "duplicate", "id": a["id"], "to": a.get("to", ""), "mode": a["mode"], "was": a["status"], "preview": a.get("preview") is True}
         return None
 
     with _lock:
         seen = dup()
     if seen:
         return seen
-    if mode == "live" and policy == "direct":
+    if mode == "live" and policy in ("direct", "email"):
         # an application sent straight to an employer carries the person's email as the reply address, so that address must be proven theirs
         if not user:                                       # nobody is signed in: there is no email to verify yet, so say what to do first
             return 403, {"error": "Sign in first (Profile, Account) and verify your email, so %s can trust your address." % job["co"], "code": "signin"}
@@ -1116,6 +1135,10 @@ def submit(p, user=None, site=""):
             return 400, {"error": "Use your account email in Profile setup, under About you, so the employer replies to an address you verified."}
         if p.get("confirm_real") is not True and not plan_only:
             return 400, {"error": "Live sending needs the user to review and press Send."}
+        # no automatic send of any kind without the person's agreement on record (Saif, October 23: consent_api.py): the box's current
+        # version, kept on the account with the time, their address and the words' SHA-256. The page agrees again and retries once.
+        if not plan_only and not consent_api.current(auth_api.consent_for(user["id"])):
+            return 403, {"error": "Agree to how UAply applies for you first (the box before your first swipe), then swipe again.", "code": "consent"}
 
     # Autofill: read the job's real application form (Greenhouse publishes it) and answer it from the profile and saved answers.
     #   - an employer that connected its Greenhouse: anything the form requires that the profile cannot answer is asked first, then it all goes in
@@ -1124,9 +1147,9 @@ def submit(p, user=None, site=""):
     #   - an employer that connected its Ashby, SmartRecruiters or Workable: the same as Greenhouse, but read with their key, and only for a live send
     ref = known.get("ats") if isinstance(known.get("ats"), dict) else None
     gh = ats if (ats and ats.get("kind") == "greenhouse") else (ref if ref and ref.get("kind") == "greenhouse" else None)
-    preview = policy == "link" and gh is not None and form_preview(cfg)
+    preview = policy == "link" and gh is not None and form_preview(cfg) and not send_off
     plan = None
-    if gh and (policy in ("direct", "link") or preview) and not _redirect(cfg):
+    if gh and (policy in ("direct", "link") or preview) and not _redirect(cfg) and not send_off:
         form = autofill.fetch_form(gh["board"], gh["id"])
         plan = autofill.plan_greenhouse(form, cand, job, note, resume_meta, resume_bytes, answers) if form else None
     elif ats and ats.get("kind") in ("ashby", "smartrecruiters", "workable") and policy == "direct" and mode == "live" and not _redirect(cfg):
@@ -1148,7 +1171,7 @@ def submit(p, user=None, site=""):
     if plan_only:
         # what the swipe would do now: send (ready), finish on the employer's page (handoff: an employer who did not connect, or a required
         # question UAply cannot ask on screen). "known" says whether the posting's own form was read.
-        out = {"status": "handoff" if (cannot and ats) or (policy != "direct" and not preview) else "ready", "mode": mode, "known": bool(plan)}
+        out = {"status": "handoff" if (cannot and ats) or (policy not in ("direct", "email") and not preview) else "ready", "mode": mode, "known": bool(plan)}
         if plan:
             out.update(filled=plan["filled"], total=plan["total"])
         return 200, out
@@ -1168,6 +1191,8 @@ def submit(p, user=None, site=""):
                "user": user["id"] if user else None, "resume": resume_meta, "channels": []}
         if p.get("marked") is True:              # the swipe was already marked as applied on the device (a retry): never reminded (_queue_finish)
             rec["marked"] = True
+        if policy == "email":                    # apply by email: counted per employer domain (_email_route_full)
+            rec["route"], rec["employerDomain"] = "email", contact.rsplit("@", 1)[-1].lower()
         if summary:
             rec["autofill"] = summary
         if preview and plan:
@@ -1178,10 +1203,12 @@ def submit(p, user=None, site=""):
             rec["channels"] = ["hiring system (simulated)"]
             APPS.append(rec)
             _append("applications.jsonl", rec)
-        elif policy == "link" or (policy == "unknown" and mode == "live"):
+        elif policy == "link" or (policy == "unknown" and mode == "live") or send_off:
             # a third-party listing, or an example in live mode: UAply never sends an application to anyone here.
-            # The person is pointed to the employer's own application page instead.
+            # The person is pointed to the employer's own application page instead. (Send applications for me off: the same, for every job.)
             rec["status"] = "handoff"
+            if send_off:
+                rec["why"] = "send_off"
             APPS.append(rec)
             _append("applications.jsonl", rec)
         elif mode == "test":
@@ -1199,7 +1226,14 @@ def submit(p, user=None, site=""):
             target = _redirect(cfg) or contact
             hook = None if _redirect(cfg) else hook          # a test redirect must never reach a real employer's system
             ats = None if _redirect(cfg) else ats
-            if (target and _smtp_ready(cfg)) or hook or ats:
+            full = _email_route_full(cfg, contact) if policy == "email" else ""
+            if full:
+                # this employer's address had its share today, or UAply's own day is used up: nothing is emailed, and the person
+                # finishes on the employer's page (Job Tracker: Finish on their site), as for any hand-off
+                rec["status"], rec["why"] = "handoff", full
+                APPS.append(rec)
+                _append("applications.jsonl", rec)
+            elif (target and _smtp_ready(cfg)) or hook or ats:
                 today = time.time() - 86400
                 sent_today = sum(1 for a in APPS if a["mode"] == "live" and a["status"] in ("sent", "sending") and a["at"] > today)
                 if sent_today >= int(cfg.get("daily_limit", 20)):
@@ -1208,7 +1242,7 @@ def submit(p, user=None, site=""):
                 APPS.append(rec)
                 send_args = (cfg, target if _smtp_ready(cfg) else "", dict(cand, answers=answers, job={"co": job["co"], "role": job["role"]}) if ats else cand,
                              job, note, contact,
-                             resume_meta, resume_bytes, hook, rec, ats)
+                             resume_meta, resume_bytes, hook, rec, ats, stop_link(site, contact) if policy == "email" else "")
             else:
                 if target:                     # an employer who agreed to receive email, but this server cannot send email: tell the owner
                     sys.stderr.write("[uaply] application %s to %s became a hand-off because no email account is set up (see /setup)\n" % (rec["id"], job["co"]))
@@ -1226,6 +1260,10 @@ def submit(p, user=None, site=""):
                 rec["error"] = err
             _append("applications.jsonl", rec)
     out = {"status": rec["status"], "id": rec["id"], "to": rec["to"], "mode": mode, "simulated": rec["simulated"], "copied": False}
+    if send_off:
+        out["sendForMe"] = False                         # the page says the job was only saved, and why
+    if rec.get("preview"):
+        out["preview"] = True                            # the sandbox's filled-in form went to the test inbox only: the page shows a hand-off
     if summary:
         out["plan"] = summary
     if rec.get("error"):
@@ -1321,6 +1359,113 @@ def _autofill_html(af):
     rows = "".join("<tr><td>%s</td><td>%s</td></tr>" % (e(i.get("q", "")), e(i.get("a", ""))) for i in af["items"])
     return ('<details open><summary>Employer\'s application form, filled in by UAply: %d of %d answers</summary>'
             '<table class="af">%s</table></details>' % (af.get("filled", 0), af.get("total", 0), rows))
+
+
+# ---------- apply by email (October 23, 2026): limits, and the stop link for the owner of a posting's address ----------
+EMAIL_DOMAIN_PER_DAY = 10        # applications UAply emails to one employer's domain in 24 hours, from everyone together (config: email_domain_daily)
+_key_lock = threading.Lock()
+
+
+def _email_route_full(cfg, addr):
+    """Why an application to a posting's address is not emailed now ('' when it may be): this employer's domain had its share of the
+    last 24 hours ("domain_cap"), or UAply's own daily limit is used up ("daily_cap"). Either way the swipe is kept as a hand-off. Call
+    with _lock held (it reads APPS)."""
+    day = time.time() - 86400
+    dom = str(addr or "").rsplit("@", 1)[-1].lower()
+    live = [a for a in APPS if a["mode"] == "live" and a["status"] in ("sent", "sending") and a["at"] > day]
+    try:
+        per = max(1, int(cfg.get("email_domain_daily", EMAIL_DOMAIN_PER_DAY)))
+    except (TypeError, ValueError):
+        per = EMAIL_DOMAIN_PER_DAY
+    if sum(1 for a in live if a.get("route") == "email" and a.get("employerDomain") == dom) >= per:
+        return "domain_cap"
+    if len(live) >= int(cfg.get("daily_limit", 20)):
+        return "daily_cap"
+    return ""
+
+
+def _link_key():
+    """This copy's own key for the stop links: made once, kept in its records folder, never sent anywhere."""
+    path = os.path.join(DATA, "link.key")
+    with _key_lock:
+        try:
+            with open(path, "rb") as f:
+                k = f.read()
+            if len(k) >= 32:
+                return k
+        except OSError:
+            pass
+        k = os.urandom(32)
+        try:
+            os.makedirs(DATA, exist_ok=True)
+            with open(path, "wb") as f:
+                f.write(k)
+        except OSError:
+            pass
+        return k
+
+
+def _stop_sig(addr):
+    return hmac.new(_link_key(), b"uaply-stop:" + str(addr).lower().encode("utf-8"), hashlib.sha256).hexdigest()[:32]
+
+
+def stop_link(site, addr):
+    """The link at the end of an application emailed to a posting's address: its owner opens it to stop UAply sending applications there."""
+    if not site or not addr:
+        return ""
+    a = base64.urlsafe_b64encode(str(addr).lower().encode("utf-8")).decode("ascii").rstrip("=")
+    return "%s/employer/stop?a=%s&s=%s" % (site.rstrip("/"), a, _stop_sig(addr))
+
+
+def _stop_addr(a, s):
+    """The address a stop link names, when its signature is this copy's own ('' otherwise)."""
+    a = str(a or "")
+    if not a or len(a) > 400 or not isinstance(s, str) or not re.fullmatch(r"[0-9a-f]{32}", s):
+        return ""
+    try:
+        addr = base64.urlsafe_b64decode(a + "=" * (-len(a) % 4)).decode("utf-8").strip().lower()
+    except (ValueError, UnicodeDecodeError):
+        return ""
+    return addr if EMAIL_RE.match(addr) and hmac.compare_digest(s, _stop_sig(addr)) else ""
+
+
+def employer_stop(a, s):
+    """POST /api/employer/stop {a, s}: the address goes on the bounce list ("unsubscribed", a year), so UAply emails it no applications and
+    every posting naming it is a hand-off again (jobs_api.job_policy). Returns (status, body)."""
+    addr = _stop_addr(a, s)
+    if not addr:
+        return 400, {"error": "This link is not valid. Reply to the application email and ask us to stop; we will."}
+    mailer.suppress(addr, "unsubscribed")
+    sys.stderr.write("[uaply] %s asked UAply to stop emailing applications to it\n" % mailer.mask(addr))
+    return 200, {"ok": True}
+
+
+def employer_stop_page(a, s):
+    """GET /employer/stop: asks first, so a mail scanner that opens the link changes nothing; the button posts to /api/employer/stop."""
+    e = html.escape
+    addr = _stop_addr(a, s)
+    if addr:
+        body = ("<h1>Stop applications from UAply</h1><p>UAply emailed an application to <b>%s</b> because a job posting asks for applications "
+                "by email at that address. Press the button and UAply will not email applications there again (people who want to apply can "
+                "still do it on your own site).</p><p><button id=\"go\" type=\"button\">Stop applications to this address</button></p>"
+                "<p id=\"msg\" role=\"status\"></p>" % e(addr))
+        script = ("<script>document.getElementById('go').onclick=function(){var b=this;b.disabled=true;"
+                  "fetch('/api/employer/stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({a:%s,s:%s})})"
+                  ".then(function(r){return r.json().then(function(j){document.getElementById('msg').textContent=r.ok?'Done. UAply will not email "
+                  "applications to this address again.':(j.error||'That did not work. Try again.');if(!r.ok)b.disabled=false})})"
+                  ".catch(function(){document.getElementById('msg').textContent='That did not work. Try again.';b.disabled=false})};</script>"
+                  % (json.dumps(str(a)), json.dumps(str(s))))
+    else:
+        body = "<h1>This link is not valid</h1><p>Reply to the application email and ask us to stop sending applications; we will.</p>"
+        script = ""
+    return ui_rules.with_focus("""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex"><title>Stop applications from UAply</title><style>
+:root{--bg:#FDF0F2;--surface:#FFFFFF;--ink:#2A1218;--muted:#7B5560;--line:#F3DADF;--accent:#C92A55;--on-accent:#FFFFFF}
+@media (prefers-color-scheme: dark){:root{--bg:#190B10;--surface:#26131A;--ink:#FBE9EE;--muted:#C79BA6;--line:#40222B;--accent:#FF7A98;--on-accent:#190B10}}
+body{margin:0;padding:16px;background:var(--bg);color:var(--ink);font:16px/1.5 'DM Sans','Segoe UI',system-ui,sans-serif}
+main{max-width:560px;margin:8vh auto;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px}
+h1{margin:0 0 8px;font-size:22px}button{font:inherit;font-weight:700;padding:12px 16px;border-radius:12px;border:0;background:var(--accent);color:var(--on-accent);min-height:44px}
+#msg{color:var(--muted)}</style></head><body><main>""" + body + "</main>" + script + "</body></html>")
 
 
 def outbox_html():

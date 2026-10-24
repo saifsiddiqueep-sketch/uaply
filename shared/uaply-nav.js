@@ -89,14 +89,14 @@ var CSS=`
 .facts .inst{color:var(--yes);font-weight:700}.facts .ext{color:var(--muted)}.facts .rdy{font-weight:700}.facts .rdy.ok{color:var(--yes)}.facts .rdy.need{color:var(--accent)}.facts .rdy.ext{color:var(--muted)}
 .rdyList{display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:14px;padding:14px;background:var(--surface)}
 .rdyItems{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}.rdyItems li{display:flex;align-items:center;gap:10px;min-height:44px;min-width:0}
-.rdyItems .rdyL{flex:1;min-width:0;overflow-wrap:anywhere}.rdyItems em{font-style:normal;font-size:12px;color:var(--accent);font-weight:600}.rdyItems li[data-done=true]{color:var(--muted)}
-.rdyItems .rdyMark{width:18px;text-align:center;font-weight:700}.rdyItems li[data-done=true] .rdyMark{color:var(--yes)}.rdyItems .rdyOk{font-size:12px}
-.facts .via{color:var(--muted);font-size:12px;opacity:.85}   /* where a feed job came from ("via USAJOBS"): every free feed asks for credit */
+.rdyItems .rdyL{flex:1;min-width:0;overflow-wrap:anywhere}.rdyItems em{font-style:normal;font-size:14px;color:var(--accent);font-weight:600}.rdyItems li[data-done=true]{color:var(--muted)}
+.rdyItems .rdyMark{width:18px;text-align:center;font-weight:700}.rdyItems li[data-done=true] .rdyMark{color:var(--yes)}.rdyItems .rdyOk{font-size:14px}
+.facts .via{color:var(--muted);font-size:14px;opacity:.85}   /* where a feed job came from ("via USAJOBS"): every free feed asks for credit */
 .tabs{display:none}
 #bnav{display:flex;gap:4px;justify-content:center;flex:none;max-width:1100px;width:100%;margin-inline:auto;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px;position:relative}
 .nwrap{position:relative;flex:1;display:flex;min-width:0}
 .nb{flex:1;border:0;background:none;border-radius:999px;padding:6px 8px;min-height:48px;font-weight:600;color:var(--muted);display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.15;min-width:0}
-.nb small{font:500 11px var(--mono);opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.nb small{font:500 14px var(--mono);opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .nb>span{white-space:nowrap}#bnav.simple .nb small{display:none}#bnav.simple .nb{font-size:15px;min-height:44px}
 /* the screen's bottom safe area (iPhone home indicator). The app runs in a frame: Safari gives a frame no inset, Chrome gives it the
    whole screen's even where the page around the frame already keeps that space free (the sandbox's app mode), so the page around the
@@ -111,7 +111,7 @@ var CSS=`
 .nitem{display:flex;justify-content:space-between;align-items:center;gap:14px;border:0;background:none;text-align:left;padding:10px 14px;border-radius:10px;font-weight:600;min-height:44px;color:var(--ink)}
 .nitem:hover,.nitem:focus-visible{background:var(--bg)}
 .nitem[aria-checked="true"]{color:var(--accent);background:var(--bg)}
-.nitem .c{font:500 12px var(--mono);color:var(--muted)}
+.nitem .c{font:500 14px var(--mono);color:var(--muted)}
 .toast{bottom:var(--toast-at,var(--above-nav,calc(88px + var(--safe-b))));pointer-events:none;width:max-content;max-width:min(600px,calc(100vw - 32px))}.toast button{pointer-events:auto}
 /* a phone: every message uses the screen's width (the stranger walk, October 18: a short one sat in a narrow column over the card) */
 .toast{min-width:min(320px,calc(100vw - 32px))}   /* a short message is not a narrow column either (laptop) */
@@ -137,8 +137,8 @@ body{padding-bottom:calc(12px + var(--safe-b))}
 @media (max-width:460px){#pane-track .stats{grid-template-columns:repeat(2,1fr)}}
 #pane-track .row{flex-wrap:wrap}
 #pane-track .acts{display:flex;gap:6px;flex-wrap:wrap;flex-basis:100%}
-#pane-track .acts .btn{padding:6px 12px;font-size:13px}
-#legalbar{flex:none;text-align:center;font-size:12px;color:var(--muted);padding-bottom:2px}#legalbar a{color:inherit;text-underline-offset:2px}
+#pane-track .acts .btn{padding:6px 12px;font-size:14px}
+#legalbar{flex:none;text-align:center;font-size:14px;color:var(--muted);padding-bottom:2px}#legalbar a{color:inherit;text-underline-offset:2px}
 #acctSec{display:flex;flex-direction:column;gap:14px}
 #acctSec h3{margin:0}
 #acctSec textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;min-height:96px;resize:vertical;width:100%}
@@ -150,7 +150,7 @@ body{padding-bottom:calc(12px + var(--safe-b))}
 #acctSec .plan b{font-size:16px}#acctSec .plan .pr{font:800 22px var(--display,inherit)}
 #acctSec .plan ul{margin:0;padding-left:18px;color:var(--muted)}
 #acctSec .todo{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
-#acctSec .tag{font:700 11px ui-monospace,Menlo,monospace;padding:2px 8px;border-radius:6px;background:#E8A317;color:#2A1A00;align-self:flex-start}
+#acctSec .tag{font:700 14px ui-monospace,Menlo,monospace;padding:2px 8px;border-radius:6px;background:#E8A317;color:#2A1A00;align-self:flex-start}
 #acctSec .toggle{display:flex;gap:10px;align-items:center;min-height:44px}
 #acctSec .acts{display:flex;gap:8px;flex-wrap:wrap}
 #pane-track .overview{display:flex;flex-direction:column;gap:14px}
@@ -168,11 +168,11 @@ body{padding-bottom:calc(12px + var(--safe-b))}
 .mchip.m-remote{background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);border-color:transparent}
 .mchip.m-hybrid{background:color-mix(in srgb,var(--accent2) 18%,transparent);color:var(--ink);border-color:transparent}
 .mchip.m-onsite{background:var(--bg);color:var(--muted)}
-.stchip{display:inline-block;margin:4px 0 0;padding:2px 9px;border-radius:999px;font:600 11px var(--mono,inherit);white-space:nowrap;border:1px solid var(--line);background:var(--bg);color:var(--muted);width:max-content}
+.stchip{display:inline-block;margin:4px 0 0;padding:2px 9px;border-radius:999px;font:600 14px var(--mono,inherit);white-space:nowrap;border:1px solid var(--line);background:var(--bg);color:var(--muted);width:max-content}
 .stchip.st-sent,.stchip.st-accepted{background:color-mix(in srgb,#1f9d55 16%,transparent);color:#1b7a44;border-color:transparent}
 .stchip.st-finish{background:color-mix(in srgb,var(--accent2) 18%,transparent);color:var(--ink);border-color:transparent}
 .stchip.st-interview{background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);border-color:transparent}
-.joblinks{display:flex;flex-wrap:wrap;gap:0 14px;margin-top:2px}.joblinks .linkbtn{font-size:13.5px;text-align:left}
+.joblinks{display:flex;flex-wrap:wrap;gap:0 14px;margin-top:2px}.joblinks .linkbtn{font-size:14px;text-align:left}
 #aEeo{display:block;border-top:1px solid var(--line);padding-top:6px}
 #aElig{display:flex;flex-direction:column;gap:10px}
 #tBox{display:flex;flex-direction:column;gap:8px}
@@ -189,7 +189,7 @@ body{padding-bottom:calc(12px + var(--safe-b))}
 .nomiles{display:none!important}
 .px-dup{display:none!important}
 .mgr{margin-top:14px;border-top:1px solid var(--line);padding-top:4px}
-.mgr summary{cursor:pointer;min-height:44px;display:flex;align-items:center;color:var(--muted);font-weight:600;font-size:13.5px}
+.mgr summary{cursor:pointer;min-height:44px;display:flex;align-items:center;color:var(--muted);font-weight:600;font-size:14px}
 .mgr summary:focus-visible,.dangerlink:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .dangerlink{color:#B3261E;text-decoration:underline;min-height:44px;font-weight:600;font-size:14px;padding:0}
 @media (prefers-color-scheme: dark){.dangerlink{color:#FF8A80}}
@@ -205,7 +205,7 @@ body{padding-bottom:calc(12px + var(--safe-b))}
 .npsb input:focus-visible+span{outline:3px solid var(--accent);outline-offset:2px}
 .npsend{display:flex;justify-content:space-between;gap:10px}
 /* form polish: labels sit directly on the page (no white boxes), softer inputs, clear focus */
-.field label:not(.chip){background:none;color:var(--muted);font-weight:600;font-size:12.5px;letter-spacing:.02em}
+.field label:not(.chip){background:none;color:var(--muted);font-weight:600;font-size:14px;letter-spacing:.02em}
 .checks label{background:var(--surface)}
 .field input[type=text],.field input[type=number],.field input[type=tel],.field select,#acctSec textarea,#acctSec input[type=datetime-local],#acctSec input[type=date]{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;color:var(--ink);font:inherit;transition:border-color .15s,box-shadow .15s;width:100%}
 .field input:focus,.field select:focus,#acctSec textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}
@@ -225,12 +225,12 @@ body{padding-bottom:calc(12px + var(--safe-b))}
 #wzMsg:empty{display:none}
 .wz-off{display:none!important}
 #wzTop{display:flex;flex-direction:column;gap:8px}
-.wzRow{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font:600 12.5px var(--mono);color:var(--muted)}
+.wzRow{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font:600 14px var(--mono);color:var(--muted)}
 .wzBar{height:8px;border-radius:999px;background:var(--line);overflow:hidden}
 .wzBar i{display:block;height:100%;background:linear-gradient(135deg,var(--accent),var(--accent2));transition:width .25s}
 .wzDots{list-style:none;margin:0;padding:0;display:flex;gap:6px}
 .wzDots li{flex:1;min-width:0}
-.wzDots button{width:100%;min-height:44px;border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:12px;font-weight:600;font-size:13px;display:flex;align-items:center;justify-content:center;gap:6px;padding:4px 6px}
+.wzDots button{width:100%;min-height:44px;border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:12px;font-weight:600;font-size:14px;display:flex;align-items:center;justify-content:center;gap:6px;padding:4px 6px}
 .wzDots button .t{display:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .wzDots button[data-done="true"]::after{content:"\\2713";color:var(--yes)}
 .wzDots button[aria-current="step"]{background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);border-color:transparent}
@@ -239,22 +239,22 @@ body{padding-bottom:calc(12px + var(--safe-b))}
 @media (min-width:640px){.wzDots button .t{display:inline}}
 #form.wz h3#secTitle{font:800 22px var(--display);letter-spacing:-.01em;text-transform:none;color:var(--ink);margin:6px 0 0}
 #form.wz p.lead{font-size:15px}
-.wzUse{padding:10px 12px;border-radius:12px;background:var(--surface);border:1px solid var(--line);font-size:13px;color:var(--muted)}
+.wzUse{padding:10px 12px;border-radius:12px;background:var(--surface);border:1px solid var(--line);font-size:14px;color:var(--muted)}
 .wzUse b{color:var(--ink);font-weight:600}
 #wzFoot{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 #wzFoot .btn{min-height:48px;padding:10px 22px}
 #wzFoot .grow{flex:1}
 #wzPrev{display:none;flex-direction:column;gap:10px}
-#wzPrev .pvh{font:800 12px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+#wzPrev .pvh{font:800 14px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 #wzPrev .pv{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:12px;box-shadow:var(--shadow)}
 #wzPrev .pvTop{display:flex;gap:12px;align-items:center}
 #wzPrev .pvAv{flex:none;width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);display:grid;place-items:center;font:800 18px var(--display)}
 #wzPrev .pvTop b{display:block;font:800 17px/1.2 var(--display);overflow-wrap:anywhere}
-#wzPrev .pvTop span{color:var(--muted);font-size:13.5px;overflow-wrap:anywhere}
-#wzPrev .pvMeta{font:500 13px var(--mono);color:var(--muted)}
+#wzPrev .pvTop span{color:var(--muted);font-size:14px;overflow-wrap:anywhere}
+#wzPrev .pvMeta{font:500 14px var(--mono);color:var(--muted)}
 #wzPrev .chips{gap:6px}
-#wzPrev .chip{font-size:12px;padding:3px 10px}
-#wzPrev ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px;font-size:13.5px}
+#wzPrev .chip{font-size:14px;padding:3px 10px}
+#wzPrev ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px;font-size:14px}
 #wzPrev li{display:flex;justify-content:space-between;gap:10px;border-top:1px solid var(--line);padding-top:7px}
 #wzPrev li span:first-child{color:var(--muted);flex:none}
 #wzPrev li span:last-child{text-align:right;overflow-wrap:anywhere;min-width:0}
@@ -283,18 +283,18 @@ input[type=range]{accent-color:var(--accent);min-height:44px}
 #aEeo>.eeoBody{display:flex;flex-direction:column;gap:10px;padding-top:6px}
 #banner:not([hidden]){display:flex!important}
 #locAsk{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:100%;max-width:620px}
-#locAsk p{margin:0;color:var(--muted);font-size:13.5px}
+#locAsk p{margin:0;color:var(--muted);font-size:14px}
 #locAsk .acts{display:flex;gap:8px;flex-wrap:wrap}
 /* on a phone: the title, at most two lines of text and the two buttons side by side, so the first job card keeps its place below */
 #locAsk.phone{padding:10px 12px;gap:6px}
-#locAsk.phone p{font-size:13px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+#locAsk.phone p{font-size:14px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 #locAsk.phone .acts{flex-wrap:nowrap}
 #locAsk.phone .acts .btn{flex:1}
-@media (max-height:740px){.swipecol{gap:8px}.tips{padding:6px 10px!important;font-size:12.5px!important;line-height:1.35}.banner{padding:4px 10px!important;font-size:12px!important;line-height:1.3}.banner button{padding:4px 0!important;min-height:32px}#locAsk{padding:8px 12px;gap:4px;border-radius:12px}#locAsk b{font-size:13.5px}#locAsk p{font-size:12px;line-height:1.35}#locAsk .acts .btn{min-height:34px;padding:5px 14px;font-size:13.5px}.filters button{padding:4px 2px!important;min-height:32px}}
+@media (max-height:740px){.swipecol{gap:8px}.tips{padding:6px 10px!important;font-size:14px!important;line-height:1.35}.banner{padding:4px 10px!important;font-size:14px!important;line-height:1.3}.banner button{padding:4px 0!important;min-height:32px}#locAsk{padding:8px 12px;gap:4px;border-radius:12px}#locAsk b{font-size:14px}#locAsk p{font-size:14px;line-height:1.35}#locAsk .acts .btn{min-height:34px;padding:5px 14px;font-size:14px}.filters button{padding:4px 2px!important;min-height:32px}}
 #fMilesWrap.nearbox{display:flex;flex-direction:column;gap:6px;margin-top:8px}
 #fMilesWrap .rngrow{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
 #fMilesWrap .rngrow b{font-size:15px}
-#fMilesWrap .rngrow .m{color:var(--muted);font-size:12px}
+#fMilesWrap .rngrow .m{color:var(--muted);font-size:14px}
 #fLoc{display:flex;flex-direction:column;gap:6px;align-items:flex-start;margin-top:4px}
 @media (max-width:480px){.hdrbtn .em{display:none}.hdrbtn{padding:5px;max-width:none}}
 /* taps and focus: the same rule as every UAply page (shared/uaply-focus.css) */
@@ -307,6 +307,9 @@ html{-webkit-tap-highlight-color:transparent}a,button,input,select,textarea,summ
      the box scrolls inside itself with its buttons pinned to its bottom edge
    - a message's action (Undo, OK) is a 44 px target, the account and hiring buttons in the header 44 px tall */
 @media (max-height:740px){
+ /* the card's "View original posting" link: a 48 px tall tap area, so a card that sits a fraction of a pixel off (a transform, a
+    rounding) never measures it under 44 */
+ .card .linkbtn[data-open]{position:relative}.card .linkbtn[data-open]::after{content:"";position:absolute;left:0;right:0;top:50%;height:48px;transform:translateY(-50%)}
  .filters button,.banner button,#locAsk .acts .btn{position:relative}
  .filters button::after,.banner button::after,#locAsk .acts .btn::after{content:"";position:absolute;left:0;right:0;top:50%;height:46px;transform:translateY(-50%)}
  /* with no "example profile" line above them (a person's own profile, after sign-up) the job type buttons are the first thing in the
@@ -385,6 +388,7 @@ function apply(w,host){
   phoneField.innerHTML='<label for="pPhone">Phone</label><input type="tel" id="pPhone" autocomplete="tel" maxlength="20" placeholder="+1 555 123 4567"><small id="pPhoneErr" role="alert"></small>';
   emailField.after(phoneField);FIELDS.settings.push("pPhone");
   var cur="svc",sub={svc:"job",dash:"overview",prof:"settings"},going=false;
+  var viewStack=[],viewNow=null,backing=false,exitAt=0;   /* the screens visited, for the phone's Back button (see __uaplyBack) */
   function label(k,v){if(k==="prof"&&SUB_ALIAS[v])v=SUB_ALIAS[v];var r="";SECS[k].items.forEach(function(i){if(i[0]===v)r=i[1]});return r}
 
   var st=d.createElement("style");st.textContent=CSS;d.head.appendChild(st);
@@ -416,10 +420,18 @@ function apply(w,host){
   /* on the job deck the message also clears the Pass / Undo / Apply row: it used to sit on top of it (390x844: the message's
      Undo link lay on the Apply button, so a tap on Apply right after a pass undid the pass). Worked out each time a message appears. */
   function toastAt(){
-    var a=d.querySelector("#pane-swipe:not([hidden]) .actions"),nr=nav.getBoundingClientRect(),y=nr.height?nr.top:w.innerHeight;
+    var a=d.querySelector("#pane-swipe:not([hidden]) .actions"),nr=nav.getBoundingClientRect(),y=nr.height?nr.top:w.innerHeight,side=null;
     /* only a row along the bottom: on a turned phone the row is a column at the top right, and the message would have jumped over the header */
-    if(a){var r=a.getBoundingClientRect();if(r.height&&r.bottom>0&&r.top<y&&r.top>w.innerHeight/2)y=Math.min(y,r.top)}
+    if(a){var r=a.getBoundingClientRect();if(r.height&&r.bottom>0&&r.top<y&&r.top>w.innerHeight/2)y=Math.min(y,r.top);
+      /* a turned phone (Galaxy walk, October 23): the message across the bottom lay on whatever the deck column had scrolled there (a
+         filter chip, the location card's Not now), so a tap on it right after a Pass hit the message's Undo. There it sits in the
+         buttons' own column instead, under Pass / Undo / Apply, as wide as that column: nothing of the deck is under it */
+      else if(r.height&&r.top<w.innerHeight/2&&r.left>w.innerWidth/2)side=r}
     d.documentElement.style.setProperty("--toast-at",(Math.max(0,Math.round(w.innerHeight-y))+8)+"px");
+    [].forEach.call(d.querySelectorAll(".toast"),function(t){
+      if(side){t.style.left="auto";t.style.transform="none";t.style.right=Math.max(0,Math.round(w.innerWidth-side.right))+"px";t.style.minWidth="0";t.style.width=t.style.maxWidth=Math.round(side.width)+"px";t.style.flexWrap="wrap"}
+      else{t.style.left=t.style.transform=t.style.right=t.style.minWidth=t.style.width=t.style.maxWidth=t.style.flexWrap=""}
+    });
   }
   new w.MutationObserver(function(ms){for(var i=0;i<ms.length;i++)for(var j=0;j<ms[i].addedNodes.length;j++){var n=ms[i].addedNodes[j];if(n.nodeType===1&&(n.classList.contains("toast")||n.querySelector&&n.querySelector(".toast"))){toastAt();return}}}).observe(d.body,{childList:true,subtree:true});
   /* how much of the top card lies under the sticky Pass / Undo / Apply row (see #deck[data-covered] in the CSS). Worked out again when
@@ -463,6 +475,8 @@ function apply(w,host){
       b.setAttribute("aria-current",k===cur?"true":"false");
       b.querySelector("small").textContent=label(k,sub[k]);
     });
+    var vk=cur+":"+sub[cur];
+    if(vk!==viewNow){if(viewNow&&!backing){viewStack.push(viewNow);if(viewStack.length>30)viewStack.shift()}viewNow=vk;exitAt=0}
   }
   function closeMenus(except){
     nav.querySelectorAll(".nwrap").forEach(function(wr){
@@ -547,6 +561,10 @@ function apply(w,host){
       if(x.status==="needs_answers")return '<small class="sent todo">Not sent yet: '+e(o.j.co)+'\'s form asks something only you can answer. '+again+'Answer now</button></small>';
       return "";
     }
+    /* the date beside the status (October 23): "Sent" only for an application that went (UAply's send, a test send, the person's own on the
+       employer's site); "Saved" for everything else (a hand-off, one waiting, one not sent yet) */
+    function whenLine(o){var x=o.x.sent,went=!!(x&&(x.status==="sent"||x.status==="delivered_test"||x.status==="self"));
+      return (went?"Sent ":"Saved ")+new Date(went&&x.at?x.at:o.x.at).toLocaleDateString(undefined,{month:"short",day:"numeric"})}
     /* what the row is at a glance: the tracking stage once the person set one, otherwise what happened to the application */
     function isHandoff(o){var x=o.x.sent;return !x||x.status==="handoff"}     /* nothing was sent (no server said so): finish on their site */
     function stChip(o){
@@ -568,7 +586,7 @@ function apply(w,host){
     function row(o,acts,view){
       var t=A.tone(o.x.pct),e=A.esc;
       return '<div class="row"><div class="logo" aria-hidden="true" style="background:hsl('+A.hue(o.j.id)+' 60% 46%)">'+e(o.j.co.charAt(0))+'</div><div class="info"><b>'+e(o.j.role)+'</b>'+modeChip(o.j)+'<small>'+e(o.j.co)+' · '+e(o.j.loc)+' · '+TYPE_LABEL[o.j.type||"job"]+(o.j.live&&w.__uaplyRouteWord?'<span class="rtword"> · '+e(w.__uaplyRouteWord(o.j))+'</span>':'')+'</small>'+
-        (view!=="passed"?'<small>Applied '+new Date(o.x.at).toLocaleDateString(undefined,{month:"short",day:"numeric"})+'</small>':'')+
+        (view!=="passed"?'<small>'+whenLine(o)+'</small>':'')+
         detLine(o,view)+(view!=="passed"?stChip(o):'')+sentLine(o)+(view!=="passed"?jobLinks(o):'')+'</div><span class="pill tone-'+t+'">'+o.x.pct+'%</span>'+
         '<div class="acts">'+extraActs(o,acts,view).map(function(a,i){return '<button type="button" class="btn'+(i?' ghost':'')+'" data-act="'+a[0]+'" data-id="'+o.j.id+'" aria-label="'+a[1]+': '+e(o.j.role)+' at '+e(o.j.co)+'">'+a[1]+'</button>'}).join("")+'</div>'+(OPEN[o.j.id]&&view!=="passed"?detForm(o,view):"")+'</div>';
     }
@@ -632,12 +650,16 @@ function apply(w,host){
   function assistOnly(p,sc,asked){var o={answers:{}},own=Object.prototype.hasOwnProperty;if(!p||!sc)return o;(sc.keys||[]).forEach(function(k){if(own.call(ASSIST_NEED,k))ASSIST_NEED[k].split(" ").forEach(function(f){if(own.call(p,f)&&f!=="answers"&&f!=="resume")o[f]=p[f]})});var want={};(sc.answerKeys||[]).concat(asked||[]).forEach(function(k){want[String(k)]=1});Object.keys(p.answers||{}).forEach(function(k){if(own.call(want,k))o.answers[k]=p.answers[k]});if(sc.resume===true&&p.resume)o.resume=p.resume;return o}
   function assistHosts(cfg,url){var out=[],add=function(h){h=String(h||"").toLowerCase();if(/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(h)&&out.indexOf(h)<0)out.push(h)},s=cfg&&cfg.systems||{};Object.keys(s).forEach(function(k){var hs=s[k]&&s[k].hosts;if(Array.isArray(hs))hs.forEach(add)});try{var u=new w.URL(url);if(u.protocol==="https:")add(u.hostname)}catch(e){}return out}
   w.__uaplyAssistShape=assistShape;w.__uaplyAssistOnly=assistOnly;w.__uaplyAssistHosts=assistHosts;   /* for the browser tests */
+  /* Automatic submit needs the person's own tick, on record at the server for the current agreement (consent_api.py): the answer of the
+     agreement just given on this device (__uaplyConsentRec), else what /api/auth/me said. Without it the app never presses Submit */
+  function autoConsent(){if(SRV.user&&SRV.user.sendForMe===false)return false;var c=("__uaplyConsentRec" in w)?w.__uaplyConsentRec:(SRV.user&&SRV.user.consent);return !!(c&&c.v===w.__uaplyConsentV&&c.auto===true)}
+  w.__uaplyAutoConsent=autoConsent;   /* for the browser test */
   var assistBusy=false;
   function assistedApply(j,AP){
     var prof=w.__uaplyAssistProfile&&w.__uaplyAssistProfile(j);if(!prof||assistBusy)return false;
     assistBusy=true;var sys=atsOf(j.url),url=handoffURL(j.url);
     Promise.all([w.fetch("/uaply-assist.js").then(function(r){if(!r.ok)throw 0;return r.text()}),w.fetch("/assist-systems.json").then(function(r){return r.ok?r.json():{}}).catch(function(){return {}})]).then(function(r){
-      var base={url:url,engine:r[0],allow:assistHosts(r[1],url),job:{co:j.co,role:j.role},system:sys,mode:assistMode(r[1],sys)};
+      var base={url:url,engine:r[0],allow:assistHosts(r[1],url),job:{co:j.co,role:j.role},system:sys,mode:assistMode(r[1],sys)==="automatic"&&autoConsent()?"automatic":"assisted"};
       /* the bridge: the app reads the form first (scan, nothing changed, with stand-ins for the person's details) and returns what the
          profile cannot answer and which profile items the form asks for; UAply asks those in its own question box (required first, then
          the optional ones, which may be left blank), keeps the answers like every question-box answer, and only then opens the form,
@@ -664,6 +686,18 @@ function apply(w,host){
     },function(){assistBusy=false;if(w.__uaplyOpen)w.__uaplyOpen(handoffURL(j.url))});   /* the app could not open it: the employer's page as before */
     return true;
   }
+  /* one swipe (Saif, October 23): in the phone app, a swipe right that is a hand-off on a hiring system the app fills opens that employer's
+     own form at once, filled and scrolled to the check or Submit ("One tap to finish", shared/uaply-assist.js); the person completes any
+     check and taps Submit, and Job Tracker says Sent on the confirmation page. Backing out leaves it as Finish on their site. Not on the
+     website, not for SmartRecruiters (its bot wall) or an employer's own careers site: those wait for Finish on their site */
+  var ONE_TAP_SYS={greenhouse:1,lever:1,workable:1,ashby:1};
+  w.__uaplyOneTap=function(j){
+    if(!j||!j.url||!/^https:\/\//.test(j.url)||!ONE_TAP_SYS[atsOf(j.url)])return false;
+    if(SRV.user&&SRV.user.sendForMe===false)return false;   /* Send applications for me is off: the swipe only saves the job */
+    var AP=plug("UAplyAssist");if(!AP)return false;
+    w.__uaplyOneTapAt=Date.now();          /* for the measurement in tools/ui-apply-paths.js: swipe answered, form asked for */
+    return assistedApply(j,AP);
+  };
   function finishOnSite(id){
     var j=A.JOBS.filter(function(x){return x.id===id})[0];if(!j||!j.url||!/^https:\/\//.test(j.url))return;
     var AP=plug("UAplyAssist");if(AP&&assistedApply(j,AP))return;
@@ -826,7 +860,7 @@ function apply(w,host){
   w.__uaplyHide=function(j){
     if(w.__uaplyHideMore&&w.__uaplyHideMore(j))return true;   /* set by Hiring mode (sandbox): closed postings, eligibility */
     var p=A.S.profile;
-    if(acct.fSal&&p.salary&&j.sal&&j.sal.length>1&&j.sal[1]<p.salary)return true;
+    if(acct.fSal&&p.salary&&j.sal&&j.sal.length>1&&j.salUnit!=="hour"&&j.sal[1]<p.salary)return true;   /* hourly pay is never measured against a yearly minimum */
     if(acct.fYrs!=="any"&&j.yrs>(+p.years||0)+(+acct.fYrs))return true;
     var co=String(j.co).toLowerCase(),hay=(String(j.role)+" "+(j.skills||[]).join(" ")).toLowerCase();
     if(list(acct.fCo).some(function(x){return co.indexOf(x)>-1})||list(acct.fKw).some(function(x){return hay.indexOf(x)>-1}))return true;
@@ -1295,8 +1329,12 @@ function apply(w,host){
   }
 
   /* ---------- phone-app features (App Store / Google Play build in mobile/). They switch on only when the page runs
-     inside the Capacitor app; on the website every helper quietly does nothing or uses the browser equivalent. ---------- */
-  function cap(){var c=w.Capacitor||(w.parent&&w.parent!==w&&w.parent.Capacitor);return c&&c.isNativePlatform&&c.isNativePlatform()?c:null}
+     inside the Capacitor app; on the website every helper quietly does nothing or uses the browser equivalent.
+     The TOP page's bridge comes first, the frame's only when there is no top one. The app runs in a frame, and the native side answers
+     plugin calls from the top page (the main frame) only. Android (Capacitor 7) also puts a bridge into the same-origin app frame, but
+     every plugin call from it is dropped with no answer (MessageHandler.java: "Plugin execution is allowed in Main Frame only"), so
+     calling it would never add the Back listener and never finish an export. iPhone puts its bridge in the main frame only. ---------- */
+  function cap(){var c=null;try{if(w.parent&&w.parent!==w)c=w.parent.Capacitor||null}catch(e){}c=c||w.Capacitor;return c&&c.isNativePlatform&&c.isNativePlatform()?c:null}
   function plug(name){var c=cap();return c&&c.Plugins&&c.Plugins[name]||null}
   function noteId(id){return Math.abs(+id)%2000000000||1}
   /* two reminders for each interview: the evening before (6 pm) and one hour before */
@@ -1332,9 +1370,41 @@ function apply(w,host){
   },0);
   function icsTime(t){function z(n){return (n<10?"0":"")+n}return t.getUTCFullYear()+z(t.getUTCMonth()+1)+z(t.getUTCDate())+"T"+z(t.getUTCHours())+z(t.getUTCMinutes())+"00Z"}
   function icsText(s){return String(s).replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\r?\n/g,"\\n")}
+  /* the three export buttons (calendar .ics, applications CSV, backup JSON). On the website: a normal download. The phone apps' web
+     views ignore downloads, so there the file is written to the app's own cache folder (@capacitor/filesystem; private to the app,
+     never shared storage, as the backup holds the whole profile) and the phone's share sheet opens to save or send it. An app build
+     without that plugin copies the text instead and says so; it never says "Saved" for a file it did not write. */
   function download(name,type,text){
+    if(cap())return appExport(name,text);
     var b=new w.Blob([text],{type:type}),u=w.URL.createObjectURL(b),a=d.createElement("a");
     a.href=u;a.download=name;d.body.appendChild(a);a.click();a.remove();setTimeout(function(){w.URL.revokeObjectURL(u)},4000);
+  }
+  function appExport(name,text){
+    var FS=plug("Filesystem"),SH=plug("Share");
+    if(!FS||!SH||!FS.writeFile)return copyExport(name,text);
+    /* writing the file gets 8 seconds: a bridge that never answers must not leave the button doing nothing, so the text is copied
+       instead. The share sheet has no time limit: the person may take as long as they like in it. */
+    var tm,late=new Promise(function(ok,no){tm=setTimeout(function(){no(new Error("no answer"))},8000)});
+    return Promise.race([Promise.resolve().then(function(){return FS.writeFile({path:name,data:text,directory:"CACHE",encoding:"utf8"})}),late]).then(function(r){
+      clearTimeout(tm);
+      if(!r||!r.uri)throw new Error("no file");
+      return Promise.resolve(SH.share({title:name,dialogTitle:"Save or send "+name,files:[r.uri]})).then(function(){return "shared"},function(e){
+        if(/cancel/i.test(String(e&&e.message||e)))return "canceled";   /* the person closed the share sheet: nothing to say */
+        throw e;
+      });
+    }).catch(function(){clearTimeout(tm);return copyExport(name,text)});
+  }
+  function copyExport(name,text){
+    return copyText(text).then(function(ok){
+      showToastNote(ok?"Copied "+name+". Paste it into a note or email to keep it.":"This version of the app cannot save "+name+". Nothing was saved.");
+      return ok?"copied":"failed";
+    });
+  }
+  function copyText(t){
+    function old(){try{var ta=d.createElement("textarea");ta.value=t;ta.setAttribute("readonly","");ta.style.cssText="position:fixed;top:0;left:0;opacity:0";d.body.appendChild(ta);ta.select();var ok=d.execCommand("copy");ta.remove();return !!ok}catch(e){return false}}
+    var C=w.navigator.clipboard;
+    if(C&&C.writeText)return Promise.resolve().then(function(){return C.writeText(t)}).then(function(){return true},function(){return old()});
+    return Promise.resolve(old());
   }
   function exportIcs(id){
     var job=A.JOBS.filter(function(j){return j.id===id})[0],a=ap(id),t=new Date(a.when);
@@ -1973,6 +2043,14 @@ function apply(w,host){
   }
   acctSec.addEventListener("change",function(e){
     var t=e.target;
+    if(t.id==="aSendForMe"){var want=!!t.checked;t.disabled=true;
+      apiPost("/api/auth/send-for-me",{on:want}).then(function(r){
+        if(r.ok&&r.j&&SRV.user)SRV.user.sendForMe=r.j.sendForMe!==false;
+        renderAcct("account");
+        msg(r.ok?(want?"Send applications for me is on: a swipe right sends your application wherever UAply can.":"Send applications for me is off: swipes right only save the job to Job Tracker.")
+          :(r.j&&r.j.error)||"Could not change it. Try again.");
+      });
+      return}
     if(t.id==="aEnf"){acct.enforce=t.checked;saveA();msg(acct.enforce?"Limits are now enforced.":"Limits are off.")}
     else if(t.id==="aImp"&&t.files[0]){
       var g=t.files[0];if(g.size>3145728){msg("That file is too large.");return}
@@ -2016,7 +2094,21 @@ function apply(w,host){
     else if(a==="wipe"){
       if(b.getAttribute("data-sure")!=="1"){b.setAttribute("data-sure","1");b.textContent="Click again to delete everything";return}
       [w.__uaplyKey,AK,NK,LK].forEach(function(k){try{w.localStorage.removeItem(k)}catch(x){}});
-      w.location.reload();
+      /* in the phone apps the export files stay in the app's cache folder after the share sheet (the backup holds the whole profile),
+         so they go too: uaply-backup.json, uaply-applications.csv and every interview-*.ics. A delete that fails (a file never made) is
+         ignored, and the page reloads once all of them have answered (at most 8 seconds, like the export, if the bridge never answers).
+         They are not deleted when the share sheet returns: the app the person picked may still be reading the file then. */
+      var FS=plug("Filesystem");
+      if(!FS||!FS.deleteFile){w.location.reload();return}
+      b.disabled=true;
+      var gone=false,reload=function(){if(!gone){gone=true;w.location.reload()}};
+      var del=function(p){return Promise.resolve().then(function(){return FS.deleteFile({path:p,directory:"CACHE"})}).catch(function(){})};
+      var jobs=[del("uaply-backup.json"),del("uaply-applications.csv")];
+      if(FS.readdir)jobs.push(Promise.resolve().then(function(){return FS.readdir({path:"",directory:"CACHE"})}).then(function(r){
+        return Promise.all(((r&&r.files)||[]).map(function(f){return typeof f==="string"?f:(f&&f.name)||""}).filter(function(n){return /^interview-[^\/]*\.ics$/.test(n)}).map(del));
+      }).catch(function(){}));
+      Promise.all(jobs).then(reload,reload);
+      setTimeout(reload,8000);
     }
   });
   function importBackup(txt){
@@ -2280,6 +2372,16 @@ function apply(w,host){
       '<div class="acts"><button type="button" class="btn" data-auth="sdelsend">Send and continue</button><button type="button" class="btn ghost" data-auth="sdelskip">Skip survey</button></div>'+
       '<div class="acts"><button type="button" class="linkbtn" data-auth="sdelno">Keep my account</button></div></div>';
   }
+  /* Send applications for me (Terms, section 3): on, a swipe right sends the application wherever UAply can; off, every swipe right only
+     saves the job to Job Tracker, and the server honors it (uaply_api.submit), so it holds on every device. Kept on the account */
+  function sendForMeHTML(){
+    var on=!(SRV.user&&SRV.user.sendForMe===false);
+    return '<div class="field" id="aSendWrap" style="margin:4px 0"><label for="aSendForMe" style="display:flex;gap:10px;align-items:center;min-height:44px;cursor:pointer">'+
+      '<input type="checkbox" id="aSendForMe" role="switch" aria-describedby="aSendNote"'+(on?' checked':'')+' style="min-width:22px;min-height:22px;margin:0"><b>Send applications for me</b></label>'+
+      '<small id="aSendNote">'+(on?'On: a swipe right sends your application wherever UAply can (see the Terms, section 3). Turn it off and swipes right only save the job to Job Tracker.'
+        :'Off: swipes right only save the job to Job Tracker. Nothing is sent to any employer for you until you turn it on again.')+'</small></div>';
+  }
+  w.__uaplySendOff=function(){return !!(SRV.user&&SRV.user.sendForMe===false)};
   function deleteHTML(){
     if(AUI.survey)return surveyHTML();
     if(AUI.delOpen){
@@ -2300,7 +2402,7 @@ function apply(w,host){
     if(!SRV.user&&AUI.forgot&&AUI.sMode==="in")return forgotHTML();
     if(SRV.user)return '<div class="plan" style="display:flex;flex-direction:column;gap:8px"><b>You are signed in</b><small>'+E(SRV.user.email)+(SRV.user.emailVerified===false?' · email not verified yet':' · email verified')+'</small>'+verifyHTML()+
       '<p class="note" style="margin:0">'+(SRV.user.emailVerified===false?'Once your email is verified, each swipe right sends a confirmation to it':'Every time you swipe right, a confirmation goes to this email')+(SRV.canEmail?'':SRV.testInbox?' (no real email is connected here yet, so it is saved in the <a href="/outbox" target="_blank" rel="noopener noreferrer">test inbox</a>; <a href="/setup#gmail" target="_blank" rel="noopener noreferrer">connect Gmail</a> to send real ones)':' (email is not switched on for this site yet, so no confirmation goes out for now)')+'.</p>'+
-      (AUI.survey||AUI.delOpen?'':'<div class="acts"><button type="button" class="btn ghost" data-auth="sout">Sign out</button></div>'+changeHTML())+
+      (AUI.survey||AUI.delOpen?'':sendForMeHTML()+'<div class="acts"><button type="button" class="btn ghost" data-auth="sout">Sign out</button></div>'+changeHTML())+
       deleteHTML()+
       '</div>';
     var up=AUI.sMode!=="in";
@@ -2672,6 +2774,44 @@ function apply(w,host){
     if(t==="profile")section(sub.prof);
     refresh();
   };
+  /* the phone's Back button (Android; @capacitor/app). Without a listener Capacitor closes the whole app, because UAply changes
+     screens inside one page. Back now closes the top box or menu, then goes back one screen (Profile, Job Tracker, a job type),
+     then to the job cards; on the job cards it asks once and leaves only on a second press within 2 seconds.
+     Returns what it did, for tools/ui-native-back-export.js. */
+  function topDialog(){
+    var ds=[].slice.call(d.querySelectorAll('[role="dialog"]')).filter(function(x){return !x.closest("[hidden]")&&x.getClientRects().length>0});
+    return ds[ds.length-1]||null;
+  }
+  w.__uaplyBack=function(){
+    var dl=topDialog();
+    if(dl){   /* UAply's boxes close on Escape, the rating question on its Close button; a box that needs an answer stays */
+      exitAt=0;dl.dispatchEvent(new w.KeyboardEvent("keydown",{key:"Escape",bubbles:true,cancelable:true}));
+      if(topDialog()===dl){var x=dl.querySelector('button[aria-label="Close"]');if(x)x.click()}
+      return "dialog";
+    }
+    if([].some.call(nav.querySelectorAll(".nmenu"),function(m){return !m.hidden})){closeMenus();exitAt=0;return "menu"}
+    var to=viewStack.pop();
+    while(to&&to===viewNow)to=viewStack.pop();
+    if(!to&&cur!=="svc")to="svc:"+sub.svc;
+    if(to){
+      var c=to.slice(0,to.indexOf(":")),v=to.slice(to.indexOf(":")+1);
+      backing=true;try{closeMenus();sub[c]=v;cur=c;go(c)}finally{backing=false}
+      return "view";
+    }
+    if(exitAt&&Date.now()-exitAt<2000){exitAt=0;var AP=plug("App");if(AP&&AP.exitApp)Promise.resolve(AP.exitApp()).catch(function(){});return "exit"}
+    exitAt=Date.now();showToastNote("Press Back again to leave UAply.");
+    return "ask";
+  };
+  /* one listener per bridge: the bridge belongs to the top page and outlives this frame, and "Delete all my data" reloads only the
+     frame, so adding a listener on every load would run Back twice per press (quit at once on the job cards). The one listener calls
+     whichever page is current through c.__uaplyBackGo, which each load points at its own __uaplyBack. */
+  (function(){
+    var c=cap(),AP=plug("App");if(!c||!AP||!AP.addListener)return;
+    c.__uaplyBackGo=function(){return w.__uaplyBack()};
+    if(c.__uaplyBackOn)return;
+    c.__uaplyBackOn=true;
+    try{Promise.resolve(AP.addListener("backButton",function(){if(typeof c.__uaplyBackGo==="function")c.__uaplyBackGo()})).catch(function(){})}catch(e){}
+  })();
   section(sub.prof);
   refresh();
   /* de-duplication: experiments apply one after another in the same turn, so by the next tick we know whether the

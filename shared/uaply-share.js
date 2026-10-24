@@ -36,9 +36,9 @@ var CSS=`
 .ushr-g{width:1em;height:1em;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;flex:none}
 .card .chead{padding-right:52px}
 .ushr-ic{position:absolute;top:12px;right:12px;z-index:1;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;padding:0;border:1px solid var(--line);background:color-mix(in srgb,var(--surface) 80%,transparent);color:var(--ink);font-size:16px;cursor:pointer}
-.ushr-ic::after{content:"";position:absolute;left:50%;top:50%;width:44px;height:44px;transform:translate(-50%,-50%)}
+.ushr-ic::after{content:"";position:absolute;left:50%;top:50%;width:46px;height:46px;transform:translate(-50%,-50%)}   /* 46 px: the card's own transform once rounded a 44 px area to 43 after a Pass */
 .ushr-ic:hover{border-color:var(--accent);color:var(--accent)}
-.ushr-line{width:100%;max-width:620px;margin:0;display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)}
+.ushr-line{width:100%;max-width:620px;margin:0;display:flex;align-items:center;gap:6px;font-size:14px;color:var(--muted)}
 .ushr-line b{color:var(--ink)}
 .ushr-line .ushr-g{color:var(--accent);font-size:14px}
 .ushr-line .ushr-retry{position:relative;font-size:inherit;line-height:inherit;min-height:0;min-width:0;padding:0;vertical-align:baseline;text-decoration:underline;text-underline-offset:2px}
@@ -53,24 +53,24 @@ var CSS=`
 .ushr-tomb p{margin:0}
 .ushr-tomb .ushr-co{color:var(--muted)}
 .ushr-tomb .ushr-why{margin-top:10px}
-.ushr-st{display:inline-flex;gap:6px;align-items:center;font-weight:700;font-size:13px;color:var(--mid);background:var(--mid-bg);padding:4px 10px;border-radius:999px}
+.ushr-st{display:inline-flex;gap:6px;align-items:center;font-weight:700;font-size:14px;color:var(--mid);background:var(--mid-bg);padding:4px 10px;border-radius:999px}
 .ushr-sec h3{margin:6px 0 2px;font:800 18px/1.25 var(--display)}
-.ushr-sec p{margin:0;font-size:13px;color:var(--muted)}
+.ushr-sec p{margin:0;font-size:14px;color:var(--muted)}
 .ushr-sec .linkbtn{display:inline-flex;align-items:center;min-height:44px;font-size:14px;text-decoration:underline;text-underline-offset:3px}
 .ushr-row{display:flex;gap:12px;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px 14px;color:var(--ink);cursor:pointer;font:inherit;align-items:flex-start;min-height:46px}
 .ushr-row:hover{border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
 .ushr-row .logo{width:40px;height:40px;font-size:18px;flex:none}
 .ushr-row .ushr-bd{flex:1;min-width:0}
 .ushr-row b{display:block;font:700 15.5px/1.3 var(--display);overflow-wrap:anywhere}
-.ushr-row .ushr-m{display:block;font-size:13px;color:var(--muted)}
-.ushr-row .ushr-m2{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;margin-top:5px;font-size:13px}
+.ushr-row .ushr-m{display:block;font-size:14px;color:var(--muted)}
+.ushr-row .ushr-m2{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;margin-top:5px;font-size:14px}
 .ushr-row .ushr-age{font-weight:600;padding:1px 8px;border-radius:999px;background:var(--yes-bg);color:var(--yes)}
 .ushr-row .ushr-age.old{background:var(--bg);color:var(--muted)}
 .ushr-row .ushr-pay{font-weight:700}
 .ushr-row .ushr-rt{font-weight:600;color:var(--muted)}
 .ushr-row .ushr-rt.u{color:var(--yes)}
-.ushr-row .ushr-like{display:block;font-size:13px;margin-top:4px}
-.ushr-row .ushr-like b{display:inline;font:700 13px var(--body);color:var(--accent)}
+.ushr-row .ushr-like{display:block;font-size:14px;margin-top:4px}
+.ushr-row .ushr-like b{display:inline;font:700 14px var(--body);color:var(--accent)}
 .ushr-empty{padding:14px;border:1px dashed var(--line);border-radius:14px;color:var(--muted);text-align:center;margin:0}
 .ushr-rowic{display:inline-grid;place-items:center;vertical-align:middle;position:relative;width:30px;height:30px;margin-left:6px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-size:14px;padding:0;cursor:pointer}
 .ushr-rowic::after{content:"";position:absolute;inset:-7px}
@@ -172,7 +172,7 @@ function apply(w){
      the line says so, with Try again), then settled: "open" (in front), "seen" (already swiped), "closed" (the list is complete without it).
      Until it is settled the landing is kept in the top page's sessionStorage: ?job= is already off the address, so this is what lets Try
      again (a reload) or a rebuild of the frame pick it up again. SH.left: the friend chose to swipe on, so the closed screen stays away. */
-  var KEEP="uaply.share.landing",KEEP_MS=30*60000;
+  var KEEP=window.UAplyEnv.SHARE_KEY,KEEP_MS=30*60000;   /* the one name (shared/uaply-envs.js) */
   var SH={id:0,t:"",c:"",state:"",pins:[],closed:false,left:false,since:0,seen:""};
   function keep(){try{var st=w.top.sessionStorage;if(st)st.setItem(KEEP,JSON.stringify({id:SH.id,t:SH.t,c:SH.c,at:Date.now()}))}catch(e){}}
   function forget(){try{var st=w.top.sessionStorage;if(st)st.removeItem(KEEP)}catch(e){}}
@@ -282,7 +282,7 @@ function apply(w){
     return t1.concat(t2).slice(0,10);
   }
   function ageTxt(n){if(typeof n!=="number")return "Posting date not listed";return n<=0?"Posted today":n===1?"Posted 1 day ago":n<7?"Posted "+n+" days ago":n<14?"Posted 1 week ago":"Posted "+Math.floor(n/7)+" weeks ago"}
-  function payTxt(j){return j.sal&&j.sal[1]>0?A.money(j.sal[0])+"–"+A.money(j.sal[1]):""}
+  function payTxt(j){if(typeof w.uaPayText==="function")return w.uaPayText(j,1)||"Pay not listed";return j.sal&&j.sal[1]>0&&j.salUnit!=="hour"?A.money(j.sal[0])+"–"+A.money(j.sal[1])+" a year":"Pay not listed"}   /* as the posting gives it, with its unit */
   function rowHTML(x){
     var j=x.j,u=viaUAply(j),pay=payTxt(j),did="ushrD"+j.id;
     return '<button type="button" class="ushr-row" data-ushr-go="'+j.id+'" data-mode="'+esc(j.mode||"")+'" aria-label="'+esc(j.role)+' at '+esc(j.co)+'" aria-describedby="'+did+'">'+

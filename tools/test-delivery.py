@@ -61,7 +61,18 @@ HOOK = "http://127.0.0.1:%d/apply" % srv.server_address[1]
 
 # ---- a stand-in mail server ----
 mail_file = os.path.join(TMP, "mail.jsonl")
-smtp_port = int(sys.argv[1]) if len(sys.argv) > 1 else 2529           # another port can be given, so two test runs never collide
+def _free_port():
+    """A port nothing listens on now: a fixed default once met a stand-in mail server left running by another run, which took the
+    messages this test waits for."""
+    import socket as _so
+    s_ = _so.socket()
+    s_.bind(("127.0.0.1", 0))
+    p_ = s_.getsockname()[1]
+    s_.close()
+    return p_
+
+
+smtp_port = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1] != "0" else _free_port()   # a port can be given; else a free one
 proc = subprocess.Popen([sys.executable, os.path.join(HERE, "fake-smtp.py"), str(smtp_port), mail_file], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 time.sleep(1.5)
 
@@ -83,6 +94,17 @@ cfg = {"delivery": "live", "daily_limit": 50, "smtp": {"host": "127.0.0.1", "por
 uaply_api.config = lambda: cfg
 uaply_api.init("delivery")
 auth_api.init("delivery")
+
+def agreed_accounts(n):
+    """Accounts 1..n, each with the first-swipe agreement on record: no application leaves UAply without it (consent_api.py, 403 "consent")."""
+    import consent_api
+    for i in range(1, n + 1):
+        if not auth_api.user_by_id(i):
+            auth_api.signup_with_code("agreed.%d@example.com" % i, "agreed pass %d" % i, "198.51.100.%d" % (150 + i), True, verified=True)
+        auth_api.record_consent(i, consent_api.VERSION, "127.0.0.1", consent_api.digest(consent_api.full_text(False)), False)
+
+
+agreed_accounts(7)                   # the applicants below are accounts 1, 3 and 7
 
 jobs = {j["co"]: j for j in jobs_api.partner_jobs()}
 t("four partner jobs loaded", sorted(jobs), ["Both Co", "Email Only Co", "Hook Only Co", "Unsigned Hook Co"])

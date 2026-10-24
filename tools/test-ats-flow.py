@@ -48,6 +48,19 @@ time.sleep(1.2)
 cfg = {"delivery": "live", "smtp": {}, "daily_limit": 50}
 uaply_api.config = lambda: cfg
 uaply_api.init("atsflow")
+import auth_api  # noqa: E402
+auth_api.init("atsflow")
+
+def agreed_accounts(n):
+    """Accounts 1..n, each with the first-swipe agreement on record: no application leaves UAply without it (consent_api.py, 403 "consent")."""
+    import consent_api
+    for i in range(1, n + 1):
+        if not auth_api.user_by_id(i):
+            auth_api.signup_with_code("agreed.%d@example.com" % i, "agreed pass %d" % i, "198.51.100.%d" % (150 + i), True, verified=True)
+        auth_api.record_consent(i, consent_api.VERSION, "127.0.0.1", consent_api.digest(consent_api.full_text(False)), False)
+
+
+agreed_accounts(1)                   # the applicant below is account 1
 
 
 def received():

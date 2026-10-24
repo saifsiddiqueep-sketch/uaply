@@ -24,10 +24,11 @@ session is the HttpOnly cookie `uaply_<instance>_session` (`SameSite=Lax`, `Secu
 | `POST /api/auth/forgot` | `{email}` | **200** the same answer either way; the link is emailed after the answer. A public server without email: `{ok: false, delivery: "unavailable"}`. |
 | `POST /api/auth/reset`, `change-password`, `logout`, `delete` | as before | `change-password` on an account with no password: **400** `code: "no_password"`, "This account has no password: you sign in with a code sent to your email (or with Google). Use Forgot password to add one." |
 | `POST /api/auth/google/token`; `GET /api/auth/google/start`, `/callback` | Google's token or the redirect | Joining an account whose address nobody proved needs `agree: true`: **400** `code: "agree_owner"` (the redirect: `/?auth_error=agree_owner`). |
-| `GET /api/auth/me` | | `{user: null}`, or `{user: {id, email, hasPassword, emailVerified, plan, first, last, googleLinked, google?: {new}}}`. |
+| `GET /api/auth/me` | | `{user: null}`, or `{user: {id, email, hasPassword, emailVerified, plan, first, last, googleLinked, google?: {new}, consent}}`; `consent` is the first-swipe agreement on record, `{v, at, auto}`, or `null`. |
+| `POST /api/consent` | `{version, text, auto}` or `{withdraw: true}`, signed in with a confirmed address | **200** `{ok, consent}`: the version, the time, the visitor's address and the SHA-256 of the words are kept on the account (`consent_api.py`). **409** `consent_old` or `consent_text` when the page's words are not the server's. No application leaves UAply without the current version on record (`/api/apply` answers **403** `code: "consent"`). |
 | `POST /api/auth/signup` with `passwordless: true` | `{email, agree: true, first?, last?}` | Still answers (the sandbox's no-password card): **200** `{ok: true, email}` either way and a code to type in `/api/auth/code/verify`. |
 
-**The gate.** Without a session these answer **401** `{"error": "Sign in first.", "code": "signin"}`: `GET /api/jobs`,
+**The gate.** Without a session these answer **401** `{"error": "Sign in first.", "code": "signin"}`: `GET /api/jobs` (its paged form too), `GET /api/jobs/<id>`,
 `GET /api/employer/logo/*`, and `POST /api/apply`, `/api/apply/plan`, `/api/apply/mark`, `/api/decision`, `/api/chat`, `/api/feedback`,
 `/api/profile/resume`, `/api/employer/company`, `/api/employer/job`, `/api/employer/job/status`, `/api/employer/applicant`,
 `/api/employer/import` (`/api/employer/me` answers its own "sign in" itself). With a session whose account has `emailVerified: false`

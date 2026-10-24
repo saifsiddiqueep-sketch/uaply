@@ -23,8 +23,9 @@ TYPE_LABEL = {"job": "Full-time", "parttime": "Part-time", "internship": "Intern
 MODE_LABEL = {"remote": "Remote", "hybrid": "Hybrid", "onsite": "On-site"}
 
 SWIPE_MEANING = ("Swiping right means: I want this job. UAply saves it to your Applied list and, if the employer accepts applications "
-                 "through UAply, sends them your profile. If the employer takes applications only on its own site, UAply gives you the "
-                 "link and your details so you can finish there. Swiping left only hides the job; nothing is sent.")
+                 "through UAply or the job posting asks for applications by email, sends them your profile. If the employer takes applications "
+                 "only on its own site, UAply gives you the link and your details so you can finish there. Swiping left only hides the job; "
+                 "nothing is sent.")
 NOT_SHARED = "Your voluntary answers (such as race, gender, veteran or disability status) are never sent."
 NEXT_STEPS = [
     "The employer reviews applications in its own time, and many employers get a lot of them, so you may not hear from every one.",
@@ -35,15 +36,22 @@ NEXT_STEPS = [
 ]
 
 
-def _money(sal):
+def _money(sal, unit=""):
+    """The pay as the posting gives it, with its unit: "$60k to $80k a year", "$18 to $22.50 an hour". "Not listed" when the posting
+    gives none. Never an estimate, and never a yearly figure made from an hourly one or the reverse."""
     try:
-        lo, hi = int(sal[0]), int(sal[1])
+        lo, hi = float(sal[0]), float(sal[1])
     except (TypeError, ValueError, IndexError):
-        return ""
+        return "Not listed"
     if hi <= 0:
-        return ""
-    k = lambda n: "$%dk" % round(n / 1000) if n >= 1000 else "$%d" % n   # noqa: E731
-    return "%s to %s a year" % (k(lo), k(hi)) if lo else "up to %s a year" % k(hi)
+        return "Not listed"
+    if unit == "hour":
+        k = lambda n: ("$%.2f" % n) if round(n * 100) % 100 else ("$%d" % round(n))   # noqa: E731
+        per = "an hour"
+    else:
+        k = lambda n: "$%dk" % round(n / 1000) if n >= 1000 else "$%d" % n   # noqa: E731
+        per = "a year"
+    return ("%s to %s %s" % (k(lo), k(hi), per)) if 0 < lo < hi else ("%s %s" % (k(hi), per) if lo == hi else "up to %s %s" % (k(hi), per))
 
 
 def _when(ts):
@@ -59,17 +67,24 @@ def _https(u):
 def _summary_rows(job, match):
     rows = [("Company", job.get("co")), ("Job title", job.get("role")), ("Location", job.get("loc")),
             ("Job type", TYPE_LABEL.get(job.get("type") or "job", "")), ("Work style", MODE_LABEL.get(job.get("mode"), "")),
-            ("Pay", _money(job.get("sal"))), ("Your match", ("%d%%" % match) if match else ""),
+            ("Pay", _money(job.get("sal"), job.get("salUnit"))), ("Your match", ("%d%%" % match) if match else ""),
             ("Source", job.get("via")), ("Official announcement", _https(job.get("announcement")))]      # the feed is credited, as its terms ask
     return [(k, v) for k, v in rows if v]
 
 
-def _headline(status, job, test):
+# an emailed application counts as sent when UAply's email service accepts it for delivery (Terms, section 3)
+EMAIL_SENT = "It counts as sent when UAply's email service accepts it for delivery; UAply cannot see whether the employer read it."
+
+
+def _headline(status, job, test, channels=(), to=""):
     co, role = job.get("co", "the employer"), job.get("role", "this job")
     if status == "handoff":
         return ("One more step: finish your application to %s" % co,
                 "You swiped right on %s at %s. Your application is not complete yet: %s takes applications on its own site, so UAply "
                 "could not send it for you. Use the button below; your details are listed further down, ready to copy." % (role, co, co))
+    if status == "sent" and any(str(c).startswith("email") for c in channels or ()):
+        return ("Your application was sent to %s" % co,
+                "You swiped right on %s at %s, and UAply emailed your application to the employer%s. %s" % (role, co, (" at %s" % to) if to else "", EMAIL_SENT))
     if status == "sent":
         return ("Your application was sent to %s" % co,
                 "You swiped right on %s at %s, and UAply sent your application to the employer." % (role, co))
@@ -122,7 +137,7 @@ def applicant_receipt(ctx):
     """ctx keys: test, status, cand, job, at, match, to, rows (application details as (label, value) pairs), note, user_email,
     base_url, support_email. Returns (subject, text, html)."""
     status, job, cand, test = ctx["status"], ctx["job"], ctx["cand"], ctx["test"]
-    head, lead = _headline(status, job, test)
+    head, lead = _headline(status, job, test, ctx.get("channels"), ctx.get("to") or "")
     subject = subject_for(status, job, test)
     posting = _https(job.get("url"))
     track = (ctx.get("base_url") or "").rstrip("/")

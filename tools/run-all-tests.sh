@@ -31,6 +31,7 @@ run "node check.js" node check.js
 run "audit of every file (JSON, Python, JS, HTML, links, XML, images, secrets, git hygiene)" python tools/audit-files.py
 run "every page and email renders, every script parses, no line break JavaScript would join, shell scripts parse" python tools/test-pages.py
 run "taps and focus: the one rule (shared/uaply-focus.css) word for word in every page UAply serves" python tools/test-focus.py
+run "phone apps' native settings: iPhone portrait only, the privacy manifest in the app, Android backup off, the Back and export plugins in both builds" python tools/test-mobile-native.py
 run "taps and focus in Chrome at phone size: no default tap highlight anywhere, no ring after a tap, a keyboard ring, the starting-up retries" env W=390 H=844 node tools/cdp.js tools/ui-focus.js
 run "assisted apply on a mock form of each hiring system: every field lands, nothing voluntary, never Submit; filled from only what the scan saw" env W=390 H=844 node tools/cdp.js tools/test-assist.js
 run "assisted apply against hostile pages: a page's own UAplyAssist, a redirect to another site and a look-alike host receive nothing" env W=390 H=844 node tools/cdp.js tools/test-assist-hostile.js
@@ -69,9 +70,12 @@ run "Connect Gmail form" python tools/test-setup.py
 
 step "Swipe-right emails (content, test label, safety, real send)"
 run "receipt and owner copy emails" python tools/test-emails.py
-run "email as the mail service sees it: headers, daily quota (250/300), refusals, held mail, bounce webhook" python tools/test-mail-limits.py 2538 18799
+run "email as the mail service sees it: headers, daily quota (250/300), refusals, held mail, bounce webhook" python tools/test-mail-limits.py 0 18799
 run "help requests from the assistant reach the support inbox" python tools/test-support.py
 run "the sign-in contract: password sign-up with names, the code to verify and to sign in, the gate, the test mode, items 12 to 23" python tools/test-signin-contract.py 18964
+run "the consent record: the box's words are the server's, kept on the account with the time, the address and their SHA-256; nothing is sent without it" python tools/test-consent.py 18970
+run "apply by email: only a posting's own \"send your resume to\" address at the employer's domain; reply-to, receipt, limits, the stop link, bounces, test mode" python tools/test-email-route.py 18973
+run "the outreach queue: who to invite each week, and it can never send" python tools/test-outreach-queue.py
 run "the Help chat sends to the AI only after the person said Continue (checked on the server)" python tools/test-chat.py
 run "applications go straight into employers' hiring systems (Greenhouse, Lever)" python tools/test-ats.py
 run "applications go straight into an employer's Ashby" python tools/test-ats-ashby.py
@@ -98,7 +102,10 @@ run "human checks on application pages: captchas and challenge pages found (neve
 run "where a job is: every US city, town and township with its state, the app using it for near you, every ZIP3 for home, co-ops first on careers sites" python tools/test-placement.py
 run "a long-running local server: files added to shared/ are served without a restart, no escape from shared/, a stale-code header and log line (local only)" python tools/test-stale-server.py
 run "backups: pack the data folder, restore it, refuse damaged ones, encrypt, upload to a private GitHub repository" python tools/test-backup.py 18806
-run "every path from swipe right to inbox, replayed in a browser" python tools/ui-apply-paths.py
+# one size per line: each takes about four minutes on fresh servers, and run() stops any single check at ten
+run "every path from swipe right to inbox, replayed in a browser (375x812)" env SIZES=375x812 python tools/ui-apply-paths.py
+run "every path from swipe right to inbox, replayed in a browser (390x844)" env SIZES=390x844 python tools/ui-apply-paths.py
+run "every path from swipe right to inbox, replayed in a browser (1280x800)" env SIZES=1280x800 python tools/ui-apply-paths.py
 run "the swipe guarantee: resume to profile, then swipe right into Greenhouse, Lever, Ashby, SmartRecruiters, Workable, an email employer and a hand-off; a question box, a file it cannot ask, the weekly limit" python tools/test-swipe-e2e.py 18830
 run "the one-time question box: every kind of question, phone and computer" python tools/ui-questions.py
 mkdir -p "$TMP/tk"
@@ -121,6 +128,8 @@ run "dev: every way of swiping, and what each sends (LinkedIn, resume, one email
 run "dev: the app copes when the server fails, goes offline or sends garbage" env W=390 H=844 PORT=18767 node tools/cdp.js tools/ui-errors.js
 run "the installable website: Chrome can install it; its offline screen when the server is down, during a deploy (502) and offline, never for a slow page" node tools/cdp.js tools/ui-installable.js
 run "dev: skill chips, the empty Add button and the file downloads" env W=390 H=844 PORT=18767 node tools/cdp.js tools/ui-effects.js
+run "dev in the phone apps (a stand-in Capacitor): Android Back goes back one screen and leaves only on a second press; the export buttons share a file, or copy and say so" env W=390 H=844 PORT=18767 node tools/cdp.js tools/ui-native-back-export.js
+run "sandbox in the phone apps: the same" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-native-back-export.js
 run "sandbox: the first-application agreement shows once, swipes throw no error" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-consent-once.js
 run "dev: the first-application agreement shows once, swipes throw no error" env W=390 H=844 PORT=18767 node tools/cdp.js tools/ui-consent-once.js
 run "sandbox: every profile checklist item lands on its field" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-checklist.js
@@ -139,6 +148,9 @@ run "sandbox: learns from swipes (remote first, explore card, reset)" env W=390 
 run "sandbox: fill from your resume (fills empty fields, keeps typed ones, Replace, errors, fits the phone)" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-resume.js
 run "dev: the stranger-walk fixes (messages fit the phone, Save and continue, LinkedIn links, empty deck, restore, Sign in wording, a restarting server, help, rating)" env W=390 H=844 PORT=18767 CDP_LIMIT_MS=600000 node tools/cdp.js tools/ui-walk.js
 run "dev on a laptop (1280x800): one centred column about 960 px wide, Account and Plan & billing in its middle" env W=1280 H=800 PORT=18767 CDP_LIMIT_MS=600000 node tools/cdp.js tools/ui-walk.js
+for sz in 390x844 1280x800; do
+  run "sandbox at ${sz}: the deck reads the job list a page at a time (200 at sign-in, the next near the end, each stack its own, no job twice, Job Tracker, a far shared job)" env W="${sz%x*}" H="${sz#*x}" PORT=18766 node tools/cdp.js tools/ui-deck-pages.js
+done
 run "dev: starts without waiting on the font site, and a reload before the job list arrives keeps every swipe" env W=390 H=844 PORT=18767 node tools/cdp.js tools/ui-boot.js
 run "sandbox: the same" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-boot.js
 for sz in 390x844 1280x800; do
@@ -183,6 +195,8 @@ PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/gate" UAPLY_SIGNUP_TEST=1 UAPLY_CONFIG_JSON='
 wait_port 18848
 run "the sign-in gate on a phone (390x844): only the card, its links open, sign-up to the questions, Sign out brings it back" env W=390 H=844 PORT=18848 node tools/cdp.js tools/ui-gate.js
 run "the sign-in gate on a laptop (1280x800): the same" env W=1280 H=800 PORT=18848 node tools/cdp.js tools/ui-gate.js
+run "pay as the posting gives it (390x844): yearly per year, hourly per hour, none Pay not listed; on the card, Job Tracker, Share rows and the receipt" env W=390 H=844 PORT=18848 node tools/cdp.js tools/ui-pay.js
+run "pay as the posting gives it on a laptop (1280x800): the same" env W=1280 H=800 PORT=18848 node tools/cdp.js tools/ui-pay.js
 
 step "Public server behind HTTPS (how a real host runs it)"
 PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/pub" HOST=0.0.0.0 OWNER_PASSWORD=ownerpw UAPLY_CONFIG_JSON='{}' start python serve.py 18772 dev --api)"

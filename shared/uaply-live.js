@@ -51,7 +51,34 @@ function writeCache(jobs,decided){
 }
 
 /* ---------------- live ---------------- */
+/* the app's parts each ask the server the same start-up questions (who is signed in, which sign-ins it offers, how applications are
+   sent): /api/auth/me was asked twice at start, the second answer 0.7 s after the first. In the page itself, before any part runs, a GET
+   of one of these three shares one request: callers within 5 s of its answer get a copy of it, and any other request to /api/ that is
+   not a GET (a sign-in, a sign-out, a code, a profile) forgets them, so nothing stale is ever read after a change */
+function shareGets(){
+  var f=window.fetch;if(!f||window.__uaplyGetShare)return;window.__uaplyGetShare=1;
+  var C={},TTL=5000,ONE=/^\/api\/(auth\/me|auth\/providers|apply\/config)$/;
+  window.fetch=function(u,o){
+    var url=String(u&&u.url||u),m=String(o&&o.method||u&&u.method||"GET").toUpperCase(),p=url.replace(/^https?:\/\/[^\/]+/,"").split("#")[0];
+    if(m!=="GET"){
+      if(!/^\/api\//.test(p))return f.apply(this,arguments);
+      C={};var sent=f.apply(this,arguments);   /* a sign-in, a sign-out, a code: what was shared is forgotten now and when it answers */
+      sent.then(function(){C={}},function(){C={}});return sent;
+    }
+    if(!ONE.test(p))return f.apply(this,arguments);
+    var c=C[p];if(c&&(!c.at||Date.now()-c.at<TTL))return c.p.then(function(r){return r.clone()});
+    var e={at:0};C[p]=e;
+    e.p=f.apply(this,arguments).then(function(r){e.at=Date.now();if(!r.ok&&C[p]===e)delete C[p];return r},function(x){if(C[p]===e)delete C[p];throw x});
+    return e.p.then(function(r){return r.clone()});
+  };
+}
 function patch(s){
+  s=once(s,"<script>","<script>\n("+shareGets.toString()+")();\n");   /* the first script of the page: before anything asks */
+  /* paging: the deck holds its top card while the whole list is ranked, then tells live.js how many cards are left */
+  /* Undo brings back exactly the card just swiped, on top: the deck is ranked over the whole list, and the card held on top while it
+     arrived (__uaplyHoldTop) may not be the best-ranked one, so without this Undo put a different card on top (ui-swipes, October 23) */
+  s=once(s,"var id=S.history.pop();if(!id)return;","var id=S.history.pop();if(!id)return;if(window.__uaplyHoldJob)window.__uaplyHoldJob(id);");
+  s=once(s,'var q=queue(),deck=$("deck");','var q=queue(),deck=$("deck");if(window.__uaplyHoldTop)q=window.__uaplyHoldTop(q,JOB_BY_ID,S,evaluate);if(window.__uaplyNearEnd)window.__uaplyNearEnd(q.length);');
   var cached=readCache();
   var extra=cached.length?","+JSON.stringify(cached).slice(1,-1).replace(/<\//g,"<\\/"):"";
   s=once(s,'regional cookbooks."}','regional cookbooks."}'+extra);
@@ -72,9 +99,17 @@ function patch(s){
     'type:["job","parttime","internship","coop"].indexOf(row.ty)>-1?row.ty:"job",mode:["remote","hybrid","onsite"].indexOf(row.m)>-1?row.m:"onsite",'+
     'sal:[0,0],yrs:0,edu:"High school",skills:[],blurb:"",live:true,stub:true,source:""};JOBS.push(sj);JOB_BY_ID[k]=sj}});\n    '+
     "S.history=(Array.isArray(d.history)?d.history:[])");
-  s=once(s,"'+money(j.sal[0])+'–'+money(j.sal[1])+'<small>per year</small>","'+(j.sal[1]>0?money(j.sal[0])+'–'+money(j.sal[1])+'<small>per year</small>':'Pay not listed')+'");
-  s=once(s,"var salOk=job.sal[1]>=p.salary;","var unk=job.sal[1]<=0;var salOk=unk||job.sal[1]>=p.salary;");
-  s=once(s,'s:salOk?1:(sa>=0.9?0.5:0),ask:money(job.sal[0])+" to "+money(job.sal[1])','s:unk?0.5:salOk?1:(sa>=0.9?0.5:0),ask:unk?"Not listed":money(job.sal[0])+" to "+money(job.sal[1])');
+  /* pay as the posting gives it (the recommendations list: never guess or estimate). A yearly range says "per year", an hourly one
+     (salUnit "hour") "per hour" with its cents; no pay says "Pay not listed" in the pay line's place. Nothing turns an hourly figure into
+     a yearly one or the reverse, so an hourly job is not compared with the yearly minimum salary (it scores as pay not listed). uaPayText
+     is shared with Share this job's rows and anything else that names a job's pay. */
+  s=once(s,'function money(n){return "$"+Math.round(n/1000)+"k"}','function money(n){return "$"+Math.round(n/1000)+"k"}\n'+
+    'function uaPayAmt(n,h){n=+n||0;return h?"$"+(Math.round(n*100)%100?n.toFixed(2):String(Math.round(n))):money(n)}\n'+
+    'function uaPayText(j,unit){var s=j&&Array.isArray(j.sal)?j.sal:[0,0],h=!!j&&j.salUnit==="hour",lo=+s[0]||0,hi=+s[1]||0;if(!(hi>0))return "";'+
+    'var r=lo>0&&lo<hi?uaPayAmt(lo,h)+"–"+uaPayAmt(hi,h):(lo>0?uaPayAmt(hi,h):"Up to "+uaPayAmt(hi,h));return unit?r+(h?" an hour":" a year"):r}\nwindow.uaPayText=uaPayText;');
+  s=once(s,"'+money(j.sal[0])+'–'+money(j.sal[1])+'<small>per year</small>","'+(uaPayText(j)?uaPayText(j)+'<small>'+(j.salUnit===\"hour\"?'per hour':'per year')+'</small>':'Pay not listed')+'");
+  s=once(s,"var salOk=job.sal[1]>=p.salary;","var unk=job.sal[1]<=0||job.salUnit===\"hour\";var salOk=unk||job.sal[1]>=p.salary;");
+  s=once(s,'s:salOk?1:(sa>=0.9?0.5:0),ask:money(job.sal[0])+" to "+money(job.sal[1])','s:unk?0.5:salOk?1:(sa>=0.9?0.5:0),ask:unk?(uaPayText(job)?uaPayText(job,1):"Not listed"):money(job.sal[0])+" to "+money(job.sal[1])');
   /* every real listing names its source and links to the original; example listings say they are examples */
   s=once(s,"<p class=\"blurb\">'+esc(j.blurb)+'</p>","<p class=\"blurb\">'+esc(j.blurb)+'</p>'+(j.url?'<button type=\"button\" class=\"linkbtn\" data-open=\"'+esc(j.url)+'\">View original posting ↗</button>':'')+(j.live?'<small class=\"note\">Source: '+esc(j.source||'the employer')+'</small>':'<small class=\"note\">Example listing, not a real opening.</small>')+'");
   s=once(s,'toast(dir==="applied"?"Applied to "+job.co+" · "+m.pct+"% match":"Passed on "+job.co,"Undo",undo);',
@@ -115,11 +150,27 @@ function apply(w,host){
   say("Loading real postings…");
   /* On a fresh start the server answers within seconds with the boards it has read so far and says how many are still loading
      ("pending"): the app asks again a few times and adds what came in, so the first visitor never waits for every board. */
-  function loadJobs(round){
-  return fetch("/api/jobs").then(function(r){
-    /* a plain web host with no UAply server (a 404, or an HTML page): a preview. Show the example jobs and say so; a 5xx stays an outage */
-    if(r.status===404||(r.ok&&/text\/html/i.test(r.headers.get("content-type")||""))){var pe=new Error("preview");pe.preview=true;throw pe}
-    if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}).then(function(data){
+  /* the job list: the first page for the first card, then the whole list, ranked (October 23). 16,000 postings were a 14.8 MB answer
+     and about 3 s before the first card; but the server's order is its sources' order (the first 200 came from 13 employers, mostly
+     tech, with the first nurse at 603), so ranking only them showed most people tech jobs and a false "none matched your target titles".
+     Now: GET /api/jobs?size=200&page=1 draws the first card at once; then the whole list (the no-query form, about 570 KB compressed)
+     comes in the background and the deck is ranked over all of it, with the card on top held where it is (__uaplyHoldTop) until it is
+     swiped, so nothing moves under a thumb. The "none matched" note waits for that ranking (html.uaRank hides it meanwhile). If the
+     whole list cannot come, the deck carries on a page at a time: within NEAR cards of the end of the stack on screen the next page of
+     that stack (?type=, its own "next" cursor). __uaplyJobs.add keeps one copy of each id, so no card ever shows twice. */
+  var PAGE=200,NEAR=20,PG=null,pgBusy=false,pgWait=0,FULL=false,fullBusy=false,HOLD=0,HOLDT="",WHOLE_FAILED=false,WANT=0;
+  try{var rs=d.createElement("style");rs.textContent="html.uaRank #titleNote{display:none!important}";(d.head||d.documentElement).appendChild(rs)}catch(e){}
+  function ranking(on){try{d.documentElement.classList.toggle("uaRank",!!on)}catch(e){}}
+  function stackType(){try{var t=w.__uaply.getType&&w.__uaply.getType();return /^(job|parttime|internship|coop)$/.test(t)?t:""}catch(e){return ""}}
+  /* a shared job (Share this job, ?job=<id>) may be on any page: it is read by itself (GET /api/jobs/<id>), together with the first
+     page, and goes in with it, so the friend's landing finds it in that answer (the landing's key: UAplyEnv.SHARE_KEY) */
+  function sharedId(){
+    try{var m=/[?&]job=(\d{6,16})(?:&|$)/.exec(w.top.location.search);if(m)return +m[1]}catch(e){}
+    try{var k=w.top.sessionStorage.getItem(window.UAplyEnv.SHARE_KEY),o=k&&JSON.parse(k);if(o&&/^\d{6,16}$/.test(String(o.id))&&Date.now()-(+o.at||0)<30*60000)return +o.id}catch(e){}
+    return 0;
+  }
+  function oneJob(id){return fetch("/api/jobs/"+id).then(function(r){return r.ok?r.json():null}).then(function(d){return d&&d.job||null},function(){return null})}
+  function took(data){
     w.__uaplyLoadingJobs=false;
     var now=Date.now(),fresh=(data.jobs||[]).map(function(j){j.seen=now;return j});
     if(fresh.length>=5)w.__uaplyHideSamples=true;      /* set before adding, so the deck renders once */
@@ -133,10 +184,68 @@ function apply(w,host){
     writeCache(all,(w.__uaply&&w.__uaply.S&&w.__uaply.S.decisions)||null);
     var src=Object.keys(data.sources||{}).map(function(k){return k+": "+data.sources[k]}).join(" · ");
     say("Real postings: "+fresh.length+" loaded ("+added+" new). "+src);
-    if(data.pending>0&&round<15){
-      setTimeout(function(){loadJobs(round+1)},round<3?5000:15000);
-      if(fresh.length<5){w.__uaplyLoadingJobs=true;try{w.__uaply.renderAll()}catch(x){}}   /* "Finding jobs for you…", not an empty deck */
-    }
+  }
+  /* the card on top stays on top while a bigger list is ranked: in front of the stack until it is swiped (or the stack changes), even
+     if the new ranking (target titles now matched, say) would not show it */
+  w.__uaplyHoldTop=function(q,BY,S,evaluate){
+    if(!HOLD)return q;
+    if((S.decisions&&S.decisions[HOLD])||stackType()!==HOLDT){HOLD=0;return q}
+    if(WANT&&q.length&&q[0].j.id===WANT&&HOLD!==WANT){HOLD=0;return q}   /* a shared job that turns up later goes in front (Share this job) */
+    for(var i=0;i<q.length;i++)if(q[i].j.id===HOLD){if(i>0)q.unshift(q.splice(i,1)[0]);return q}
+    var j=BY[HOLD];if(j)q.unshift({j:j,m:evaluate(j,S.profile)});else HOLD=0;
+    return q;
+  };
+  function hold(){try{var c=d.querySelector("#deck .card.top[data-id]");HOLD=c?+c.getAttribute("data-id"):0;HOLDT=stackType()}catch(e){HOLD=0}}
+  w.__uaplyHoldJob=function(id){HOLD=+id||0;HOLDT=stackType()};   /* Undo: the card it brings back goes on top, until it is swiped again */
+  w.__uaplyNearEnd=function(left){
+    /* a page at a time only once the whole list has failed: before that it is on its way, and extra answers made Share this job's
+       landing (which counts the list's answers) give up on the shared job within a second (ui-share, October 23) */
+    if(!PG||FULL||fullBusy||!WHOLE_FAILED||left>NEAR||pgBusy||Date.now()<pgWait)return;
+    var t=stackType(),cur=PG[t]||(t?null:PG[""]);
+    if(cur&&!cur.next)return;                                   /* this stack has every page it can get */
+    pgBusy=true;
+    var u="/api/jobs?size="+PAGE+(t?"&type="+t:"")+(cur?"&cursor="+encodeURIComponent(cur.next):"&page=1");
+    fetch(u).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}).then(function(data){
+      PG[t]={next:data.next||null,total:data.total};pgBusy=false;took(data);   /* add() redraws the deck, which asks again if it is still short */
+    }).catch(function(){pgBusy=false;pgWait=Date.now()+10000});   /* a page that failed: tried again on a later swipe, 10 s on */
+  };
+  /* the whole list, after the first card is drawn (and again while boards are still loading, as before paging) */
+  /* a whole list that does not come (a deploy, a dropped connection) is asked for again after 10 s, 30 s and 60 s, then every 2 minutes
+     while the page is open (a page in the background waits until it is shown again). Meanwhile the deck carries on a page at a time,
+     and the "none matched" note stays away: it would be judged on the first page alone */
+  var WAIT=[10000,30000,60000],wTries=0,wTimer=0;
+  function again(round){
+    clearTimeout(wTimer);
+    wTimer=setTimeout(function go(){
+      var doc=w.document;
+      if(doc&&doc.hidden){doc.addEventListener("visibilitychange",function once(){if(!doc.hidden){doc.removeEventListener("visibilitychange",once);whole(round)}});return}
+      whole(round);
+    },wTries<WAIT.length?WAIT[wTries]:120000);
+    wTries++;
+  }
+  function whole(round){
+    if(fullBusy)return Promise.resolve();
+    fullBusy=true;ranking(true);
+    return fetch("/api/jobs").then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}).then(function(data){
+      hold();fullBusy=false;FULL=true;WHOLE_FAILED=false;wTries=0;ranking(false);took(data);
+      if(data.pending>0&&round<15)setTimeout(function(){FULL=false;whole(round+1)},round<3?5000:15000);
+    }).catch(function(){fullBusy=false;WHOLE_FAILED=true;try{w.__uaply.renderAll()}catch(x){}again(round)});   /* not now: a page at a time, and the whole list again soon */
+  }
+  function loadJobs(round){
+  if(round>0)return whole(round);
+  var want=sharedId(),oneP=want?oneJob(want):Promise.resolve(null);WANT=want;
+  return Promise.all([oneP,fetch("/api/jobs?size="+PAGE+"&page=1")]).then(function(x){var one=x[0],r=x[1];
+    /* a plain web host with no UAply server (a 404, or an HTML page): a preview. Show the example jobs and say so; a 5xx stays an outage */
+    if(r.status===404||(r.ok&&/text\/html/i.test(r.headers.get("content-type")||""))){var pe=new Error("preview");pe.preview=true;throw pe}
+    if(!r.ok)throw new Error("HTTP "+r.status);
+    /* the body is read only now, with the shared job in hand: the friend's landing reads this same answer */
+    return r.json().then(function(data){if(one&&!(data.jobs||[]).some(function(y){return +y.id===+one.id}))(data.jobs=data.jobs||[]).push(one);return data})}).then(function(data){
+    PG={"":{next:data.next||null,total:data.total}};pgWait=0;FULL=false;
+    if(data.next)ranking(true);                                 /* more to come: no "none matched" note until it is ranked */
+    took(data);
+    if(data.pending>0&&(data.jobs||[]).length<5){w.__uaplyLoadingJobs=true;try{w.__uaply.renderAll()}catch(x){}}   /* "Finding jobs for you…" */
+    /* the first card is drawn: now the whole list, once the browser has painted it */
+    if(data.next||data.pending>0){var go=function(){whole(data.pending>0?1:0)};try{w.requestAnimationFrame(function(){setTimeout(go,30)})}catch(x){setTimeout(go,30)}}
   }).catch(function(e){if(round>0)return;   /* a later round that fails changes nothing: the jobs already shown stay */
     w.__uaplyLoadingJobs=false;
     if(e&&e.preview){w.__uaplyPreviewOn=true;w.__uaplyHideSamples=false;w.__uaplyJobsFailed=false;try{w.__uaply.renderAll()}catch(x){}say(w.__uaplyPreviewText||"Preview: example jobs only.");return}
@@ -167,11 +276,15 @@ function kitApply(w,host){
   function session(){
     try{var k="uaply.session",v=w.localStorage.getItem(k);if(!v){v=Math.random().toString(36).slice(2)+Date.now().toString(36);w.localStorage.setItem(k,v)}return v}catch(e){return "anon"}
   }
-  function post(path,body){
+  function post(path,body,again){
     /* a reply that is not JSON (a host's "Bad gateway" page, say) is a server problem, not "you're offline": only a request that never
        arrived rejects, which is what queues the application for when the connection is back */
     if(w.__uaplyPreview&&w.__uaplyPreview())return Promise.resolve({ok:false,j:{error:w.__uaplyPreviewText,code:"preview"}});   /* no server here: say so */
-    return w.fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j}},function(){return {ok:false,j:{error:"UAply's server had a problem and nothing was sent. Try again in a moment.",code:"server"}}})});
+    return w.fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(r){return r.json().then(function(j){
+      /* the server has no agreement on record for this account (agreed on this device before the server kept one, or that post was
+         lost): this device's own agreement is sent once, and the application tried again */
+      if(!again&&path==="/api/apply"&&r.status===403&&j&&j.code==="consent"&&hasConsent()){var c=storedConsent();return recordConsent(!!(c&&c.auto===true)).then(function(ok){return ok?post(path,body,true):{ok:false,j:j}})}
+      return {ok:r.ok,j:j}},function(){return {ok:false,j:{error:"UAply's server had a problem and nothing was sent. Try again in a moment.",code:"server"}}})});
   }
   /* contact lines under the note, from the Application profile experiment (empty if it is off) */
   function signature(p){
@@ -226,10 +339,10 @@ function kitApply(w,host){
     o.innerHTML='<div role="dialog" aria-modal="true" aria-labelledby="kitH" style="background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:20px;max-width:460px;width:100%;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:12px">'+
       '<h2 id="kitH" style="margin:0;font:800 20px var(--display)">'+(submitOn&&!ask?'Sending to ':'Finish applying to ')+esc(job.co)+'</h2>'+
       '<p style="margin:0;color:var(--muted);font-size:14px">'+intro+'</p>'+
-      (!p.custom?'<p style="margin:0;color:var(--mid);font-size:13px">This uses the example profile. Add your own details in Profile setup first.</p>':'')+
-      (submitOn&&!profileOk?'<p style="margin:0;color:var(--no);font-size:13px">Add your name and a valid email in Profile setup, under About you, so the recruiter can reply.</p>':'')+
+      (!p.custom?'<p style="margin:0;color:var(--mid);font-size:14px">This uses the example profile. Add your own details in Profile setup first.</p>':'')+
+      (submitOn&&!profileOk?'<p style="margin:0;color:var(--no);font-size:14px">Add your name and a valid email in Profile setup, under About you, so the recruiter can reply.</p>':'')+
       '<textarea id="kitText" rows="7" aria-label="Application note" style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);font:inherit;resize:vertical"></textarea>'+
-      '<p id="kitStatus" role="status" style="margin:0;font-size:13.5px;font-weight:600;min-height:1.3em"></p>'+
+      '<p id="kitStatus" role="status" style="margin:0;font-size:14px;font-weight:600;min-height:1.3em"></p>'+
       '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
         (submitOn&&ask?'<button type="button" class="btn" id="kitSend"'+((!profileOk||(live&&!(contact||w.__uaplyRedirect)))?' disabled':'')+'>Send application</button>':'')+
         (submitOn&&!profileOk?'<button type="button" class="btn" id="kitProfile">Open Profile</button>':'')+
@@ -251,14 +364,16 @@ function kitApply(w,host){
       var sendBtn=d.getElementById("kitSend");if(sendBtn)sendBtn.disabled=true;
       setStatus("Sending…");
       post("/api/apply",{consent:true,confirm_real:live,match:m.pct,note:ta.value,
-        job:{id:job.id,co:job.co,role:job.role,url:job.url,source:job.source,loc:job.loc,contact:contact,mode:job.mode,type:job.type||"job",sal:job.sal,blurb:job.blurb},
+        job:{id:job.id,co:job.co,role:job.role,url:job.url,source:job.source,loc:job.loc,contact:contact,mode:job.mode,type:job.type||"job",sal:job.sal,salUnit:job.salUnit==="hour"?"hour":undefined,blurb:job.blurb},
         profile:{name:p.name,email:p.email,title:p.title,years:p.years,skills:p.skills,loc:p.loc,edu:p.edu,ext:(w.__uaplyApplyExt?w.__uaplyApplyExt():(p.ext||{}))},
         resume:(w.__uaplyResume?w.__uaplyResume():null)
       }).then(function(r){
         var j=r.j||{};
         if(!r.ok){setStatus(j.error||"Could not send.",true);if(sendBtn&&live)sendBtn.disabled=false;return}
         var dec=S&&S.decisions&&S.decisions[job.id];
-        if(dec&&(j.status!=="duplicate"||j.was)){dec.sent={at:Date.now(),to:j.to||"",status:j.status==="duplicate"?j.was:j.status};if(save)save()}
+        var st=j.status==="duplicate"?j.was:j.status;if(j.preview===true&&st==="delivered_test")st="handoff";     /* a sandbox preview sends nothing */
+        if(dec&&(j.status!=="duplicate"||j.was)){dec.sent={at:Date.now(),to:st==="handoff"?"":j.to||"",status:st};if(save)save()}
+        if(st==="handoff"&&j.preview===true)j=Object.assign({},j,{status:"handoff"});
         if(j.status==="delivered_test")setStatus("Delivered to the test inbox as "+(j.to||"recruiter")+".");
         else if(j.status==="sent")setStatus("Sent to "+j.to+". Replies go to "+p.email+".");
         else if(j.status==="duplicate")setStatus("You already sent this application.");
@@ -332,11 +447,46 @@ function kitApply(w,host){
   d.addEventListener("visibilitychange",function(){if(d.visibilityState==="visible")dropExpired()});
   w.addEventListener("pageshow",dropExpired);w.addEventListener("focus",dropExpired);
   /* first application only: say plainly what a swipe right does with the person's details, and get agreement */
-  var CONSENT_V=3;   /* 2: also explains the optional hiring-manager message and that voluntary answers are never sent.
+  var CONSENT_V=4;   /* 2: also explains the optional hiring-manager message and that voluntary answers are never sent.
                        3 (October 21, 2026, the owner's position, drafted for the Terms in LEGAL-REVIEW.md): the person authorizes UAply to
-                       complete and submit applications on their behalf; recorded with the time ({v:3,at,agent:true}), so everyone agrees again once */
-  var AGENT_CLAUSE="You authorize UAply to complete and submit job applications on your behalf using the information you provide.";
-  w.__uaplyAgentClause=AGENT_CLAUSE;
+                       complete and submit applications on their behalf; recorded with the time ({v:3,at,agent:true}), so everyone agrees again once.
+                       4 (October 23, 2026, pending the lawyer: LEGAL-REVIEW.md section 12): applications emailed to postings that ask for them, the
+                       employer's form opening right after the swipe in the phone app, and Automatic submit as its own tick, off by default. Agreeing
+                       also posts the words to the server (POST /api/consent), which keeps them on the account with the time and this visitor's
+                       address: no application leaves UAply without that record (consent_api.py). Saved here as {v:4,at,agent:true,auto} */
+  /* the box's words as plain text, one entry per sentence group: Reviewer 3's version 4 (October 23, 2026), the very words consent_api.py
+     keeps (tools/test-consent.py checks them). Entry 1 is the match-percentage line (with How matching works), and entries 3 to 6 are the four
+     ways a swipe goes, shown as a list under "Depending on the job:" */
+  var CONSENT_TEXT=["A swipe right authorizes UAply to submit your application on your behalf, using the information in your profile.",
+    "The match percentage is worked out automatically from your profile to help order jobs. It never rejects you, and employers make every hiring decision. How matching works",
+    "Depending on the job:",
+    "Employers connected to UAply receive it straight into their hiring system.",
+    "If the employer publishes an email address for applications, UAply emails your application and resume there.",
+    "On hiring systems with no 'are you human' check and no rule against applying through someone else, and only if you turn on Automatic submit below, UAply fills in the form and presses Submit for you.",
+    "Everywhere else, UAply fills in the employer's form and you check it and press Submit yourself.",
+    "UAply never answers questions about race, gender, veteran status or disability, and never completes a security check.",
+    "You are responsible for keeping your profile accurate. You can tap Undo right after a swipe.",
+    "To stop UAply sending applications for you, turn off Send applications for me in Profile, Account.",
+    "By continuing you agree to the Terms and Privacy Policy."];
+  /* the separate tick, off by default: only with it may the phone app press an employer's Submit for the person, where that is allowed.
+     Where that is comes from shared/assist-systems.json (the owner's per-system switch, the same rule as assistMode in uaply-nav.js), so the
+     line updates itself when a system is switched on; consent_api.py builds the same words from the same file (tools/test-consent.py) */
+  function autoWhere(cfg){var N={greenhouse:"Greenhouse",lever:"Lever",ashby:"Ashby",smartrecruiters:"SmartRecruiters",workable:"Workable"},s=(cfg&&cfg.systems)||{},on=Object.keys(s).filter(function(k){var x=s[k];return N[k]&&x&&x.mode==="automatic"&&x.counsel_approved===true&&x.human_check_share===0}).map(function(k){return N[k]});return "where a hiring system allows it; "+(on.length?"switched on now: "+on.join(", "):"none is switched on yet")}
+  var CONSENT_AUTO_TAIL=" Where one is, a swipe right fills the employer's form from your profile and presses Submit for you. UAply never answers voluntary self-identification questions, never ticks consent or certification boxes, and never completes a security check; if one is needed it stops and you finish.";
+  var AUTO_CFG=null,AUTO_AT=7;            /* the systems file once read; the tick sits after the four ways (entry 7 on) */
+  function autoText(){return "Automatic submit: "+autoWhere(AUTO_CFG)+"."+CONSENT_AUTO_TAIL}
+  try{w.fetch("/assist-systems.json").then(function(r){return r.ok?r.json():null}).then(function(c){if(c&&c.systems){AUTO_CFG=c;var t=d.getElementById("kcAutoT");if(t)t.textContent=autoText()}},function(){})}catch(e){}
+  var AGENT_CLAUSE=CONSENT_TEXT[0];
+  w.__uaplyAgentClause=AGENT_CLAUSE;w.__uaplyConsentV=CONSENT_V;
+  /* the words agreed to, as the server checks them: one entry per line, in the order shown, with the Automatic submit line (as it was shown,
+     when the box is open) after the four ways when it was ticked */
+  function consentWords(auto,shown){return CONSENT_TEXT.slice(0,AUTO_AT).concat(auto?[shown||autoText()]:[]).concat(CONSENT_TEXT.slice(AUTO_AT)).join("\n")}
+  function storedConsent(){try{var c=JSON.parse(w.localStorage.getItem(consentKey()));return c&&typeof c==="object"?c:null}catch(e){return null}}
+  /* the agreement goes on the account (POST /api/consent): the record every application UAply sends itself needs. Resolves true when kept */
+  function recordConsent(auto,shown){
+    return post("/api/consent",{version:CONSENT_V,text:consentWords(!!auto,shown),auto:!!auto}).then(function(r){
+      if(r.ok&&r.j)w.__uaplyConsentRec=r.j.consent||null;return !!r.ok},function(){return false});
+  }
   function legalBase(){var p=(host&&host.defaultView&&host.defaultView.location.pathname)||"/";return /\/(sandbox|dev)\/(index\.html)?$/.test(p)?"../legal/":"legal/"}   /* the hosted copies live at /dev/ and /sandbox/, with legal/ beside them */
   function consentKey(){return (w.__uaplyKey||"uaply")+".consent"}
   function hasConsent(){try{var c=JSON.parse(w.localStorage.getItem(consentKey()));return !!(c&&c.v===CONSENT_V)}catch(e){return false}}
@@ -359,19 +509,22 @@ function kitApply(w,host){
     consentAtStart=!!atStart;
     var b=legalBase(),o=d.createElement("div");o.id="kitConsent";
     o.style.cssText="position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.45);overflow:auto";
+    /* each entry of CONSENT_TEXT as it is (the words the server keeps): the authorization in bold, the four ways as a list, the three links put in
+       (How matching works in the match line; the Terms and the Privacy Policy in the last one) */
+    var LINKS=[[1,"How matching works","ai-and-employment.html"],[CONSENT_TEXT.length-1,"Terms","terms.html"],[CONSENT_TEXT.length-1,"Privacy Policy","privacy.html"]];
+    function para(t,i){var h=esc(t);LINKS.forEach(function(l){if(l[0]===i)h=h.replace(l[1],'<a href="'+b+l[2]+'" target="_blank" rel="noopener noreferrer">'+l[1]+'</a>')});
+      return (i>=3&&i<=6?(i===3?'<ul style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px">':'')+'<li>'+h+'</li>'+(i===6?'</ul>':''):'<p style="margin:0">'+(i===0?'<b>'+h+'</b>':h)+'</p>')+
+        (i===AUTO_AT-1?'<label for="kcAuto" style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:12px;cursor:pointer"><input type="checkbox" id="kcAuto" style="margin-top:3px;min-width:20px;min-height:20px"><span id="kcAutoT">'+esc(autoText())+'</span></label>':'')}
     o.innerHTML='<div role="dialog" aria-modal="true" aria-labelledby="kcH" style="background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:20px;max-width:460px;width:100%;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:10px;font-size:14px">'+
       '<h2 id="kcH" style="margin:0;font:800 20px var(--display)">'+(consentFirst?"Before you start swiping":"Before your first application")+'</h2>'+
-      '<p style="margin:0">When you swipe right, UAply applies for you at connected employers: employers that have agreed to receive applications through UAply get the details in your profile (your name, email, and anything else you filled in, such as phone, resume file or link, education or work authorization), plus a short message if you turned on "Message the hiring manager". Everywhere else, UAply sends nothing: it saves the job in Applied and takes you to the employer\'s own application page to finish there. UAply never emails a company that has not agreed.</p>'+
-      '<p style="margin:0"><b>'+AGENT_CLAUSE+'</b> Today that means two things: UAply sends your application to connected employers, and in the UAply phone app it fills in other employers\' own application forms from your profile for you to review and submit yourself.</p>'+
-      '<p style="margin:0">Your voluntary answers (such as race, gender, veteran or disability status) are never sent. They stay on your device unless you copy them yourself.</p>'+
-      '<p style="margin:0">The match percentage is worked out automatically from your profile to help order jobs. It never rejects you, and employers make every hiring decision. <a href="'+b+'ai-and-employment.html" target="_blank" rel="noopener noreferrer">How matching works</a></p>'+
-      '<p style="margin:0">By continuing you agree to the <a href="'+b+'terms.html" target="_blank" rel="noopener noreferrer">Terms of Service</a> and <a href="'+b+'privacy.html" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.</p>'+
+      CONSENT_TEXT.map(para).join("")+
       (consentFirst?'<p style="margin:0">You only see this once. After you agree, every swipe is just a swipe.</p>':'')+
       '<div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button type="button" class="btn ghost" id="kcNo">'+(consentFirst?"Not now":"Cancel")+'</button><button type="button" class="btn" id="kcYes">'+(consentFirst?"Agree and start swiping":"Agree and continue")+'</button></div></div>';
     d.body.appendChild(o);
     d.getElementById("kcYes").focus();
     function answer(ok){o.remove();var waiting=consentWait.splice(0);(ok?go:cancel)();waiting.forEach(function(p){(ok?p[0]:p[1])()})}
-    d.getElementById("kcYes").onclick=function(){try{w.localStorage.setItem(consentKey(),JSON.stringify({v:CONSENT_V,at:Date.now(),agent:true}))}catch(e){}answer(true)};
+    /* the tick is the person's own choice, off unless they tick it; the agreement is kept on this device and on the account */
+    d.getElementById("kcYes").onclick=function(){var auto=!!d.getElementById("kcAuto").checked;try{w.localStorage.setItem(consentKey(),JSON.stringify({v:CONSENT_V,at:Date.now(),agent:true,auto:auto}))}catch(e){}recordConsent(auto,d.getElementById("kcAutoT").textContent);answer(true)};
     d.getElementById("kcNo").onclick=function(){answer(false)};
     o.addEventListener("keydown",function(e){if(e.key==="Escape")answer(false)});
   }
@@ -552,7 +705,7 @@ function kitApply(w,host){
       '<h2 id="kaH" tabindex="-1" style="margin:0;font:800 20px var(--display);outline:none">'+(qs.length===1?'One question':qs.length+' questions')+' from '+esc(job.co)+'</h2>'+
       '<p style="margin:0;color:var(--muted)">'+(how&&how.lead?esc(how.lead):'UAply filled in '+filled+' of '+total+' answers on '+esc(job.co)+'\'s application. '+(hasFile?'It also needs a resume file. Answer what you can (it is saved), then upload your resume in Profile setup, under Background and links, and swipe right again.':'Answer '+(qs.length===1?'this':'these')+' and UAply sends it. Your answers are saved, so the next employer that asks the same thing gets them automatically. You can change them in Profile setup, under Eligibility and extras.'))+'</p>';
     qs.forEach(function(q,i){h+=fieldHtml(q.optional?Object.assign({},q,{q:q.q+" (optional)"}):q,"kaQ"+i,"")});
-    h+='<p id="kaMsg" role="alert" style="margin:0;font-size:13px;color:var(--no);min-height:1.2em"></p>'+
+    h+='<p id="kaMsg" role="alert" style="margin:0;font-size:14px;color:var(--no);min-height:1.2em"></p>'+
       '<div id="kaBtns" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;position:sticky;bottom:0;margin:0 -20px;padding:12px 20px 20px;background:var(--surface);border-top:1px solid var(--line)"><button type="button" class="btn ghost" id="kaNo">Not now</button><button type="submit" class="btn" id="kaYes">'+(hasFile?'Open Profile':how&&how.yes?esc(how.yes):'Send application')+'</button></div></form>';
     o.innerHTML=h;d.body.appendChild(o);
     var boxes=[].slice.call(o.querySelectorAll(".kaF"));
@@ -688,7 +841,10 @@ function kitApply(w,host){
     }
     /* Undo on the saved message takes back this job only (the person may have swiped on since); nothing was sent for a hand-off */
     function undoThis(){revert()}
-    function savedToast(){toast("Saved "+job.co+" to Applied · "+m.pct+"% match","Undo",undoThis,9000)}
+    /* a hand-off (nothing sent): it is saved, and the employer's own site finishes it (October 23: only a send says Applied or Sent) */
+    /* "One tap to finish" only when it is true: the phone app has just opened the employer's form, filled. Anywhere else (the website, a
+       system the app does not fill) the copy says only that it was saved; Job Tracker shows how to finish (never a promise the page cannot keep) */
+    function savedToast(opened){toast(opened?"Saved to Job Tracker. One tap to finish on their site.":"Saved "+job.co+" to Job Tracker.","Undo",undoThis,9000)}
     function mark(status,to){var dec=S&&S.decisions&&S.decisions[job.id];if(dec){dec.sent={at:Date.now(),to:to||"",status:status};if(save)save();if(w.__uaplyTrack)w.__uaplyTrack()}}   /* the Applied list, if it is open, shows the new state at once */
     var rdy=w.__uaplyReadiness?w.__uaplyReadiness():null;
     if(rdy&&!rdy.min&&!retry){revert();if(w.__uaplyFinishProfile)w.__uaplyFinishProfile(job);return}
@@ -708,7 +864,7 @@ function kitApply(w,host){
       var msgOn=!!(w.__uaplyAutoMsg&&w.__uaplyAutoMsg()&&w.__uaplyMessage);
       if(!(S&&S.decisions&&S.decisions[job.id]))return;   /* undone or withdrawn in the meantime (also while it waited for a connection): send nothing */
       post("/api/apply",{consent:true,confirm_real:live,match:m.pct,note:msgOn?w.__uaplyMessage(job,m,p):"",
-        job:{id:job.id,co:job.co,role:job.role,url:job.url||"https://example.com/example-listing",source:job.source,loc:job.loc,contact:job.contact||"",mode:job.mode,type:job.type||"job",sal:job.sal,blurb:job.blurb},
+        job:{id:job.id,co:job.co,role:job.role,url:job.url||"https://example.com/example-listing",source:job.source,loc:job.loc,contact:job.contact||"",mode:job.mode,type:job.type||"job",sal:job.sal,salUnit:job.salUnit==="hour"?"hour":undefined,blurb:job.blurb},
         profile:{name:p.name,email:p.email,title:p.title,years:p.years,skills:p.skills,loc:p.loc,edu:p.edu,ext:(w.__uaplyApplyExt?w.__uaplyApplyExt():(p.ext||{}))},
         resume:(w.__uaplyResume?w.__uaplyResume():null),
         answers:answersFor(job.co)
@@ -720,7 +876,8 @@ function kitApply(w,host){
           if(retry){if(j.code!=="server")mark("failed");return}          /* a server hiccup keeps it waiting for the next try */
           revert();
           var act=j.code==="limit"?["See plans",function(){var b=d.getElementById("nb-prof");if(b){b.click();var it=d.querySelector('.nwrap[data-k=prof] .nitem[data-v=plan]');if(it)it.click()}}]
-                  :j.code==="slow_down"||j.code==="server"||j.code==="preview"?["",null]:(j.code==="signin"||j.code==="verify")?["Open Account",openAccount]:["Open Profile",openProfile];
+                  :j.code==="slow_down"||j.code==="server"||j.code==="preview"?["",null]:(j.code==="signin"||j.code==="verify")?["Open Account",openAccount]
+                  :j.code==="consent"?["Review",function(){if(w.__uaplyConsentAgain)w.__uaplyConsentAgain(function(){})}]:["Open Profile",openProfile];
           toast((j.error||"Could not send your application.")+" "+job.co+" is back in your deck.",act[0],act[1],9000);return;
         }
         if(j.status==="needs_answers"){
@@ -735,6 +892,10 @@ function kitApply(w,host){
           });
           return;
         }
+        /* the sandbox fills a public posting's real form to show what UAply would send once the employer connects (preview): nothing is
+           sent to anyone, so on this device it is a hand-off, said and shown as one */
+        if(j.preview===true&&j.status==="delivered_test")j=Object.assign({},j,{status:"handoff"});
+        if(j.status==="duplicate"&&j.preview===true&&j.was==="delivered_test")j=Object.assign({},j,{was:"handoff"});
         if(j.status==="duplicate"){             /* sent before (then undone, or from another device): show what happened that time */
           if(j.was)mark(j.was,j.to);
           if(j.was==="handoff"){if(!retry)savedToast();return}      /* a hand-off swiped again: quiet, the Applied row has the links */
@@ -745,7 +906,11 @@ function kitApply(w,host){
         if(j.status==="delivered_test")toast("Applied to "+job.co+" (test)."+auto+cp,"","",9000);
         else if(j.status==="sent")toast("Applied to "+job.co+"."+auto+cp,"","",9000);
         else if(j.status==="duplicate")toast("Already applied to "+job.co+".");
-        else if(j.status==="handoff"){if(!retry&&!deliver.waiting)savedToast()}        /* quiet: no "finish on their site" interruption; Applied shows the links */
+        else if(j.status==="handoff"&&j.sendForMe===false){if(!retry)toast("Saved "+job.co+" to Job Tracker. Send applications for me is off (Profile, Account), so nothing was sent.","Undo",undoThis,9000)}
+        else if(j.status==="handoff"){if(!retry&&!deliver.waiting){
+          /* the phone app (October 23, "one swipe"): the employer's own form opens right away, filled; the person completes any check and
+             taps Submit there. On the website, or a system the app does not fill, it stays quiet: Applied has Finish on their site */
+          savedToast(!!(w.__uaplyOneTap&&w.__uaplyOneTap(job)))}}
         else if(j.status==="failed")toast(j.error||"The application could not be sent.","Try again",deliver,9000);
         else toast("Done.");
       }).catch(function(){
@@ -757,7 +922,8 @@ function kitApply(w,host){
       });
     }
     var grace=Math.max(0,w.__uaplyGrace||0);
-    if(!live||!target||grace===0){deliver();return}              /* test mode, or nothing to email: nothing to wait for */
+    /* test mode, nothing to email, or Send applications for me off (the server only saves it): nothing to wait for */
+    if(!live||!target||grace===0||(w.__uaplySendOff&&w.__uaplySendOff())){deliver();return}
     var left=grace,cancelled=false,timer=null,t=null;            /* live: send by itself, with a short window for Undo */
     function tick(){
       if(cancelled)return;
@@ -787,7 +953,7 @@ function kitApply(w,host){
   function rdyReadsForm(job){return rdyConnected(job)||!!(w.__uaplyFormPreview&&job.live&&!job.instant&&job.ats&&job.ats.kind==="greenhouse")}
   function rdyPayload(job){
     var p=(w.__uaply&&w.__uaply.S.profile)||{},res=w.__uaplyResume?w.__uaplyResume():null;
-    return {plan_only:true,match:0,job:{id:job.id,co:job.co,role:job.role,url:job.url||"https://example.com/example-listing",source:job.source,loc:job.loc,contact:job.contact||"",mode:job.mode,type:job.type||"job",sal:job.sal,blurb:job.blurb},
+    return {plan_only:true,match:0,job:{id:job.id,co:job.co,role:job.role,url:job.url||"https://example.com/example-listing",source:job.source,loc:job.loc,contact:job.contact||"",mode:job.mode,type:job.type||"job",sal:job.sal,salUnit:job.salUnit==="hour"?"hour":undefined,blurb:job.blurb},
       profile:{name:p.name,email:p.email,title:p.title,years:p.years,skills:p.skills,loc:p.loc,edu:p.edu,ext:(w.__uaplyApplyExt?w.__uaplyApplyExt():(p.ext||{}))},
       resume:res&&res.name?{name:res.name,present:true}:null,answers:answersFor(job.co)};
   }
@@ -868,7 +1034,8 @@ function kitApply(w,host){
      saved agreement for this build and opens the box; `done(agreed)` is called with the answer */
   w.__uaplyConsentInfo=function(){try{var c=JSON.parse(w.localStorage.getItem(consentKey()));return c&&typeof c==="object"?{at:+c.at||0,current:c.v===CONSENT_V}:null}catch(e){return null}};
   w.__uaplyConsentAgain=function(done){try{w.localStorage.removeItem(consentKey())}catch(e){}var o=d.getElementById("kitConsent");if(o)o.remove();
-    ensureConsent(function(){if(done)done(true)},function(){if(done)done(false)},true);
+    /* not agreeing this time takes the agreement back on the account too: nothing is sent for the person until they agree again */
+    ensureConsent(function(){if(done)done(true)},function(){post("/api/consent",{withdraw:true}).then(function(r){if(r.ok)w.__uaplyConsentRec=null},function(){});if(done)done(false)},true);
     /* shown again on request, so "You only see this once" is no longer true: that line goes */
     var box=d.getElementById("kitConsent");if(box)[].slice.call(box.querySelectorAll("p")).forEach(function(p){if(/^You only see this once/.test(p.textContent))p.remove()})};
   if(consentFirst&&!showSheet){

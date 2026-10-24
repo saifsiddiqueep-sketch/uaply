@@ -37,7 +37,18 @@ def t(name, got, want):
     print(("PASS " if ok else "FAIL ") + name + ("" if ok else "  -> got %r, wanted %r" % (got, want)))
 
 
-SMTP_PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 2538
+def _free_port():
+    """A port nothing listens on now: a fixed default once met a stand-in mail server left running by another run, which took the
+    messages this test waits for."""
+    import socket as _so
+    s_ = _so.socket()
+    s_.bind(("127.0.0.1", 0))
+    p_ = s_.getsockname()[1]
+    s_.close()
+    return p_
+
+
+SMTP_PORT = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1] != "0" else _free_port()   # 0 or none: a free one
 SERVER_PORT = int(sys.argv[2]) if len(sys.argv) > 2 else 18799
 MAIL = os.path.join(TMP, "mail.jsonl")
 CONTROL = os.path.join(TMP, "control.json")

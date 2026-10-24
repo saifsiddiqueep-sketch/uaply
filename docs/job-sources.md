@@ -170,3 +170,32 @@ unknown user id, a rate limit) and `tools/check-careeronestop.py` to check the k
    and every advert must carry the word "Adzuna" (at least 116 x 23 pixels) linking to Adzuna. Ask Adzuna for a license before building it.
 8. **Careerjet** (optional). https://www.careerjet.com/partners/ : a partner (publisher) program. Its attribution and commercial
    terms were not checked here; read them before signing up.
+
+## What the app is sent (October 23, 2026)
+
+- `GET /api/jobs`: the whole list, gzip-compressed when the browser takes it (every browser does), compact JSON. A feed job leaves out
+  what no card shows (`jobs_api.LIST_DROP`): its description, the credit line (`credit`), the update date and its age (`updated`,
+  `updatedDays`), the USAJOBS announcement; of `ats` only `kind` stays. The server reads all of these from its own copy anyway.
+  Measured on 14,326 jobs: 13.3 MB of JSON (1.43 MB compressed) before, 10.9 MB (1.29 MB) after.
+- `GET /api/jobs?size=200&page=1`: the same list a page at a time, in the same order: `{"jobs", "total", "page", "size", "next",
+  "sources", "merged", "aged_out", "pending", "fetched_at"}`. `?cursor=<next>` gives the page after (it carries on where the last one
+  ended even if the list was rebuilt; then `"changed": true`, and the app tells jobs apart by id). `?type=internship,coop` keeps the
+  deck's stacks (`job`, `parttime`, `internship`, `coop`), and `total` counts only those. Size 200 by default, at most 1,000. A first
+  page of 200 is about 230 KB of JSON, 36 KB compressed.
+- `GET /api/jobs/<id>`: one job with every field (`{"job": ...}`), or 404 `{"code": "gone"}`. Behind the sign-in gate like the list.
+
+## Recruitee careers sites (October 23, 2026)
+
+- Kind `recruitee` (jobs_api `_recruitee_raw`): each company's careers site answers `GET https://{company}.recruitee.com/api/offers/`
+  with no key (its robots.txt disallows only `/v/`). One request per board, every 2 hours like the other boards in job-boards.json.
+- A job keeps Recruitee's offer number as its id (`_jid("recruitee", id)`, stable), `ats = {"kind": "recruitee", "board": company,
+  "id": slug}`, `url` (the posting) and `applyUrl` (its form, `/o/{slug}/c/new`; left out of the list form, in `GET /api/jobs/<id>`).
+  An application goes to `POST https://{company}.recruitee.com/api/offers/{slug}/candidates` (no employer key): the apply side builds
+  that, nothing here sends. Until then a Recruitee job is a hand-off like every feed job.
+- Offers outside the US are left out (one open in several places is placed in its first US one); pay is shown only in US dollars
+  (hourly or yearly ranges); drafts and offers with an unsafe slug are skipped.
+- 33 boards with at least 5 US jobs are in job-boards.json (found with a web search limited to recruitee.com, checked with
+  `tools/find-recruitee.py`): 500 jobs within 60 days on October 23, 42 of them in PA, NJ or DE. Recruitee is mostly European, and its
+  US health care, dental, legal and hospitality sites are small (most have under 5 openings), so few of those passed the 5-job rule.
+- Switched on with the others: `"feeds"` must list `"recruitee"` (uaply-config.json or UAPLY_CONFIG_JSON / UAPLY_FEEDS).
+

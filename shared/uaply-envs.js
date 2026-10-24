@@ -9,7 +9,7 @@ var CSS_FIT=".card.under>*,.card.under2>*{visibility:hidden}.deck{min-height:430
 var CSS_GUIDE="#banner:not([hidden]){display:flex!important}#progress{display:flex!important}@media (max-height:700px){#banner,#progress{display:none!important}}";
 var CSS_NOTICE="#banner:not([hidden]){display:flex!important}@media (max-height:700px){#banner{display:none!important}}";   /* the example-profile notice alone, without the "N jobs left" counters */
 var CSS_TAP=".tab,.filters button,.tips button,.banner button,.linkbtn,.row .btn,.checks label,.btn{min-height:44px}.chip.pick{min-height:36px}.rb.small{width:48px;height:48px}";
-var CSS_TOP2=".crit:not(.open) li.extra{display:none}.crit li.more{display:block}.crit li.more .linkbtn{font-size:13.5px}";
+var CSS_TOP2=".crit:not(.open) li.extra{display:none}.crit li.more{display:block}.crit li.more .linkbtn{font-size:14px}";
 
 var CRIT_TOP2=`function critHTML(m){
   var rows=m.rows.slice().sort(function(a,b){return (b.w*(1-b.s))-(a.w*(1-a.s))||b.w-a.w});
@@ -321,5 +321,8 @@ function run(frame,on,key,done){
     setTimeout(poll,0);
   });
 }
-window.UAplyEnv={FEATURES:FEATURES,ORDER:ORDER,run:run};
+/* the key under which Share this job keeps a friend's landing in the top page's sessionStorage: shared/uaply-share.js writes it and
+   shared/uaply-live.js reads it (to fetch that job with the first page); one name, here (check.js keeps it that way) */
+var SHARE_KEY="uaply.share.landing";
+window.UAplyEnv={FEATURES:FEATURES,ORDER:ORDER,run:run,SHARE_KEY:SHARE_KEY};
 })();

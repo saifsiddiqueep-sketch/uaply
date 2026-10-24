@@ -33,7 +33,8 @@ LEGAL STATUS OF EACH SOURCE (checked October 2026; this is not legal advice, hav
   emailed to anyone (the recruiter address is dropped); swiping right only opens the employer's own page.
 
 get_jobs() returns {"fetched_at", "sources", "jobs", "merged", "aged_out"} where each job already matches the shape the app expects
-(with postedDays, and updatedDays where the feed gives an update date, and "route": "Ready" when UAply sends the application itself,
+(the list form: a feed job without the fields no card shows, LIST_DROP, which job_full and GET /api/jobs/<id> give; get_page is the same
+list a page at a time; with postedDays, and "route": "Ready" when UAply sends the application itself,
 "Ready, one tap" where the employer's page is likely to ask for a human check, "Ready" otherwise; see human-checks.json). Postings older
 than MAX_AGE_DAYS are left out, and the same job from two feeds is shown once ("merged" counts the copies left out).
 """
@@ -60,6 +61,7 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 import ats_api
+import mailer
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 UA = "UAplyDev/0.1 (local prototype)"
@@ -98,7 +100,7 @@ AGE_EXEMPT = ("usajobs",)
 # An hourly part-time or seasonal posting on the employer's own board is usually evergreen: one posting per store or studio, open all
 # year (Insomnia Cookies: 852 of 1,063 part-time postings older than 60 days; solidcore coaches: years). Still listed on the employer's
 # own board means still hiring, so those are not aged out there. An aggregator's copy still is.
-EVERGREEN_KINDS = ("greenhouse", "lever", "ashby", "workable", "smartrecruiters", "careerpage")
+EVERGREEN_KINDS = ("greenhouse", "lever", "ashby", "workable", "smartrecruiters", "recruitee", "careerpage")
 EVERGREEN_TYPES = ("part-time", "temporary")
 
 # (kind, board token, display name). Boards are the employer's own public careers feed.
@@ -222,7 +224,11 @@ SOURCES = [
     ("remoteok", "all", "Remote OK"),         # link back to the job on Remote OK and name Remote OK as the source
 ]
 BOARDS_FILE = os.path.join(ROOT, "job-boards.json")   # employer boards found and checked with tools/find-boards.py (see docs/job-sources.md)
-BOARD_KINDS = ("greenhouse", "lever", "ashby", "smartrecruiters", "workable")       # plus "careerpage": an employer's own careers site (see _career_pages)
+BOARD_KINDS = ("greenhouse", "lever", "ashby", "smartrecruiters", "workable", "recruitee")       # plus "careerpage": an employer's own careers site (see _career_pages)
+# Hiring systems whose postings carry where they live in the system (job["ats"] = kind, board, posting id): the ones UAply can send an
+# application into once the employer connects (ats_api.KINDS), and Recruitee, whose public careers-site API takes an application with no
+# employer key (POST https://{company}.recruitee.com/api/offers/{slug}/candidates; the send itself is the apply side's, not built here)
+ATS_REF_KINDS = ats_api.KINDS + ("recruitee",)
 BOARD_TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$")    # a board's name in its system's address (Lever and Ashby allow dots: "thea.energy")
 
 
@@ -435,6 +441,7 @@ load_human_checks()
 FILE_TTL = 2 * 3600            # a board from job-boards.json is read every 2 hours (the hand-picked ones every 30 minutes)
 
 VIA = {"greenhouse": "%s on Greenhouse", "lever": "%s on Lever", "ashby": "%s on Ashby", "smartrecruiters": "%s on SmartRecruiters", "workable": "%s on Workable",
+       "recruitee": "%s on Recruitee",
        "jobicy": "Jobicy", "muse": "The Muse", "usajobs": "USAJOBS", "remotive": "Remotive",
        "himalayas": "Himalayas", "remoteok": "Remote OK",
        # the CareerOneStop license: every page showing its data credits both the U.S. Department of Labor (ETA) and Minnesota DEED
@@ -643,6 +650,9 @@ def _us_ok(loc, remote):
             return True
     return bool(remote and not FOREIGN_RE.search(loc))
 SAL_RE = re.compile(r"\$\s?(\d{2,3}(?:,\d{3})+|\d{2,3}\s?[kK])\s*(?:-|–|—|to)\s*\$?\s*(\d{2,3}(?:,\d{3})+|\d{2,3}\s?[kK])")
+# an hourly range written out with its unit ("$18 - $22 per hour", "$28.10–$36.50/hr", "$17 to $19 an hour", "$20-25 hourly"). Pay is never
+# guessed and never converted: an hourly figure stays hourly (salUnit "hour"), a yearly one yearly, and no unit means no pay on the card
+HOURLY_RE = re.compile(r"\$\s?(\d{1,3}(?:\.\d{1,2})?)\s*(?:-|–|—|to)\s*\$?\s?(\d{1,3}(?:\.\d{1,2})?)\s*(?:USD\s*)?(?:/\s?(?:hr|hour)\b|per\s+hour\b|an\s+hour\b|hourly\b)", re.I)
 YRS_RE = re.compile(r"(\d{1,2})\+?\s*(?:or more\s*)?(?:years|yrs)", re.I)
 
 _cache = {}
@@ -1002,8 +1012,105 @@ def _role_summary(text, limit=650):
 
 def _text(s):
     s = html.unescape(html.unescape(s or ""))      # a feed's text may be escaped twice ("&amp;lt;b&amp;gt;")
+    # a link that emails someone ("send your resume <a href="mailto:jobs@acme.com">here</a>") keeps its address in the text, so the
+    # posting's own "apply by email" sentence can be read (apply_address); a link whose words are the address already is left as it is
+    s = MAILTO_LINK.sub(lambda m: m.group(2) if "@" in m.group(2) else "%s (%s)" % (m.group(2), urllib.parse.unquote(m.group(1))), s)
     s = re.sub(r"<[^>]+>", " ", s)                 # tags are taken out after the last unescape, so none can come back from an entity
     return re.sub(r"\s+", " ", s).strip()[:20000]
+
+
+MAILTO_LINK = re.compile(r"""<a\b[^>]*?\bhref\s*=\s*["']?mailto:([^"'?>\s]{3,254})[^>]*>(.*?)</a\s*>""", re.I | re.S)
+
+# ---------- apply by email (Saif, October 23, 2026): the posting's own "send your resume to" address ----------
+# A posting that asks for applications by email names the employer's own channel for them. This server takes an address from a
+# posting only when all of these hold (docs/apply-by-email.md); the address is then the job's "contact" and its apply is "email":
+#   - it stands in a sentence that asks for applications by email ("send your resume to", "email your CV to", "applications should be
+#     sent to", "to apply, email"), as the place to send them (right after "to", "at", "email" or a colon), and the sentence is not about
+#     accommodations, questions, agencies, privacy, fraud or "do not";
+#   - its domain is the employer's own: the domain's name (the part before .com, .org, .co.uk) is the company's name or the board's
+#     name, or the domain of the employer's own careers page; a free mailbox (gmail.com and the like) or a hiring system's never is;
+#   - the posting names only one such address (two different ones: neither is used).
+# Nothing here sends anything. uaply_api.submit emails an application to the address only for a swipe right, with every safeguard of the
+# email route (signed in and verified, the consent record, one application per person and job, the daily limits, the bounce list).
+APPLY_VERB = re.compile(r"\b(?:send|e-?mail|submit|forward|direct)(?:ed|ing)?\b[^.!?;]{0,90}?\b(?:resumes?|résumés?|cvs?|c\.v\.|applications?|cover letters?|portfolios?)\b"
+                        r"|\bapplications?\s+(?:should|must|can|may|will)\s+be\s+(?:sent|e-?mailed|submitted|directed|forwarded)\b"
+                        r"|\bto apply\b|\bapply\s+(?:by|via|through)\s+e-?mail\b"
+                        r"|\binterested (?:candidates|applicants|parties|individuals)\b[^.!?;]{0,60}\b(?:send|e-?mail|submit|forward)\b", re.I)
+APPLY_NOT = re.compile(r"accommodat|disabilit|reasonable adjust|\bassist|do not|don'?t|not accept|\bno (?:phone )?calls|\bno e-?mails|unsolicited|agenc|"
+                       r"question|inquir|enquir|privacy|personal (?:data|information)|data protection|unsubscribe|fraud|scam|phish|\bverif|"
+                       r"\breport|complain|payroll|\bw-?2\b|referr|investor|\bpress\b|\bmedia\b", re.I)
+APPLY_OBJECT = re.compile(r"(?:\bto|\bat|:|\be-?mail(?:ing)?|\bsend|\bcontact|\bvia|\bwrite|\bhere)\s*[(\[]?\s*(?:us\s+at\s*|our (?:recruiter|team|hr team|hiring team)\s+at\s*)?$", re.I)
+EMAIL_IN_TEXT = re.compile(r"(?<![A-Za-z0-9._%+-])([A-Za-z0-9][A-Za-z0-9._%+-]{0,63}@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+)")
+APPLY_LOCAL_NOT = re.compile(r"^(?:no-?reply|do-?not-?reply|privacy|accommodations?|ada|eeo|eeoc|abuse|security|legal|press|media|unsubscribe|support|help|billing|payroll|benefits)$", re.I)
+FREE_MAIL = re.compile(r"(?:^|\.)(?:gmail|googlemail|yahoo|ymail|outlook|hotmail|live|msn|aol|icloud|me|mac|proton|protonmail|pm|gmx|mail|zoho|yandex|comcast|verizon|att|sbcglobal|"
+                       r"bellsouth|cox|charter|earthlink|optonline|qq|163|rocketmail|fastmail|hey|tutanota|duck|mailinator)\.[a-z.]+$", re.I)
+NOT_EMPLOYER_HOST = re.compile(r"(?:^|\.)(?:greenhouse\.io|lever\.co|ashbyhq\.com|smartrecruiters\.com|workable\.com|myworkdayjobs\.com|workday\.com|icims\.com|jobvite\.com|"
+                               r"bamboohr\.com|recruitee\.com|breezy\.hr|applytojob\.com|paylocity\.com|ultipro\.com|adp\.com|taleo\.net|successfactors\.com|oraclecloud\.com|"
+                               r"usajobs\.gov|remotive\.com|himalayas\.app|remoteok\.com|jobicy\.com|themuse\.com|careeronestop\.org|simplify\.jobs|linkedin\.com|indeed\.com|"
+                               r"ziprecruiter\.com|glassdoor\.com|uaply\.net|example\.com|example\.org)$", re.I)
+CO_FILLER = re.compile(r"\b(?:inc|incorporated|llc|l\.l\.c|ltd|limited|corp|corporation|co|company|group|holdings?|plc|lp|llp|pllc|pc|the|usa|us|na)\b\.?", re.I)
+_SUFFIX2 = {"co", "com", "org", "net", "ac", "gov", "edu", "ltd", "plc", "or", "ne"}
+
+
+def _domain_name(host):
+    """The name a domain was registered under: "acme" for jobs.acme.com and for careers.acme.co.uk ('' for a bare name)."""
+    parts = [x for x in str(host or "").lower().strip(".").split(".") if x]
+    if len(parts) < 2:
+        return ""
+    if len(parts) >= 3 and len(parts[-1]) == 2 and parts[-2] in _SUFFIX2:
+        return parts[-3]
+    return parts[-2]
+
+
+def _alnum(s):
+    return re.sub(r"[^a-z0-9]", "", str(s or "").lower())
+
+
+def employer_domain(addr_domain, company, board="", page_url=""):
+    """True when an email domain is the employer's own (see the rules above apply_address)."""
+    d = str(addr_domain or "").lower()
+    if not d or FREE_MAIL.search(d) or NOT_EMPLOYER_HOST.search(d):
+        return False
+    label = _alnum(_domain_name(d))
+    if len(label) < 2:
+        return False
+    whole, short = _alnum(company), _alnum(CO_FILLER.sub(" ", str(company or "")))
+    names = {x for x in (whole, short, _alnum(board)) if len(x) >= 2}
+    if label in names:
+        return True
+    try:
+        page = (urllib.parse.urlsplit(page_url or "").hostname or "").lower()
+    except ValueError:
+        page = ""
+    if page and not NOT_EMPLOYER_HOST.search(page) and _alnum(_domain_name(page)) == label:
+        return True                                  # the employer's own careers page is on this domain
+    # "Acme Robotics" and acmerobotics-careers.com, "Penn Medicine" and pennmedicine.org: one name starts the other, at 4 letters or more
+    return any(len(n) >= 4 and len(label) >= 4 and (label.startswith(n) or n.startswith(label)) for n in names)
+
+
+def apply_address(text, company, board="", page_url=""):
+    """The address a posting asks applications to be emailed to, or '' (see the rules above). Nothing is sent from here."""
+    t = str(text or "")
+    if "@" not in t:
+        return ""
+    found = set()
+    for m in EMAIL_IN_TEXT.finditer(t):
+        addr = m.group(1).rstrip(".-").lower()
+        local, _, dom = addr.partition("@")
+        if not dom or "." not in dom or APPLY_LOCAL_NOT.match(local) or len(addr) > 254:
+            continue
+        before = t[max(0, m.start() - 300):m.start()]
+        cut = max(before.rfind(". "), before.rfind("! "), before.rfind("? "), before.rfind("; "))
+        sentence = before[cut + 1:] if cut >= 0 else before
+        after = t[m.end():m.end() + 160]
+        end = re.search(r"[.!?;](?:\s|$)", after)
+        tail = after[:end.start()] if end else after
+        if not APPLY_VERB.search(sentence) or not APPLY_OBJECT.search(sentence[-48:]) or APPLY_NOT.search(sentence + " " + tail):
+            continue
+        if not employer_domain(dom, company, board, page_url):
+            continue
+        found.add(addr)
+    return found.pop() if len(found) == 1 else ""
 
 
 def _ts(v):
@@ -1064,6 +1171,77 @@ def _salary(*texts):
     return [0, 0]
 
 
+def _hour_pay(lo, hi):
+    """An hourly range as the posting gives it ([18.0, 22.5]), or None. Never a yearly figure made from it."""
+    try:
+        lo, hi = float(lo), float(hi)
+    except (TypeError, ValueError):
+        return None
+    return [round(lo, 2), round(hi, 2)] if 5 <= lo < hi <= 500 else None
+
+
+def _hourly(*texts):
+    for t in texts:
+        m = HOURLY_RE.search(t or "")
+        if m:
+            h = _hour_pay(m.group(1), m.group(2))
+            if h:
+                return h
+    return None
+
+
+RECRUITEE_US = ("US", "USA", "UNITED STATES", "UNITED STATES OF AMERICA")
+
+
+def _recruitee_raw(j, name):
+    """One offer of a Recruitee careers site's public list (GET https://{company}.recruitee.com/api/offers/, no key; the careers site's own
+    API, documented at docs.recruitee.com/reference/offers) as a raw posting, or None. The posting id is Recruitee's offer number (the same
+    for the life of the offer); its slug is where an application goes (/api/offers/{slug}/candidates), kept as the job's ats id. An offer
+    open in several places is placed in its first US one; one with none in the US is left out."""
+    if not isinstance(j, dict) or not j.get("id") or not j.get("title") or not j.get("slug") or j.get("status") not in (None, "published"):
+        return None
+    if not _recruitee_slug_ok(j.get("slug")):
+        return None
+    places = [l for l in (j.get("locations") or []) if isinstance(l, dict)]
+    us = [l for l in places if str(l.get("country_code") or l.get("country") or "").strip().upper() in RECRUITEE_US]
+    if us:
+        l = us[0]
+        city, state, country = l.get("city") or "", l.get("state_code") or l.get("state") or "", "us"
+    else:
+        city, state = j.get("city") or "", j.get("state_code") or ""
+        country = "us" if str(j.get("country_code") or "").strip().upper() in RECRUITEE_US else (j.get("country_code") or "other")
+    loc = ", ".join(x.strip() for x in (city, state) if x and x.strip()) or ("United States" if country == "us" else "")
+    remote = True if j.get("remote") is True else None
+    if remote and not j.get("on_site") and not j.get("hybrid"):
+        loc = "Remote - " + (loc or "United States")
+    elif j.get("hybrid") and loc:
+        loc += " (hybrid)"
+    pay = j.get("salary") if isinstance(j.get("salary"), dict) else {}
+    sal = unit = None
+    if str(pay.get("currency") or "").upper() == "USD":
+        if pay.get("period") == "hour":
+            sal = _hour_pay(pay.get("min"), pay.get("max"))
+            unit = "hour" if sal else None
+        elif pay.get("period") == "year":
+            try:
+                lo, hi = int(float(pay.get("min"))), int(float(pay.get("max")))
+                sal = [lo, hi] if 20000 <= lo < hi <= 600000 else None
+            except (TypeError, ValueError):
+                sal = None
+    emp = str(j.get("employment_type_code") or "")
+    when = lambda v: str(v or "").replace(" UTC", "+00:00")       # "2026-09-25 18:00:43 UTC"
+    url = str(j.get("careers_url") or "")
+    return dict(id=j["id"], ats_id=j["slug"], apply_url=str(j.get("careers_apply_url") or ""), title=j["title"], company=j.get("company_name") or name, loc=loc, remote=remote, country=country,
+                text=_text((j.get("description") or "") + " " + (j.get("requirements") or "")), url=url, salary_text="", sal=sal, sal_unit=unit or "",
+                posted=_ts(when(j.get("published_at") or j.get("created_at"))), updated=_ts(when(j.get("updated_at"))), emp=emp,
+                force_type="internship" if emp in ("internship", "traineeship", "apprenticeship") else None,
+                fallback=(j.get("department") or "").strip() or None)
+
+
+def _recruitee_slug_ok(slug):
+    return isinstance(slug, str) and bool(ats_api.ID_RE.match(slug))
+
+
 def _iter_raw(kind, token, name):
     """The raw postings of one board, one at a time: dicts with id, title, company, loc, remote, text, url, salary_text. A generator, so a
     board's postings are worked through as they are read instead of all being held (each with up to 20,000 characters of text) first."""
@@ -1108,6 +1286,20 @@ def _iter_raw(kind, token, name):
                        salary_text="", posted=_ts(j.get("published_on") or j.get("created_at")), emp=j.get("employment_type"),
                        force_type="parttime" if re.search(r"part", j.get("employment_type") or "", re.I) else
                                   ("internship" if re.search(r"intern", j.get("employment_type") or "", re.I) else None))
+    elif kind == "recruitee":
+        # the careers site's own robots.txt first, as for every careers site (_robots_for: read once a day; a site whose robots.txt
+        # cannot be read is not read at all), and nothing when it does not allow the offers list
+        host = "%s.recruitee.com" % token.lower()
+        url = "https://%s/api/offers/" % host
+        rp = _robots_for(host)
+        if rp is None:
+            raise PermissionError("robots.txt could not be read")
+        if not rp.can_fetch(CP_UA, url):
+            raise PermissionError("robots.txt does not allow it")
+        for j in _get_items(url, "offers"):
+            r = _recruitee_raw(j, name)
+            if r:
+                yield r
     elif kind == "remotive":
         for j in _get("https://remotive.com/api/remote-jobs?category=%s&limit=60" % token).get("jobs", []):
             loc = j.get("candidate_required_location") or ""
@@ -1124,9 +1316,10 @@ def _iter_raw(kind, token, name):
             if j.get("salaryPeriod") == "yearly" and j.get("salaryCurrency") == "USD" and isinstance(lo, (int, float)) \
                     and isinstance(hi, (int, float)) and 20000 <= lo < hi <= 600000:
                 sal = [int(lo), int(hi)]
-            yield dict(id=j["id"], title=j["jobTitle"], company=j["companyName"],
+            hour = _hour_pay(lo, hi) if j.get("salaryPeriod") == "hourly" and j.get("salaryCurrency") == "USD" else None
+            yield dict(id=j["id"], title=j["jobTitle"], company=j["companyName"], sal_unit="hour" if hour else "",
                        loc="Remote (%s)" % re.sub(r"\s+", " ", j.get("jobGeo") or "USA").strip(), remote=True,
-                       text=_text(j.get("jobDescription")), url=j["url"], salary_text="", sal=sal,
+                       text=_text(j.get("jobDescription")), url=j["url"], salary_text="", sal=hour or sal,
                        posted=_ts(j.get("pubDate")), emp=j.get("jobType"),
                        fallback=(j.get("jobIndustry") or [None])[0])
     elif kind == "muse":
@@ -1163,9 +1356,10 @@ def _iter_raw(kind, token, name):
                 if j.get("currency") == "USD" and j.get("salaryPeriod") in ("annual", "yearly") and isinstance(lo, (int, float)) \
                         and isinstance(hi, (int, float)) and 20000 <= lo < hi <= 600000:
                     sal = [int(lo), int(hi)]
+                hour = _hour_pay(lo, hi) if j.get("currency") == "USD" and j.get("salaryPeriod") in ("hour", "hourly") else None
                 link = j.get("applicationLink") if str(j.get("applicationLink") or "").startswith("https://") else j["guid"]
                 yield dict(id=j["guid"], title=j["title"], company=j.get("companyName") or "Himalayas", loc="Remote (%s)" % (", ".join(where[:3]) or "Worldwide"),
-                           remote=True, text=_text(j.get("description") or j.get("excerpt")), url=link, salary_text="", sal=sal,
+                           remote=True, text=_text(j.get("description") or j.get("excerpt")), url=link, salary_text="", sal=hour or sal, sal_unit="hour" if hour else "",
                            posted=_ts(j.get("pubDate")), emp=j.get("employmentType"),
                            fallback=next((c.replace("-", " ") for c in (j.get("categories") or []) if isinstance(c, str)), None))
     elif kind == "remoteok":
@@ -1298,6 +1492,7 @@ def _smartrecruiters(token, name):
         if comp.get("currency") == "USD" and comp.get("period") == "YEARLY" and isinstance(comp.get("min"), (int, float)) and isinstance(comp.get("max"), (int, float)) \
                 and 20000 <= comp["min"] < comp["max"] <= 600000:
             sal = [int(comp["min"]), int(comp["max"])]
+        hour = _hour_pay(comp.get("min"), comp.get("max")) if comp.get("currency") == "USD" and comp.get("period") == "HOURLY" else None
         kind_label = ((p.get("typeOfEmployment") or {}).get("label") or "").lower()
         force = "internship" if "intern" in kind_label else ("parttime" if "part" in kind_label else None)
         dept = re.split(r"\s[-–—]\s", (p.get("department") or {}).get("label") or "")[0].strip()      # "Law Department – Tax Unit" -> "Law Department"
@@ -1306,7 +1501,7 @@ def _smartrecruiters(token, name):
         out.append(dict(id=p["id"], title=(p.get("name") or "").strip(), company=(p.get("company") or {}).get("name") or name, country=L.get("country") or "us",
                         loc=loc or "Not listed", remote=True if L.get("remote") else None,
                         text=_text(text) or (p.get("name") or ""), url="https://jobs.smartrecruiters.com/%s/%s" % (token, p["id"]),
-                        salary_text="", sal=sal, posted=_ts(p.get("releasedDate")), fallback=fallback, force_type=force, emp=kind_label,
+                        salary_text="", sal=hour or sal, sal_unit="hour" if hour else "", posted=_ts(p.get("releasedDate")), fallback=fallback, force_type=force, emp=kind_label,
                         ats_id=str(p.get("uuid") or "")))     # the Application API addresses a posting by its uuid, not by its number
         if again:
             out[-1]["_prev"] = again                              # unchanged since the last read: the same job again
@@ -1336,13 +1531,15 @@ def _usajobs(token):
         if not loc or loc.lower().startswith("multiple locations"):        # "Multiple Locations": name the first two, as The Muse cards do
             loc = "; ".join(places[:2]) + (" +%d more" % (len(places) - 2) if len(places) > 2 else "") or loc
         pay = (d.get("PositionRemuneration") or [{}])[0] or {}
-        sal, sal_text = None, ""
+        sal, sal_text, sal_unit = None, "", ""
         try:
             lo, hi = float(pay.get("MinimumRange") or 0), float(pay.get("MaximumRange") or 0)
             money = lambda n: "{:,.0f}".format(n) if n >= 1000 else "{:,.2f}".format(n)   # noqa: E731  (yearly in dollars, hourly with cents)
             sal_text = ("$%s - $%s %s" % (money(lo), money(hi), pay.get("Description") or "")).strip() if hi else ""
             if pay.get("RateIntervalCode") == "PA" and 20000 <= lo < hi <= 600000:
-                sal = [int(lo), int(hi)]                                   # yearly pay only; hourly pay stays in the text
+                sal = [int(lo), int(hi)]                                   # yearly pay as yearly
+            elif pay.get("RateIntervalCode") == "PH" and _hour_pay(lo, hi):
+                sal, sal_unit = _hour_pay(lo, hi), "hour"                 # hourly pay as hourly (never multiplied into a year)
         except (TypeError, ValueError):
             pass
         duties = det.get("MajorDuties")
@@ -1359,7 +1556,7 @@ def _usajobs(token):
                         loc=loc, remote=True if (det.get("RemoteIndicator") is True or re.search(r"remote", loc, re.I)) else None,
                         text=_text(" ".join(x for x in (det.get("JobSummary"), duties, d.get("QualificationSummary")) if isinstance(x, str))),
                         url=(apply_uri[0] if apply_uri else d.get("PositionURI") or ""), announcement=d.get("PositionURI") or "",
-                        salary_text=sal_text, sal=sal, posted=_ts(re.sub(r"\.\d+$", "", str(d.get("PublicationStartDate") or ""))), fallback=cats[0] if cats else None,
+                        salary_text=sal_text, sal=sal, sal_unit=sal_unit, posted=_ts(re.sub(r"\.\d+$", "", str(d.get("PublicationStartDate") or ""))), fallback=cats[0] if cats else None,
                         force_type="internship" if intern else None,
                         emp=(sched + " " + " ".join(s.get("Name", "") for s in d.get("PositionOfferingType") or [] if isinstance(s, dict) and s.get("Name") == "Temporary")).strip()))
     return out
@@ -1624,18 +1821,20 @@ def _ld_raw(p, page_url, name):
         remote = wp == "Remote" or bool(re.search(r"\bremote\b", title, re.I))
         if wp:
             places = [wp]
-    sal = None
+    sal, cp_unit = None, ""
     bs = p.get("baseSalary") if isinstance(p.get("baseSalary"), dict) else {}
     v = bs.get("value") if isinstance(bs.get("value"), dict) else {}
     try:
         lo, hi = float(v.get("minValue")), float(v.get("maxValue"))
         if bs.get("currency") == "USD" and str(v.get("unitText") or "").upper() == "YEAR" and 20000 <= lo < hi <= 600000:
             sal = [int(lo), int(hi)]
+        elif bs.get("currency") == "USD" and str(v.get("unitText") or "").upper() == "HOUR" and _hour_pay(lo, hi):
+            sal, cp_unit = _hour_pay(lo, hi), "hour"
     except (TypeError, ValueError):
         pass
     clean = _cp_clean(page_url)
     return dict(id=clean, title=title, company=str(company).strip(), loc="; ".join(x for x in places if x) or ("Remote" if remote else ""),
-                remote=True if remote else None, text=_text(p.get("description") or "")[:CP_TEXT], url=clean, salary_text="", sal=sal,
+                remote=True if remote else None, text=_text(p.get("description") or "")[:CP_TEXT], url=clean, salary_text="", sal=sal, sal_unit=cp_unit,
                 posted=_ts(p.get("datePosted")), emp=p.get("employmentType"), country=country or "us",
                 # a clinical or store role often names no skill UAply scores on: its category (or the employer's industry) stands in
                 fallback=str(p.get("occupationalCategory") or p.get("industry") or "").strip()[:60] or "General")
@@ -2107,12 +2306,26 @@ def _normalize(raw, kind, name, board=None):
     # employer has connected with their own key (see ats_connections); otherwise it is never used and apply stays "link".
     # Ashby: the job board's own posting id is the jobPostingId its API takes. SmartRecruiters: the posting's uuid (see _smartrecruiters).
     pid = str(raw.get("ats_id") or raw["id"])
-    ats = {"kind": kind, "board": board, "id": pid} if (kind in ats_api.KINDS and board and ats_api.TOKEN_RE.match(board) and ats_api.ID_RE.match(pid)) else None
-    # contact is deliberately empty and apply is "link": a third-party feed never gets an application emailed to anyone
+    ats = {"kind": kind, "board": board, "id": pid} if (kind in ATS_REF_KINDS and board and ats_api.TOKEN_RE.match(board) and ats_api.ID_RE.match(pid)) else None
+    # contact and apply "email": only when the posting itself asks for applications by email at the employer's own address (apply_address,
+    # October 23, 2026). Every other feed posting keeps contact empty and apply "link": nothing is emailed to anyone for it.
+    contact = apply_address(text, company, board or "", raw["url"])
+    # pay as the posting gives it: a yearly range, or an hourly one with its unit; nothing at all ([0, 0], "Pay not listed") otherwise
+    sal, sal_unit = raw.get("sal"), (raw.get("sal_unit") or "") if raw.get("sal") else ""
+    if not sal:
+        sal = _salary(raw["salary_text"], text)
+        if not sal[1]:
+            hour = _hourly(raw["salary_text"], text)
+            if hour:
+                sal, sal_unit = hour, "hour"
     out = dict(id=jid, co=company, role=title, loc=_place(loc, mode), mode=mode,
-               sal=raw.get("sal") or _salary(raw["salary_text"], text), yrs=yrs, edu=edu, skills=skills, blurb=blurb, desc=desc,
-               type=typ, jobType=jtype, url=raw["url"], source=src, contact="", apply="link", live=True, ats=ats,
+               sal=sal, yrs=yrs, edu=edu, skills=skills, blurb=blurb, desc=desc,
+               type=typ, jobType=jtype, url=raw["url"], source=src, contact=contact, apply="email" if contact else "link", live=True, ats=ats,
                posted=_ts(raw.get("posted")), perks=_perks(text), comm=bool(COMM_RE.search(text)))
+    if sal_unit == "hour":
+        out["salUnit"] = "hour"                                   # the card says "per hour"; nothing compares it with a yearly minimum
+    if contact:
+        out["instant"] = True                                     # the card says "Apply instantly": a swipe right emails the application
     if jtype in ("internship", "co-op") and _grad_only(title, text):
         out["gradOnly"] = True                                    # the Internship and Co-op stacks show undergraduate roles first
     pt = job_geo(loc, mode == "remote")
@@ -2127,6 +2340,8 @@ def _normalize(raw, kind, name, board=None):
     out["credit"] = "via USAJOBS; apply on the official announcement" if kind == "usajobs" else "via " + out["via"]
     if (raw.get("announcement") or "").startswith("https://"):
         out["announcement"] = raw["announcement"]                 # USAJOBS: the official announcement, kept next to the apply link
+    if kind == "recruitee" and _public_https(raw.get("apply_url") or ""):
+        out["applyUrl"] = raw["apply_url"]                        # Recruitee: the offer's own application form (its slug is in ats.id)
     # the same few strings repeat across thousands of jobs (a board's name, credit and places, the work style, type and level): one copy each
     for k in INTERNED:
         if isinstance(out.get(k), str):
@@ -2154,12 +2369,15 @@ def job_info(job_id):
 
 
 def known_contact(job_id):
-    """The recruiter address this server itself holds for a job ('' if none or unknown). Only partner employers have one."""
+    """The address this server itself holds for a job ('' if none or unknown): a partner employer's recruiting address, or the address a
+    posting asks applications to be emailed to (apply_address), unless that employer connected its hiring system (which takes it instead)."""
     for j in partner_jobs():
         if j["id"] == job_id:
             return j.get("contact", "") or ""
     j = _find_job(job_id)
-    return (j.get("contact", "") or "") if j else ""
+    if not j or j.get("apply") != "email" or _connected(j, ats_connections()):
+        return ""
+    return j.get("contact", "") or ""
 
 
 FIRST_WAIT = 8                   # seconds the very first request on an empty disk waits for a board (every later request waits for none)
@@ -2268,7 +2486,8 @@ def _link_alive(url):
 
 
 ATS_POSTING = {"greenhouse": "https://boards-api.greenhouse.io/v1/boards/%s/jobs/%s", "lever": "https://api.lever.co/v0/postings/%s/%s",
-               "smartrecruiters": "https://api.smartrecruiters.com/v1/companies/%s/postings/%s"}
+               "smartrecruiters": "https://api.smartrecruiters.com/v1/companies/%s/postings/%s",
+               "recruitee": "https://%s.recruitee.com/api/offers/%s"}       # (Recruitee: the careers site's one offer, by its slug)
 
 
 def job_alive(j):
@@ -2924,8 +3143,9 @@ def _file_partner_jobs():
 
 
 def job_policy(job_id):
-    """How an application to this job may be handled: 'direct' (the employer opted in), 'link' (send the person to the
-    employer's own page; nothing is emailed) or 'unknown' (an example listing)."""
+    """How an application to this job may be handled: 'direct' (the employer opted in), 'email' (the posting itself asks for applications
+    by email at the employer's own address: apply_address), 'link' (send the person to the employer's own page; nothing is emailed) or
+    'unknown' (an example listing). An address on the bounce list (it bounced, or its owner asked UAply to stop) is 'link' again."""
     for j in partner_jobs():
         if j["id"] == job_id:
             return j["apply"]
@@ -2933,7 +3153,9 @@ def job_policy(job_id):
     j = _find_job(job_id)
     if j:
         # a real posting whose employer connected their hiring system with their own key can be applied to instantly
-        return "direct" if _connected(j, conns) else "link"
+        if _connected(j, conns):
+            return "direct"
+        return "email" if j.get("apply") == "email" and j.get("contact") and not mailer.suppressed(j["contact"]) else "link"
     return "unknown"
 
 
@@ -2963,33 +3185,65 @@ _LOAD_SOURCE = _load_source
 def get_jobs():
     """The job list as one dict (see the module notes): each job a copy with postedDays (and updatedDays), a feed job without its email
     description, a connected employer's posting marked as applied to directly."""
-    meta, conns, now_ms = {}, ats_connections(), time.time() * 1000
-    jobs = [_out_job(j, now_ms, conns, feed) for j, feed in _collect(meta, now_ms)]
+    meta, conns, now_ms, blocked = {}, ats_connections(), time.time() * 1000, mailer.blocked_addresses()
+    jobs = [_out_job(j, now_ms, conns, feed, blocked) for j, feed in _collect(meta, now_ms)]
     return dict(meta, jobs=jobs)
 
 
 def apply_classes():
-    """How many listed jobs take each way of applying (for /api/status), counted one job at a time (no copy of the list)."""
-    meta, conns, now_ms = {}, ats_connections(), time.time() * 1000
-    c = {"ats": 0, "email": 0, "webhook": 0, "handoff": 0}
+    """How many listed jobs take each way of applying (for /api/status), counted one job at a time (no copy of the list). "email" counts
+    partner employers that take email and postings that ask for applications by email ("postingEmail" is those postings alone)."""
+    meta, conns, now_ms, blocked = {}, ats_connections(), time.time() * 1000, mailer.blocked_addresses()
+    c = {"ats": 0, "email": 0, "webhook": 0, "handoff": 0, "postingEmail": 0}
     for j, feed in _collect(meta, now_ms):
-        o = _out_job(j, now_ms, conns, feed)
+        o = _out_job(j, now_ms, conns, feed, blocked)
         inst = bool(o.get("instant"))
         c["ats"] += inst and not o.get("contact") and not o.get("webhook")
         c["email"] += inst and bool(o.get("contact"))
+        c["postingEmail"] += o.get("apply") == "email"
         c["webhook"] += inst and bool(o.get("webhook"))
         c["handoff"] += not inst
     return c
 
 
-def _out_job(j, now_ms, conns, feed):
-    """`feed`: False for a partner employer's job, else its feed's route label (or True)."""
-    out = _with_age(j, now_ms, drop=("desc",) if feed else ())
+# What the list form (/api/jobs, get_jobs) leaves out of a feed job, because no card shows it (measured October 23, 2026 on 14,326 jobs:
+# 13.3 MB of JSON): the 650-character description (only the emails use it, from this server's own copy), the record's credit line ("via
+# ..." again, which the server takes from its own copy, never the browser's), the update date and its age, the official announcement
+# (both read from this server's copy for the receipt), and of the employer-system reference only its kind (the app asks
+# job.ats.kind === "greenhouse"; the board and posting id stay here). GET /api/jobs/<id> answers the whole job (job_full), Recruitee's applyUrl too.
+LIST_DROP = ("desc", "credit", "updated", "updatedDays", "announcement", "applyUrl")
+
+
+def _out_job(j, now_ms, conns, feed, blocked=frozenset(), full=False):
+    """`feed`: False for a partner employer's job, else its feed's route label (or True). `blocked`: the addresses on the bounce list
+    (mailer.blocked_addresses): a posting whose application address is on it is a hand-off again. full: every field (the per-job route)."""
+    out = _with_age(j, now_ms, drop=("desc",) if feed and not full else ())
+    if feed and out.get("apply") == "email" and str(out.get("contact") or "").lower() in blocked:
+        out.update(contact="", apply="link", instant=False)          # it bounced, or its owner asked UAply to stop: finish on their site
     if conns and _connected(out, conns):        # marked on the copy, so the shared cache stays as fetched
-        out.update(apply="direct", instant=True)
+        out.update(apply="direct", instant=True, contact="")          # their own hiring system takes it: never also an email
     # sent in UAply (a connected system, or an email to the employer): "Ready"; a hand-off: its source's label
     out["route"] = ROUTE_READY if out.get("instant") or not isinstance(feed, str) else feed
+    if feed and not full:
+        for k in LIST_DROP:
+            out.pop(k, None)
+        if isinstance(out.get("ats"), dict):
+            out["ats"] = {"kind": out["ats"].get("kind")}       # a new dict: the cached job keeps its whole reference
     return out
+
+
+def job_full(job_id):
+    """One listed job with every field the list form leaves out (LIST_DROP), as the app would get it, or None. A feed job is looked up in
+    the cache, a partner employer's job in the partner list (an employer's account email never goes out, as in the list)."""
+    now_ms, conns = time.time() * 1000, ats_connections()
+    for pj in partner_jobs():
+        if pj["id"] == job_id:
+            return _out_job({k: v for k, v in pj.items() if k != "contact"} if pj.get("emp") else pj, now_ms, conns, False)
+    j = _find_job(job_id)
+    if not j:
+        return None
+    src = next((s for s in SOURCES if _has(_cache.get(s) or {}, job_id)), None)
+    return _out_job(j, now_ms, conns, route_label(src) if src else True, mailer.blocked_addresses(), full=True)
 
 
 def _collect(meta, now_ms):
@@ -3045,7 +3299,10 @@ def _collect(meta, now_ms):
 
 
 JSON_MEMO_S = 20                 # seconds the encoded job list is reused while nothing changed (a few thousand jobs are megabytes to encode)
-_json_memo = {"key": None, "at": 0.0, "gz": b"", "pending": 0}
+_json_memo = {"key": None, "at": 0.0, "gz": b"", "pending": 0, "blocks": [], "kinds": [], "meta": {}, "stamp": 0}
+PAGE_SIZE, PAGE_MAX = 200, 1000  # the paged form (get_page): jobs per page when none is asked for, and the most one page may hold
+PAGE_BLOCK = 250                 # jobs per compressed block of the memo (a page unpacks only the blocks it needs)
+PAGE_TYPES = ("job", "parttime", "internship", "coop")      # the deck's stacks (a job's "type"), the paged form's type filter
 _json_lock = threading.Lock()
 _version = [0]                   # raised whenever a source's copy or status changes
 
@@ -3054,8 +3311,62 @@ def get_json(compressed=False):
     """The job list as JSON bytes (gzip-compressed with compressed=True), encoded once and reused for up to JSON_MEMO_S seconds while no
     source, partner posting or connected hiring system changed: every visitor's request used to build and encode the whole list again."""
     import gzip
+    m = _memo()
+    return m["gz"] if compressed else gzip.decompress(m["gz"])
+
+
+def get_page(size=None, page=None, cursor=None, types=None):
+    """One page of the job list as JSON bytes: {"jobs": [...], "total", "page", "size", "next", and the list's other fields (sources,
+    merged, aged_out, pending, fetched_at)}. The same jobs in the same order as get_json, cut from the same memo (nothing is encoded again).
+    size: jobs per page (PAGE_SIZE, at most PAGE_MAX). page: 1 for the first. cursor: the "next" of the page before, which carries on where
+    it ended even if the list was rebuilt meanwhile ("changed": true then, and the app keeps telling jobs apart by id). types: a job's
+    "type" values to keep (PAGE_TYPES), all when empty; "total" counts the jobs that pass it."""
+    m = _memo()
+    with _json_lock:
+        blocks, kinds, meta, stamp = m["blocks"], m["kinds"], m["meta"], m["stamp"]
+    try:
+        size = min(PAGE_MAX, max(1, int(size))) if size not in (None, "") else PAGE_SIZE
+    except (TypeError, ValueError):
+        size = PAGE_SIZE
+    want = {t for t in (types or ()) if t in PAGE_TYPES}
+    sel = [i for i, k in enumerate(kinds) if k in want] if want else range(len(kinds))
+    changed, start = False, 0
+    if cursor:
+        try:
+            cs, pos = (int(x) for x in str(cursor).split(".", 1))
+        except ValueError:
+            cs, pos = stamp, 0
+        changed = cs != stamp
+        import bisect
+        start = bisect.bisect_left(sel, pos)                     # the first job at or after where the page before ended
+        page = None
+    else:
+        try:
+            page = max(1, int(page)) if page not in (None, "") else 1
+        except (TypeError, ValueError):
+            page = 1
+        start = (page - 1) * size
+    chosen = sel[start:start + size]
+    lines, opened = [], {}
+    for i in chosen:
+        b = i // PAGE_BLOCK
+        if b not in opened:
+            opened[b] = zlib.decompress(blocks[b]).split(b"\n")
+        lines.append(opened[b][i % PAGE_BLOCK])
+    nxt = "%d.%d" % (stamp, chosen[-1] + 1) if chosen and start + size < len(sel) else None
+    head = dict(meta, total=len(sel), page=page, size=size, next=nxt)
+    if changed:
+        head["changed"] = True
+    return b'{"jobs":[' + b",".join(lines) + b"]," + json.dumps(head, separators=(",", ":"))[1:].encode("utf-8")
+
+
+def _memo():
+    """The encoded job list (see get_json), rebuilt when it is out of date: the whole list gzip-compressed, and the same jobs in blocks of
+    PAGE_BLOCK (zlib, one job per line) with each job's type, for get_page."""
     pj = partner_jobs()
-    key = (_version[0], tuple((j.get("id"), j.get("closed"), j.get("posted"), j.get("role")) for j in pj), tuple(sorted(ats_connections())), hide_errors)
+    blocked = mailer.blocked_addresses()        # an address that bounced or asked UAply to stop: its postings are hand-offs again at once
+    key = (_version[0], tuple((j.get("id"), j.get("closed"), j.get("posted"), j.get("role")) for j in pj), tuple(sorted(ats_connections())), hide_errors,
+           hash(blocked))
     with _json_lock:
         m = _json_memo
         age = time.time() - m["at"]
@@ -3065,12 +3376,22 @@ def get_json(compressed=False):
         if not reuse:
             # written one job at a time straight into the compressor: no copy of the whole list, no megabytes of text at once (at 7,000
             # jobs the copies and the text were about 30 MB on top of the jobs themselves); only the compressed list is kept
+            # Compact JSON (no spaces after , and :): about 7% fewer bytes to parse on a phone, the same once compressed.
             meta, conns, now_ms = {}, ats_connections(), time.time() * 1000
             z = zlib.compressobj(5, zlib.DEFLATED, 31)          # 31: a gzip stream
-            parts = [z.compress(b'{"jobs": [')]
+            parts, blocks, block, kinds = [z.compress(b'{"jobs":[')], [], [], []
             for i, (j, feed) in enumerate(_collect(meta, now_ms)):
-                parts.append(z.compress((b"," if i else b"") + json.dumps(_out_job(j, now_ms, conns, feed)).encode("utf-8")))
-            parts.append(z.compress(b"], " + json.dumps(meta)[1:].encode("utf-8")) + z.flush())     # the list's other fields after the jobs
-            m.update(key=(_version[0],) + key[1:], at=time.time(), gz=b"".join(parts), pending=meta.get("pending", 0))
-            del parts
-        return m["gz"] if compressed else gzip.decompress(m["gz"])
+                line = json.dumps(_out_job(j, now_ms, conns, feed, blocked), separators=(",", ":")).encode("utf-8")
+                parts.append(z.compress((b"," if i else b"") + line))
+                block.append(line)                               # (JSON text never holds a raw line break: one job per line)
+                kinds.append(sys.intern(j.get("type") or "job"))
+                if len(block) == PAGE_BLOCK:
+                    blocks.append(zlib.compress(b"\n".join(block), 5))
+                    block = []
+            if block:
+                blocks.append(zlib.compress(b"\n".join(block), 5))
+            parts.append(z.compress(b"]," + json.dumps(meta, separators=(",", ":"))[1:].encode("utf-8")) + z.flush())     # the list's other fields after the jobs
+            m.update(key=(_version[0],) + key[1:], at=time.time(), gz=b"".join(parts), pending=meta.get("pending", 0),
+                     blocks=blocks, kinds=kinds, meta=meta, stamp=m["stamp"] + 1)
+            del parts, block
+        return m

@@ -132,7 +132,18 @@ t("education reads as words: graduation June 2027, not 2027-06", dict(rows).get(
 
 # ---- a real send through the stand-in mail server ----
 mail_file = os.path.join(TMP, "mail.jsonl")
-port = int(sys.argv[1]) if len(sys.argv) > 1 else 2527                # another port can be given, so two test runs never collide
+def _free_port():
+    """A port nothing listens on now: a fixed default once met a stand-in mail server left running by another run, which took the
+    messages this test waits for."""
+    import socket as _so
+    s_ = _so.socket()
+    s_.bind(("127.0.0.1", 0))
+    p_ = s_.getsockname()[1]
+    s_.close()
+    return p_
+
+
+port = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1] != "0" else _free_port()   # a port can be given; else a free one
 proc = subprocess.Popen([sys.executable, os.path.join(HERE, "fake-smtp.py"), str(port), mail_file], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 try:
     time.sleep(1.5)

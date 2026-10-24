@@ -41,6 +41,11 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   const order = await ev("(" + q("#acctSec") + ").innerText");
   check("the card: Create your UAply account, Continue with Google, or, Email, First name, Last name, Password, the 18+ tick, Create my account, Have an account? Sign in",
     /Create your UAply account[\s\S]*Continue with Google[\s\S]*\bor\b[\s\S]*Email[\s\S]*First name[\s\S]*Last name[\s\S]*Password[\s\S]*18 or older[\s\S]*Create my account[\s\S]*Have an account\?[\s\S]*Sign in/.test(order), order.slice(0, 400));
+  // 14 px for every text on the card (the owner's rule; the live walk, October 23, found 13 px: "or", "Goes on your applications.",
+  // "At least 8 characters.", the tick line's links, "Email me a code instead", Forgot password?): the phone walk's own small-text test
+  const smallText = async () => JSON.parse(await ev("(()=>{const sm=" + require("./phone-walk.js").SMALL + ";return JSON.stringify(sm(" + F + ",'card'))})()"));
+  let sm0 = await smallText();
+  check("every text on the sign-up card is at least 14 px", sm0.length === 0, JSON.stringify(sm0));
   check("no way to put the card away: no Not now, Close, Skip or Show me jobs on it", !/Not now|Show me jobs|Close|Skip|Maybe later/.test(order), order.slice(0, 400));
   const Lw = JSON.parse(await ev("(()=>{const d=" + F + ",w=d.defaultView,c=d.querySelector('.sg-card').getBoundingClientRect();const m=d.getElementById('main');return JSON.stringify({l:c.left,r:c.right,w:c.width,vw:w.innerWidth,cw:m.clientWidth,hs:d.documentElement.scrollWidth>w.innerWidth})})()"));
   check(phone ? "phone: the card fills the width with 16 px gutters, no sideways scroll" : "laptop: the card is centered (in the screen less its scroll bar), at most 440 px wide, no sideways scroll",
@@ -146,6 +151,40 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
     await load();
   }
 
+  // ---- 5c. the card's pages in the installed app (live walk, October 23: Terms replaced the card, and the phone's Back closed the app).
+  //      Standalone, a link on the card opens its page over the card with a history entry: Back shows the card again, as it was ----
+  {
+    // headless Chrome cannot be installed, so the top page is told it runs standalone the way an installed app's page is: its
+    // matchMedia("(display-mode: standalone)") answers true (Emulation.setEmulatedMedia has no display-mode here)
+    const sa = await send("Page.addScriptToEvaluateOnNewDocument", { source: "(()=>{if(window!==window.top)return;const mm=window.matchMedia.bind(window);" +
+      "window.matchMedia=(q)=>String(q).replace(/ /g,'').indexOf('display-mode:standalone')>-1?{matches:true,media:q,addEventListener(){},removeEventListener(){},addListener(){},removeListener(){},onchange:null}:mm(q)})()" });
+    await load();
+    const standalone = await ev("matchMedia('(display-mode: standalone)').matches");
+    check("(the browser runs as the installed app: display-mode standalone)", standalone === true, standalone);
+    await typeIn("[data-email] input", "back.test@example.com");
+    const href0 = await ev("location.href");
+    const opened = async () => JSON.parse(await ev("(()=>{const o=document.getElementById('sgPage');if(!o)return 'null';const f=o.querySelector('iframe');let p='',t='';try{p=f.contentWindow.location.pathname;t=f.contentDocument.body.innerText.slice(0,80)}catch(e){}return JSON.stringify({p,t,shown:o.getClientRects().length>0})})()"));
+    const cardBack = async () => JSON.parse(await ev("(()=>{const c=" + q(".sg-card") + ",i=" + q("[data-email] input") + ";return JSON.stringify({card:!!c&&c.getClientRects().length>0,email:i?i.value:'',over:!!document.getElementById('sgPage'),gated:" + F + ".body.classList.contains('sgGated')})})()"));
+    for (const [label, sel] of [["Terms (on the card's links)", ".sg-legal a[href$='terms.html']"], ["Privacy (in the 18+ line)", ".sg-agree a[href$='privacy.html']"], ["Help and support", ".sg-legal a[href$='support.html']"]]) {
+      await click(sel);
+      let o = null; for (let i = 0; i < 20; i++) { await sleep(250); o = await opened(); if (o && o.t) break; }
+      check("installed app: " + label + " opens its page over the card, in the app", !!o && o.shown && /^\/legal\//.test(o.p) && o.t.length > 10, JSON.stringify(o));
+      await ev("history.back()"); await sleep(900);
+      const c = await cardBack();
+      check("...and the phone's Back shows the card again, as it was (the typed email kept), still in the app", c.card && !c.over && c.gated && c.email === "back.test@example.com" && (await ev("location.href")) === href0, JSON.stringify(c));
+    }
+    // the page's own "Back to UAply" link: closes the page (the app is not loaded inside it)
+    await click(".sg-legal a[href$='terms.html']");
+    for (let i = 0; i < 20 && !((await opened()) || {}).t; i++) await sleep(250);
+    await ev("(()=>{const f=document.querySelector('#sgPage iframe');const a=f&&f.contentDocument.querySelector('a.home');if(a)a.click()})()"); await sleep(1500);
+    const c2 = await cardBack();
+    check("...the page's own Back to UAply closes it too, back on the card", c2.card && !c2.over && c2.email === "back.test@example.com", JSON.stringify(c2));
+    await send("Page.removeScriptToEvaluateOnNewDocument", { identifier: sa.result.identifier });
+    await load();
+    check("in a browser tab the card's links still open in a new tab (target _blank), nothing over the card",
+      (await ev("[...(" + F + ").querySelectorAll('.sg-legal a,.sg-agree a')].every(a=>a.target==='_blank')")) && !(await ev("!!document.getElementById('sgPage')")));
+  }
+
   // ---- 6. sign up (test mode: the server signs the person in at once, or the code from the test inbox), then the two questions ----
   const stamp = Date.now().toString(36), email = "gate." + stamp + "@example.com";
   const prov = JSON.parse(await ev("fetch('/api/auth/providers').then(r=>r.json()).then(j=>JSON.stringify(j))"));
@@ -166,7 +205,7 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   check("after the questions the gate is gone and the cards are on screen", !(await gated()) && (await ev("!" + F + ".getElementById('pane-swipe').hidden")) && (await ev("!!" + q("#bnav") + "&&" + q("#bnav") + ".getClientRects().length>0")));
   const consent = await ev("(()=>{const b=" + q("#kitConsent") + ";return b?b.innerText:''})()");
   check("the first-swipe agreement does not ask the age again (the sign-up tick did), and keeps the authorization sentence",
-    !consent || (!/18 or older/.test(consent) && /authorize UAply/.test(consent)), consent.slice(0, 300));
+    !consent || (!/18 or older/.test(consent) && /authorizes UAply to submit your application on your behalf/.test(consent)), consent.slice(0, 300));
   await load();
   check("a reload, signed in: the app as before, no gate", !(await gated()) && (await me()) === email);
 
@@ -177,6 +216,8 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   check("Sign out: the gate is back, the card is empty, nothing behind it is drawn", (await gated()) && (await me()) === null && nothingBehind(s) &&
     (await ev(q("[data-email] input") + ".value")) === "", JSON.stringify(s));
   const so = await ev("(" + q("#acctSec") + ").innerText");
+  sm0 = await smallText();
+  check("every text on the sign-in view (Welcome back, Forgot password?, Email me a code instead) is at least 14 px", sm0.length === 0, JSON.stringify(sm0));
   check("...and it is Welcome back (sign in), with Create an account as the link", /Welcome back/.test(so) && /New here\?\s*Create an account/.test(so) && !/Create your UAply account/.test(so), so.slice(0, 300));
   if (prov.codeSignin) {
     await typeIn("[data-email] input", email); await click(".sg-codeinst"); await sleep(1500);

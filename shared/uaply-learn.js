@@ -58,7 +58,7 @@ function attrs(j){
   add("r",family(j.role));
   add("c",j.co);
   var s=Array.isArray(j.sal)?j.sal:[0,0],lo=+s[0]||0,hi=+s[1]||0;
-  if(hi>0)add("p",Math.floor((lo>0?(lo+hi)/2:hi)/20000)*20);          /* pay band in $20k steps, from the middle of the range */
+  if(hi>0&&j.salUnit!=="hour")add("p",Math.floor((lo>0?(lo+hi)/2:hi)/20000)*20);          /* pay band in $20k steps, from the middle of a yearly range (hourly pay has none: it is never turned into a year) */
   var y=+j.yrs||0;add("y",y<=0?"0":y<=2?"1-2":y<=5?"3-5":"5+");
   if(j.mode!=="remote")add("l",place(j.loc));                          /* a remote job has no city that matters */
   (Array.isArray(j.skills)?j.skills:[]).slice(0,8).forEach(function(x){add("s",x)});
@@ -225,7 +225,7 @@ function lineHTML(m){
   return t?'<p class="learned"'+(L.explore?' data-explore="1"':'')+'>'+t+'</p>':"";
 }
 
-var CSS=".learned{margin:-4px 0 0;font-size:13px;line-height:1.4;color:var(--muted)}.learned b{color:var(--ink);font-weight:700}.learned .lx{color:var(--accent)}"+
+var CSS=".learned{margin:-4px 0 0;font-size:14px;line-height:1.4;color:var(--muted)}.learned b{color:var(--ink);font-weight:700}.learned .lx{color:var(--accent)}"+
   "#lrnBox{display:flex;flex-direction:column;gap:6px}#lrnSum{color:var(--muted)}";
 
 function patch(s){

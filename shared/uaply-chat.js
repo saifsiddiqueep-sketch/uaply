@@ -14,16 +14,16 @@ var CSS=`
 #uaChat[hidden],#uaNudge[hidden]{display:none}
 #uaChat .hd{display:flex;align-items:center;gap:10px;padding:12px 12px 12px 16px;border-bottom:1px solid var(--line)}
 #uaChat .hd b{font:800 16px var(--display,inherit)}
-#uaChat .tag{font:700 10.5px var(--mono,ui-monospace,monospace);letter-spacing:.06em;padding:3px 8px;border-radius:6px;background:var(--bg);color:var(--accent);border:1px solid var(--line)}
+#uaChat .tag{font:700 14px var(--mono,ui-monospace,monospace);letter-spacing:.06em;padding:3px 8px;border-radius:6px;background:var(--bg);color:var(--accent);border:1px solid var(--line)}
 #uaChat .x{margin-left:auto;border:0;background:none;color:var(--muted);min-width:44px;min-height:44px;border-radius:10px;font-size:22px;cursor:pointer}
 #uaChat .x:hover{background:var(--bg)}
 #uaChat .log{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--bg)}
 #uaChat .msg{max-width:88%;padding:10px 13px;border-radius:16px;font-size:14.5px;line-height:1.45;white-space:normal;overflow-wrap:anywhere}
 #uaChat .bot{align-self:flex-start;background:var(--surface);border:1px solid var(--line);border-bottom-left-radius:6px}
 #uaChat .me{align-self:flex-end;background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);border-bottom-right-radius:6px}
-#uaChat .src{display:block;margin-top:6px;font-size:12px;color:var(--muted)}
+#uaChat .src{display:block;margin-top:6px;font-size:14px;color:var(--muted)}
 #uaChat .chips{display:flex;flex-wrap:wrap;gap:6px;align-self:flex-start;max-width:100%}
-#uaChat .chips button{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:7px 13px;min-height:44px;font:600 13.5px inherit;cursor:pointer}
+#uaChat .chips button{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:7px 13px;min-height:44px;font:600 14px inherit;cursor:pointer}
 #uaChat .chips button:hover{border-color:var(--accent)}
 #uaChat .chips button.pri{background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);border-color:transparent}
 #uaChat .chips.rate button{min-width:44px;padding:7px 10px}
@@ -31,7 +31,7 @@ var CSS=`
 #uaChat form{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--line);background:var(--surface)}
 #uaChat input{flex:1;min-width:0;min-height:44px;padding:0 14px;border:1px solid var(--line);border-radius:999px;background:var(--bg);color:var(--ink);font:inherit}
 #uaChat form button{min-width:44px;min-height:44px;border:0;border-radius:999px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);font-weight:700;padding:0 16px;cursor:pointer}
-#uaChat .ft{padding:0 14px 10px;font-size:11.5px;color:var(--muted);background:var(--surface)}
+#uaChat .ft{padding:0 14px 10px;font-size:14px;color:var(--muted);background:var(--surface)}
 #uaNudge{position:fixed;right:16px;bottom:calc(var(--above-nav,96px) + 60px);z-index:44;width:min(330px,calc(100vw - 24px));background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:14px;display:flex;flex-direction:column;gap:10px}
 #uaNudge p{margin:0;font-weight:700;padding-right:44px}
 #uaNudge small{color:var(--muted)}

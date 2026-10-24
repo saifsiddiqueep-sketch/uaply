@@ -17,6 +17,7 @@ module.exports = async ({ ev, sleep, nav, shot }) => {
   check("the top card is a real City job and says 'Ready' (its route; never the old 'Opens employer site')", /^Ready/.test(info.ext), info.ext);
   check("it says 'via City of Philadelphia on SmartRecruiters'", info.via === "via City of Philadelphia on SmartRecruiters", info.via);
   check("the credit sits right after it", info.next, info.next);
-  check("it is smaller than the line it follows, in the same muted color", info.size > 0 && info.size < info.extSize && info.color === info.extColor, JSON.stringify(info));
+  // no larger than the line it follows, and at least 14 px (the owner's floor since October 23 raised it to the same size)
+  check("it is no larger than the line it follows, at least 14 px, in the same muted color", info.size >= 14 && info.size <= info.extSize && info.color === info.extColor, JSON.stringify(info));
   if (process.env.SHOT) await shot(process.env.SHOT);
 };

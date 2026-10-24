@@ -8,11 +8,15 @@
 const PORT = process.env.PORT || "18766";
 const path = require("path");
 const gateSignup = require("./gate-signup.js");   // the test person signs up first (Saif, October 22: no account, no data)
-module.exports = async ({ ev, sleep, nav, send, logs, shot }) => {
+module.exports = async (ctx) => {
+  try { await learnTest(ctx); } catch (e) { console.log("FAIL the test stopped before its last check: " + (e && e.message)); throw e; }
+};
+async function learnTest({ ev, sleep, nav, send, logs, shot }) {
   const F = "document.querySelector('iframe').contentDocument";
   const FW = "document.querySelector('iframe').contentWindow";
-  let bad = 0;
-  const check = (name, ok, extra) => { if (!ok) bad++; console.log((ok ? "PASS " : "FAIL ") + name + (extra ? "  " + extra : "")); };
+  let bad = 0, n = 0;
+  const failed = [];   // named again at the very end: the runner keeps only the last lines of a failed test
+  const check = (name, ok, extra) => { n++; if (!ok) { bad++; failed.push(name + (extra ? "  " + String(extra).slice(0, 200) : "")); } console.log((ok ? "PASS " : "FAIL ") + name + (extra ? "  " + extra : "")); };
   const J = (x) => ev("JSON.stringify(" + x + ")").then((s) => (typeof s === "string" && !s.startsWith("JSERR") ? JSON.parse(s) : s));
   const snap = async (name) => { if (process.env.SHOTS) await shot(path.join(process.env.SHOTS, name)); };
   const pick = async (nb, label) => { await ev(F + ".getElementById('" + nb + "').click()"); await sleep(450); return ev("(()=>{const e=[...(" + F + ").querySelectorAll('.nitem')].find(b=>b.innerText.trim().startsWith(" + JSON.stringify(label) + "));if(!e)return false;e.click();return true})()"); };
@@ -44,16 +48,22 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot }) => {
   // and fix the learner's random seed (a new visitor otherwise gets a random one)
   // (the sandbox says so in its controls bar; dev has no bar, so there it waits until the app stops loading jobs)
   for (let i = 0; i < 60; i++) { if (await ev("(()=>{const n=document.getElementById('note');return n?/^(Real postings|Could not load)/.test(n.textContent||''):!" + FW + ".__uaplyLoadingJobs})()")) break; await sleep(500); }
+  // the deck reads the first page, then the whole list in the background (shared/uaply-live.js): wait for that too, and for the job count
+  // to stay put for two seconds, so the whole list never lands in the middle of the swipes below
+  for (let i = 0, last = -1, same = 0; i < 120 && same < 4; i++) {
+    const st = JSON.parse(await ev("(()=>{const w=" + FW + ";return JSON.stringify({rk:w.document.documentElement.classList.contains('uaRank'),n:w.__uaply.JOBS.length})})()"));
+    same = !st.rk && st.n === last ? same + 1 : 0; last = st.n; await sleep(500);
+  }
   await ev(FW + ".__uaplyLearn.state().seed=20261016");
 
   // 80 made-up jobs: 40 on-site in New York asking for skills the example profile has (they match best), 40 remote asking for half of them
   await ev("(()=>{const w=" + FW + ",A=w.__uaply;w.__uaplyOnDecision=null;w.__uaplyReadyGate=function(){return false};w.__uaplyHideSamples=true;const h0=w.__uaplyHide;" +
-    "w.__uaplyHide=function(j){return !(j.id>900000&&j.id<901000)||(h0?h0(j):false)};" +
+    "w.__uaplyHide=function(j){return !j.lrnTest||(h0?h0(j):false)};" +   /* only the test's own jobs, marked: a real posting's id can be any number (900570 was one) */
     "A.S.profile.modes={remote:true,hybrid:true,onsite:true};A.S.profile.loc='New York';" +
     "const roles=['Software Engineer','Frontend Developer','Data Analyst','Product Designer'],mine=['JavaScript','React','TypeScript','CSS','HTML','SQL'],other=['Go','Rust','Kotlin','Elixir','Scala','Haskell'],list=[];" +
     "for(let i=1;i<=80;i++){const rem=i%2===0,k=i%4;list.push({id:900000+i,co:'Test Co '+i,role:roles[(i>>1)%4],mode:rem?'remote':'onsite',loc:rem?'Remote (US)':'New York, NY',type:'job'," +
     "sal:[95000+k*5000,120000+k*5000],yrs:k,edu:'Bachelor',skills:rem?[mine[i%6],mine[(i+1)%6],other[i%6],other[(i+3)%6]]:[mine[i%6],mine[(i+1)%6],mine[(i+2)%6],(i%3?mine[(i+3)%6]:other[i%6])]," +
-    "blurb:'A made-up job for the swipe learning test.',live:true,source:'Test Co careers page'})}w.__uaplyJobs.add(list)})()");
+    "blurb:'A made-up job for the swipe learning test.',live:true,lrnTest:true,source:'Test Co careers page'})}w.__uaplyJobs.add(list)})()");
   await sleep(800);
   const before = await J(FW + ".__uaplyLearn.peek(6)");
   check("before any swipe: the deck is in match order and on-site jobs come first (they fit the profile better)",
@@ -61,6 +71,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot }) => {
     JSON.stringify((before || []).map((x) => x.mode + " " + x.fit)));
   const fits = await J("(()=>{const q=" + FW + ".__uaplyQueue();const r={remote:[],onsite:[]};q.forEach(x=>r[x.j.mode].push(x.m.pct));return {r:Math.max(...r.remote),o:Math.min(...r.onsite)}})()");
   check("every on-site job matches the profile better than every remote one (" + fits.o + "% or more vs " + fits.r + "% or less)", fits.o > fits.r);
+  if (process.env.DEBUG) console.log("DEBUG " + await ev("(()=>{const w=" + FW + ",A=w.__uaply,q=w.__uaplyQueue();const lo=q.filter(x=>x.j.mode==='onsite').sort((a,b)=>a.m.pct-b.m.pct)[0];return JSON.stringify({profile:A.S.profile,lo:lo&&{id:lo.j.id,pct:lo.m.pct,rows:lo.m.rows.map(r=>[r.k,r.s,r.ask,r.have])}})})()"));
 
   // 30 real swipes: right on remote, left on everything else
   const tally = { remoteRight: 0, otherLeft: 0 };
@@ -68,7 +79,9 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot }) => {
   for (let i = 0; i < 30; i++) {
     const c = await top(), n0 = await decided();
     if (!c) { missed++; break; }
-    await sleep(300);
+    // a pass counts more the longer the card was read (shared/uaply-learn.js: 0.7 s to 2 s): read each card past 2 s before passing it, so
+    // every pass weighs the same in every run (at about 0.7 s, timing jitter changed the weights and with them the order of equal cards)
+    await sleep(c.mode === "remote" ? 300 : 2300);
     await drag(c.mode === "remote" ? 170 : -170);
     if ((await decided()) !== n0 + 1) missed++;
     if (c.mode === "remote") tally.remoteRight++; else tally.otherLeft++;
@@ -107,9 +120,10 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot }) => {
   // 1 in 5 is still something else: the next 5 cards shown
   const seen = [];
   for (let i = 0; i < 5; i++) {
-    const c = await top();seen.push(c);
+    const c = await top();if (!c) { check("a card is on top for the next 5 swipes (" + i + " so far)", false); break; }seen.push(c);
     await sleep(300);
     if (c.explore) await snap("learn-2-explore-card.png");
+    if (c.mode !== "remote") await sleep(2000);
     await drag(c.mode === "remote" ? 170 : -170);
   }
   const ex = seen.findIndex((c) => c.mode !== "remote");
@@ -141,5 +155,6 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot }) => {
   const errs = logs.filter((l) => l.startsWith("EXC") || l.startsWith("ERR"));
   check("no script errors", errs.length === 0, errs.join(" | ").slice(0, 300));
   console.log(bad ? bad + " problem(s)" : "All good");
-  if (bad) process.exitCode = 1;
-};
+  if (bad) { console.log("FAILED: " + failed.join(" | ")); process.exitCode = 1; }
+  console.log((n - bad) + " / " + n);
+}

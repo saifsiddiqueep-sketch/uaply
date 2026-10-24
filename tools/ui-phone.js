@@ -48,7 +48,13 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
     await send("Emulation.setTouchEmulationEnabled", { enabled: true });
   }
   const FIT = require("./phone-walk.js").FIT;
-  const fit = async (label) => JSON.parse(await ev("(()=>{const fit=" + FIT + ";return JSON.stringify(fit(" + F + ",''))})()")).map((x) => x.replace(/^: /, ""));
+  // text under 14 px (the owner's rule): the phone walk's own test (tools/phone-walk.js SMALL), every text on the screen, not its first four
+  const SMALL = require("./phone-walk.js").SMALL.replace(".slice(0,4)", ""), smalls = [];
+  const fit = async (label) => {
+    const sm = JSON.parse(await ev("(()=>{const sm=" + SMALL + ";return JSON.stringify(sm(" + F + ",''))})()")).map((x) => x.replace(/^: /, ""));
+    smalls.push([label, sm]);
+    return JSON.parse(await ev("(()=>{const fit=" + FIT + ";return JSON.stringify(fit(" + F + ",''))})()")).map((x) => x.replace(/^: /, ""));
+  };
   const fits = [];
   // Google Fonts held back for 8 s (a slow phone connection; 6 to 10 s were seen on October 21): the app must still come up at once, with its
   // bottom bar and the agreement, in the system font. Before, a font stylesheet in the head stopped every script until it arrived.
@@ -140,17 +146,25 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
   const onBtns = await ev("(()=>{const d=" + F + ";const out=[];for(const id of ['btnNo','btnUndo','btnYes']){const e=d.getElementById(id),r=e.getBoundingClientRect();if(r.bottom>innerHeight||r.top<0)continue;for(const [fx,fy] of [[.5,.5],[.2,.3],[.8,.3],[.2,.7],[.8,.7]]){const h=d.elementFromPoint(r.left+r.width*fx,r.top+r.height*fy);if(h&&!(h===e||e.contains(h))&&h.closest('.toast')){out.push(id);break}}}return out.join(',')})()");
   check("the message after a swipe does not cover Pass, Undo or Apply", onBtns === "", onBtns);
   screens.push(["right after a swipe (message showing)", await coverage("after swipe")]);
+  fits.push(["Jobs right after a Pass (the next card's buttons, Share this job's included, still 44 px)", await fit("after pass")]);
   for (const [name, covered] of screens) check("nothing covers a button: " + name, covered.length === 0, covered.slice(0, 4).join("; "));
   for (const [name, list] of fits) check("fits the phone: " + name + " (44 px targets, nothing off the edge, Help covers nothing)", list.length === 0, list.slice(0, 4).join("; "));
+  {
+    const all = []; for (const [label, list] of smalls) for (const x of list) if (!all.includes(x)) all.push(x + " (" + label + ")");
+    check("no text under 14 px on any screen walked (" + smalls.length + " screens)", all.length === 0, all.join("; "));
+  }
   await shot((process.env.OUT || require("os").tmpdir()) + "/phone-after-swipe.png");
   check("the screen changed when menus were tapped (sanity)", (await ev("(" + F + ").body.innerText.length")) !== before);
 
   // ---------------------------------------------------------------- 2. swipes the way people swipe
   // the least a swipe right needs to apply (October 21): a name, an email and a phone number; without them it opens "Finish your profile first"
-  await ev("(()=>{const A=document.querySelector('iframe').contentWindow.__uaply;Object.assign(A.S.profile,{name:'Phone Tester',email:'phone.tester@example.com',custom:true});A.S.profile.ext=Object.assign({},A.S.profile.ext,{phone:'+1 215 555 0100'});A.save();A.renderAll()})()");
+  // (no target title and every work style: the example profile's own, Frontend Developer and no on-site work, turned into the person's
+  // with custom:true, hide most of a feed that is still loading, and the deck ran dry in the middle of these swipes: "no card")
+  await ev("(()=>{const A=document.querySelector('iframe').contentWindow.__uaply;Object.assign(A.S.profile,{name:'Phone Tester',email:'phone.tester@example.com',custom:true,title:'',modes:{remote:true,hybrid:true,onsite:true}});A.S.profile.ext=Object.assign({},A.S.profile.ext,{phone:'+1 215 555 0100'});A.save();A.renderAll()})()");
   await menu("nb-svc", "Full-time"); await sleep(600);
   const swipe = async (name, dx, dy, steps, ms, bend, expect) => {
-    const c = await cardCenter(); if (!c) { check(name, false, "no card"); return; }
+    const c = await cardCenter();
+    if (!c) { check(name, false, "no card: " + await ev("(()=>{try{const d=" + F + ",A=" + FW + ".__uaply,dk=d.getElementById('deck');return JSON.stringify({deck:(dk&&dk.innerText||'').replace(/\s+/g,' ').slice(0,160),swipeHidden:d.getElementById('pane-swipe').hidden,type:A.getType(),dialogs:[...d.querySelectorAll('[role=dialog]')].filter(x=>x.getClientRects().length).map(x=>x.id||x.className)})}catch(e){return e.message}})()")); return; }
     await watch();
     const k0 = await topKey(), d0 = await decisions(), s0 = await sentFor(k0);
     const at = await ev("(()=>{const f=document.querySelector('iframe').getBoundingClientRect();const e=" + F + ".elementFromPoint(" + c.x + "-f.left," + c.y + "-f.top);return e?(e.closest('.card.top')?'card':(e.id||e.className||e.tagName)):'none'})()");
@@ -173,15 +187,16 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
   await swipe("a quick short flick left (80px) passes", -80, 0, 4, 12, false, "passed");
   await swipe("a curved thumb swipe left that starts slightly downward passes", -170, 45, 14, 16, true, "passed");
   await swipe("a curved thumb swipe right that starts slightly upward applies", 170, -45, 14, 16, true, "applied");
-  await swipe("a slow, deliberate drag left of half the card passes", -0.5 * (await cardCenter()).w, 10, 30, 25, false, "passed");
+  { const cc = await cardCenter();   // a missing card is a failed check (swipe() says so), never a crash of the whole script
+    await swipe("a slow, deliberate drag left of half the card passes", -0.5 * (cc ? cc.w : 300), 10, 30, 25, false, "passed"); }
   await swipe("a vertical scroll on the card does not swipe", 8, -160, 12, 16, false, "nothing");
   await swipe("a short accidental nudge (25px) does not swipe", 25, 4, 4, 30, false, "nothing");
   const c = await cardCenter(); const k0 = await topKey();
-  await tap(c.x, c.y); await sleep(500);
-  check("a plain tap on the card does not swipe", (await topKey()) === k0);
+  if (c) { await tap(c.x, c.y); await sleep(500); }
+  check("a plain tap on the card does not swipe", !!c && (await topKey()) === k0, c ? "" : "no card");
   // two fast swipes, the second starting 150 ms after the first lifts (while the first card is still flying off): both count
   {
-    const d0 = await decisions(), p = await cardCenter();
+    const d0 = await decisions(), p = (await cardCenter()) || { x: 200, y: 400 };   // no card: the check below fails, the script goes on
     const fast = async () => {                          // events paced like a real finger, without waiting for each answer
       const P = [send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: p.x, y: p.y, id: 1 }] })];
       for (let i = 1; i <= 10; i++) { await sleep(14); P.push(send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: p.x - 20 * i, y: p.y, id: 1 }] })); }
@@ -232,8 +247,11 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
     const L = la && JSON.parse(await ev("(()=>{const d=" + F + ",w=d.defaultView,c=d.getElementById('locAsk'),p=c.querySelector('p'),cr=c.getBoundingClientRect(),t=d.querySelector('.card.top'),tr=t&&t.getBoundingClientRect(),bs=[...c.querySelectorAll('.acts .btn')].map(b=>b.getBoundingClientRect());" +
       "const lh=parseFloat(w.getComputedStyle(p).lineHeight);return JSON.stringify({title:c.querySelector('b').textContent,text:p.textContent,lines:Math.round(p.getBoundingClientRect().height/lh),clipped:p.scrollHeight>p.clientHeight+1,h:Math.round(cr.height),bottom:Math.round(cr.bottom),cardTop:tr?Math.round(tr.top):null,oneRow:bs.length===2&&Math.abs(bs[0].top-bs[1].top)<2,btnH:bs.map(b=>Math.round(b.height))})})()"));
     check("location blocked, on a phone: the card says to allow it in the phone's settings, then Try again (no address bar)", !!L && /phone's settings/.test(L.text) && /Try again/.test(L.text) && !/address bar/.test(L.text), JSON.stringify(L));
-    check("...in two lines of text (nothing cut off) and its two buttons side by side", !!L && L.lines <= 2 && !L.clipped && L.oneRow && L.btnH.every((h) => h >= 44), JSON.stringify(L));
+    const fl = await fit("location blocked");   /* its buttons' tap areas (an invisible ::after on short screens) are 44 px: the fit check measures them */
+    check("...in two lines of text (nothing cut off) and its two buttons side by side, each a 44 px target", !!L && L.lines <= 2 && !L.clipped && L.oneRow && fl.filter((x) => /small tap target/.test(x)).length === 0, JSON.stringify(L) + " " + fl.join("; "));
     check("...and the first job card starts below it, never under it", !!L && L.cardTop !== null && L.cardTop >= L.bottom, JSON.stringify(L));
+    const smL = JSON.parse(await ev("(()=>{const sm=" + SMALL + ";return JSON.stringify(sm(" + F + ",''))})()")).map((x) => x.replace(/^: /, ""));
+    check("...and no text on that screen (the location card, its buttons, the chips) is under 14 px", smL.length === 0, smL.join("; "));
     await send("Browser.resetPermissions", {});
   }
   check("no script errors", logs.length === 0, logs.join(" / ").slice(0, 200));

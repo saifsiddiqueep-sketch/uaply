@@ -7,6 +7,7 @@ code) and checks the save endpoint over HTTP, the job list, and, when Chrome is 
 import contextlib
 import glob
 import io
+import gzip
 import json
 import os
 import shutil
@@ -118,7 +119,15 @@ t("the credit line on the record", (it.get("via"), it.get("credit")), ("USAJOBS"
 cs = by.get("Contract Specialist") or {}
 t("'Multiple Locations' names the first two places", cs.get("loc"), "Philadelphia, Pennsylvania; Camden, New Jersey +1 more")
 t("no ApplyURI: the announcement is the link", cs.get("url"), "https://www.usajobs.gov/job/900000102")
-t("hourly pay is not shown as a yearly range", cs.get("sal"), [0, 0])
+t("hourly pay stays hourly, as the posting gives it (never turned into a yearly range)", (cs.get("sal"), cs.get("salUnit")), ([28.1, 36.5], "hour"))
+t("a yearly range carries no hourly unit", it.get("salUnit"), None)
+# pay is read as the posting gives it, never guessed or converted (October 23: "Pay not listed" rule)
+t("text: '$18 - $22 per hour' and '$28.10-$36.50/hr' are hourly ranges as written", (J._hourly("Pay: $18 - $22 per hour"), J._hourly("$28.10 - $36.50/hr")), ([18.0, 22.0], [28.1, 36.5]))
+t("text: 'competitive pay', 'up to $25/hr', '$80k+' give no pay at all (nothing estimated)", (J._hourly("competitive pay"), J._hourly("up to $25/hr"), J._salary("Salary: $80k+")), (None, None, [0, 0]))
+t("text: a yearly range is never read as hourly", J._hourly("$120,000 - $140,000 per year"), None)
+import emails as EM   # noqa: E402
+t("the application summary's pay line: yearly a year, hourly an hour, none 'Not listed'",
+  (EM._money([60000, 80000]), EM._money([18, 22.5], "hour"), EM._money([0, 0])), ("$60k to $80k a year", "$18 to $22.50 an hour", "Not listed"))
 t("an overseas posting (Ramstein, Germany) is dropped by the US rule", "Budget Analyst" in by, False)
 rm = by.get("Management and Program Analyst") or {}
 t("a remote federal job is kept as remote", (rm.get("mode"), rm.get("loc")), ("remote", "Anywhere in the U.S. (remote job)"))
@@ -276,6 +285,69 @@ J._sr_desc.clear()
 t("a SmartRecruiters posting outside the US is dropped", J._fetch_source(("smartrecruiters", "T2", "T2"))[0], [])
 J._get = fake_get
 
+# ---------------- Recruitee: the careers site's public offers (a saved sample, tools/fixtures/recruitee-offers.json) ----------------
+with open(os.path.join(HERE, "fixtures", "recruitee-offers.json"), encoding="utf-8") as f:
+    RC = json.load(f)
+RC_CALLS = []
+real_items = J._get_items
+
+
+def fake_items(url, key=None):
+    RC_CALLS.append((url, key))
+    if url == "https://acmedental.recruitee.com/api/offers/":
+        return iter(RC[key])
+    raise OSError("unexpected request " + url)
+
+
+ROBOTS = {"acmedental.recruitee.com": ["User-agent: *", "Disallow: /v/"], "closeddental.recruitee.com": ["User-agent: *", "Disallow: /api/"]}
+real_robots = J._robots_for
+
+
+def fake_robots(host):
+    RC_CALLS.append(("robots", host))
+    if host not in ROBOTS:
+        return None                                       # robots.txt could not be read
+    rp = J.RobotsTxt()
+    rp.parse(ROBOTS[host])
+    return rp
+
+
+J._get_items, J._robots_for = fake_items, fake_robots
+RCS = ("recruitee", "acmedental", "Acme Dental Group")
+rjobs, rstatus = J._fetch_source(RCS)
+t("Recruitee: robots.txt is asked first, then one request for the careers site's own offers list", RC_CALLS, [("robots", "acmedental.recruitee.com"), ("https://acmedental.recruitee.com/api/offers/", "offers")])
+RC_CALLS.clear()
+closed = J._fetch_source(("recruitee", "closeddental", "Closed Dental"))
+t("Recruitee: a site whose robots.txt disallows /api/ is not read (no jobs, no request for the offers)", (closed[0], RC_CALLS, "robots" in closed[1]),
+  ([], [("robots", "closeddental.recruitee.com")], True))
+RC_CALLS.clear()
+unread = J._fetch_source(("recruitee", "unreadable", "Unreadable"))
+t("Recruitee: a site whose robots.txt cannot be read is not read either", (unread[0], RC_CALLS), ([], [("robots", "unreadable.recruitee.com")]))
+J._get_items, J._robots_for = real_items, real_robots
+by = {j["role"]: j for j in rjobs}
+t("Recruitee: the US offers are kept; London, an offer with a bad slug and a draft are not", sorted(by), ["Billing Specialist", "Dental Hygienist", "Front Desk Intern", "Practice Office Manager"])
+t("Recruitee: the status line counts them", rstatus, "4 jobs")
+hy = by["Dental Hygienist"]
+t("Recruitee: a stable id, made from the offer number", (hy["id"], J._jid("recruitee", 9100001)), (hy["id"], hy["id"]))
+t("Recruitee: ats is kind recruitee, the careers site, and the offer slug (where an application goes)", hy["ats"],
+  {"kind": "recruitee", "board": "acmedental", "id": "dental-hygienist-philadelphia"})
+t("Recruitee: the link is the posting, applyUrl its application form",
+  (hy["url"], hy["applyUrl"]), ("https://acmedental.recruitee.com/o/dental-hygienist-philadelphia", "https://acmedental.recruitee.com/o/dental-hygienist-philadelphia/c/new"))
+t("Recruitee: place, pay per hour, part-time, credit", (hy["loc"], hy["mode"], hy["sal"], hy.get("salUnit"), hy["jobType"], hy["via"]),
+  ("Philadelphia, PA", "onsite", [32.0, 40.0], "hour", "part-time", "Acme Dental Group on Recruitee"))
+t("Recruitee: the posted date is read from Recruitee's 'UTC' form", (hy["posted"], hy.get("updated")), (J._ts("2026-10-10T14:00:00+00:00"), J._ts("2026-10-12T09:30:00+00:00")))
+om = by["Practice Office Manager"]
+t("Recruitee: a remote US offer with a yearly range", (om["mode"], om["sal"], om.get("salUnit"), om["jobType"]), ("remote", [55000, 65000], None, "full-time"))
+fd = by["Front Desk Intern"]
+t("Recruitee: an offer in Dublin and Cherry Hill NJ is placed in its US place, and an internship", (fd["loc"], fd["jobType"], fd["type"]), ("Cherry Hill, NJ", "internship", "internship"))
+bs = by["Billing Specialist"]
+t("Recruitee: hybrid in Wilmington DE; a range in euros is not shown as dollars", (bs["mode"], bs["sal"]), ("hybrid", [0, 0]))
+t("Recruitee: no key, no email: a hand-off like every feed job", (hy["apply"], hy["contact"], J.job_policy(hy["id"])), ("link", "", "link"))
+t("Recruitee: the list form keeps only ats.kind and leaves applyUrl to GET /api/jobs/<id>",
+  ({k: v for k, v in J._out_job(hy, 0, {}, True).items() if k in ("ats", "applyUrl")}, J._out_job(hy, 0, {}, True, full=True).get("applyUrl")),
+  ({"ats": {"kind": "recruitee"}}, hy["applyUrl"]))
+t("Recruitee boards from job-boards.json are read (kind recruitee is allowed there)", "recruitee" in J.BOARD_KINDS and any(s_[0] == "recruitee" for s_ in J.SOURCES), True)
+
 # ---------------- the "via" credit for every kind ----------------
 raw = dict(id=7, title="Data Analyst", company="Acme Corp", loc="Philadelphia, PA", remote=None, text="Python and SQL.", url="https://example.com/j/7", salary_text="", posted=0)
 for kind, name, want in (("greenhouse", "Stripe", "Stripe on Greenhouse"), ("lever", "Spotify", "Spotify on Lever"), ("ashby", "Linear", "Linear on Ashby"),
@@ -381,6 +453,10 @@ t("without the variable or feed_keys USAJOBS is skipped again", J._fetch_source(
 def http_checks(port):
     copy = os.path.join(TMP, "code")
     shutil.copytree(ROOT, copy, ignore=shutil.ignore_patterns(".git", "node_modules", "mobile", "marketing", "data", "uaply-config.json*", "uaply-partners.json*", "__pycache__"))
+    # no employer boards from job-boards.json on this server (about 180 of them are SmartRecruiters boards, which its feeds switch on): it
+    # read them live, and whichever answered first could take the top card from the recorded City jobs the browser check looks for
+    with open(os.path.join(copy, "job-boards.json"), "w", encoding="utf-8") as f:
+        json.dump({"boards": [], "note": "emptied by tools/test-feeds.py: this test server reads no boards"}, f)
     data = os.path.join(TMP, "server-data")
     os.makedirs(data)
     # the job list starts from a saved copy of the recorded City jobs, so the server needs no network
@@ -389,7 +465,11 @@ def http_checks(port):
         now_ms = int(time.time() * 1000)
         dated = [dict(x, posted=now_ms - (5 if i < 40 else 90) * J.DAY_MS) for i, x in enumerate(city_jobs)]
         dated = [{k: v for k, v in x.items() if k != "updated"} for x in dated]
-        json.dump({"|".join(CITY): {"at": time.time(), "jobs": dated, "status": "67 jobs"}, "_version": J.CACHE_VERSION}, f)
+        # every other SmartRecruiters board (the hand-picked ones in SOURCES) is saved as fresh and empty, so nothing is read from the
+        # network: a live board that answered before the browser check could take the top card from the City jobs it looks for
+        saved = {"|".join(s_): {"at": time.time(), "jobs": [], "status": "0 jobs"} for s_ in J.SOURCES if s_[0] == "smartrecruiters" and s_ != CITY}
+        saved.update({"|".join(CITY): {"at": time.time(), "jobs": dated, "status": "67 jobs"}, "_version": J.CACHE_VERSION})
+        json.dump(saved, f)
     env = dict(os.environ, UAPLY_CONFIG_FILE="none", UAPLY_DATA_DIR=data, HOST="127.0.0.1",
                UAPLY_CONFIG_JSON=json.dumps({"feeds": ["smartrecruiters", "usajobs"], "delivery": "test", "smtp": {}, "google": {}, "owner_copy": ""}),
                UAPLY_SIGNUP_TEST="1")          # sign-up test mode (never public): the sign-in gate's test person is confirmed at once
@@ -432,13 +512,55 @@ def http_checks(port):
         t("HTTP: /setup has the Job feed keys box and never the keys", (s, 'id="feeds"' in page, KEY in page, MUSE in page), (200, True, False, False))
         sys.path.insert(0, HERE)
         import gate_session                    # the sign-in gate: the job list needs a signed-in, confirmed person
-        s, body = call("GET", "/api/jobs", cookie=gate_session.cookie(base))
+        ck = gate_session.cookie(base)
+        s, body = call("GET", "/api/jobs", cookie=ck)
         data_out = json.loads(body)
         city = [j for j in data_out["jobs"] if j.get("via") == "City of Philadelphia on SmartRecruiters"]
         t("HTTP: the job list serves the City's 40 jobs from the last 60 days (not the 27 older ones; two postings with one title stay two), each with its via label and postedDays",
           (len(city), sorted({j["postedDays"] for j in city}), data_out.get("aged_out"), data_out.get("merged")), (40, [5], 27, 0))
         t("HTTP: USAJOBS is listed as skipped (this server reads no settings file)", data_out["sources"].get("USAJOBS/philadelphia"), "no key")
         t("HTTP: the job list never contains a key", (KEY in body, MUSE in body), (False, False))
+        # ---- the list form, the paged form and one job (October 23: 16,424 jobs were 14.8 MB on a phone) ----
+        one = city[0]
+        t("HTTP: the list form leaves out what no card shows (description, credit line, update date, announcement); of ats only its kind",
+          ([k for k in ("desc", "credit", "updated", "updatedDays", "announcement") if any(k in j for j in data_out["jobs"])],
+           sorted({tuple(sorted(j["ats"])) for j in data_out["jobs"] if j.get("ats")})), ([], [("kind",)]))
+        s, b1 = call("GET", "/api/jobs/%d" % one["id"], cookie=ck)
+        full = json.loads(b1).get("job") or {}
+        t("HTTP: GET /api/jobs/<id> answers the whole job: its credit line and its full employer-system reference",
+          (s, full.get("id"), full.get("credit"), sorted(full.get("ats") or {})), (200, one["id"], "via City of Philadelphia on SmartRecruiters", ["board", "id", "kind"]))
+        t("HTTP: a job that is not listed: 404 'gone'", (call("GET", "/api/jobs/1", cookie=ck)[0], json.loads(call("GET", "/api/jobs/1", cookie=ck)[1]).get("code")), (404, "gone"))
+        t("HTTP: one job is behind the sign-in gate too", call("GET", "/api/jobs/%d" % one["id"])[0], 401)
+        s, pb = call("GET", "/api/jobs?size=7&page=1", cookie=ck)
+        pg = json.loads(pb)
+        whole = [j["id"] for j in data_out["jobs"]]
+        t("HTTP: ?size=7&page=1 is the first 7 jobs of the whole list, the total and a cursor, with the list's sources",
+          (s, [j["id"] for j in pg["jobs"]], pg["total"], pg["page"], pg["size"], bool(pg["next"]), "sources" in pg), (200, whole[:7], len(whole), 1, 7, True, True))
+        seen_ids, cur, n = [], None, 0
+        while n < 50:
+            pg = json.loads(call("GET", "/api/jobs?size=7" + ("&cursor=" + cur if cur else ""), cookie=ck)[1])
+            seen_ids += [j["id"] for j in pg["jobs"]]
+            cur, n = pg["next"], n + 1
+            if not cur:
+                break
+        t("HTTP: following the cursor walks the whole list once, in order, and the last page has no cursor", (seen_ids == whole, n, cur), (True, -(-len(whole) // 7), None))
+        t("HTTP: ?page=2 is the next 7", [j["id"] for j in json.loads(call("GET", "/api/jobs?size=7&page=2", cookie=ck)[1])["jobs"]], whole[7:14])
+        types = sorted({j.get("type") for j in data_out["jobs"]})
+        want = types[0]
+        pt = json.loads(call("GET", "/api/jobs?type=%s&size=1000" % want, cookie=ck)[1])
+        t("HTTP: ?type= keeps one stack (%s): its jobs only, and the total counts just those" % want,
+          ([j["id"] for j in pt["jobs"]], pt["total"]), ([j["id"] for j in data_out["jobs"] if j.get("type") == want], sum(1 for j in data_out["jobs"] if j.get("type") == want)))
+        t("HTTP: a size over 1000 is held to 1000, a size that is not a number is 200", (json.loads(call("GET", "/api/jobs?size=99999", cookie=ck)[1])["size"],
+          json.loads(call("GET", "/api/jobs?size=lots", cookie=ck)[1])["size"]), (1000, 200))
+        t("HTTP: a cursor that is not ours starts at the beginning", [j["id"] for j in json.loads(call("GET", "/api/jobs?size=3&cursor=nonsense", cookie=ck)[1])["jobs"]], whole[:3])
+        t("HTTP: the paged form is behind the sign-in gate too", call("GET", "/api/jobs?size=5")[0], 401)
+        rq = urllib.request.Request(base + "/api/jobs?size=40", headers={"Cookie": ck, "Accept-Encoding": "gzip"})
+        with urllib.request.urlopen(rq, timeout=30) as r:
+            gz_page = (r.headers.get("Content-Encoding"), json.loads(gzip.decompress(r.read()))["total"])
+        rq = urllib.request.Request(base + "/api/jobs", headers={"Cookie": ck, "Accept-Encoding": "gzip, deflate, br"})
+        with urllib.request.urlopen(rq, timeout=30) as r:
+            gz_all = (r.headers.get("Content-Encoding"), len(json.loads(gzip.decompress(r.read()))["jobs"]))
+        t("HTTP: a page and the whole list are both sent gzip-compressed when the browser takes it", (gz_page, gz_all), (("gzip", len(whole)), ("gzip", len(whole))))
         with open(os.path.join(TMP, "server.log"), encoding="utf-8", errors="replace") as f:
             t("HTTP: the server log never contains a key", any(k in f.read() for k in (KEY, MUSE)), False)
         # the same places tools/cdp.js looks: UAPLY_CHROME, the Windows install, a Playwright Chromium, google-chrome/chromium, the Mac app

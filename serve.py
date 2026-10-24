@@ -1,7 +1,9 @@
 """Tiny static server: python serve.py PORT ROOT [--api] [urlpath=file ...]
 Serves ROOT; each urlpath=file alias maps one URL to a file outside ROOT (e.g. /prod-index.html to prod/index.html).
 --api also exposes the back end used by sandbox and dev (prod does not):
-  GET  /api/jobs          real postings (jobs_api.py)
+  GET  /api/jobs          real postings (jobs_api.py), gzip-compressed when the browser takes it
+  GET  /api/jobs?size=200&page=1 (or &cursor=<next>, &type=internship,coop)   the same list a page at a time, with "total" and "next"
+  GET  /api/jobs/<id>     one job with the fields the list leaves out (description, credit line, update date, announcement)
   GET  /api/apply/config  delivery mode
   POST /api/apply         swipe right: deliver an application (uaply_api.py)
   POST /api/decision      swipe left or right: record the swipe
@@ -41,7 +43,7 @@ Serves ROOT; each urlpath=file alias maps one URL to a file outside ROOT (e.g. /
   GET  /.well-known/assetlinks.json   the Play Store app's link to this site, from UAPLY_ASSETLINKS_SHA256 (404 when unset; HEAD too)
   GET  /uaply.webmanifest, /uaply-sw.js, /uaply-offline.html, /uaply-icon-*.png   the installable website (shared/)
 Accounts use an HttpOnly session cookie. When a signed-in user swipes right, a receipt goes to their email."""
-import sys, os, re, json, http.server, base64, hmac, threading, time, signal, random, shutil, urllib.parse
+import sys, os, re, json, http.server, base64, hmac, threading, time, signal, random, shutil, urllib.parse, gzip
 import ui_rules
 
 LEGAL_NAME = re.compile(r"^[A-Za-z0-9_-]+\.(html|css|png)$")       # the files in legal/: terms.html, style.css, favicon-32.png ...
@@ -83,8 +85,8 @@ SIGNUP_TEST = False      # UAPLY_SIGNUP_TEST=1: sign-up makes a verified account
 # 403 {"error": "Confirm your email first.", "code": "verify"} (docs/ACCOUNTS.md, "The sign-in contract"). Every /api/auth/* route stays
 # open to that session, so it can type the code, ask for a new one or sign out. Owner pages keep their own owner check instead.
 GATED_GET = ("/api/jobs",)
-GATED_GET_PREFIX = ("/api/employer/logo/",)
-GATED_POST = ("/api/apply", "/api/apply/plan", "/api/apply/mark", "/api/decision", "/api/chat", "/api/feedback", "/api/profile/resume",
+GATED_GET_PREFIX = ("/api/employer/logo/", "/api/jobs/")
+GATED_POST = ("/api/apply", "/api/apply/plan", "/api/apply/mark", "/api/decision", "/api/chat", "/api/feedback", "/api/profile/resume", "/api/consent",
               "/api/employer/company", "/api/employer/job", "/api/employer/job/status", "/api/employer/applicant", "/api/employer/import")
 SIGNIN_FIRST = {"error": "Sign in first.", "code": "signin"}
 VERIFY_FIRST = {"error": "Confirm your email first.", "code": "verify"}
@@ -141,7 +143,7 @@ if api:
                      ("/uaply-icon-maskable-192.png", "shared/uaply-icon-maskable-192.png"),
                      ("/uaply-icon-maskable-512.png", "shared/uaply-icon-maskable-512.png")):
         alias.setdefault(url, os.path.join(HERE, rel))
-    import jobs_api, uaply_api, auth_api, chat_api, google_auth, setup_api, billing_api, employers_api, resume_parse
+    import jobs_api, uaply_api, auth_api, chat_api, google_auth, setup_api, billing_api, employers_api, resume_parse, consent_api
     uaply_api.init(os.path.basename(root))
     employers_api.init(os.path.basename(root))                    # Hiring mode: on for the sandbox only
     auth_api.init(os.path.basename(root))
@@ -1006,6 +1008,21 @@ class H(http.server.SimpleHTTPRequestHandler):
                 return self._send(*held)
         if api:
             try:
+                if p == "/api/jobs" and "?" in self.path:
+                    # the paged form (jobs_api.get_page): ?size=200&page=1, or ?cursor=<the "next" of the page before>, and ?type=internship,coop
+                    # for the deck's stacks. The same jobs in the same order as the whole list; any other query is the whole list, as before.
+                    q = urllib.parse.parse_qs(self.path.split("?", 1)[1])
+                    if any(k in q for k in ("page", "size", "cursor", "type")):
+                        one = lambda k: (q.get(k) or [""])[0][:40]
+                        body = jobs_api.get_page(one("size"), one("page"), one("cursor"), [x.strip() for x in one("type").split(",") if x.strip()])
+                        if "gzip" in (self.headers.get("Accept-Encoding") or "").lower() and len(body) > 1024:
+                            return self._send(200, gzip.compress(body, 5), headers=[("Content-Encoding", "gzip"), ("Vary", "Accept-Encoding")])
+                        return self._send(200, body, headers=[("Vary", "Accept-Encoding")])
+                if p.startswith("/api/jobs/"):
+                    # one job with every field the list leaves out (jobs_api.LIST_DROP: its description, credit line, update date, announcement)
+                    raw = p[len("/api/jobs/"):]
+                    job = jobs_api.job_full(int(raw) if raw.isdigit() and len(raw) < 20 else raw[:80]) if raw else None
+                    return self._send(200, {"job": job}) if job else self._send(404, {"error": "That job is no longer listed.", "code": "gone"})
                 if p == "/api/jobs":
                     # a few thousand jobs are megabytes of JSON: sent compressed to any browser that says it takes gzip (all of them do)
                     if "gzip" in (self.headers.get("Accept-Encoding") or "").lower():
@@ -1022,6 +1039,11 @@ class H(http.server.SimpleHTTPRequestHandler):
                     return self._send(200, uaply_api.outbox_json())
                 if p == "/outbox":
                     return self._send(200, uaply_api.outbox_html(), "text/html; charset=utf-8")
+                if p == "/employer/stop":
+                    # the link in an application emailed to a posting's address: a page that asks first (a mail scanner opening the
+                    # link changes nothing); its button posts to /api/employer/stop
+                    qs = urllib.parse.parse_qs(self.path.split("?", 1)[1] if "?" in self.path else "")
+                    return self._send(200, uaply_api.employer_stop_page((qs.get("a") or [""])[0], (qs.get("s") or [""])[0]), "text/html; charset=utf-8")
                 if p == "/api/status":
                     facts = status_facts()
                     if self._owner_ok():          # the owner (this computer, or OWNER_PASSWORD): which questions employers asked, by kind,
@@ -1031,6 +1053,7 @@ class H(http.server.SimpleHTTPRequestHandler):
                     me = auth_api.user_for(self._token())
                     if me:                                                          # whether a Google login opens it (item 23)
                         me = dict(me, googleLinked=auth_api.google_linked(me["id"]))
+                        me["consent"] = auth_api.consent_for(me["id"])               # the agreement on record: {v, at, auto} or null
                     if CODE_SIGNIN and me and auth_api.google_hint(me["id"]):      # what the Google sign-in a moment ago said
                         me = dict(me, google=auth_api.google_hint(me["id"]))
                     return self._send(200, {"user": me})
@@ -1139,10 +1162,10 @@ class H(http.server.SimpleHTTPRequestHandler):
                 code, out = 500, {"error": OOPS}
             return self._send(code, out, headers=[("WWW-Authenticate", 'Basic realm="uaply"')] if code == 401 else ())
         if not api or p not in ("/api/apply", "/api/apply/plan", "/api/apply/mark", "/api/decision", "/api/auth/signup", "/api/auth/login", "/api/auth/logout",
-                                "/api/auth/delete", "/api/auth/forgot", "/api/auth/reset", "/api/auth/change-password",
+                                "/api/auth/delete", "/api/auth/forgot", "/api/auth/reset", "/api/auth/change-password", "/api/auth/send-for-me",
                                 "/api/setup/test-mail", "/api/setup/save-mail", "/api/setup/save-google", "/api/setup/save-ats", "/api/setup/remove-ats", "/api/setup/test-ats", "/api/setup/save-stripe", "/api/setup/save-feed-keys", "/api/auth/google/token", "/api/auth/verify", "/api/auth/resend", "/api/chat", "/api/feedback", "/api/billing/checkout", "/api/billing/portal",
                                 "/api/employer/company", "/api/employer/job", "/api/employer/job/status", "/api/employer/applicant",
-                                "/api/employer/import", "/api/profile/resume") + (CODE_PATHS if CODE_SIGNIN else ()):
+                                "/api/employer/import", "/api/profile/resume", "/api/consent", "/api/employer/stop") + (CODE_PATHS if CODE_SIGNIN else ()):
             return self._refuse(404, {"error": "not found"})
         # Only accept requests made by this site's own pages (blocks cross-site forms and scripts).
         origin = self.headers.get("Origin")
@@ -1320,6 +1343,10 @@ class H(http.server.SimpleHTTPRequestHandler):
             if p == "/api/auth/change-password":
                 code, out = auth_api.change_password(self._token(), payload.get("current"), payload.get("password"), ip)
                 return self._send(code, out)
+            if p == "/api/auth/send-for-me":
+                # Send applications for me (Profile, Account): off, every swipe right only saves the job to Job Tracker
+                code, out = auth_api.set_send_for_me(self._token(), payload.get("on"))
+                return self._send(code, out)
             if p == "/api/auth/logout":
                 auth_api.logout(self._token())
                 return self._send(200, {"ok": True}, headers=self._cookie(""))
@@ -1332,7 +1359,13 @@ class H(http.server.SimpleHTTPRequestHandler):
                     chat_api.forget_user(uid)
                     return self._send(code, out, headers=self._cookie(""))
                 return self._send(code, out)
-            if p == "/api/chat":
+            if p == "/api/consent":
+                # the first-swipe agreement, kept on the account with the time, this visitor's address and the words' SHA-256 (consent_api.py)
+                code, out = consent_api.post(auth_api.user_for(self._token()), payload, ip, auth_api.record_consent)
+            elif p == "/api/employer/stop":
+                # the link at the end of an application emailed to a posting's address: its owner asks UAply to stop (uaply_api.employer_stop)
+                code, out = uaply_api.employer_stop(payload.get("a"), payload.get("s"))
+            elif p == "/api/chat":
                 code, out = chat_api.chat(payload, ip)
             elif p == "/api/feedback":
                 code, out = chat_api.feedback(payload, ip, auth_api.user_for(self._token()), notify=uaply_api.send_support_ticket)
