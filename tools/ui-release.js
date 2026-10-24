@@ -40,10 +40,10 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
   for (let i = 0; i < 10 && !(await ev("!!" + F + ".getElementById('kcYes')")); i++) await sleep(300);
   const agree = String(await ev("((" + F + ").getElementById('kitConsent')||{}).innerText||''"));
   check("a clean browser is asked for the agreement at first open, before any swipe", /Before you start swiping/.test(agree), agree.slice(0, 60));
-  check("the agreement says how a swipe sends (the resume included), where email goes, that voluntary questions are never answered, how to stop it, the match line, the Automatic submit tick (off), and links How matching works, the Terms and the Privacy Policy",
+  check("the agreement says how a swipe sends (the resume included), where email goes, that voluntary questions are never answered, how to stop it, the match line, the Automatic submit line (no tick of its own: two ticks), and links How matching works, the Terms and the Privacy Policy",
     /A swipe right goes one of three ways/.test(agree) && /By email, with your resume, where the job posting gives an address/.test(agree) && /never answers questions about race, gender, veteran status or disability/.test(agree) &&
     /Into the employer's own hiring system/.test(agree) && /saved to Job Tracker with a receipt/.test(agree) && /turn off Send applications for me in Profile, Account/.test(agree) &&
-    /Automatic submit:/.test(agree) && (await ev("!(" + F + ").getElementById('kcAuto').checked")) &&
+    /Automatic submit:/.test(agree) && (await ev("!(" + F + ").getElementById('kcAuto')&&(" + F + ").querySelectorAll('#kitConsent input[type=checkbox]').length===2")) &&
     /The match percentage is worked out automatically/.test(agree) &&
     (await ev("(" + F + ").querySelectorAll('#kitConsent a[href*=legal]').length")) === 3, agree.slice(0, 120));
   await scan("the first screen, with the agreement open");

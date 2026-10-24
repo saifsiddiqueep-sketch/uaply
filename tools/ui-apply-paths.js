@@ -70,15 +70,15 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
   if (SRV === "devtest") {
     await signedOut("signed out, email employer", ID["Mail Co|Marketing Intern"]);
     await boot(true);
-    // the first-swipe agreement (October 23, Reviewer 3): the Automatic submit tick sits right after the four ways, above "By continuing you
-    // agree", it is on screen without scrolling at this size, it is off, and its words say no hiring system is switched on yet
+    // the first-swipe agreement (October 23, Reviewer 3; two ticks from October 24): the Automatic submit line sits right after the four ways,
+    // above "By continuing you agree", on screen without scrolling at this size, with no tick of its own (tick 1 covers it), and says where
     await ev("(()=>{" + FW + ".__uaplyConsentAgain(function(){});return 1})()"); await sleep(1500);
-    const box = J(await ev("(()=>{const d=" + F + ",l=d.querySelector('label[for=kcAuto]'),dlg=d.querySelector('#kitConsent [role=dialog]'),ps=[...d.querySelectorAll('#kitConsent p')];" +
+    const box = J(await ev("(()=>{const d=" + F + ",l=d.getElementById('kcAutoT'),dlg=d.querySelector('#kitConsent [role=dialog]'),ps=[...d.querySelectorAll('#kitConsent p')];" +
       "const by=ps.find(p=>/^By continuing you agree/.test(p.textContent)),ul=d.querySelector('#kitConsent ul');if(!l||!by||!dlg||!ul)return JSON.stringify({missing:true});const r=l.getBoundingClientRect(),dr=dlg.getBoundingClientRect();" +
       "return JSON.stringify({afterList:!!(ul.compareDocumentPosition(l)&Node.DOCUMENT_POSITION_FOLLOWING),aboveBy:!!(l.compareDocumentPosition(by)&Node.DOCUMENT_POSITION_FOLLOWING)," +
-      "onScreen:r.top>=0&&r.bottom<=innerHeight,top:dr.top>=0,off:!d.getElementById('kcAuto').checked,words:(d.getElementById('kcAutoT')||{}).textContent||'',bottom:Math.round(r.bottom),h:innerHeight})})()"));
-    check("the agreement: the Automatic submit tick sits after the four ways and above 'By continuing you agree'", box.afterList && box.aboveBy, JSON.stringify(box));
-    check("...on screen without scrolling (" + box.bottom + " of " + box.h + " px), the box's top in view, and off", box.onScreen && box.top && box.off, JSON.stringify(box));
+      "onScreen:r.top>=0&&r.bottom<=innerHeight,top:dr.top>=0,off:!d.getElementById('kcAuto')&&d.querySelectorAll('#kitConsent input[type=checkbox]').length===2,words:(d.getElementById('kcAutoT')||{}).textContent||'',bottom:Math.round(r.bottom),h:innerHeight})})()"));
+    check("the agreement: the Automatic submit line sits after the four ways and above 'By continuing you agree'", box.afterList && box.aboveBy, JSON.stringify(box));
+    check("...on screen without scrolling (" + box.bottom + " of " + box.h + " px), the box's top in view, and no third tick (two only)", box.onScreen && box.top && box.off, JSON.stringify(box));
     check("...and it says where: 'where a hiring system allows it; switched on now: Ashby' (from assist-systems.json)", /^Automatic submit: where a hiring system allows it; switched on now: Ashby\./.test(box.words), box.words);
     await ev("(()=>{" + F + ".querySelectorAll('.kcTick,#kcYes').forEach(c=>{if(c.id==='kcYes'){c.disabled=false;c.click()}else c.checked=true});return 1})()"); await sleep(800);
     await walk("Greenhouse partner", ID["GH Partner|Robotics Intern"], 3000, /Applied to GH Partner \(test\)\. UAply filled in \d+ of \d+ answers\. Confirmation is in the test inbox/, /Sent to GH Partner hiring system \(test, nothing reached GH Partner\)/);

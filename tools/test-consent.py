@@ -74,7 +74,7 @@ t("the box (version 5) says the authorization, the match line, the three ways pl
    consent_api.TEXT[2] == "A swipe right goes one of three ways:", consent_api.TEXT[3].startswith("Into the employer's own hiring system"),
    consent_api.TEXT[4].startswith("By email, with your resume"), consent_api.TEXT[5].startswith("Everywhere else, saved to Job Tracker with a receipt"),
    "turn off Send applications for me in Profile, Account" in consent_api.TEXT[8], consent_api.auto_text().startswith("Automatic submit:")), (True,) * 8)
-t("the tick is off unless the person ticks it (the box's checkbox has no checked attribute)", bool(re.search(r'id="kcAuto"[^>]*checked', LIVE)), False)
+t("two ticks only (consent v6): Automatic submit is said, not ticked (tick 1 covers it; Account has Press Submit for me to turn it off)", ('id="kcAuto"' in LIVE, 'id="kcAutoT"' in LIVE, 'id="aPressSubmit"' in open(os.path.join(ROOT, "shared", "uaply-nav.js"), encoding="utf-8").read()), (False, True, True))
 TERMS = open(os.path.join(ROOT, "legal", "terms.html"), encoding="utf-8").read()
 sub = [li for li in re.findall(r"<li>(.*?)</li>", TERMS, re.S) if "presses its Submit button for you" in li]
 t("Terms section 3 matches the box: UAply presses Submit for you only with the person's Automatic submit setting turned on",
