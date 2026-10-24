@@ -880,7 +880,7 @@ function apply(w,host){
     if(w.__uaplyHideMore&&w.__uaplyHideMore(j))return "!";
     var p=A.S.profile,co=String(j.co).toLowerCase(),hay=(String(j.role)+" "+(j.skills||[]).join(" ")).toLowerCase();
     if(list(acct.fCo).some(function(x){return co.indexOf(x)>-1})||list(acct.fKw).some(function(x){return hay.indexOf(x)>-1}))return "!";
-    if(acct.fSal&&p.salary&&j.sal&&j.sal.length>1&&j.salUnit!=="hour"&&j.sal[1]<p.salary)return "pay below your minimum";
+    if(acct.fSal&&p.salary&&j.sal&&j.sal.length>1&&j.sal[1]>0&&(j.salUnit==="hour"?j.sal[1]*2080:j.sal[1])<(p.payUnit==="hour"?p.salary*2080:p.salary))return "pay below your minimum";   /* the same scale as __uaplyHide (pay-unit) */
     if(acct.fYrs!=="any"&&j.yrs>(+p.years||0)+(+acct.fYrs))return "more experience than you set";
     return hideByMeta(j)?"your other filters":"";
   };

@@ -864,7 +864,7 @@ function kitApply(w,host){
       mark("needs_profile");if(w.__uaplyBadge)w.__uaplyBadge();
       var told=false;try{told=w.sessionStorage.getItem("uaply.np")==="1"}catch(e){told=!!w.__uaplyNPTold}
       if(!told){try{w.sessionStorage.setItem("uaply.np","1")}catch(e){}w.__uaplyNPTold=true;
-        toast("Saved to your Job Tracker. Complete your profile to send applications automatically.","Complete profile",function(){if(w.__uaplyCompleteProfile)w.__uaplyCompleteProfile()},9000)}
+        toast("Saved to your Job Tracker. Complete your profile, then send them from Job Tracker.","Complete profile",function(){if(w.__uaplyCompleteProfile)w.__uaplyCompleteProfile()},9000)}
       else savedToast(false);
       return}
     if(!(p.name&&EMAIL.test(p.email||"")&&(!live||p.custom))){

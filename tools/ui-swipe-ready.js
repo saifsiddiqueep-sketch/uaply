@@ -100,8 +100,8 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   // Saif, October 24: an incomplete profile never blocks a swipe. A swipe right saves it to Job Tracker as "Needs profile", and one line says so
   await q("try{w.sessionStorage.removeItem('uaply.np')}catch(e){}w.__uaplyNPTold=false;d.getElementById('btnYes').click();return 1"); await sleep(1500);
   const msg = await q("const t=d.getElementById('kitToast');return t?t.innerText:''");
-  check("below-min", "a swipe right saves it and says so: 'Saved to your Job Tracker. Complete your profile to send applications automatically.' with Complete profile",
-    String(msg).startsWith("Saved to your Job Tracker. Complete your profile to send applications automatically.") && String(msg).indexOf("Complete profile") > -1, msg);
+  check("below-min", "a swipe right saves it and says so: 'Saved to your Job Tracker. Complete your profile, then send them from Job Tracker.' with Complete profile",
+    String(msg).startsWith("Saved to your Job Tracker. Complete your profile, then send them from Job Tracker.") && String(msg).indexOf("Complete profile") > -1, msg);
   const st0 = await q("const x=w.__uaply.S.decisions[" + top0 + "];return x&&x.sent?x.sent.status:''");
   check("below-min", "...it is in Job Tracker as needs_profile, the card left the deck, nothing reached an employer",
     st0 === "needs_profile" && (await received()) === before && (await q("const c=d.querySelector('#deck .card.top');return c?+c.getAttribute('data-id'):0")) !== top0, st0);

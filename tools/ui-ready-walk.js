@@ -79,8 +79,8 @@ module.exports = async ({ ev, sleep, nav, send, shot, logs }) => {
   await q("try{w.sessionStorage.removeItem('uaply.np')}catch(e){}w.__uaplyNPTold=false;return 1");
   await swipeRight();
   const line = await waitFor("const t=d.getElementById('kitToast');return t?t.innerText:''", 6000);
-  check("1. a swipe right saves it: 'Saved to your Job Tracker. Complete your profile to send applications automatically.' with Complete profile",
-    String(line).startsWith("Saved to your Job Tracker. Complete your profile to send applications automatically.") && String(line).indexOf("Complete profile") > -1, line);
+  check("1. a swipe right saves it: 'Saved to your Job Tracker. Complete your profile, then send them from Job Tracker.' with Complete profile",
+    String(line).startsWith("Saved to your Job Tracker. Complete your profile, then send them from Job Tracker.") && String(line).indexOf("Complete profile") > -1, line);
   check("1. ...Job Tracker has it as Needs profile, and the deck moved on", (await q("const x=w.__uaply.S.decisions[" + JOB + "];return x&&x.sent?x.sent.status:''")) === "needs_profile" &&
     (await q("const c=d.querySelector('#deck .card.top');return c?+c.getAttribute('data-id'):0")) !== JOB, "");
   await snap("2-saved-needs-profile");

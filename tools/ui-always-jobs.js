@@ -41,6 +41,14 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
   await sleep(300);
   check("with no minimum match (the default) every job of the stack is inside the filters, ordered by match", await ev("(()=>{const q=" + FW + ".__uaplyQueue();return q.length===40&&q.every(x=>!x.out)})()"), "");
   check("...and the card shows its percentage", /^[0-9]+%$/.test(await ev("(()=>{const b=" + F + ".querySelector('#deck .card.top .ring b');return b?b.textContent:''})()")), "");
+  // the pay filter on the same scale as pay-unit: a yearly minimum of 100000 hides a $20-an-hour job, which becomes an outside card, not dropped
+  await ev("(()=>{const w=" + FW + ",A=w.__uaply,d=" + F + ";Object.assign(A.S.profile,{salary:100000,payUnit:'year'});A.save();" +
+    "w.__uaplyJobs.add([{id:910099,co:'Hourly Pay Co',role:'Data Analyst',mode:'remote',loc:'Remote (US)',type:'job',sal:[18,20],salUnit:'hour',yrs:0,edu:'Bachelor',skills:['SQL'],blurb:'Hourly.',live:true,ajTest:true,source:'Hourly Pay Co careers page'}]);" +
+    "const c=d.getElementById('aSal');c.checked=true;c.dispatchEvent(new Event('change',{bubbles:true}));A.setType('job');A.setFilter('all');A.setMin(0);A.renderAll();return 1})()");
+  await sleep(500);
+  const hp = await J("(()=>{const x=" + FW + ".__uaplyQueue().find(x=>x.j.id===910099);return x?{out:x.out||''}:null})()");
+  check("an hourly job under a yearly pay minimum (pay-unit's scale) is an outside card marked 'pay below your minimum', not dropped", !!hp && /pay below your minimum/.test(hp.out), JSON.stringify(hp));
+  await ev("(()=>{const d=" + F + ",c=d.getElementById('aSal');c.checked=false;c.dispatchEvent(new Event('change',{bubbles:true}));return 1})()");
   // the learner (shared/uaply-learn.js): 15 swipes right on 60-69% jobs and left on 80-89% ones move the liked band up
   const band = await J("(()=>{const C=(window.UAplyLearn||" + FW + ".UAplyLearn).core,st=C.fresh(),now=Date.now();for(let i=0;i<15;i++){const like=i%2===0;" +
     "C.swipe(st,{id:920000+i,co:'Band Co '+i,role:'Role '+i,mode:'remote',type:'job'},like?'applied':'passed',2500,false,now,like?65:85)}" +
