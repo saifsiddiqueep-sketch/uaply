@@ -266,7 +266,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
     else { await menu("svc", "job"); await sleep(300); await ev("(" + F + ").getElementById('btnYes').click()"); await sleep(1200); }
   };
   await walk({ name: "Consent box", root: "#kitConsent", open: consentOpen, fresh: true });
-  await ev("(()=>{const w=" + FW + ";w.localStorage.setItem((w.__uaplyKey||'uaply')+'.consent',JSON.stringify({v:5,at:Date.now(),agent:true}));const o=w.document.getElementById('kitConsent');if(o)o.remove()})()");
+  await ev("(()=>{const w=" + FW + ";w.localStorage.setItem((w.__uaplyKey||'uaply')+'.consent',JSON.stringify({v:6,at:Date.now(),agent:true}));const o=w.document.getElementById('kitConsent');if(o)o.remove()})()");
 
   // ---- a profile that can apply (name, email, resume file), as a person would have it after Profile setup
   await menu("prof", "settings"); await sleep(600);
@@ -335,7 +335,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
   const vf = await ev("fetch('/api/auth/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:'" + code + "'})}).then(r=>r.status)");
   check("a test account is created and verified on this server", su === 200 && vf === 200, su + "/" + vf);
   await reload();
-  await ev("(()=>{const w=" + FW + ";w.localStorage.setItem((w.__uaplyKey||'uaply')+'.consent',JSON.stringify({v:5,at:Date.now(),agent:true}));const o=w.document.getElementById('kitConsent');if(o)o.remove()})()");
+  await ev("(()=>{const w=" + FW + ";w.localStorage.setItem((w.__uaplyKey||'uaply')+'.consent',JSON.stringify({v:6,at:Date.now(),agent:true}));const o=w.document.getElementById('kitConsent');if(o)o.remove()})()");
   await walk({ name: "Profile › Account (signed in)", root: "main > section:not([hidden])", open: async () => { await menu("prof", "account"); }, details: true,
     skip: /^Sign out$/, skipWhy: "pressed last, below" });
   if (sandbox) {

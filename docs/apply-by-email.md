@@ -94,6 +94,16 @@ Time from the swipe to the form being ready, measured on the mock forms (`tools/
 and in the browser (`tools/ui-apply-paths.js`, UAply's own half with a stand-in for the plugin): see the latest run's `ONE-TAP-TIMES` and
 `ONE-TAP-CLIENT` lines. A real employer page adds its own load time on the phone's network.
 
+## Consent version 6 (October 24, 2026)
+
+With the person's explicit consent UAply may submit applications on their behalf (lawyer-approved). The box before the first swipe right
+now has two ticks, both required before Agree: "I authorize UAply to submit job applications on my behalf, using my profile, through any
+channel available for that job (the employer's hiring system, its application form, or email)." and "I confirm my profile information is
+accurate and I am 18 or older." `POST /api/consent` refuses an agreement without both (400 `consent_ticks`) and keeps each tick on the
+record with the version and the time (`auth_api.record_consent`); anyone whose record is version 5 sees the box again. The owner's switches
+`counsel_approved` and `recruitee_submit` are on by default (either can be set to false in the config), and the receipt and Job Tracker
+name the channel used: Submitted into their hiring system, Sent by email, or Finish on their site.
+
 ## Phase B (October 23, 2026)
 
 - **Recruitee:** its careers sites take applications from job boards through their own public endpoint, with no employer key. A posting

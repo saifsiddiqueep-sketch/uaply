@@ -38,7 +38,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot }) => {
       else el.value=/zip|postal/.test(q)?'19104':/phone/.test(q)?'+1 215 555 0100':/salary|compensation|pay/.test(q)?'90000':/city|location|where/.test(q)?'Philadelphia, PA':/linkedin/.test(q)?'https://www.linkedin.com/in/sam-rivera':/website|portfolio|github/.test(q)?'https://samrivera.dev':/date|when|start/.test(q)?'2027-01-15':'Yes, I can.';
       el.dispatchEvent(new Event('input',{bubbles:true}))});
     const f=o.querySelector('form');if(f.requestSubmit)f.requestSubmit();else d.getElementById('kaYes').click();return true})()`);
-  const agree = () => ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b){b.click();return true}return false})()");
+  const agree = () => ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b){b.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});b.disabled=false;b.click();return true}return false})()");
   // after a swipe right: the consent box (first time) is agreed, employer questions are answered, until the request is answered
   const settle = async (o = {}) => {
     for (let i = 0; i < 4; i++) {
@@ -183,6 +183,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot }) => {
     check("the consent box is still open after that swipe", (await state()).consent);
     await kind("keyboard: ArrowRight while the consent box is open does not swipe the card behind it", async () => { await key("ArrowRight"); }, "nothing", { noReady: true, noSettle: true, keepConsent: true });
     check("the consent box is still open after the key", (await state()).consent);
+    await ev("(()=>{const d=" + F + ";d.querySelectorAll('.kcTick').forEach(c=>{c.checked=true;c.dispatchEvent(new Event('change'))});return 1})()");   // both ticks first (version 6)
     const p = await center("#kcYes");
     if (PHONE) await tapAt(p); else await clickAt(p);
     await sleep(500);
@@ -202,6 +203,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot }) => {
     check("ArrowLeft while the consent box is open does not swipe the card behind it", outcome(b, a) === "nothing" && a.consent, "did: " + outcome(b, a));
     await key("ArrowRight"); await sleep(900); a = await state();
     check("ArrowRight while the consent box is open does not swipe the card behind it", outcome(b, a) === "nothing" && a.consent, "did: " + outcome(b, a));
+    await ev("(()=>{const d=" + F + ";d.querySelectorAll('.kcTick').forEach(c=>{c.checked=true;c.dispatchEvent(new Event('change'))});return 1})()");   // both ticks first (version 6)
     const p = await center("#kcYes");
     if (PHONE) await tapAt(p); else await clickAt(p);
     await sleep(400); await settle();

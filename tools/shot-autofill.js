@@ -45,7 +45,7 @@ module.exports = async ({ ev, sleep, nav, shot, logs }) => {
   const swipeRight = async (label) => {
     const before = await ev("(()=>{const c=" + F + ".querySelector('.card.top');return c?c.innerText.split(String.fromCharCode(10)).slice(0,3).join(' | '):''})()");
     await ev(F + ".getElementById('btnYes').click()"); await sleep(900);
-    await ev("(()=>{const m=" + F + ".getElementById('kcYes');if(m)m.click()})()");          // the one-time first-application agreement
+    await ev("(()=>{const m=" + F + ".getElementById('kcYes');if(m){m.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});m.disabled=false;m.click()}})()");          // the one-time first-application agreement
     for (let i = 0; i < 20; i++) { await sleep(500); if (await ev("!!(" + F + ".getElementById('kitAsk')||" + F + ".getElementById('kitToast'))")) break; }
     console.log("   swiped right on:", before.slice(0, 90));
     return before;

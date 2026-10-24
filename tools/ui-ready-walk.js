@@ -39,7 +39,7 @@ module.exports = async ({ ev, sleep, nav, send, shot, logs }) => {
     await nav(BASE + "/?app=1");
     await waitFor("return w.__uaplyReadiness&&w.__uaplyReadyOf&&w.__uaplySubmitOn&&w.__uaplyMode&&d.getElementById('nb-prof')?1:0", 30000);
     await sleep(900);
-    await q("const y=d.getElementById('kcYes');if(y)y.click();const n=[...d.querySelectorAll('#locAsk button')].find(x=>/Not now/.test(x.innerText));if(n)n.click();const t=d.getElementById('tipsClose');if(t)t.click();return 1");
+    await q("const y=d.getElementById('kcYes');if(y){y.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});y.disabled=false;y.click()};const n=[...d.querySelectorAll('#locAsk button')].find(x=>/Not now/.test(x.innerText));if(n)n.click();const t=d.getElementById('tipsClose');if(t)t.click();return 1");
     await sleep(500);
   };
 

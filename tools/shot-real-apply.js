@@ -80,7 +80,7 @@ module.exports = async ({ ev, sleep, nav, shot, logs }) => {
   // 4. swipe right
   const before = await ev("fetch('/api/outbox').then(r=>r.json()).then(j=>j.applications.length)");
   await ev(F + ".getElementById('btnYes').click()"); await sleep(900);
-  await ev("(()=>{const m=" + F + ".getElementById('kcYes');if(m)m.click()})()");
+  await ev("(()=>{const m=" + F + ".getElementById('kcYes');if(m){m.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});m.disabled=false;m.click()}})()");
   for (let i = 0; i < 20; i++) { await sleep(500); if (await ev("!!" + F + ".getElementById('kitToast')")) break; }
   await sleep(800);
   const toastText = await ev("((" + F + ".getElementById('kitToast')||{}).innerText||'')");

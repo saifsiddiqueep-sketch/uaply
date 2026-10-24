@@ -28,7 +28,7 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   };
   await nav("http://127.0.0.1:" + PORT + "/");
   await sleep(3500);
-  await ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b)b.click()})()"); await sleep(300);
+  await ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b){b.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});b.disabled=false;b.click()}})()"); await sleep(300);
   await overview();
   const items = JSON.parse(await ev("JSON.stringify([...(" + F + ").querySelectorAll('#pane-track button[data-go]')].filter(b=>b.offsetParent&&b.innerText.trim()==='Add').map(b=>[b.parentNode.querySelector('span').innerText.trim(),b.getAttribute('data-go')]))"));
   check("the Overview lists what is missing from the profile, each with an Add button", items.length > 0, items.length + " item(s)");

@@ -15,7 +15,7 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
   await gateSignup({ ev, sleep, nav }, "http://127.0.0.1:" + PORT, "always");
   await nav("http://127.0.0.1:" + PORT + "/?app=1");
   await sleep(3500);
-  if (await ev("!!" + F + ".getElementById('kcYes')")) { await ev(F + ".getElementById('kcYes').click()"); await sleep(400); }
+  if (await ev("!!" + F + ".getElementById('kcYes')")) { await ev(F + ".querySelectorAll('.kcTick,#kcYes').forEach(c=>{if(c.id==='kcYes'){c.disabled=false;c.click()}else c.checked=true})"); await sleep(400); }
   for (let i = 0; i < 60; i++) { if (await ev("!" + FW + ".__uaplyLoadingJobs")) break; await sleep(500); }
   // only this test's own 40 jobs: full-time and remote, so none is an on-site internship
   await ev("(()=>{const w=" + FW + ",A=w.__uaply;w.__uaplyOnDecision=null;w.__uaplyHideSamples=true;const h0=w.__uaplyHide;" +

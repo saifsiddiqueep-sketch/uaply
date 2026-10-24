@@ -151,7 +151,7 @@ def person(port, email, consent=True):
     s, out, ck = req(port, "POST", "/api/auth/signup", {"email": email, "password": "pass for " + email, "agree": True, "first": "Rae", "last": "Cruz"})
     cookie = ck[0] if ck else ""
     if consent:
-        req(port, "POST", "/api/consent", {"version": consent_api.VERSION, "text": consent_api.full_text(False), "auto": False}, cookie)
+        req(port, "POST", "/api/consent", {"version": consent_api.VERSION, "text": consent_api.full_text(False), "auto": False, "ticks": {"authorize": True, "accurate": True}}, cookie)
     return cookie
 
 
@@ -199,13 +199,12 @@ try:
         p.wait(10)
     PROCS.clear()
     # the owner's switch off: Recruitee postings are hand-offs again
-    off = dict(live)
-    off.pop("recruitee_submit")
+    off = dict(live, recruitee_submit=False)
     start(PORT2, "off", off)
     b = person(PORT2, "bea@example.org")
     by = {j["id"]: j for j in req(PORT2, "GET", "/api/jobs", cookie=b)[1]["jobs"]}
     s, out = apply(PORT2, b, P4, "bea@example.org")
-    t("recruitee_submit unset (off by default): the card is a hand-off and a swipe sends nothing", ((by.get(P4["id"]) or {}).get("instant", False), out.get("status"), len(GOT)), (False, "handoff", 2))
+    t("recruitee_submit false (on by default): the card is a hand-off and a swipe sends nothing", ((by.get(P4["id"]) or {}).get("instant", False), out.get("status"), len(GOT)), (False, "handoff", 2))
     for p in PROCS:
         p.terminate()
         p.wait(10)

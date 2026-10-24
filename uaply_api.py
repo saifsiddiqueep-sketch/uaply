@@ -606,7 +606,7 @@ def _mail_ctx(cfg, rec, note, user_email="", site=""):
     test = rec["mode"] != "live" and not (PUBLIC and rec["status"] == "handoff")
     return {"test": test, "status": rec["status"], "cand": rec["candidate"], "job": rec["job"], "at": rec["at"],
             "match": rec.get("match", 0), "to": rec.get("to", ""), "rows": _detail_rows(rec["candidate"], note), "note": note,
-            "channels": rec.get("channels") or [], "user_email": user_email, "base_url": _site_base(cfg, site), "support_email": _s(cfg.get("support_email"), 120),
+            "channels": rec.get("channels") or [], "why": rec.get("why") or "", "user_email": user_email, "base_url": _site_base(cfg, site), "support_email": _s(cfg.get("support_email"), 120),
             "preview": rec.get("preview") is True}
 
 
@@ -1037,8 +1037,25 @@ def email_events(body, authorization):
 
 
 def recruitee_on(cfg=None):
-    """The owner's switch for sending to Recruitee's public apply endpoint ("recruitee_submit" in the config; off unless set to true, flipped after one real-offer test)."""
-    return (cfg or config()).get("recruitee_submit", False) is True
+    """The owner's switch for sending to Recruitee's public apply endpoint ("recruitee_submit" in the config; on unless set to false:
+    Saif, October 24, lawyer-approved)."""
+    return (cfg or config()).get("recruitee_submit", True) is not False
+
+
+def counsel_on(cfg=None):
+    """The owner's switch over shared/assist-systems.json's counsel_approved (Saif, October 24: the lawyer approved): "counsel_approved" in
+    the config, on unless set to false; set to false, every system is served as not approved."""
+    return (cfg or config()).get("counsel_approved", True) is not False
+
+
+def assist_systems(cfg=None):
+    """shared/assist-systems.json as the app gets it (/assist-systems.json), with the owner's counsel_approved switch applied."""
+    c = json.loads(json.dumps(consent_api.systems() or {}))
+    if not counsel_on(cfg):
+        for x in (c.get("systems") or {}).values():
+            if isinstance(x, dict):
+                x["counsel_approved"] = False
+    return c
 
 
 def submit(p, user=None, site=""):
@@ -1307,7 +1324,11 @@ def submit(p, user=None, site=""):
             if err:
                 rec["error"] = err
             _append("applications.jsonl", rec)
-    out = {"status": rec["status"], "id": rec["id"], "to": rec["to"], "mode": mode, "simulated": rec["simulated"], "copied": False}
+    out = {"status": rec["status"], "id": rec["id"], "to": rec["to"], "mode": mode, "simulated": rec["simulated"], "copied": False,
+           "channel": emails.channel_words(rec["status"], rec.get("channels"), rec.get("why") or "")}
+    chs = [str(c) for c in rec.get("channels") or []]
+    out["via"] = ("ats" if any(c.startswith("hiring system") for c in chs) else "email" if any(c.startswith("email") for c in chs)
+                  else "handoff" if rec["status"] == "handoff" else "")       # Job Tracker names the channel (Saif, October 24)
     if send_off:
         out["sendForMe"] = False                         # the page says the job was only saved, and why
     if rec.get("preview"):

@@ -458,7 +458,7 @@ function kitApply(w,host){
   d.addEventListener("visibilitychange",function(){if(d.visibilityState==="visible")dropExpired()});
   w.addEventListener("pageshow",dropExpired);w.addEventListener("focus",dropExpired);
   /* first application only: say plainly what a swipe right does with the person's details, and get agreement */
-  var CONSENT_V=5;   /* 2: also explains the optional hiring-manager message and that voluntary answers are never sent.
+  var CONSENT_V=6;   /* 2: also explains the optional hiring-manager message and that voluntary answers are never sent.
                        3 (October 21, 2026, the owner's position, drafted for the Terms in LEGAL-REVIEW.md): the person authorizes UAply to
                        complete and submit applications on their behalf; recorded with the time ({v:3,at,agent:true}), so everyone agrees again once.
                        4 (October 23, 2026, pending the lawyer: LEGAL-REVIEW.md section 12): applications emailed to postings that ask for them, the
@@ -477,9 +477,12 @@ function kitApply(w,host){
     "By email, with your resume, where the job posting gives an address for applications.",
     "Everywhere else, saved to Job Tracker with a receipt, and you finish on the employer's site; in the UAply phone app the employer's form opens filled in for you to check and submit.",
     "UAply never answers questions about race, gender, veteran status or disability, and never completes a security check.",
-    "You are responsible for keeping your profile accurate. You can tap Undo right after a swipe.",
+    "You can tap Undo right after a swipe.",
     "To stop UAply sending applications for you, turn off Send applications for me in Profile, Account.",
     "By continuing you agree to the Terms and Privacy Policy."];
+  /* version 6 (Saif, October 24, lawyer-approved): two ticks, both required before Agree; the words go to the server after the rest */
+  var CONSENT_TICKS=["I authorize UAply to submit job applications on my behalf, using my profile, through any channel available for that job (the employer's hiring system, its application form, or email).",
+    "I confirm my profile information is accurate and I am 18 or older."];
   /* the separate tick, off by default: only with it may the phone app press an employer's Submit for the person, where that is allowed.
      Where that is comes from shared/assist-systems.json (the owner's per-system switch, the same rule as assistMode in uaply-nav.js), so the
      line updates itself when a system is switched on; consent_api.py builds the same words from the same file (tools/test-consent.py) */
@@ -492,11 +495,11 @@ function kitApply(w,host){
   w.__uaplyAgentClause=AGENT_CLAUSE;w.__uaplyConsentV=CONSENT_V;
   /* the words agreed to, as the server checks them: one entry per line, in the order shown, with the Automatic submit line (as it was shown,
      when the box is open) after the four ways when it was ticked */
-  function consentWords(auto,shown){return CONSENT_TEXT.slice(0,AUTO_AT).concat(auto?[shown||autoText()]:[]).concat(CONSENT_TEXT.slice(AUTO_AT)).join("\n")}
+  function consentWords(auto,shown){return CONSENT_TEXT.slice(0,AUTO_AT).concat(auto?[shown||autoText()]:[]).concat(CONSENT_TEXT.slice(AUTO_AT)).concat(CONSENT_TICKS).join("\n")}
   function storedConsent(){try{var c=JSON.parse(w.localStorage.getItem(consentKey()));return c&&typeof c==="object"?c:null}catch(e){return null}}
   /* the agreement goes on the account (POST /api/consent): the record every application UAply sends itself needs. Resolves true when kept */
   function recordConsent(auto,shown){
-    return post("/api/consent",{version:CONSENT_V,text:consentWords(!!auto,shown),auto:!!auto}).then(function(r){
+    return post("/api/consent",{version:CONSENT_V,text:consentWords(!!auto,shown),auto:!!auto,ticks:{authorize:true,accurate:true}}).then(function(r){
       if(r.ok&&r.j)w.__uaplyConsentRec=r.j.consent||null;return !!r.ok},function(){return false});
   }
   function legalBase(){var p=(host&&host.defaultView&&host.defaultView.location.pathname)||"/";return /\/(sandbox|dev)\/(index\.html)?$/.test(p)?"../legal/":"legal/"}   /* the hosted copies live at /dev/ and /sandbox/, with legal/ beside them */
@@ -530,13 +533,16 @@ function kitApply(w,host){
     o.innerHTML='<div role="dialog" aria-modal="true" aria-labelledby="kcH" style="background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:20px;max-width:460px;width:100%;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:10px;font-size:14px">'+
       '<h2 id="kcH" style="margin:0;font:800 20px var(--display)">'+(consentFirst?"Before you start swiping":"Before your first application")+'</h2>'+
       CONSENT_TEXT.map(para).join("")+
+      CONSENT_TICKS.map(function(t,i){return '<label for="kcT'+i+'" style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:12px;cursor:pointer"><input type="checkbox" id="kcT'+i+'" class="kcTick" style="margin-top:3px;min-width:20px;min-height:20px"><span><b>'+esc(t)+'</b></span></label>'}).join("")+
       (consentFirst?'<p style="margin:0">You see this again only if the agreement changes. After you agree, every swipe is just a swipe.</p>':'')+
       '<div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button type="button" class="btn ghost" id="kcNo">'+(consentFirst?"Not now":"Cancel")+'</button><button type="button" class="btn" id="kcYes">'+(consentFirst?"Agree and start swiping":"Agree and continue")+'</button></div></div>';
     d.body.appendChild(o);
-    d.getElementById("kcYes").focus();
+    var yes=d.getElementById("kcYes");function ticked(){return [].every.call(o.querySelectorAll(".kcTick"),function(c){return c.checked})}
+    yes.disabled=!ticked();o.querySelectorAll(".kcTick").forEach(function(c){c.addEventListener("change",function(){yes.disabled=!ticked()})});   /* both ticks, or no Agree */
+    d.getElementById("kcT0").focus();
     function answer(ok){o.remove();var waiting=consentWait.splice(0);(ok?go:cancel)();waiting.forEach(function(p){(ok?p[0]:p[1])()})}
     /* the tick is the person's own choice, off unless they tick it; the agreement is kept on this device and on the account */
-    d.getElementById("kcYes").onclick=function(){var auto=!!d.getElementById("kcAuto").checked;try{w.localStorage.setItem(consentKey(),JSON.stringify({v:CONSENT_V,at:Date.now(),agent:true,auto:auto}))}catch(e){}recordConsent(auto,d.getElementById("kcAutoT").textContent);answer(true)};
+    d.getElementById("kcYes").onclick=function(){if(!ticked())return;var auto=!!d.getElementById("kcAuto").checked;try{w.localStorage.setItem(consentKey(),JSON.stringify({v:CONSENT_V,at:Date.now(),agent:true,auto:auto,authorize:true,accurate:true}))}catch(e){}recordConsent(auto,d.getElementById("kcAutoT").textContent);answer(true)};
     d.getElementById("kcNo").onclick=function(){answer(false)};
     o.addEventListener("keydown",function(e){if(e.key==="Escape")answer(false)});
   }
@@ -857,7 +863,7 @@ function kitApply(w,host){
     /* "One tap to finish" only when it is true: the phone app has just opened the employer's form, filled. Anywhere else (the website, a
        system the app does not fill) the copy says only that it was saved; Job Tracker shows how to finish (never a promise the page cannot keep) */
     function savedToast(opened){toast(opened?"Saved to Job Tracker. One tap to finish on their site.":"Saved "+job.co+" to Job Tracker.","Undo",undoThis,9000)}
-    function mark(status,to){var dec=S&&S.decisions&&S.decisions[job.id];if(dec){dec.sent={at:Date.now(),to:to||"",status:status};if(save)save();if(w.__uaplyTrack)w.__uaplyTrack()}}   /* the Applied list, if it is open, shows the new state at once */
+    function mark(status,to,via){var dec=S&&S.decisions&&S.decisions[job.id];if(dec){dec.sent={at:Date.now(),to:to||"",status:status};if(via)dec.sent.via=via;if(save)save();if(w.__uaplyTrack)w.__uaplyTrack()}}   /* the Applied list, if it is open, shows the new state at once */
     var rdy=w.__uaplyReadiness?w.__uaplyReadiness():null;
     /* an incomplete profile: saved to Job Tracker as "Needs profile" (sent from there once the profile is complete); the line says so once a session */
     if(rdy&&!rdy.min){
@@ -920,7 +926,7 @@ function kitApply(w,host){
           if(j.was)mark(j.was,j.to);
           if(j.was==="handoff"){if(!retry)savedToast();return}      /* a hand-off swiped again: quiet, the Applied row has the links */
         }
-        else mark(j.status,j.to);
+        else mark(j.status,j.to,j.via);          /* the channel it went by (the server says: ats, email), named in Job Tracker */
         var cp=receiptNote(j),pl=j.plan;
         var auto=pl&&pl.total?" UAply filled in "+pl.filled+" of "+pl.total+" answers.":"";
         if(j.status==="delivered_test")toast("Applied to "+job.co+" (test)."+auto+cp,"","",9000);

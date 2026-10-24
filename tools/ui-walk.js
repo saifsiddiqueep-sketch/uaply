@@ -70,7 +70,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, on }) => {
   console.log("     size " + VW + "x" + VH + ": the app frame is " + (await q("return w.innerWidth+'x'+w.innerHeight")));
   if (!check("the deck shows job cards", !!jobs, "no card after 60 s (does the server have its job feeds on?)")) { console.log("\n" + pass + " / " + (pass + fail)); return; }
   await waitFor("return d.getElementById('kcYes')", 5000);
-  await tap("d.getElementById('kcYes')");
+  await tap("(()=>{d.querySelectorAll('.kcTick').forEach(c=>{c.checked=true;c.dispatchEvent(new Event('change'))});return d.getElementById('kcYes')})()");
   await tap(byText("/^Not now$/"));
   await tap("d.getElementById('tipsClose')");
 
@@ -147,7 +147,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, on }) => {
   await tap(byText("/^Show it again$/"));
   const again = await waitFor("const b=d.getElementById('kitConsent');return b?b.innerText:''", 4000);
   check("5. the agreement shown again no longer says 'You see this again only if the agreement changes'", !!again && !/You see this again only if/.test(again), (again || "").slice(-120));
-  await tap("d.getElementById('kcYes')");
+  await tap("(()=>{d.querySelectorAll('.kcTick').forEach(c=>{c.checked=true;c.dispatchEvent(new Event('change'))});return d.getElementById('kcYes')})()");
 
   // 6. Account: sign up, the line above "You are signed in", a failed sign-out, Sign in wording (the first account signs out for it)
   await ev("fetch('/api/auth/logout',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:'{}'})");

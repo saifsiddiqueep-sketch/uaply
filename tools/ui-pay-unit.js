@@ -15,7 +15,7 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
     await send("Page.navigate", { url: base + "/" });
     for (let i = 0; i < 80 && !(await ev("!!(" + F + "&&" + FW + ".__uaply&&" + FW + ".__uaplyOpenProf&&" + F + ".getElementById('bnav'))").catch(() => false)); i++) await sleep(250);
     await sleep(800);
-    await ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b)b.click()})()"); await sleep(300);
+    await ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b){b.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});b.disabled=false;b.click()}})()"); await sleep(300);
   };
   const step3 = async () => { await ev(FW + ".__uaplyOpenProf('where')"); await sleep(900); };
   const field = () => ev("(()=>{const d=" + F + ",w=d.defaultView,i=d.getElementById('pSalary'),ls=[...d.querySelectorAll('.payunit label')];if(!i)return 'null';" +

@@ -985,6 +985,9 @@ class H(http.server.SimpleHTTPRequestHandler):
         p = self.path.split("?", 1)[0]
         if p == "/healthz":                                                 # for the host's health check
             return self._health()
+        if p == "/assist-systems.json":                                     # the per-system switch, with the owner's counsel_approved applied
+            import uaply_api as _ua
+            return self._send(200, json.dumps(_ua.assist_systems()).encode("utf-8"), "application/json")
         if p == ASSETLINKS_PATH:                                            # the Play Store app's proof that it belongs to this site
             return self._assetlinks()
         if p == SECURITY_TXT_PATH:                                          # who to tell about a security problem (RFC 9116)

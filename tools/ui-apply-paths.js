@@ -25,7 +25,7 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
       check("signed in as ui@example.com", r === 200, "HTTP " + r);
     } else await ev("fetch('/api/auth/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.status)");
     // the profile a person fills in, and the first-application agreement already given
-    await ev("(()=>{const w=" + FW + ";w.localStorage.setItem((w.__uaplyKey||'uaply')+'.consent',JSON.stringify({v:5,at:Date.now(),agent:true,auto:false}));const A=w.__uaply;Object.assign(A.S.profile,{name:'Sam Rivera',email:'" + (addr || "ui@example.com") + "',custom:true,title:'Data Analyst',years:1,skills:['Python','SQL']});A.save()})()");
+    await ev("(()=>{const w=" + FW + ";w.localStorage.setItem((w.__uaplyKey||'uaply')+'.consent',JSON.stringify({v:6,at:Date.now(),agent:true,auto:false}));const A=w.__uaply;Object.assign(A.S.profile,{name:'Sam Rivera',email:'" + (addr || "ui@example.com") + "',custom:true,title:'Data Analyst',years:1,skills:['Python','SQL']});A.save()})()");
     await nav(base); await sleep(4500);
     // the resume file uploaded in Profile setup (a tiny real PDF)
     await ev("(()=>{const w=" + FW + ";w.__uaplyResume=function(){return {name:'Sam Rivera Resume.pdf',size:40,data:'data:application/pdf;base64,'+btoa('%PDF-1.4 Sam Rivera resume for tests %%EOF')}}})()");
@@ -80,7 +80,7 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
     check("the agreement: the Automatic submit tick sits after the four ways and above 'By continuing you agree'", box.afterList && box.aboveBy, JSON.stringify(box));
     check("...on screen without scrolling (" + box.bottom + " of " + box.h + " px), the box's top in view, and off", box.onScreen && box.top && box.off, JSON.stringify(box));
     check("...and it says where: 'where a hiring system allows it; none is switched on yet' (from assist-systems.json)", /^Automatic submit: where a hiring system allows it; none is switched on yet\./.test(box.words), box.words);
-    await ev("(()=>{" + F + ".getElementById('kcYes').click();return 1})()"); await sleep(800);
+    await ev("(()=>{" + F + ".querySelectorAll('.kcTick,#kcYes').forEach(c=>{if(c.id==='kcYes'){c.disabled=false;c.click()}else c.checked=true});return 1})()"); await sleep(800);
     await walk("Greenhouse partner", ID["GH Partner|Robotics Intern"], 3000, /Applied to GH Partner \(test\)\. UAply filled in \d+ of \d+ answers\. Confirmation is in the test inbox/, /Sent to GH Partner hiring system \(test, nothing reached GH Partner\)/);
     await walk("public Greenhouse posting in dev (hand-off)", ID["Discord|Data Intern"], 3000, /^Saved [^.]+ to Job Tracker\. ?Undo$/, /Finish on their site Not sent yet: Discord takes applications on its own site\. See the job posting ↗ Finish applying on their site ↗/);   // quiet swipe (Oct 20): no "finish on their site" message
     // a job saved on this device that the server no longer lists
