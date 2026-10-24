@@ -65,15 +65,15 @@ t("...and while nothing is switched on it says so, not a system's name", consent
 t("...and once one is, it names it (only a system with the lawyer's approval and no human check measured)", "switched on now: Ashby, Lever." in consent_api.auto_text(ON), True)
 js_auto = js_lines[0] if js_lines else ""
 t("the words agreed to, as the page builds them, hash to the server's own (without and with the tick, the tick after the four ways)",
-  (consent_api.digest("\n".join(js_text)), consent_api.digest("\n".join(js_text[:7] + [js_auto] + js_text[7:]))),
+  (consent_api.digest("\n".join(js_text)), consent_api.digest("\n".join(js_text[:consent_api.AUTO_AT] + [js_auto] + js_text[consent_api.AUTO_AT:]))),
   (consent_api.digest(consent_api.full_text(False)), consent_api.digest(consent_api.full_text(True))))
 t("the hash is the SHA-256 of the words, one paragraph per line", consent_api.digest("a  b\n\nc "), hashlib.sha256(b"a b\nc").hexdigest())
-t("the box (Reviewer 3's version 4) says the authorization, the match line, the four ways (the third only with the tick), how to stop it, and the tick",
+t("the box (version 5) says the authorization, the match line, the three ways plainly, how to stop it, and the tick",
   (consent_api.TEXT[0].startswith("A swipe right authorizes UAply to submit your application on your behalf"),
    consent_api.TEXT[1].startswith("The match percentage is worked out automatically") and consent_api.TEXT[1].endswith("How matching works"),
-   "publishes an email address for applications" in consent_api.TEXT[4], "and only if you turn on Automatic submit below" in consent_api.TEXT[5],
-   consent_api.TEXT[6].startswith("Everywhere else, UAply fills in the employer's form"),
-   "turn off Send applications for me in Profile, Account" in consent_api.TEXT[9], consent_api.auto_text().startswith("Automatic submit:")), (True, True, True, True, True, True, True))
+   consent_api.TEXT[2] == "A swipe right goes one of three ways:", consent_api.TEXT[3].startswith("Into the employer's own hiring system"),
+   consent_api.TEXT[4].startswith("By email, with your resume"), consent_api.TEXT[5].startswith("Everywhere else, saved to Job Tracker with a receipt"),
+   "turn off Send applications for me in Profile, Account" in consent_api.TEXT[8], consent_api.auto_text().startswith("Automatic submit:")), (True,) * 8)
 t("the tick is off unless the person ticks it (the box's checkbox has no checked attribute)", bool(re.search(r'id="kcAuto"[^>]*checked', LIVE)), False)
 TERMS = open(os.path.join(ROOT, "legal", "terms.html"), encoding="utf-8").read()
 sub = [li for li in re.findall(r"<li>(.*?)</li>", TERMS, re.S) if "presses its Submit button for you" in li]

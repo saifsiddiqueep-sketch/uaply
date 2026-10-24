@@ -76,6 +76,8 @@ run "the sign-in contract: password sign-up with names, the code to verify and t
 run "the consent record: the box's words are the server's, kept on the account with the time, the address and their SHA-256; nothing is sent without it" python tools/test-consent.py 18970
 run "apply by email: only a posting's own \"send your resume to\" address at the employer's domain; reply-to, receipt, limits, the stop link, bounces, test mode" python tools/test-email-route.py 18973
 run "the outreach queue: who to invite each week, and it can never send" python tools/test-outreach-queue.py
+run "Recruitee: a swipe right through the careers site's own apply endpoint, the switch, the consent record, Send applications for me" python tools/test-recruitee.py
+run "the employer connect page: from the outreach link to Connected in under two minutes, then the next swipe arrives in their system" python tools/ui-connect.py
 run "the Help chat sends to the AI only after the person said Continue (checked on the server)" python tools/test-chat.py
 run "applications go straight into employers' hiring systems (Greenhouse, Lever)" python tools/test-ats.py
 run "applications go straight into an employer's Ashby" python tools/test-ats-ashby.py

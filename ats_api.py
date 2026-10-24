@@ -634,6 +634,43 @@ def submit(kind, board, job_id, key, cand, note, resume_meta, resume_bytes):
         return "failed", "unexpected problem (%s)" % type(e).__name__
 
 
+# ---- Recruitee (swipe phase B, October 23, 2026): the careers site's own public apply endpoint, no employer key ----
+# POST https://{company}.recruitee.com/api/offers/{slug}/candidates (docs.recruitee.com/reference/offers: the endpoint every Recruitee careers
+# site's own Apply form posts to). Only the person's name, email, phone and resume go; nothing voluntary, nothing the person did not see.
+RECRUITEE_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,120}$")
+
+
+def recruitee_url(company, slug):
+    """Where an application to this offer goes ('' for a company or slug that is not a plain name). Tests may point it at this computer with
+    UAPLY_ATS_BASE_RECRUITEE (then {base}/{company}/api/offers/{slug}/candidates)."""
+    if not (isinstance(company, str) and TOKEN_RE.match(company) and isinstance(slug, str) and RECRUITEE_SLUG_RE.match(slug)):
+        return ""
+    v = os.environ.get("UAPLY_ATS_BASE_RECRUITEE", "")
+    if re.match(r"^http://(127\.0\.0\.1|localhost)(:\d+)?$", v):
+        return "%s/%s/api/offers/%s/candidates" % (v, company, slug)
+    return "https://%s.recruitee.com/api/offers/%s/candidates" % (company.lower(), slug)
+
+
+def recruitee_submit(company, slug, cand, resume_meta, resume_bytes):
+    """Send one application to a Recruitee offer. Returns ("sent" | "failed", reason or None). Never raises."""
+    url = recruitee_url(company, slug)
+    if not url:
+        return "failed", "this posting's Recruitee address is not valid"
+    fields = [("candidate[name]", cand.get("name") or ""), ("candidate[email]", cand.get("email") or "")]
+    phone = ((cand.get("ext") or {}).get("phone") or "").strip()
+    if phone:
+        fields.append(("candidate[phone]", phone))
+    files = [("candidate[cv]", resume_meta["name"], resume_meta["type"], resume_bytes)] if resume_meta and resume_bytes else []
+    body, ctype = _multipart(fields, files)
+    try:
+        status, reply = _call(urllib.request.Request(url, data=body, method="POST", headers={"Content-Type": ctype, "Accept": "application/json"}))
+    except Exception as e:
+        return "failed", "unexpected problem (%s)" % type(e).__name__
+    if status in (200, 201) and isinstance(reply, dict) and (reply.get("candidate") or reply.get("id")):
+        return "sent", None
+    return "failed", "Recruitee did not accept the application (HTTP %s) %s" % (status, _short(reply))
+
+
 # ---- "Test this connection" (/setup) ----
 # Reads the employer's own open postings and says how many there are, and checks the key where the system has a read that needs it
 # (Ashby's job.list, SmartRecruiters' posting configuration, Workable's job list). Greenhouse's Job Board key and Lever's Postings key are

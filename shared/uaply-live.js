@@ -223,13 +223,20 @@ function apply(w,host){
     },wTries<WAIT.length?WAIT[wTries]:120000);
     wTries++;
   }
+  /* a whole list that has not come in WHOLE_MS (answer and body) counts as failed, the same as an error: a request that hung (not one that
+     failed) left the deck at its first 200 cards and never asked for the next page. The request is cancelled, the retries above apply, and
+     the deck pages on meanwhile */
+  var WHOLE_MS=20000;
   function whole(round){
     if(fullBusy)return Promise.resolve();
     fullBusy=true;ranking(true);
-    return fetch("/api/jobs").then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}).then(function(data){
+    var ac=null,timer=0;try{ac=new AbortController()}catch(e){}   /* this page's own, as the fetch below is */
+    var late=new Promise(function(_,no){timer=setTimeout(function(){try{if(ac)ac.abort()}catch(e){}no(new Error("timeout"))},WHOLE_MS)});
+    return Promise.race([fetch("/api/jobs",ac?{signal:ac.signal}:undefined).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}),late]).then(function(data){
+      clearTimeout(timer);
       hold();fullBusy=false;FULL=true;WHOLE_FAILED=false;wTries=0;ranking(false);took(data);
       if(data.pending>0&&round<15)setTimeout(function(){FULL=false;whole(round+1)},round<3?5000:15000);
-    }).catch(function(){fullBusy=false;WHOLE_FAILED=true;try{w.__uaply.renderAll()}catch(x){}again(round)});   /* not now: a page at a time, and the whole list again soon */
+    }).catch(function(){clearTimeout(timer);fullBusy=false;WHOLE_FAILED=true;try{w.__uaply.renderAll()}catch(x){}again(round)});   /* not now: a page at a time, and the whole list again soon */
   }
   function loadJobs(round){
   if(round>0)return whole(round);
@@ -447,23 +454,24 @@ function kitApply(w,host){
   d.addEventListener("visibilitychange",function(){if(d.visibilityState==="visible")dropExpired()});
   w.addEventListener("pageshow",dropExpired);w.addEventListener("focus",dropExpired);
   /* first application only: say plainly what a swipe right does with the person's details, and get agreement */
-  var CONSENT_V=4;   /* 2: also explains the optional hiring-manager message and that voluntary answers are never sent.
+  var CONSENT_V=5;   /* 2: also explains the optional hiring-manager message and that voluntary answers are never sent.
                        3 (October 21, 2026, the owner's position, drafted for the Terms in LEGAL-REVIEW.md): the person authorizes UAply to
                        complete and submit applications on their behalf; recorded with the time ({v:3,at,agent:true}), so everyone agrees again once.
                        4 (October 23, 2026, pending the lawyer: LEGAL-REVIEW.md section 12): applications emailed to postings that ask for them, the
                        employer's form opening right after the swipe in the phone app, and Automatic submit as its own tick, off by default. Agreeing
                        also posts the words to the server (POST /api/consent), which keeps them on the account with the time and this visitor's
-                       address: no application leaves UAply without that record (consent_api.py). Saved here as {v:4,at,agent:true,auto} */
+                       address: no application leaves UAply without that record (consent_api.py). Saved here as {v:4,at,agent:true,auto} (5: the same, from v5).
+                       5 (October 23, 2026, swipe phase B): the three ways a swipe goes, said plainly (into the employer's system, by email, or saved
+                       with a receipt), with Recruitee's direct apply counted among the employer's systems */
   /* the box's words as plain text, one entry per sentence group: Reviewer 3's version 4 (October 23, 2026), the very words consent_api.py
      keeps (tools/test-consent.py checks them). Entry 1 is the match-percentage line (with How matching works), and entries 3 to 6 are the four
      ways a swipe goes, shown as a list under "Depending on the job:" */
   var CONSENT_TEXT=["A swipe right authorizes UAply to submit your application on your behalf, using the information in your profile.",
     "The match percentage is worked out automatically from your profile to help order jobs. It never rejects you, and employers make every hiring decision. How matching works",
-    "Depending on the job:",
-    "Employers connected to UAply receive it straight into their hiring system.",
-    "If the employer publishes an email address for applications, UAply emails your application and resume there.",
-    "On hiring systems with no 'are you human' check and no rule against applying through someone else, and only if you turn on Automatic submit below, UAply fills in the form and presses Submit for you.",
-    "Everywhere else, UAply fills in the employer's form and you check it and press Submit yourself.",
+    "A swipe right goes one of three ways:",
+    "Into the employer's own hiring system, where the employer connected it to UAply or the hiring system takes applications from job boards directly.",
+    "By email, with your resume, where the job posting gives an address for applications.",
+    "Everywhere else, saved to Job Tracker with a receipt, and you finish on the employer's site; in the UAply phone app the employer's form opens filled in for you to check and submit.",
     "UAply never answers questions about race, gender, veteran status or disability, and never completes a security check.",
     "You are responsible for keeping your profile accurate. You can tap Undo right after a swipe.",
     "To stop UAply sending applications for you, turn off Send applications for me in Profile, Account.",
@@ -473,7 +481,7 @@ function kitApply(w,host){
      line updates itself when a system is switched on; consent_api.py builds the same words from the same file (tools/test-consent.py) */
   function autoWhere(cfg){var N={greenhouse:"Greenhouse",lever:"Lever",ashby:"Ashby",smartrecruiters:"SmartRecruiters",workable:"Workable"},s=(cfg&&cfg.systems)||{},on=Object.keys(s).filter(function(k){var x=s[k];return N[k]&&x&&x.mode==="automatic"&&x.counsel_approved===true&&x.human_check_share===0}).map(function(k){return N[k]});return "where a hiring system allows it; "+(on.length?"switched on now: "+on.join(", "):"none is switched on yet")}
   var CONSENT_AUTO_TAIL=" Where one is, a swipe right fills the employer's form from your profile and presses Submit for you. UAply never answers voluntary self-identification questions, never ticks consent or certification boxes, and never completes a security check; if one is needed it stops and you finish.";
-  var AUTO_CFG=null,AUTO_AT=7;            /* the systems file once read; the tick sits after the four ways (entry 7 on) */
+  var AUTO_CFG=null,AUTO_AT=6;            /* the systems file once read; the tick sits after the four ways (entry 7 on) */
   function autoText(){return "Automatic submit: "+autoWhere(AUTO_CFG)+"."+CONSENT_AUTO_TAIL}
   try{w.fetch("/assist-systems.json").then(function(r){return r.ok?r.json():null}).then(function(c){if(c&&c.systems){AUTO_CFG=c;var t=d.getElementById("kcAutoT");if(t)t.textContent=autoText()}},function(){})}catch(e){}
   var AGENT_CLAUSE=CONSENT_TEXT[0];
@@ -513,7 +521,7 @@ function kitApply(w,host){
        (How matching works in the match line; the Terms and the Privacy Policy in the last one) */
     var LINKS=[[1,"How matching works","ai-and-employment.html"],[CONSENT_TEXT.length-1,"Terms","terms.html"],[CONSENT_TEXT.length-1,"Privacy Policy","privacy.html"]];
     function para(t,i){var h=esc(t);LINKS.forEach(function(l){if(l[0]===i)h=h.replace(l[1],'<a href="'+b+l[2]+'" target="_blank" rel="noopener noreferrer">'+l[1]+'</a>')});
-      return (i>=3&&i<=6?(i===3?'<ul style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px">':'')+'<li>'+h+'</li>'+(i===6?'</ul>':''):'<p style="margin:0">'+(i===0?'<b>'+h+'</b>':h)+'</p>')+
+      return (i>=3&&i<=5?(i===3?'<ul style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px">':'')+'<li>'+h+'</li>'+(i===5?'</ul>':''):'<p style="margin:0">'+(i===0?'<b>'+h+'</b>':h)+'</p>')+
         (i===AUTO_AT-1?'<label for="kcAuto" style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:12px;cursor:pointer"><input type="checkbox" id="kcAuto" style="margin-top:3px;min-width:20px;min-height:20px"><span id="kcAutoT">'+esc(autoText())+'</span></label>':'')}
     o.innerHTML='<div role="dialog" aria-modal="true" aria-labelledby="kcH" style="background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:20px;max-width:460px;width:100%;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:10px;font-size:14px">'+
       '<h2 id="kcH" style="margin:0;font:800 20px var(--display)">'+(consentFirst?"Before you start swiping":"Before your first application")+'</h2>'+

@@ -229,6 +229,8 @@ BOARD_KINDS = ("greenhouse", "lever", "ashby", "smartrecruiters", "workable", "r
 # application into once the employer connects (ats_api.KINDS), and Recruitee, whose public careers-site API takes an application with no
 # employer key (POST https://{company}.recruitee.com/api/offers/{slug}/candidates; the send itself is the apply side's, not built here)
 ATS_REF_KINDS = ats_api.KINDS + ("recruitee",)
+CONNECTIONS_FILE = [""]          # the connect page's own keys (connect_api.path), set by serve.py at the start
+RECRUITEE_SUBMIT = [False]       # the owner's "recruitee_submit" switch, set by serve.py at the start (uaply_api.recruitee_on)
 BOARD_TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$")    # a board's name in its system's address (Lever and Ashby allow dots: "thea.energy")
 
 
@@ -3034,11 +3036,11 @@ def _file_stamp(path):
 def ats_connections():
     """{(kind, board): api_key} for employers who connected their own hiring system (Greenhouse, Lever, Ashby, SmartRecruiters or Workable) with a key they created. Read from the
     UAPLY_ATS_JSON setting (a host's dashboard) and from 'ats_connections' in the employer list. Anything malformed is skipped."""
-    env, path = os.environ.get("UAPLY_ATS_JSON") or "", partners_file()
+    env, path, own = os.environ.get("UAPLY_ATS_JSON") or "", partners_file(), CONNECTIONS_FILE[0]
     try:
-        stamp = (env, path, _file_stamp(path) if path else None)
+        stamp = (env, path, _file_stamp(path) if path else None, own, _file_stamp(own) if own and os.path.exists(own) else None)
     except OSError:
-        stamp = (env, path, None)
+        stamp = (env, path, None, own, None)
     if _ats_conn["stamp"] == stamp:
         return _ats_conn["map"]
     lists = []
@@ -3047,9 +3049,11 @@ def ats_connections():
             lists.append(json.loads(env))
         except ValueError:
             pass
-    if path:
+    for f_ in (path, own):          # the employer list, and the keys employers gave on the connect page (connect_api.py)
+        if not f_:
+            continue
         try:
-            with open(path, encoding="utf-8") as f:
+            with open(f_, encoding="utf-8") as f:
                 data = json.load(f)
             if isinstance(data, dict):
                 lists.append(data.get("ats_connections"))
@@ -3218,6 +3222,10 @@ def _out_job(j, now_ms, conns, feed, blocked=frozenset(), full=False):
     """`feed`: False for a partner employer's job, else its feed's route label (or True). `blocked`: the addresses on the bounce list
     (mailer.blocked_addresses): a posting whose application address is on it is a hand-off again. full: every field (the per-job route)."""
     out = _with_age(j, now_ms, drop=("desc",) if feed and not full else ())
+    a = out.get("ats") if isinstance(out.get("ats"), dict) else None
+    if feed and a and a.get("kind") == "recruitee" and RECRUITEE_SUBMIT[0] and not out.get("instant") \
+            and ats_api.recruitee_url(a.get("board"), a.get("id")):
+        out.update(instant=True)                    # Recruitee's public apply endpoint takes it (uaply_api.submit): the card says Ready
     if feed and out.get("apply") == "email" and str(out.get("contact") or "").lower() in blocked:
         out.update(contact="", apply="link", instant=False)          # it bounced, or its owner asked UAply to stop: finish on their site
     if conns and _connected(out, conns):        # marked on the copy, so the shared cache stays as fetched

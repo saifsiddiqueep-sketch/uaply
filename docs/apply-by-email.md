@@ -94,6 +94,16 @@ Time from the swipe to the form being ready, measured on the mock forms (`tools/
 and in the browser (`tools/ui-apply-paths.js`, UAply's own half with a stand-in for the plugin): see the latest run's `ONE-TAP-TIMES` and
 `ONE-TAP-CLIENT` lines. A real employer page adds its own load time on the phone's network.
 
+## Phase B (October 23, 2026)
+
+- **Recruitee:** its careers sites take applications from job boards through their own public endpoint, with no employer key. A posting
+  whose hiring system is Recruitee (`ats.kind` "recruitee", company and offer slug from the feed) is sent there on a swipe right
+  (`ats_api.recruitee_submit`), behind `recruitee_submit` (on unless set to false) and every rule of a hiring-system send.
+- **Employer connect page:** `/employers/connect?k&b&e&s`, signed by the server (`connect_api.py`); the owner makes the link with
+  `POST /api/setup/connect-invite {kind, board}`. Test reads the employer's postings with the key; Connect tests again and keeps it in
+  `ats-connections.json` in the server's records folder, which `jobs_api.ats_connections` reads with the others.
+- **Consent box version 5:** the three ways, plainly (into the employer's system, by email, saved with a receipt).
+
 ## d. The outreach queue
 
 `python tools/outreach-queue.py` prints the week's invitations (SmartRecruiters' boards first: the largest share of jobs and an Application

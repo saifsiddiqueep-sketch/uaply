@@ -10,7 +10,7 @@ Nothing is sent to an employer by UAply itself (an application emailed to an emp
 the account's latest record is this VERSION (uaply_api.submit answers 403 "consent" otherwise). The phone app presses an employer's Submit
 for the person only when that record also has auto: the separate "Automatic submit" tick, off by default (shared/uaply-nav.js).
 
-VERSION 4, October 23, 2026, pending the lawyer (LEGAL-REVIEW.md, section 12): Reviewer 3's words (the four ways a swipe right goes, and
+VERSION 5, October 23, 2026 (swipe phase B): the three ways a swipe goes, said plainly. VERSION 4, October 23, 2026, pending the lawyer (LEGAL-REVIEW.md, section 12): Reviewer 3's words (the four ways a swipe right goes, and
 Send applications for me in Profile, Account to stop it), and the optional automatic submit as its own tick. Everyone who agreed to version 3
 sees the box once more."""
 import hashlib
@@ -18,18 +18,17 @@ import json
 import os
 import re
 
-VERSION = 4
+VERSION = 5
 
 # the box's words, one entry per sentence group, as plain text: Reviewer 3's version 4 (the page adds the bold, the list, the links and the
 # buttons; its heading, "Before you start swiping", is not part of the words agreed to)
 TEXT = (
     "A swipe right authorizes UAply to submit your application on your behalf, using the information in your profile.",
     "The match percentage is worked out automatically from your profile to help order jobs. It never rejects you, and employers make every hiring decision. How matching works",
-    "Depending on the job:",
-    "Employers connected to UAply receive it straight into their hiring system.",
-    "If the employer publishes an email address for applications, UAply emails your application and resume there.",
-    "On hiring systems with no 'are you human' check and no rule against applying through someone else, and only if you turn on Automatic submit below, UAply fills in the form and presses Submit for you.",
-    "Everywhere else, UAply fills in the employer's form and you check it and press Submit yourself.",
+    "A swipe right goes one of three ways:",
+    "Into the employer's own hiring system, where the employer connected it to UAply or the hiring system takes applications from job boards directly.",
+    "By email, with your resume, where the job posting gives an address for applications.",
+    "Everywhere else, saved to Job Tracker with a receipt, and you finish on the employer's site; in the UAply phone app the employer's form opens filled in for you to check and submit.",
     "UAply never answers questions about race, gender, veteran status or disability, and never completes a security check.",
     "You are responsible for keeping your profile accurate. You can tap Undo right after a swipe.",
     "To stop UAply sending applications for you, turn off Send applications for me in Profile, Account.",
@@ -41,7 +40,7 @@ TEXT = (
 AUTO_TAIL = (" Where one is, a swipe right fills the employer's form from your profile and presses Submit for you. UAply never answers voluntary "
              "self-identification questions, never ticks consent or certification boxes, and never completes a security check; if one is "
              "needed it stops and you finish.")
-AUTO_AT = 7               # the tick sits after the four ways (the box's entries 0 to 6), above "UAply never answers..." and "By continuing"
+AUTO_AT = 6               # the tick sits after the four ways (the box's entries 0 to 6), above "UAply never answers..." and "By continuing"
 NAMES = {"greenhouse": "Greenhouse", "lever": "Lever", "ashby": "Ashby", "smartrecruiters": "SmartRecruiters", "workable": "Workable"}
 SYSTEMS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "shared", "assist-systems.json")
 _sys = {"mtime": None, "cfg": None}
