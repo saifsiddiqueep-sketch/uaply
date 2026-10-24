@@ -82,14 +82,19 @@ try:
     os.makedirs(data)
     cache = {"_version": jobs_api.CACHE_VERSION}
     for kind, board, name in jobs_api.SOURCES:
-        if kind == "greenhouse":
+        if kind in ("greenhouse", "lever"):
             cache["%s|%s|%s" % (kind, board, name)] = {"at": time.time(), "jobs": [], "status": "0 jobs"}
     cache["greenhouse|%s|%s" % SRC[1:]]["jobs"] = [POSTING]
+    LSRC = [s_ for s_ in jobs_api.SOURCES if s_[0] == "lever"][0]
+    LPOST = jobs_api._normalize(dict(id="posting-uuid-1", title="Lever Robotics Intern", company="Acme Lever", loc="Philadelphia, PA", remote=None,
+                                     url="https://jobs.lever.co/acme/posting-uuid-1", salary_text="", posted=int(time.time()),
+                                     text="Python and SQL. 1 year of experience."), "lever", "Acme Lever", "acme")
+    cache["lever|%s|%s" % LSRC[1:]] = {"at": time.time(), "jobs": [LPOST], "status": "1 job"}
     json.dump(cache, open(os.path.join(data, "jobs-cache.json"), "w", encoding="utf-8"))
     procs.append(subprocess.Popen([sys.executable, os.path.join(HERE, "mock-ats.py"), str(MOCK)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
-    cfg = {"feeds": ["greenhouse"], "delivery": "live", "smtp": {}, "owner_copy": "", "google": {}, "daily_limit": 50, "grace_seconds": 0}
+    cfg = {"feeds": ["greenhouse", "lever"], "delivery": "live", "smtp": {}, "owner_copy": "", "google": {}, "daily_limit": 50, "grace_seconds": 0}
     env = dict(os.environ, UAPLY_DATA_DIR=data, UAPLY_CONFIG_JSON=json.dumps(cfg), UAPLY_SIGNUP_TEST="1", UAPLY_REQUEST_LOG="off",
-               UAPLY_ATS_BASE_GREENHOUSE="http://127.0.0.1:%d" % MOCK)
+               UAPLY_ATS_BASE_GREENHOUSE="http://127.0.0.1:%d" % MOCK, UAPLY_ATS_BASE_LEVER="http://127.0.0.1:%d" % MOCK)
     env.pop("RENDER", None)
     env.pop("UAPLY_ATS_JSON", None)
     procs.append(subprocess.Popen([sys.executable, "serve.py", str(PORT), "dev", "--api"], cwd=ROOT, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
@@ -127,6 +132,28 @@ try:
     keyfile = os.path.join(data, "dev", "ats-connections.json")
     t("the key is kept in the server's own records folder, not in the employer list or a page", (os.path.exists(keyfile), "gh-secret-key-123" in json.dumps(req("GET", "/api/jobs", cookie=me)[1])),
       (True, False))
+
+    def conn(kind):
+        rows = json.load(open(keyfile, encoding="utf-8")).get("ats_connections") or []
+        return [(c.get("status"), c.get("api_key")) for c in rows if c.get("kind") == kind and c.get("board") == "acme"]
+    t("the Greenhouse key was pending until that send got through; now it is connected", conn("greenhouse"), [("connected", "gh-secret-key-123")])
+    # one connect per link
+    s, out, _ = req("POST", "/api/employer/connect/save", dict(q, key="gh-secret-key-123", agree=True))
+    t("the same link a second time: 'already used, ask for a new link'", (s, "already used" in out.get("message", ""), "new link" in out.get("message", "")), (409, True, True))
+    t("...and its page shows no form", ("This link was already used" in req("GET", urllib.parse.urlsplit(url).path + "?" + urllib.parse.urlsplit(url).query)[1]), True)
+    # a new key never overwrites a working one
+    q2 = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(req("POST", "/api/setup/connect-invite", {"kind": "greenhouse", "board": "acme"})[1]["url"]).query))
+    s, out, _ = req("POST", "/api/employer/connect/save", dict(q2, key="gh-someone-elses-key-999", agree=True))
+    t("a fresh link with a different key: refused, the working key is kept", (s, conn("greenhouse")), (409, [("connected", "gh-secret-key-123")]))
+    # the probe against a stand-in Lever API: a made-up key cannot be checked, so it stays pending, and a failed send never promotes it
+    q3 = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(req("POST", "/api/setup/connect-invite", {"kind": "lever", "board": "acme"})[1]["url"]).query))
+    s, out, _ = req("POST", "/api/employer/connect/save", dict(q3, key="lever-made-up-key-000", agree=True))
+    t("Lever, a made-up key: saved as pending, never 'Connected'", (s, out.get("pending"), out.get("message", "").startswith("Connected"), conn("lever")),
+      (200, True, False, [("pending", "lever-made-up-key-000")]))
+    lv = [j for j in req("GET", "/api/jobs", cookie=me)[1]["jobs"] if j["co"] == "Acme Lever"][0]
+    s, out, _ = req("POST", "/api/apply", {"consent": True, "confirm_real": True, "match": 80, "job": {"id": lv["id"], "co": lv["co"], "role": lv["role"], "url": lv["url"]},
+                                           "profile": {"name": "Pat Doe", "email": "pat@example.org", "ext": {"phone": "215-555-0188", "auth": "citizen", "sponsor": "no"}}, "resume": resume}, me)
+    t("...Lever refuses the made-up key on the first swipe: not sent, and the key stays pending", (out.get("status"), conn("lever")), ("failed", [("pending", "lever-made-up-key-000")]))
 finally:
     for p_ in procs:
         p_.terminate()

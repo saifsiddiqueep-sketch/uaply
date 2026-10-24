@@ -79,11 +79,54 @@ def test(p):
     return 200, ats_api.test_connection(who[0], who[1], key)
 
 
+def _load():
+    try:
+        with open(path(), encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _write(data):
+    os.makedirs(os.path.dirname(path()), exist_ok=True)
+    tmp = path() + ".tmp"
+    with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        json.dump(data, f, indent=1)
+    os.replace(tmp, path())
+
+
+def _used(s):
+    return isinstance(s, str) and s in (_load().get("used_links") or [])
+
+
+USED = (409, {"ok": False, "used": True, "message": "This link was already used. Ask us for a new link: reply to the email it came in."})
+
+
+def promote(kind, board, key):
+    """A real application reached their system with this key: a pending connection is now connected. Never raises."""
+    try:
+        with _lock:
+            data = _load()
+            hit = False
+            for c in data.get("ats_connections") or []:
+                if isinstance(c, dict) and (c.get("kind"), c.get("board")) == (kind, board) and c.get("api_key") == key and c.get("status") == "pending":
+                    c["status"], c["checked_at"], hit = "connected", int(time.time()), True
+            if hit:
+                _write(data)
+    except Exception:
+        pass
+
+
 def save(p):
-    """POST /api/employer/connect/save {k, b, e, s, key, agree}: tests the key, then keeps it. (status, body)"""
+    """POST /api/employer/connect/save {k, b, e, s, key, agree}: tests the key, then keeps it. One connect per link; a key that could not be
+    checked (Greenhouse and Lever keys only work on a send; SmartRecruiters with no open posting) is kept as "pending" until the first real
+    application gets through; a new key never replaces one that already works. (status, body)"""
     who = _valid(p.get("k"), p.get("b"), p.get("e"), p.get("s"))
     if not who:
         return _bad_link()
+    if _used(p.get("s")):
+        return USED
     kind, board = who
     key = str(p.get("key") or "").strip()
     if p.get("agree") is not True:
@@ -93,20 +136,25 @@ def save(p):
     tr = ats_api.test_connection(kind, board, key)
     if not tr.get("ok"):
         return 400, {"ok": False, "message": tr.get("message") or "The key did not work."}
+    checked = tr.get("keyChecked") is True
+    name = ats_api.NAMES[kind]
     with _lock:
-        try:
-            with open(path(), encoding="utf-8") as f:
-                data = json.load(f)
-        except (OSError, ValueError):
-            data = {}
-        keep = [c for c in (data.get("ats_connections") or []) if isinstance(c, dict) and (c.get("kind"), c.get("board")) != (kind, board)]
-        keep.append({"kind": kind, "board": board, "api_key": key, "at": int(time.time()), "agreed": True})
+        data = _load()
+        if p.get("s") in (data.get("used_links") or []):
+            return USED
+        rows = [c for c in (data.get("ats_connections") or []) if isinstance(c, dict)]
+        old = [c for c in rows if (c.get("kind"), c.get("board")) == (kind, board)]
+        if any(c.get("status", "connected") != "pending" and c.get("api_key") != key for c in old):
+            return 409, {"ok": False, "message": "Your %s is already connected to UAply with a key that works, so it was kept. To change keys, "
+                                                 "revoke the old one in %s and ask us for a new link." % (board, name)}
+        keep = [c for c in rows if (c.get("kind"), c.get("board")) != (kind, board)]
+        keep.append({"kind": kind, "board": board, "api_key": key, "at": int(time.time()), "agreed": True, "status": "connected" if checked else "pending"})
         data["ats_connections"] = keep
-        os.makedirs(os.path.dirname(path()), exist_ok=True)
-        tmp = path() + ".tmp"
-        with open(tmp, "w", encoding="utf-8", newline="\n") as f:
-            json.dump(data, f, indent=1)
-        os.replace(tmp, path())
+        data["used_links"] = (data.get("used_links") or []) + [p.get("s")]
+        _write(data)
+    if not checked:
+        return 200, {"ok": True, "pending": True, "message": "Saved, pending. %s keys can only be checked by a real application, so the connection shows "
+                                                             "as pending until the first one from UAply arrives in %s. To stop, revoke the key in %s." % (name, name, name)}
     return 200, {"ok": True, "message": "Connected. The next application from UAply to your %s jobs arrives in %s as a new candidate on the right job. "
                                         "To stop, revoke the key in %s." % (board, ats_api.NAMES[kind], ats_api.NAMES[kind])}
 
@@ -115,7 +163,10 @@ def page(k, b, e, s):
     """GET /employers/connect: the employer's page."""
     who = _valid(k, b, e, s)
     esc = html.escape
-    if not who:
+    if who and _used(s):
+        body = "<h1>This link was already used</h1><p>Each link connects once. Ask us for a new link: reply to the email it came in.</p>"
+        script = ""
+    elif not who:
         body = "<h1>This link is not valid</h1><p>It may have expired. Reply to the email it came in and we will send a new one.</p>"
         script = ""
     else:

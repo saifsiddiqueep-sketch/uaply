@@ -230,7 +230,7 @@ BOARD_KINDS = ("greenhouse", "lever", "ashby", "smartrecruiters", "workable", "r
 # employer key (POST https://{company}.recruitee.com/api/offers/{slug}/candidates; the send itself is the apply side's, not built here)
 ATS_REF_KINDS = ats_api.KINDS + ("recruitee",)
 CONNECTIONS_FILE = [""]          # the connect page's own keys (connect_api.path), set by serve.py at the start
-RECRUITEE_SUBMIT = [True]        # the owner's "recruitee_submit" switch, set by serve.py at the start (uaply_api.recruitee_on)
+RECRUITEE_SUBMIT = [False]       # the owner's "recruitee_submit" switch, set by serve.py at the start (uaply_api.recruitee_on)
 BOARD_TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$")    # a board's name in its system's address (Lever and Ashby allow dots: "thea.energy")
 
 
@@ -3223,7 +3223,8 @@ def _out_job(j, now_ms, conns, feed, blocked=frozenset(), full=False):
     (mailer.blocked_addresses): a posting whose application address is on it is a hand-off again. full: every field (the per-job route)."""
     out = _with_age(j, now_ms, drop=("desc",) if feed and not full else ())
     a = out.get("ats") if isinstance(out.get("ats"), dict) else None
-    if feed and a and a.get("kind") == "recruitee" and RECRUITEE_SUBMIT[0] and not out.get("instant"):
+    if feed and a and a.get("kind") == "recruitee" and RECRUITEE_SUBMIT[0] and not out.get("instant") \
+            and ats_api.recruitee_url(a.get("board"), a.get("id")):
         out.update(instant=True)                    # Recruitee's public apply endpoint takes it (uaply_api.submit): the card says Ready
     if feed and out.get("apply") == "email" and str(out.get("contact") or "").lower() in blocked:
         out.update(contact="", apply="link", instant=False)          # it bounced, or its owner asked UAply to stop: finish on their site

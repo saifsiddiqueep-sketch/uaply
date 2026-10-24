@@ -20,10 +20,11 @@ module.exports = async ({ ev, sleep, nav }) => {
   const tested = await until(/open posting/, 15000);
   check("Test reads their open postings with the key", /3 open postings/.test(tested), tested);
   await ev("(()=>{document.getElementById('go').disabled=false;document.getElementById('go').click();return 1})()");
-  const done = await until(/^Connected/, 15000);
+  const done = await until(/^(Connected|Saved, pending)/, 15000);
   const ms = Date.now() - t0;
-  check("Connect: 'Connected. The next application ... arrives in Greenhouse as a new candidate'", /^Connected\. The next application from UAply to your acme jobs arrives in Greenhouse as a new candidate on the right job\./.test(done), done);
-  check("from the link to Connected in " + ms + " ms (under two minutes)", ms < 120000, ms + " ms");
+  // a Greenhouse key only proves itself on a real send: it is kept as pending, never shown as Connected before then
+  check("Connect: 'Saved, pending ... until the first one from UAply arrives in Greenhouse'", /^Saved, pending\. Greenhouse keys can only be checked by a real application, so the connection shows as pending until the first one from UAply arrives in Greenhouse\./.test(done), done);
+  check("from the link to saved in " + ms + " ms (under two minutes)", ms < 120000, ms + " ms");
   check("the key never shows on the page", await ev("!/gh-secret-key-123/.test(document.body.innerText)"));
   console.log("CONNECT-MS " + ms);
   await nav(URL.replace(/s=[0-9a-f]{4}/, "s=0000")); await sleep(500);

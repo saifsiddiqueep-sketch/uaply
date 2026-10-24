@@ -1,6 +1,6 @@
 """Swipe phase B, Recruitee (October 23, 2026): a posting on a Recruitee careers site takes the application through the site's own public
 apply endpoint (POST https://{company}.recruitee.com/api/offers/{slug}/candidates, no employer key), behind the owner's switch
-recruitee_submit (default on), with the consent record, Send applications for me, the receipt and Job Tracker as for any hiring-system send.
+recruitee_submit (off unless the owner sets it to true), with the consent record, Send applications for me, the receipt and Job Tracker as for any hiring-system send.
 Against a stand-in Recruitee server and throwaway UAply servers it starts and stops (nothing leaves this computer):
   python tools/test-recruitee.py [port]      (default: three free ports in a row)"""
 import http.client
@@ -96,6 +96,8 @@ def offer(oid, slug, title):
 
 
 P1, P2, P3, P4 = offer(901, "data-analyst", "Data Analyst"), offer(902, "broken-role", "Data Engineer"), offer(903, "data-intern", "Data Intern"), offer(904, "data-lead", "Data Lead")
+P5 = offer(905, "data-scientist", "Data Scientist")
+P5 = dict(P5, ats=dict(P5["ats"], id="Bad Slug!"))     # an offer slug recruitee_url refuses
 t("a Recruitee posting carries its company and offer slug as the hiring system it lives in", P1["ats"], {"kind": "recruitee", "board": SRC[1], "id": "data-analyst"})
 
 
@@ -105,7 +107,7 @@ def seed(data):
     for kind, board, name in jobs_api.SOURCES:
         if kind == "recruitee":
             cache["%s|%s|%s" % (kind, board, name)] = {"at": time.time(), "jobs": [], "status": "0 jobs"}
-    cache["recruitee|%s|%s" % SRC[1:]]["jobs"] = [P1, P2, P3, P4]
+    cache["recruitee|%s|%s" % SRC[1:]]["jobs"] = [P1, P2, P3, P4, P5]
     with open(os.path.join(data, "jobs-cache.json"), "w", encoding="utf-8") as f:
         json.dump(cache, f)
 
@@ -164,11 +166,12 @@ def apply(port, ck, job, email):
 try:
     os.environ["UAPLY_ATS_BASE_RECRUITEE"] = "http://127.0.0.1:%d" % FAKE
     t("(with the stand-in's address set, the endpoint goes to it)", ats_api.recruitee_url("curotec", "data-analyst"), "http://127.0.0.1:%d/curotec/api/offers/data-analyst/candidates" % FAKE)
-    live = {"feeds": ["recruitee"], "delivery": "live", "smtp": {}, "owner_copy": "", "daily_limit": 50, "google": {}, "grace_seconds": 0}
+    live = {"feeds": ["recruitee"], "delivery": "live", "smtp": {}, "owner_copy": "", "daily_limit": 50, "google": {}, "grace_seconds": 0, "recruitee_submit": True}
     start(PORT, "live", live)
     a = person(PORT, "rae@example.org")
     by = {j["id"]: j for j in req(PORT, "GET", "/api/jobs", cookie=a)[1]["jobs"]}
-    t("the card says Ready and applies instantly (the switch is on by default)", ((by.get(P1["id"]) or {}).get("instant"), (by.get(P1["id"]) or {}).get("route")), (True, "Ready"))
+    t("the card says Ready and applies instantly (with recruitee_submit turned on)", ((by.get(P1["id"]) or {}).get("instant"), (by.get(P1["id"]) or {}).get("route")), (True, "Ready"))
+    t("a Recruitee card whose offer slug fails recruitee_url is never Ready", ((by.get(P5["id"]) or {}).get("instant", False), ats_api.recruitee_url(SRC[1], P5["ats"]["id"])), (False, ""))
     t("the card's plan says ready", req(PORT, "POST", "/api/apply/plan", {"plan_only": True, "job": {"id": P1["id"], "co": P1["co"], "role": P1["role"], "url": P1["url"]},
                                                                          "profile": {"name": "Rae Cruz", "email": "rae@example.org"}}, a)[1].get("status"), "ready")
     nc = person(PORT, "noconsent@example.org", consent=False)
@@ -196,11 +199,13 @@ try:
         p.wait(10)
     PROCS.clear()
     # the owner's switch off: Recruitee postings are hand-offs again
-    start(PORT2, "off", dict(live, recruitee_submit=False))
+    off = dict(live)
+    off.pop("recruitee_submit")
+    start(PORT2, "off", off)
     b = person(PORT2, "bea@example.org")
     by = {j["id"]: j for j in req(PORT2, "GET", "/api/jobs", cookie=b)[1]["jobs"]}
     s, out = apply(PORT2, b, P4, "bea@example.org")
-    t("recruitee_submit false: the card is a hand-off and a swipe sends nothing", ((by.get(P4["id"]) or {}).get("instant", False), out.get("status"), len(GOT)), (False, "handoff", 2))
+    t("recruitee_submit unset (off by default): the card is a hand-off and a swipe sends nothing", ((by.get(P4["id"]) or {}).get("instant", False), out.get("status"), len(GOT)), (False, "handoff", 2))
     for p in PROCS:
         p.terminate()
         p.wait(10)

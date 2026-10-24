@@ -1031,8 +1031,8 @@ def email_events(body, authorization):
 
 
 def recruitee_on(cfg=None):
-    """The owner's switch for sending to Recruitee's public apply endpoint ("recruitee_submit" in the config; on unless set to false)."""
-    return (cfg or config()).get("recruitee_submit", True) is not False
+    """The owner's switch for sending to Recruitee's public apply endpoint ("recruitee_submit" in the config; off unless set to true, flipped after one real-offer test)."""
+    return (cfg or config()).get("recruitee_submit", False) is True
 
 
 def submit(p, user=None, site=""):
@@ -1273,7 +1273,10 @@ def submit(p, user=None, site=""):
                 APPS.append(rec)
                 _append("applications.jsonl", rec)
     if rsend:                                                      # Recruitee's public apply endpoint, outside the lock
-        status, err = ats_api.recruitee_submit(rsend[0], rsend[1], cand, resume_meta, resume_bytes)
+        try:
+            status, err = ats_api.recruitee_submit(rsend[0], rsend[1], cand, resume_meta, resume_bytes)
+        except Exception as e:     # never leave the record on "sending" (as for the other paths)
+            status, err = "failed", "unexpected problem (%s)" % type(e).__name__
         with _lock:
             rec["status"], rec["channels"] = status, (["hiring system"] if status == "sent" else [])
             if err:
@@ -1284,6 +1287,9 @@ def submit(p, user=None, site=""):
             status, err, channels = _deliver(*send_args)
         except Exception as e:     # never leave the record on "sending": that would block every retry as a duplicate and count toward the daily cap
             status, err, channels = "failed", "unexpected problem (%s)" % type(e).__name__, []
+        if status == "sent" and ats and any(str(c).startswith("hiring system") for c in channels) and ats.get("key"):
+            import connect_api     # imported here: connect_api imports this module
+            connect_api.promote(ats.get("kind"), ats.get("board"), ats.get("key"))      # a pending key from the connect page works: connected
         with _lock:
             rec["status"], rec["channels"] = status, channels
             if err:

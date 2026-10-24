@@ -9,11 +9,12 @@ production page and only changes when the owner decides.
 ### A swipe right that submits, phase B (Saif, October 23)
 - **Recruitee.** A posting on a Recruitee careers site is Ready: a swipe right sends the name, email, phone and resume through the site's
   own public apply endpoint (`POST https://{company}.recruitee.com/api/offers/{slug}/candidates`, no employer key), with the consent record,
-  Send applications for me, the receipt and Job Tracker as for any hiring system. The owner's switch `recruitee_submit` (on by default)
-  turns it off. `tools/test-recruitee.py` against a stand-in Recruitee.
+  Send applications for me, the receipt and Job Tracker as for any hiring system. The owner's switch `recruitee_submit` is off by default
+  (turned on after one real-offer test); a card is Ready only when its offer slug passes `recruitee_url`. `tools/test-recruitee.py` against a stand-in Recruitee.
 - **Employer connect page.** The owner makes a signed 30-day link per employer (`POST /api/setup/connect-invite`, owner only) for the outreach
   email; `/employers/connect` names the system, where the key is made and with which rights, and takes the key with Test and Connect.
-  Connected, that board's postings apply instantly and the next swipe right arrives in their system. The key is kept in the server's own
+  Each link connects once. A key that can only be checked by a send (Greenhouse, Lever, SmartRecruiters with no posting) is kept as
+  pending until the first application gets through, and a new key never replaces one that works. Saved, that board's postings apply instantly and the next swipe right arrives in their system. The key is kept in the server's own
   records folder. `tools/ui-connect.py` walks it in a browser in test mode (about 4 s from the link to Connected; the bound is two minutes).
 - **Consent box version 5** ("Agree and start swiping"): the three ways a swipe goes, said plainly: into the employer's own hiring system,
   by email where the posting gives an address, or saved to Job Tracker with a receipt. Terms section 3 names Recruitee's direct apply.
