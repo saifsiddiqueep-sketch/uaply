@@ -223,13 +223,20 @@ function apply(w,host){
     },wTries<WAIT.length?WAIT[wTries]:120000);
     wTries++;
   }
+  /* a whole list that has not come in WHOLE_MS (answer and body) counts as failed, the same as an error: a request that hung (not one that
+     failed) left the deck at its first 200 cards and never asked for the next page. The request is cancelled, the retries above apply, and
+     the deck pages on meanwhile */
+  var WHOLE_MS=20000;
   function whole(round){
     if(fullBusy)return Promise.resolve();
     fullBusy=true;ranking(true);
-    return fetch("/api/jobs").then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}).then(function(data){
+    var ac=null,timer=0;try{ac=new AbortController()}catch(e){}   /* this page's own, as the fetch below is */
+    var late=new Promise(function(_,no){timer=setTimeout(function(){try{if(ac)ac.abort()}catch(e){}no(new Error("timeout"))},WHOLE_MS)});
+    return Promise.race([fetch("/api/jobs",ac?{signal:ac.signal}:undefined).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}),late]).then(function(data){
+      clearTimeout(timer);
       hold();fullBusy=false;FULL=true;WHOLE_FAILED=false;wTries=0;ranking(false);took(data);
       if(data.pending>0&&round<15)setTimeout(function(){FULL=false;whole(round+1)},round<3?5000:15000);
-    }).catch(function(){fullBusy=false;WHOLE_FAILED=true;try{w.__uaply.renderAll()}catch(x){}again(round)});   /* not now: a page at a time, and the whole list again soon */
+    }).catch(function(){clearTimeout(timer);fullBusy=false;WHOLE_FAILED=true;try{w.__uaply.renderAll()}catch(x){}again(round)});   /* not now: a page at a time, and the whole list again soon */
   }
   function loadJobs(round){
   if(round>0)return whole(round);
