@@ -1908,7 +1908,7 @@ function apply(w,host){
         })},3000)},300);
     });
   })();
-  /* message to the hiring manager on swipe right: opt-in (off by default), Plus and Pro only. It goes out with the
+  /* message to the employer on swipe right: opt-in (off by default), Plus and Pro only. It goes out with the
      application, so only to employers that agreed to receive applications through UAply (the server decides that).
      The owner's legal review advised against writing messages for recruiters; the product owner chose to include it on
      2026-10-13, so it needs the attorney review before launch. */
@@ -1962,7 +1962,7 @@ function apply(w,host){
   };
   (function(){
     var f=d.createElement("div");f.className="field full";f.id="aAutoF";
-    f.innerHTML='<span class="l">Message the hiring manager</span><div class="checks"><label><input type="checkbox" id="aAutoMsg"> Send a personalized message with my application the moment I swipe right</label></div>'+
+    f.innerHTML='<span class="l">Message to the employer</span><small>Sent with each application UAply sends by email or into their hiring system.</small><div class="checks"><label><input type="checkbox" id="aAutoMsg"> Send a personalized message with my application the moment I swipe right</label></div>'+
       '<small id="aAutoNote"></small><div><button type="button" class="btn ghost" id="aAutoPlans" hidden>See plans</button></div>';
     d.querySelector("#form .grid").appendChild(f);
     FIELDS.preferences.push("aAutoF");

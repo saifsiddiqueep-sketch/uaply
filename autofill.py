@@ -559,7 +559,7 @@ def plan_questions(questions, cand, job, note="", resume_meta=None, answers=None
         elif role == "cover":
             val = note or _fill_template(ext.get("why"), job) or ext.get("summary") or None
             if val:
-                shown = "Your message to the hiring manager" if note else "Your 'why you want to work there' text" if ext.get("why") else "Your About you text"
+                shown = "Your message to the employer" if note else "Your 'why you want to work there' text" if ext.get("why") else "Your About you text"
         elif kind not in ("file", "other"):                   # a file other than the resume, or a type UAply cannot fill, is left to the person
             got = _answer(label, key, kind, opts, answers, rules, ext, req)
             if got is not None:
@@ -650,7 +650,7 @@ def plan_greenhouse(form, cand, job, note="", resume_meta=None, resume_bytes=Non
             elif name == "cover_letter_text":
                 t = note or _fill_template(ext.get("why"), job) or ext.get("summary")
                 if put(name, t):
-                    ok = True; shown = "Your message to the hiring manager" if note else "Your 'why you want to work there' text" if ext.get("why") else "Your About you text"
+                    ok = True; shown = "Your message to the employer" if note else "Your 'why you want to work there' text" if ext.get("why") else "Your About you text"
                 else:
                     ok = ok or not req
             elif ftype == "input_hidden":

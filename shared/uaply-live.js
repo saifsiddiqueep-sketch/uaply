@@ -872,7 +872,7 @@ function kitApply(w,host){
     }
     function deliver(){
       /* the application is the profile itself: no cover note or message is written for the recruiter, unless the person
-         turned on the opt-in "Message the hiring manager" preference (Plus and Pro; off by default) */
+         turned on the opt-in "Message to the employer" preference (Plus and Pro; off by default) */
       var msgOn=!!(w.__uaplyAutoMsg&&w.__uaplyAutoMsg()&&w.__uaplyMessage);
       if(!(S&&S.decisions&&S.decisions[job.id]))return;   /* undone or withdrawn in the meantime (also while it waited for a connection): send nothing */
       post("/api/apply",{consent:true,confirm_real:live,match:m.pct,note:msgOn?w.__uaplyMessage(job,m,p):"",

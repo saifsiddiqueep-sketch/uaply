@@ -142,12 +142,12 @@
   },
   {
    "id": "message-manager",
-   "title": "Messaging the hiring manager",
-   "tags": "message hiring manager recruiter note cover letter personalized plus pro",
-   "body": "On Plus and Pro, you can turn on 'Message the hiring manager' in Profile setup, on the last step. It adds a short message, filled in from your profile and the job, to each application. It is off until you turn it on, and it only goes to employers that accept applications through UAply.",
+   "title": "Messaging the employer",
+   "tags": "message employer hiring team recruiter manager note cover letter personalized plus pro",
+   "body": "On Plus and Pro, you can turn on 'Message to the employer' in Profile setup, on the last step. It is sent with each application UAply sends by email or into their hiring system: a short message, filled in from your profile and the job. It is off until you turn it on. Where you finish an application on the employer's own site, the one-tap form fill puts it in the form's cover letter box.",
    "go": "prof:final",
    "release": {
-    "body": "In Profile setup, on the last step, you can turn on 'Message the hiring manager'. It adds a short message, filled in from your profile and the job, to each application. It is off until you turn it on, and it only goes to employers that accept applications through UAply."
+    "body": "In Profile setup, on the last step, you can turn on 'Message to the employer'. It is sent with each application UAply sends by email or into their hiring system: a short message, filled in from your profile and the job. It is off until you turn it on."
    }
   },
   {
