@@ -237,7 +237,7 @@ try:
     t("no agreement on record: nothing is sent (403 consent)", (s, out.get("code")), (403, "consent"))
     # the stop link: a page that asks first, then the address is never emailed again and its postings are hand-offs
     s, page, _ = req(PORT, "GET", urllib.parse.urlsplit(m.group(1)).path + "?" + urllib.parse.urlsplit(m.group(1)).query if m else "/employer/stop")
-    t("the stop link opens a page that asks first (a scanner opening it changes nothing)", (s, ADDR[0] in str(page), "Stop applications to this address" in str(page)), (200, True, True))
+    t("the stop link opens a page that asks first (a scanner opening it changes nothing)", (s, str(page).startswith("<!doctype html>"), ADDR[0] in str(page), "Stop applications to this address" in str(page)), (200, True, True, True))
     still = {j["id"]: j for j in req(PORT, "GET", "/api/jobs", cookie=a)[1]["jobs"]}
     t("...and the posting is still listed for email until the button is pressed", still[P1["id"]]["apply"], "email")
     q = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(m.group(1)).query)) if m else {}

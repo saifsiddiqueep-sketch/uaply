@@ -1030,6 +1030,11 @@ def email_events(body, authorization):
     return 200, {"ok": True, "recorded": done}
 
 
+def recruitee_on(cfg=None):
+    """The owner's switch for sending to Recruitee's public apply endpoint ("recruitee_submit" in the config; off unless set to true, flipped after one real-offer test)."""
+    return (cfg or config()).get("recruitee_submit", False) is True
+
+
 def submit(p, user=None, site=""):
     """Returns (http_status, dict). `user` is the signed-in account ({id, email}) or None. `site` is the address the person is using
     (for the link in their receipt)."""
@@ -1108,6 +1113,11 @@ def submit(p, user=None, site=""):
     # Send applications for me is off (Profile, Account; Terms section 3): every swipe right only saves the job to Job Tracker. Nothing is
     # sent to anyone for this person, nothing is put into an employer's system, simulated or not, and no employer's form is read
     send_off = bool(user) and user.get("sendForMe") is False
+    # Recruitee (swipe phase B, October 23): a posting on a Recruitee careers site takes the application through the site's own public apply
+    # endpoint, no employer key needed (ats_api.recruitee_submit), behind the owner's switch "recruitee_submit" (default on)
+    rref = known.get("ats") if isinstance(known.get("ats"), dict) else None
+    if policy == "link" and rref and rref.get("kind") == "recruitee" and recruitee_on(cfg) and not _redirect(cfg) and ats_api.recruitee_url(rref.get("board"), rref.get("id")):
+        policy = "recruitee"
     if send_off:
         policy, contact = "link", ""
     hook = jobs_api.known_webhook(job["id"]) if policy == "direct" else None      # the HTTPS address the employer registered, if any
@@ -1125,7 +1135,7 @@ def submit(p, user=None, site=""):
         seen = dup()
     if seen:
         return seen
-    if mode == "live" and policy in ("direct", "email"):
+    if mode == "live" and policy in ("direct", "email", "recruitee"):
         # an application sent straight to an employer carries the person's email as the reply address, so that address must be proven theirs
         if not user:                                       # nobody is signed in: there is no email to verify yet, so say what to do first
             return 403, {"error": "Sign in first (Profile, Account) and verify your email, so %s can trust your address." % job["co"], "code": "signin"}
@@ -1171,7 +1181,7 @@ def submit(p, user=None, site=""):
     if plan_only:
         # what the swipe would do now: send (ready), finish on the employer's page (handoff: an employer who did not connect, or a required
         # question UAply cannot ask on screen). "known" says whether the posting's own form was read.
-        out = {"status": "handoff" if (cannot and ats) or (policy not in ("direct", "email") and not preview) else "ready", "mode": mode, "known": bool(plan)}
+        out = {"status": "handoff" if (cannot and ats) or (policy not in ("direct", "email", "recruitee") and not preview) else "ready", "mode": mode, "known": bool(plan)}
         if plan:
             out.update(filled=plan["filled"], total=plan["total"])
         return 200, out
@@ -1181,7 +1191,7 @@ def submit(p, user=None, site=""):
         # expected pay goes only to an employer whose own form asks for it: otherwise it is not sent, kept or listed in the receipt
         cand["ext"] = dict(cand["ext"], salary="")
 
-    send_args = None
+    send_args = rsend = None
     with _lock:
         seen = dup()                                       # checked again: a second tap may have landed while the form was being read
         if seen:
@@ -1211,6 +1221,19 @@ def submit(p, user=None, site=""):
                 rec["why"] = "send_off"
             APPS.append(rec)
             _append("applications.jsonl", rec)
+        elif policy == "recruitee":
+            rec["route"] = "recruitee"
+            if mode == "test":                             # what the live app would do; nothing reaches Recruitee
+                rec.update(to="%s on Recruitee (simulated)" % job["co"], simulated=True, status="delivered_test", channels=["hiring system (simulated)"])
+                APPS.append(rec)
+                _append("applications.jsonl", rec)
+            else:
+                today = time.time() - 86400
+                if sum(1 for a in APPS if a["mode"] == "live" and a["status"] in ("sent", "sending") and a["at"] > today) >= int(cfg.get("daily_limit", 20)):
+                    return 429, {"error": "Daily sending limit reached."}
+                rec["to"], rec["status"] = "%s on Recruitee" % job["co"], "sending"      # reserved now, so a double tap cannot send twice
+                APPS.append(rec)
+                rsend = (rref["board"], rref["id"])
         elif mode == "test":
             # the same channels the live app would use: email only when the employer gave an address (or, for an example listing, has no
             # other channel), otherwise their hiring system or their webhook. The test inbox and the Applied list then say where it would go.
@@ -1249,11 +1272,30 @@ def submit(p, user=None, site=""):
                 rec["status"] = "handoff"
                 APPS.append(rec)
                 _append("applications.jsonl", rec)
+    if rsend:                                                      # Recruitee's public apply endpoint, outside the lock
+        try:
+            status, err = ats_api.recruitee_submit(rsend[0], rsend[1], cand, resume_meta, resume_bytes)
+        except Exception as e:     # never leave the record on "sending" (as for the other paths)
+            status, err = "failed", "unexpected problem (%s)" % type(e).__name__
+        with _lock:
+            rec["status"], rec["channels"] = status, (["hiring system"] if status == "sent" else [])
+            if err:
+                rec["error"] = "recruitee: " + err
+            _append("applications.jsonl", rec)
     if send_args:                                                  # the slow network calls happen outside the lock
         try:
             status, err, channels = _deliver(*send_args)
         except Exception as e:     # never leave the record on "sending": that would block every retry as a duplicate and count toward the daily cap
             status, err, channels = "failed", "unexpected problem (%s)" % type(e).__name__, []
+        if status == "sent" and ats and any(str(c).startswith("hiring system") for c in channels) and ats.get("key"):
+            import connect_api     # imported here: connect_api imports this module
+            connect_api.promote(ats.get("kind"), ats.get("board"), ats.get("key"))      # a pending key from the connect page works: connected
+        elif status == "failed" and ats and ats.get("key") and "refused the key" in (err or "") and ("HTTP 401" in err or "HTTP 403" in err):
+            import connect_api
+            if connect_api.drop_pending(ats.get("kind"), ats.get("board"), ats.get("key")):
+                # a pending key, mistyped: dropped, and this application is only saved (finish on their site), not failed
+                status, channels, err = "handoff", [], None
+                rec["why"] = "saved to Job Tracker: finish on their site"
         with _lock:
             rec["status"], rec["channels"] = status, channels
             if err:

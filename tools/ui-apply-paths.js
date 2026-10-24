@@ -25,7 +25,7 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
       check("signed in as ui@example.com", r === 200, "HTTP " + r);
     } else await ev("fetch('/api/auth/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.status)");
     // the profile a person fills in, and the first-application agreement already given
-    await ev("(()=>{const w=" + FW + ";w.localStorage.setItem((w.__uaplyKey||'uaply')+'.consent',JSON.stringify({v:4,at:Date.now(),agent:true,auto:false}));const A=w.__uaply;Object.assign(A.S.profile,{name:'Sam Rivera',email:'" + (addr || "ui@example.com") + "',custom:true,title:'Data Analyst',years:1,skills:['Python','SQL']});A.save()})()");
+    await ev("(()=>{const w=" + FW + ";w.localStorage.setItem((w.__uaplyKey||'uaply')+'.consent',JSON.stringify({v:5,at:Date.now(),agent:true,auto:false}));const A=w.__uaply;Object.assign(A.S.profile,{name:'Sam Rivera',email:'" + (addr || "ui@example.com") + "',custom:true,title:'Data Analyst',years:1,skills:['Python','SQL']});A.save()})()");
     await nav(base); await sleep(4500);
     // the resume file uploaded in Profile setup (a tiny real PDF)
     await ev("(()=>{const w=" + FW + ";w.__uaplyResume=function(){return {name:'Sam Rivera Resume.pdf',size:40,data:'data:application/pdf;base64,'+btoa('%PDF-1.4 Sam Rivera resume for tests %%EOF')}}})()");
@@ -82,10 +82,10 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
     check("...and it says where: 'where a hiring system allows it; none is switched on yet' (from assist-systems.json)", /^Automatic submit: where a hiring system allows it; none is switched on yet\./.test(box.words), box.words);
     await ev("(()=>{" + F + ".getElementById('kcYes').click();return 1})()"); await sleep(800);
     await walk("Greenhouse partner", ID["GH Partner|Robotics Intern"], 3000, /Applied to GH Partner \(test\)\. UAply filled in \d+ of \d+ answers\. Confirmation is in the test inbox/, /Sent to GH Partner hiring system \(test, nothing reached GH Partner\)/);
-    await walk("public Greenhouse posting in dev (hand-off)", ID["Discord|Data Intern"], 3000, /^Saved \S.* to Job Tracker\. ?Undo$/, /Finish on their site Not sent yet: Discord takes applications on its own site\. See the job posting ↗ Finish applying on their site ↗/);   // quiet swipe (Oct 20): no "finish on their site" message
+    await walk("public Greenhouse posting in dev (hand-off)", ID["Discord|Data Intern"], 3000, /^Saved [^.]+ to Job Tracker\. ?Undo$/, /Finish on their site Not sent yet: Discord takes applications on its own site\. See the job posting ↗ Finish applying on their site ↗/);   // quiet swipe (Oct 20): no "finish on their site" message
     // a job saved on this device that the server no longer lists
     await ev(FW + ".__uaplyJobs.add([{id:4242425,live:true,co:'Vanished Co',role:'Gone Intern',loc:'Philadelphia, PA',mode:'onsite',type:'internship',sal:[0,0],yrs:0,edu:'High school',skills:['Python'],blurb:'Gone.',url:'https://boards.greenhouse.io/vanished/jobs/9',source:\"Vanished Co's careers page\"}])");
-    await walk("a job no longer in the feed", 4242425, 2500, /^Saved \S.* to Job Tracker\. ?Undo$/, /Finish on their site Not sent yet: Vanished Co takes applications on its own site\. See the job posting ↗ Finish applying on their site ↗/);
+    await walk("a job no longer in the feed", 4242425, 2500, /^Saved [^.]+ to Job Tracker\. ?Undo$/, /Finish on their site Not sent yet: Vanished Co takes applications on its own site\. See the job posting ↗ Finish applying on their site ↗/);
     // a question only the person can answer is asked once, then it goes
     await swipe(ID["GH Partner|Odd Question Role"]); await sleep(2500);
     const ask = await ev("(()=>{const o=" + F + ".getElementById('kitAsk');return o?o.innerText.replace(/\\s+/g,' ').slice(0,200):''})()");
@@ -132,6 +132,8 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
       "return Promise.resolve(o.scan?{questions:[],seen:10,filled:8,keys:['name','email','phone'],answerKeys:[],resume:true}:" + JSON.stringify(fillAnswer) + ")}}}};return 1})()");
     const oneId = ID["Discord|Data Intern Two"];
     await install({ confirmed: false, url: "" });
+    // every message the app shows, in order (the form opening answers at once here, so its own message follows the swipe's right away)
+    await ev("(()=>{const d=" + F + ";window.__toasts=[];new MutationObserver(()=>{const t=d.getElementById('kitToast');const x=t?t.innerText.replace(/\\s+/g,' ').trim():'';if(x&&window.__toasts[window.__toasts.length-1]!==x)window.__toasts.push(x)}).observe(d.body,{childList:true,subtree:true,characterData:true});return 1})()");
     await ev("window.__t0=Date.now();1");
     check("one tap: the hand-off is in the app", (await swipe(oneId)) === "ok");
     for (let i = 0; i < 40 && (await ev("window.__calls.length")) < 2; i++) await sleep(100);
@@ -144,6 +146,9 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
       calls[1] && /^https:\/\/boards\.greenhouse\.io\/discord\/jobs\/1002\?gh_src=uaply$/.test(calls[1].url) && calls[1].allow.includes("boards.greenhouse.io") && calls[1].allow.every((h) => /greenhouse|lever|ashby|smartrecruiters|workable/.test(h)),
       calls[1] && calls[1].url + " " + calls[1].allow);
     check("...in assisted mode: the person taps Submit (no system is approved for automatic submit)", calls[1] && calls[1].mode === "assisted", calls[1] && calls[1].mode);
+    const shown = J(await ev("JSON.stringify(window.__toasts||[])"));
+    check("...and the swipe's message promises one tap only because the form did open: 'Saved to Job Tracker. One tap to finish on their site.'",
+      Array.isArray(shown) && shown.some((x) => /^Saved to Job Tracker\. One tap to finish on their site\. ?Undo$/.test(x)), JSON.stringify(shown));
     check("...and UAply's half takes " + ms + " ms from the swipe (target well under the 3 s for the whole)", ms >= 0 && ms < 1500, ms + " ms");
     await sleep(800);
     const tb = await toast(), rb = await row(oneId);
@@ -218,7 +223,7 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
     await sleep(8000);
     check("...and when it fails again, the row still says not sent", /Not sent: UAply could not deliver it to Dropbox/.test(await row(broken)));
     await walk("live, Greenhouse partner", ID["GH Partner|Robotics Intern"], 9000, /Applied to GH Partner\. UAply filled in/, /Application sent to GH Partner/);
-    await walk("live, public Greenhouse posting (hand-off)", ID["Discord|Data Intern"], 4000, /^Saved \S.* to Job Tracker\. ?Undo$/, /Finish on their site Not sent yet: Discord takes applications on its own site\. See the job posting ↗ Finish applying on their site ↗/);
+    await walk("live, public Greenhouse posting (hand-off)", ID["Discord|Data Intern"], 4000, /^Saved [^.]+ to Job Tracker\. ?Undo$/, /Finish on their site Not sent yet: Discord takes applications on its own site\. See the job posting ↗ Finish applying on their site ↗/);
   }
   if (SRV === "devlive") {
     // ---------- Send applications for me (Profile, Account; Terms section 3): off, a swipe right only saves the job ----------
@@ -245,7 +250,7 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
     // a public posting the sandbox fills in to show what UAply would send (October 23): nothing is sent, so it is a hand-off, said as one,
     // and Job Tracker says Saved, never Applied or Sent
     await walk("sandbox, public Greenhouse posting (form filled in for the test inbox, nothing sent)", ID["Discord|Data Intern"], 3000,
-      /^Saved \S.* to Job Tracker\. ?Undo$/, /Saved [A-Z][a-z]{2} \d{1,2} Finish on their site Not sent yet: Discord takes applications on its own site/);
+      /^Saved [^.]+ to Job Tracker\. ?Undo$/, /Saved [A-Z][a-z]{2} \d{1,2} Finish on their site Not sent yet: Discord takes applications on its own site/);
     const pv = (J(await ev("fetch('/api/outbox').then(r=>r.text())")).applications || [])[0] || {};
     check("...the test inbox has the filled-in form, marked as a preview (what UAply would send once Discord connects)", pv.preview === true && pv.status === "delivered_test", JSON.stringify({ status: pv.status, preview: pv.preview }));
     await openAcct();

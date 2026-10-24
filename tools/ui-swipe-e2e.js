@@ -105,7 +105,7 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
     const st = await status(id); summary.statuses.handoff = st;
     const t = await toastText();
     check("handoff", "nothing is sent: the server says hand-off", st === "handoff", st);
-    check("handoff", "the message is the hand-off's: 'Saved <company> to Job Tracker.' (one tap is promised only where the app opens the form) (never Applied or Sent)", /^Saved \S.* to Job Tracker\. ?Undo$/.test(t), t);
+    check("handoff", "the message is the hand-off's: 'Saved <company> to Job Tracker.' (one tap is promised only where the app opens the form) (never Applied or Sent)", /^Saved [^.]+ to Job Tracker\. ?Undo$/.test(t), t);
     const r = await rowOf(id);
     check("handoff", "Applied shows the status Finish on their site", r && r.chip === "Finish on their site", JSON.stringify(r));
     check("handoff", "...with See the job posting, Finish applying on their site and Mark as applied", r && JSON.stringify(r.links) === JSON.stringify(["See the job posting ↗", "Finish applying on their site ↗", "Mark as applied"]), JSON.stringify(r));
