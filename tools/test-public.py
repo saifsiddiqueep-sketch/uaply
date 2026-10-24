@@ -191,5 +191,19 @@ t("/api/feed-health (owner): every source with its count, successes, failures an
   (fh.get("count", 0) > 50, sorted(fh["sources"][0]) if fh.get("sources") else None),
   (True, ["applyPath", "checkKinds", "checkPages", "checkSampled", "error", "failures", "formKind", "humanCheck", "inARow", "jobs", "lastError", "lastOk", "links", "ms", "name", "off", "ok", "retry", "route", "source", "status", "withCheck"]))
 
+# the profile kept on the account (October 24, P0): a round trip, the newer field wins, another device sees it, nothing voluntary is kept
+ck = cookie.split(";", 1)[0]
+t("the kept profile needs a sign-in", req("GET", "/api/profile/data")[0], 401)
+s, _, b = req("POST", "/api/profile/data", {"fields": {"p.name": {"v": "Pub One", "at": 1000}, "p.title": {"v": "Data Analyst", "at": 1000},
+                                                     "a.phone": {"v": "215-555-0100", "at": 1000}, "a.eeo": {"v": {"gender": "x"}, "at": 1000}}}, headers={"Cookie": ck})
+t("a device's fields are kept on the account", (s, sorted(json.loads(b)["fields"])), (200, ["a.phone", "p.name", "p.title"]))
+req("POST", "/api/profile/data", {"fields": {"p.title": {"v": "Old Title", "at": 500}, "p.name": {"v": "Pub Newer", "at": 2000}}}, headers={"Cookie": ck})
+s2, h2, _ = req("POST", "/api/auth/login", {"email": "pub1@example.com", "password": "correct horse 99"})
+c2 = h2.get("set-cookie", "")
+ck2 = c2.split(";", 1)[0]
+f = json.loads(req("GET", "/api/profile/data", headers={"Cookie": ck2})[2])["fields"]
+t("another sign-in (a second device) reads it back: the newer of each field, never voluntary answers",
+  (f["p.name"]["v"], f["p.title"]["v"], f["a.phone"]["v"], "a.eeo" in f), ("Pub Newer", "Data Analyst", "215-555-0100", False))
+
 print(sum(R), "/", len(R))
 sys.exit(0 if all(R) else 1)

@@ -1313,6 +1313,53 @@ function apply(w,host){
     dot.setAttribute("aria-label",n+" saved job"+(n===1?"":"s")+" need your profile");
   };
   setTimeout(w.__uaplyBadge,0);
+  /* the profile kept on the account (Saif, October 24, P0): Profile setup lived on this device only, so a Google sign-in that came back in
+     another browser (the phone app opens Google outside its own window), a second device or a cleared browser started from nothing. Every
+     change is sent to the account (checked each second, sent a second after it settles, and at once when the page is hidden, as before
+     Google's sign-in page), and every sign-in (password, code, Google) reads it back and merges it with this device's copy: the newer of
+     each field wins. A device whose copy belongs to another account takes the account's copy. Voluntary self-identification answers and
+     the resume file never go (the file stays on the device: another device keeps its name and asks for it again). */
+  (function profSync(){
+    var SK=w.__uaplyKey+".profsync",PK=["name","title","years","edu","skills","salary","payUnit","loc","modes","reloc","email","custom","ext","school","major","grad","gpa"],
+        AKS=["phone","linkedin","portfolio","summary","auth","notice","cover","titles","addr","resumeName","resumeSize","fSal","fEdu","fYrs","fCo","fKw"];
+    function st(){try{var o=JSON.parse(w.localStorage.getItem(SK));return o&&typeof o==="object"?o:{}}catch(e){return {}}}
+    function put(o){try{w.localStorage.setItem(SK,JSON.stringify(o))}catch(e){}}
+    function user(){var a=w.__uaplyAuth&&w.__uaplyAuth();return a&&a.user&&a.user.id?a.user:null}
+    function snap(){var p=A.S.profile||{},o={};if(!p.custom)return o;PK.forEach(function(k){if(p[k]!==undefined)o["p."+k]=p[k]});AKS.forEach(function(k){if(acct[k]!==undefined)o["a."+k]=acct[k]});return o}
+    function stamp(){var s=st(),cur=snap(),old=s.snap||{},at=s.at||{},now=Date.now(),ch=false;
+      Object.keys(cur).forEach(function(k){if(JSON.stringify(cur[k])!==JSON.stringify(old[k])){at[k]=now;ch=true}});s.snap=cur;s.at=at;put(s);return ch}
+    var timer=0,lastId=null,pulling=false;
+    function push(now){
+      var u=user(),s=st();if(!u||s.owner!==u.id||pulling)return;            /* only once this account's copy was read on this device */
+      var f={},cur=s.snap||{};Object.keys(cur).forEach(function(k){f[k]={v:cur[k],at:(s.at||{})[k]||0}});if(!Object.keys(f).length)return;
+      try{w.fetch("/api/profile/data",{method:"POST",credentials:"same-origin",keepalive:!!now,headers:{"Content-Type":"application/json"},body:JSON.stringify({fields:f})}).catch(function(){})}catch(e){}
+    }
+    function setField(k,v){if(k.indexOf("p.")===0){A.S.profile[k.slice(2)]=v;return}
+      var n=k.slice(2);if(n==="resumeName"&&!acct.resumeData&&v){acct.resumeWas=v;return}if(n==="resumeSize"&&!acct.resumeData)return;acct[n]=v}
+    function pull(u){
+      pulling=true;
+      w.fetch("/api/profile/data",{credentials:"same-origin"}).then(function(r){return r.ok?r.json():null}).then(function(j){
+        pulling=false;if(!j||!j.fields||user()===null||user().id!==u.id)return;
+        stamp();
+        var s=st(),other=s.owner!==u.id,at=s.at||{},f=j.fields,keys=Object.keys(f),took=0;
+        if(keys.length){
+          if(!(A.S.profile&&A.S.profile.custom))A.S.profile=Object.assign({},A.S.profile,{custom:true});
+          keys.forEach(function(k){var x=f[k];if(!x||typeof x!=="object")return;if(other||(+x.at||0)>(+at[k]||0)){setField(k,x.v);at[k]=+x.at||0;took++}});
+        }
+        if(took){try{A.save()}catch(e){}saveA();try{A.renderAll()}catch(e){}try{if(w.__uaplySyncPrefs)w.__uaplySyncPrefs()}catch(e){}}
+        s.owner=u.id;s.at=at;s.snap=snap();put(s);push();
+      },function(){pulling=false});
+    }
+    setInterval(function(){
+      var u=user(),id=u?u.id:null;
+      if(id!==lastId){lastId=id;if(id)pull(u);return}
+      if(id&&!pulling&&stamp()){clearTimeout(timer);timer=setTimeout(push,1000)}
+    },1000);
+    function now(){if(user()&&!pulling){stamp();push(true)}}
+    d.addEventListener("visibilitychange",function(){if(d.visibilityState==="hidden")now()});
+    w.addEventListener("pagehide",now);
+    w.__uaplyProfileSync={push:function(){stamp();push(true)},state:st};
+  })();
   d.addEventListener("click",function(e){var b=e.target.closest&&e.target.closest("[data-ready]");if(b){e.preventDefault();fixReady(b.getAttribute("data-ready"))}});
   /* a swipe right below READY_MIN (uaply-live.js, __uaplyReadyGate): nothing is sent, the card stays, and this says exactly what is missing */
   w.__uaplyFinishProfile=function(job){

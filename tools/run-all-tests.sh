@@ -204,6 +204,7 @@ run "one pay question, per year or per hour (390x844): step 3 asks it once, kept
 run "one pay question on a laptop (1280x800): the same" env W=1280 H=800 PORT=18848 node tools/cdp.js tools/ui-pay-unit.js
 run "Profile setup asks each thing once (390x844): no step-5 relocate or office question (from Work style), Summary, Location and pay, one resume picker up to 1 MB, the sign-up agreement in Data & privacy, the message in a cover letter box" env W=390 H=844 PORT=18848 node tools/cdp.js tools/ui-profile-polish.js
 run "Profile setup asks each thing once on a laptop (1280x800): the same" env W=1280 H=800 PORT=18848 node tools/cdp.js tools/ui-profile-polish.js
+run "the profile kept on the account: a change is kept, a new browser and a password sign-in get every field back" env W=390 H=844 PORT=18848 node tools/cdp.js tools/ui-profile-sync.js
 
 step "Public server behind HTTPS (how a real host runs it)"
 PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/pub" HOST=0.0.0.0 OWNER_PASSWORD=ownerpw UAPLY_CONFIG_JSON='{}' start python serve.py 18772 dev --api)"

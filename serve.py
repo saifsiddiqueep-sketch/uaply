@@ -1060,6 +1060,11 @@ class H(http.server.SimpleHTTPRequestHandler):
                     if self._owner_ok():          # the owner (this computer, or OWNER_PASSWORD): which questions employers asked, by kind,
                         facts = dict(facts, questions=uaply_api.question_stats(), selfCheck=self_check())   # and the self-check
                     return self._send(200, facts)
+                if p == "/api/profile/data":                                       # the profile kept on the account (auth_api.profile_get)
+                    me = auth_api.user_for(self._token())
+                    if not me:
+                        return self._send(401, SIGNIN_FIRST)
+                    return self._send(200, {"fields": auth_api.profile_get(me["id"])})
                 if p == "/api/auth/me":
                     me = auth_api.user_for(self._token())
                     if me:                                                          # whether a Google login opens it (item 23)
@@ -1176,7 +1181,7 @@ class H(http.server.SimpleHTTPRequestHandler):
                                 "/api/auth/delete", "/api/auth/forgot", "/api/auth/reset", "/api/auth/change-password", "/api/auth/send-for-me",
                                 "/api/setup/test-mail", "/api/setup/save-mail", "/api/setup/save-google", "/api/setup/save-ats", "/api/setup/remove-ats", "/api/setup/test-ats", "/api/setup/save-stripe", "/api/setup/save-feed-keys", "/api/auth/google/token", "/api/auth/verify", "/api/auth/resend", "/api/chat", "/api/feedback", "/api/billing/checkout", "/api/billing/portal",
                                 "/api/employer/company", "/api/employer/job", "/api/employer/job/status", "/api/employer/applicant",
-                                "/api/employer/import", "/api/profile/resume", "/api/consent", "/api/employer/stop",
+                                "/api/employer/import", "/api/profile/resume", "/api/profile/data", "/api/consent", "/api/employer/stop",
                                 "/api/employer/connect/test", "/api/employer/connect/save", "/api/setup/connect-invite") + (CODE_PATHS if CODE_SIGNIN else ()):
             return self._refuse(404, {"error": "not found"})
         # Only accept requests made by this site's own pages (blocks cross-site forms and scripts).
@@ -1379,7 +1384,15 @@ class H(http.server.SimpleHTTPRequestHandler):
                     chat_api.forget_user(uid)
                     return self._send(code, out, headers=self._cookie(""))
                 return self._send(code, out)
-            if p == "/api/consent":
+            if p == "/api/profile/data":
+                # the device's profile fields, merged into the one kept on the account (the newer of each field wins)
+                me = auth_api.user_for(self._token())
+                if not me:
+                    code, out = 401, SIGNIN_FIRST
+                else:
+                    ok, got = auth_api.profile_merge(me["id"], payload.get("fields"))
+                    code, out = (200, {"fields": got}) if ok else (400, {"error": "Could not keep the profile (%s)." % got})
+            elif p == "/api/consent":
                 # the first-swipe agreement, kept on the account with the time, this visitor's address and the words' SHA-256 (consent_api.py)
                 code, out = consent_api.post(auth_api.user_for(self._token()), payload, ip, auth_api.record_consent)
             elif p == "/api/employer/stop":
