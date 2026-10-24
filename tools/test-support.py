@@ -178,7 +178,7 @@ try:
     def go_of(art_id, release):
         chat_api.RELEASE, chat_api._help["mtime"] = release, None
         return [a["go"] for a in chat_api.articles() if a["id"] == art_id][0]
-    t("distance: the sandbox goes to Filters (its commute slider), the release build to Profile setup, Where and pay",
+    t("distance: the sandbox goes to Filters (its commute slider), the release build to Profile setup, Location and pay",
       (go_of("distance", False), go_of("distance", True)), ("prof:filters", "prof:where"))
     t("an article with no release destination keeps its own in the release build", go_of("resume", True), "prof:back")
     real_path = chat_api.HELP_PATH

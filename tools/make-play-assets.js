@@ -190,7 +190,7 @@ module.exports = async ({ ev, sleep, nav, send }) => {
       }
       await sleep(1500); await ready();
       await sleep(1200);
-      await q("const b=d.getElementById('kcYes');if(b)b.click()"); await sleep(300);
+      await q("const b=d.getElementById('kcYes');if(b){b.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});b.disabled=false;b.click()}"); await sleep(300);
       await q("const b=d.getElementById('tipsClose');if(b)b.click()"); await sleep(300);
       // nothing the release build does not have may be pictured, and no job count or test-mode words (checked on every screen below)
       const shot = async (name) => { const bad = await unwanted(); if (bad) { console.log("FAIL the " + dev.dir + " " + name + " screen shows " + bad); process.exitCode = 1; }

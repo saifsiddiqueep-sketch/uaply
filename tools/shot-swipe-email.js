@@ -29,7 +29,7 @@ module.exports = async ({ ev, sleep, nav, shot }) => {
   await ev(F + ".getElementById('nb-svc').click()"); await sleep(500);
   await click("Full-time"); await sleep(900);                         // choose from the menu, the way a person does, so the menu closes
   await ev(F + ".getElementById('btnYes').click()"); await sleep(1500);
-  await ev("(()=>{const m=" + F + ".getElementById('kcYes');if(m)m.click()})()");
+  await ev("(()=>{const m=" + F + ".getElementById('kcYes');if(m){m.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});m.disabled=false;m.click()}})()");
   await sleep(2200);
   const msg = await ev("(()=>{const d=" + F + ";const s=d.getElementById('toast')||d.querySelector('.toast,[role=status]');return s?s.innerText:''})()");
   console.log("message after the swipe:", JSON.stringify(msg));

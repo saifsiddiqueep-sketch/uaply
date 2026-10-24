@@ -18,7 +18,7 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
     await require("./gate-signup.js")({ ev, sleep, nav }, base, "plans");   // behind the sign-in gate (October 22): a fresh test person first
     await nav(base + "/");
     await waitFor("return d.getElementById('nb-prof')", 20000);
-    await click("d.getElementById('kcYes')");
+    await click("(()=>{d.querySelectorAll('.kcTick').forEach(c=>{c.checked=true;c.dispatchEvent(new Event('change'))});return d.getElementById('kcYes')})()");
     await click("d.getElementById('tipsClose')");
     await click("d.getElementById('nb-prof')"); await sleep(300);
     await click("[...d.querySelectorAll('.nitem')].find(b=>b.getAttribute('data-v')==='plan')");

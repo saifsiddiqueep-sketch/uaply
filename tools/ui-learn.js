@@ -41,7 +41,7 @@ async function learnTest({ ev, sleep, nav, send, logs, shot }) {
   await gateSignup({ ev, sleep, nav }, "http://127.0.0.1:" + PORT, "learn");
   await nav("http://127.0.0.1:" + PORT + "/?app=1");
   await sleep(3500);
-  if (await ev("!!" + F + ".getElementById('kcYes')")) { await ev(F + ".getElementById('kcYes').click()"); await sleep(400); }
+  if (await ev("!!" + F + ".getElementById('kcYes')")) { await ev(F + ".querySelectorAll('.kcTick,#kcYes').forEach(c=>{if(c.id==='kcYes'){c.disabled=false;c.click()}else c.checked=true})"); await sleep(400); }
   check("this build (sandbox or dev) has the learner on", await ev("!!(" + FW + ".__uaplyLearn&&" + FW + ".__uaplyLearnOrder)"));
   check("a new visitor starts with nothing learned", (await J(FW + ".__uaplyLearn.state().ev.length")) === 0);
   // the same run every time: wait until the real feeds (if this server has them) have loaded, so no late redraw lands mid-swipe,

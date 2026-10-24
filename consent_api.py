@@ -10,7 +10,8 @@ Nothing is sent to an employer by UAply itself (an application emailed to an emp
 the account's latest record is this VERSION (uaply_api.submit answers 403 "consent" otherwise). The phone app presses an employer's Submit
 for the person only when that record also has auto: the separate "Automatic submit" tick, off by default (shared/uaply-nav.js).
 
-VERSION 5, October 23, 2026 (swipe phase B): the three ways a swipe goes, said plainly. VERSION 4, October 23, 2026, pending the lawyer (LEGAL-REVIEW.md, section 12): Reviewer 3's words (the four ways a swipe right goes, and
+VERSION 6, October 24, 2026 (Saif, lawyer-approved): two required ticks, the authorization through any channel and
+"my profile is accurate" (the age is asked once, at sign-up), each kept on the record with the version and the time. VERSION 5, October 23, 2026 (swipe phase B): the three ways a swipe goes, said plainly. VERSION 4, October 23, 2026, pending the lawyer (LEGAL-REVIEW.md, section 12): Reviewer 3's words (the four ways a swipe right goes, and
 Send applications for me in Profile, Account to stop it), and the optional automatic submit as its own tick. Everyone who agreed to version 3
 sees the box once more."""
 import hashlib
@@ -18,7 +19,7 @@ import json
 import os
 import re
 
-VERSION = 5
+VERSION = 6
 
 # the box's words, one entry per sentence group, as plain text: Reviewer 3's version 4 (the page adds the bold, the list, the links and the
 # buttons; its heading, "Before you start swiping", is not part of the words agreed to)
@@ -30,9 +31,14 @@ TEXT = (
     "By email, with your resume, where the job posting gives an address for applications.",
     "Everywhere else, saved to Job Tracker with a receipt, and you finish on the employer's site; in the UAply phone app the employer's form opens filled in for you to check and submit.",
     "UAply never answers questions about race, gender, veteran status or disability, and never completes a security check.",
-    "You are responsible for keeping your profile accurate. You can tap Undo right after a swipe.",
+    "You can tap Undo right after a swipe.",
     "To stop UAply sending applications for you, turn off Send applications for me in Profile, Account.",
     "By continuing you agree to the Terms and Privacy Policy.",
+)
+# the two ticks (version 6, Saif, October 24, lawyer-approved): both required before the first swipe right, each kept on the record
+TICKS = (
+    "I authorize UAply to submit job applications on my behalf, using my profile, through any channel available for that job (the employer's hiring system, its application form, or email).",
+    "I confirm my profile information is accurate.",
 )
 # the separate tick, off by default: only with it may the phone app press an employer's Submit for the person, where that is allowed.
 # Where that is comes from shared/assist-systems.json (the owner's per-system switch), so the words update themselves when a system is
@@ -79,7 +85,7 @@ def _norm(s):
 def full_text(auto=False):
     """The words agreed to, one entry per line in the order the box shows them: the Automatic submit line, when it was ticked, after the four
     ways."""
-    return "\n".join(_norm(p) for p in TEXT[:AUTO_AT] + ((auto_text(),) if auto else ()) + TEXT[AUTO_AT:])
+    return "\n".join(_norm(p) for p in TEXT[:AUTO_AT] + ((auto_text(),) if auto else ()) + TEXT[AUTO_AT:] + TICKS)
 
 
 def digest(text):
@@ -114,8 +120,11 @@ def post(user, payload, ip, record):
     if version != VERSION:
         return 409, {"error": "This page is out of date. Reload UAply and agree to the current terms.", "code": "consent_old"}
     auto = p.get("auto") is True
+    ticks = p.get("ticks") if isinstance(p.get("ticks"), dict) else {}
+    if ticks.get("authorize") is not True or ticks.get("accurate") is not True:
+        return 400, {"error": "Tick both boxes to agree: the authorization, and that your profile is accurate.", "code": "consent_ticks"}
     want = digest(full_text(auto))
     if digest(p.get("text")) != want:
         return 409, {"error": "This page is out of date. Reload UAply and agree to the current terms.", "code": "consent_text"}
-    rec = record(user["id"], VERSION, ip, want, auto)
+    rec = record(user["id"], VERSION, ip, want, auto, True, True)
     return 200, {"ok": True, "consent": rec}

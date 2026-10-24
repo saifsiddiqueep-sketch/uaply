@@ -9,7 +9,7 @@
 //   ask       the question box with only what is missing; answered, the application is sent (and the employer side is checked by Python)
 //   ask-file  the box needs a resume file: Not now leaves it in Job Tracker as "Not sent yet" with Answer now, nothing sent
 //   sent      sent at once (the employer's form needs nothing more)       handoff   nothing sent, finish on their site
-// Cards say so before the swipe ("Finish your profile", "Ready", "Ready to apply", "N answers needed"). The last line is a JSON summary.
+// Cards say so before the swipe ("Ready", "Ready to apply", "N answers needed"). The last line is a JSON summary.
 const PORT = process.env.PORT, BASE = "http://127.0.0.1:" + PORT, MOCK = process.env.MOCK_PORT;
 const R = JSON.parse(process.env.E2E_READY || "{}");            // {jobs: {"<state>|<path>": id}, ...}
 module.exports = async ({ ev, sleep, nav, send, logs }) => {
@@ -26,9 +26,9 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   const boot = async () => {
     await nav(BASE + "/?app=1");
     await waitFor("return w.__uaplyReadiness&&w.__uaplyReadyOf&&w.__uaplySubmitOn&&w.__uaplyMode&&d.getElementById('nb-prof')?1:0", 30000);
-    await q("const y=d.getElementById('kcYes');if(y)y.click();const n=[...d.querySelectorAll('#locAsk button')].find(x=>/Not now/.test(x.innerText));if(n)n.click();const t=d.getElementById('tipsClose');if(t)t.click();return 1");
+    await q("const y=d.getElementById('kcYes');if(y){y.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});y.disabled=false;y.click()};const n=[...d.querySelectorAll('#locAsk button')].find(x=>/Not now/.test(x.innerText));if(n)n.click();const t=d.getElementById('tipsClose');if(t)t.click();return 1");
     await sleep(900);
-    await q("const y=d.getElementById('kcYes');if(y)y.click();return 1");     // the agreement box opens 0.7 s after load
+    await q("const y=d.getElementById('kcYes');if(y){y.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});y.disabled=false;y.click()};return 1");     // the agreement box opens 0.7 s after load
     await sleep(300);
   };
   let full = "";
@@ -93,16 +93,39 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   await sleep(500);
   const rd = JSON.parse(await q("return JSON.stringify(w.__uaplyReadiness())") || "{}");
   check("below-min", "the profile is below the minimum (name, email, phone or resume)", rd.min === false && /a phone number or a resume/.test((rd.missing || []).join("|")), JSON.stringify(rd).slice(0, 200));
-  const badge = await waitFor("const s=d.querySelector('#deck .card.top .facts .rdy');return s?s.textContent:''", 6000);
-  check("below-min", "the top card (" + topJob + ") says Finish your profile", badge === "Finish your profile" && (await q("return +d.querySelector('#deck .card.top').getAttribute('data-id')")) === topJob, badge);
-  const before = await received(), top0 = await q("return +d.querySelector('#deck .card.top').getAttribute('data-id')"), dec0 = await q("return Object.keys(w.__uaply.S.decisions).length");
-  await q("d.getElementById('btnYes').click();return 1"); await sleep(900);
-  const box = await q("const b=d.getElementById('rdyBox');return b?b.innerText.replace(/\\s+/g,' '):''");
-  check("below-min", "Apply on the top card opens Finish your profile first, naming what is missing", /^Finish your profile first .*needs .*a phone number or a resume\. Nothing was sent/.test(box), box);
-  check("below-min", "...the same card is still on top, nothing was decided, nothing reached an employer",
-    (await q("return +d.querySelector('#deck .card.top').getAttribute('data-id')")) === top0 && (await q("return Object.keys(w.__uaply.S.decisions).length")) === dec0 && (await received()) === before, "");
-  await q("const b=d.getElementById('rdyNo');if(b)b.click();return 1");
-  await q("const A=w.__uaply;Object.keys(A.S.decisions).forEach(k=>{if(A.S.decisions[k].s==='passed')delete A.S.decisions[k]});A.save();A.renderAll();return 1");
+  await sleep(1500);
+  const badge = await q("const s=d.querySelector('#deck .card.top .facts .rdy');return s?s.textContent:''");
+  check("below-min", "the top card (" + topJob + ") has no profile badge (no per-card nagging)", badge === "" && (await q("return +d.querySelector('#deck .card.top').getAttribute('data-id')")) === topJob, badge);
+  const before = await received(), top0 = await q("return +d.querySelector('#deck .card.top').getAttribute('data-id')");
+  // Saif, October 24: an incomplete profile never blocks a swipe. A swipe right saves it to Job Tracker as "Needs profile", and one line says so
+  await q("try{w.sessionStorage.removeItem('uaply.np')}catch(e){}w.__uaplyNPTold=false;d.getElementById('btnYes').click();return 1"); await sleep(1500);
+  const msg = await q("const t=d.getElementById('kitToast');return t?t.innerText:''");
+  check("below-min", "a swipe right saves it and says so: 'Saved to your Job Tracker. Complete your profile, then send them from Job Tracker.' with Complete profile",
+    String(msg).startsWith("Saved to your Job Tracker. Complete your profile, then send them from Job Tracker.") && String(msg).indexOf("Complete profile") > -1, msg);
+  const st0 = await q("const x=w.__uaply.S.decisions[" + top0 + "];return x&&x.sent?x.sent.status:''");
+  check("below-min", "...it is in Job Tracker as needs_profile, the card left the deck, nothing reached an employer",
+    st0 === "needs_profile" && (await received()) === before && (await q("const c=d.querySelector('#deck .card.top');return c?+c.getAttribute('data-id'):0")) !== top0, st0);
+  const openApplied = async () => {
+    await q("d.getElementById('nb-dash').click();return 1"); await sleep(300);
+    await q("[...d.querySelectorAll('.nitem')].find(b=>b.getAttribute('data-v')==='applied').click();return 1"); await sleep(900);
+    return q(`const b=d.querySelector('#pane-track [data-id="${top0}"]');const r=b&&b.closest('.row');return r?r.innerText:''`);
+  };
+  const row1 = await openApplied();
+  check("below-min", "Job Tracker marks it Needs profile, with Complete profile, and the tracker has its small badge",
+    row1.indexOf("Needs profile") > -1 && row1.indexOf("Complete profile") > -1 && (await q("return !!d.querySelector('#nb-dash .npDot')")) === true, row1);
+  // the profile is completed: the same row sends it with one tap
+  const keep = await q("return JSON.stringify(w.__uaply.S.decisions[" + top0 + "])");
+  await setState("full");          // (setState puts back the saved profile from before the swipe: the saved job is put back with it)
+  await q("const A=w.__uaply;A.S.decisions[" + top0 + "]=" + keep + ";if(A.S.history.indexOf(" + top0 + ")<0)A.S.history.push(" + top0 + ");A.save();A.renderAll();return 1");
+  const row2 = await openApplied();
+  check("below-min", "once the profile is complete, the row offers Send now", row2.indexOf("Send now") > -1, row2);
+  await q(`const b=d.querySelector('#pane-track [data-act="resend"][data-id="${top0}"]');if(b)b.click();return 1`);
+  const sent0 = await waitFor("const x=w.__uaply.S.decisions[" + top0 + "];const s=x&&x.sent&&x.sent.status;return s&&s!=='pending'&&s!=='needs_profile'?s:''", 25000);
+  check("below-min", "...and Send now sends it", sent0 === "sent" || sent0 === "delivered_test", sent0);
+  await q("d.getElementById('nb-svc').click();return 1"); await sleep(300);
+  await q("[...d.querySelectorAll('.nitem')].find(b=>b.getAttribute('data-v')==='job').click();return 1"); await sleep(500);
+  await q("const A=w.__uaply;Object.keys(A.S.decisions).forEach(k=>{if(A.S.decisions[k].s==='passed'||+k===" + top0 + ")delete A.S.decisions[k]});A.save();A.renderAll();return 1");
+  await setState("below-min");
 
   // ---------- 2. every state on every apply path ----------
   for (const state of ["below-min", "no-phone", "no-resume", "no-auth", "question"]) {
@@ -143,17 +166,17 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
       summary.outcomes[key] = { got, asked: asked.slice(0, 200), card: cardObj };
       const n1 = await received();
       const label = path + " (" + state + ")";
-      const ok = want === "profile" ? got === "profile" : want === "ask" ? got === "ask:sent" : want === "ask-file" ? got === "ask-file:needs_answers" : want === "handoff" ? got === "handoff" : got === "sent";
+      const ok = want === "profile" ? got === "needs_profile" : want === "ask" ? got === "ask:sent" : want === "ask-file" ? got === "ask-file:needs_answers" : want === "handoff" ? got === "handoff" : got === "sent";
       check(state, label + ": the swipe ends as the employer's form calls for (" + want + ")", ok, got + " | " + asked.slice(0, 160));
       if (want === "ask" && R.asks && R.asks[key]) check(state, label + ": the box asks exactly for " + R.asks[key], new RegExp(R.asks[key], "i").test(asked), asked);
       // nothing reaches an employer unless it was sent: a mock receipt only for a send into a hiring system
       const intoAts = ["gh", "ghphone", "ghauth", "ghq", "lever", "ashby", "ashbyq", "sr", "srq", "wk", "wkq"].includes(path);
       check(state, label + ": the employer received " + (/sent$/.test(got) && intoAts ? "exactly one application" : "nothing"), n1 - n0 === (/sent$/.test(got) && intoAts ? 1 : 0), (n1 - n0) + " new");
       // the row in Job Tracker says what really happened
-      if (got !== "profile") {
+      if (true) {
         const row = await q("const x=w.__uaply.S.decisions[" + id + "];return x&&x.sent?x.sent.status:'(no row)'");
-        check(state, label + ": Job Tracker keeps it as " + (/sent$/.test(got) ? "Sent" : got.startsWith("ask-file") ? "Not sent yet, with Answer now" : "Finish on their site"),
-          /sent$/.test(got) ? row === "sent" : got.startsWith("ask-file") ? row === "needs_answers" : row === "handoff", row);
+        check(state, label + ": Job Tracker keeps it as " + (/sent$/.test(got) ? "Sent" : got.startsWith("ask-file") ? "Not sent yet, with Answer now" : got === "needs_profile" ? "Needs profile" : "Finish on their site"),
+          /sent$/.test(got) ? row === "sent" : got.startsWith("ask-file") ? row === "needs_answers" : got === "needs_profile" ? row === "needs_profile" : row === "handoff", row);
       } else check(state, label + ": nothing in Job Tracker, the card stays in the deck", (await q("return !w.__uaply.S.decisions[" + id + "]")) === true, "");
       // the card said so before the swipe
       const cw = R.cards && R.cards[key];

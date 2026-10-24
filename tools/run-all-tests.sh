@@ -147,6 +147,7 @@ for sz in 390x844 375x667 440x956 1280x800; do
   run "sandbox at ${sz}: the same" env W="${sz%x*}" H="${sz#*x}" PORT=18766 node tools/cdp.js tools/ui-buttons-bar.js
 done
 run "sandbox: learns from swipes (remote first, explore card, reset)" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-learn.js
+run "sandbox: always jobs (narrow filters still fill the deck, marked outside your filters; minimum match is a filter; the learner's match band; empty only when all swiped)" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-always-jobs.js
 run "sandbox: fill from your resume (fills empty fields, keeps typed ones, Replace, errors, fits the phone)" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-resume.js
 run "dev: the stranger-walk fixes (messages fit the phone, Save and continue, LinkedIn links, empty deck, restore, Sign in wording, a restarting server, help, rating)" env W=390 H=844 PORT=18767 CDP_LIMIT_MS=600000 node tools/cdp.js tools/ui-walk.js
 run "dev on a laptop (1280x800): one centred column about 960 px wide, Account and Plan & billing in its middle" env W=1280 H=800 PORT=18767 CDP_LIMIT_MS=600000 node tools/cdp.js tools/ui-walk.js
@@ -199,6 +200,10 @@ run "the sign-in gate on a phone (390x844): only the card, its links open, sign-
 run "the sign-in gate on a laptop (1280x800): the same" env W=1280 H=800 PORT=18848 node tools/cdp.js tools/ui-gate.js
 run "pay as the posting gives it (390x844): yearly per year, hourly per hour, none Pay not listed; on the card, Job Tracker, Share rows and the receipt" env W=390 H=844 PORT=18848 node tools/cdp.js tools/ui-pay.js
 run "pay as the posting gives it on a laptop (1280x800): the same" env W=1280 H=800 PORT=18848 node tools/cdp.js tools/ui-pay.js
+run "one pay question, per year or per hour (390x844): step 3 asks it once, kept across a reload, step 5 asks no second one, hourly and yearly matched on one scale" env W=390 H=844 PORT=18848 node tools/cdp.js tools/ui-pay-unit.js
+run "one pay question on a laptop (1280x800): the same" env W=1280 H=800 PORT=18848 node tools/cdp.js tools/ui-pay-unit.js
+run "Profile setup asks each thing once (390x844): no step-5 relocate or office question (from Work style), Summary, Location and pay, one resume picker up to 1 MB, the sign-up agreement in Data & privacy, the message in a cover letter box" env W=390 H=844 PORT=18848 node tools/cdp.js tools/ui-profile-polish.js
+run "Profile setup asks each thing once on a laptop (1280x800): the same" env W=1280 H=800 PORT=18848 node tools/cdp.js tools/ui-profile-polish.js
 
 step "Public server behind HTTPS (how a real host runs it)"
 PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/pub" HOST=0.0.0.0 OWNER_PASSWORD=ownerpw UAPLY_CONFIG_JSON='{}' start python serve.py 18772 dev --api)"

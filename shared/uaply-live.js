@@ -78,7 +78,7 @@ function patch(s){
   /* Undo brings back exactly the card just swiped, on top: the deck is ranked over the whole list, and the card held on top while it
      arrived (__uaplyHoldTop) may not be the best-ranked one, so without this Undo put a different card on top (ui-swipes, October 23) */
   s=once(s,"var id=S.history.pop();if(!id)return;","var id=S.history.pop();if(!id)return;if(window.__uaplyHoldJob)window.__uaplyHoldJob(id);");
-  s=once(s,'var q=queue(),deck=$("deck");','var q=queue(),deck=$("deck");if(window.__uaplyHoldTop)q=window.__uaplyHoldTop(q,JOB_BY_ID,S,evaluate);if(window.__uaplyNearEnd)window.__uaplyNearEnd(q.length);');
+  s=once(s,'var q=queue(),deck=$("deck");','var q=queue(),deck=$("deck");if(window.__uaplyHoldTop)q=window.__uaplyHoldTop(q,JOB_BY_ID,S,evaluate);if(window.__uaplyNearEnd)window.__uaplyNearEnd(q.filter(function(x){return !x.out}).length);');
   var cached=readCache();
   var extra=cached.length?","+JSON.stringify(cached).slice(1,-1).replace(/<\//g,"<\\/"):"";
   s=once(s,'regional cookbooks."}','regional cookbooks."}'+extra);
@@ -104,12 +104,16 @@ function patch(s){
      a yearly one or the reverse, so an hourly job is not compared with the yearly minimum salary (it scores as pay not listed). uaPayText
      is shared with Share this job's rows and anything else that names a job's pay. */
   s=once(s,'function money(n){return "$"+Math.round(n/1000)+"k"}','function money(n){return "$"+Math.round(n/1000)+"k"}\n'+
+    'function uaYearly(x,u){x=+x||0;return u==="hour"?x*2080:x}\n'+   /* matching only: an hourly figure as a year of 40-hour weeks */
     'function uaPayAmt(n,h){n=+n||0;return h?"$"+(Math.round(n*100)%100?n.toFixed(2):String(Math.round(n))):money(n)}\n'+
     'function uaPayText(j,unit){var s=j&&Array.isArray(j.sal)?j.sal:[0,0],h=!!j&&j.salUnit==="hour",lo=+s[0]||0,hi=+s[1]||0;if(!(hi>0))return "";'+
     'var r=lo>0&&lo<hi?uaPayAmt(lo,h)+"–"+uaPayAmt(hi,h):(lo>0?uaPayAmt(hi,h):"Up to "+uaPayAmt(hi,h));return unit?r+(h?" an hour":" a year"):r}\nwindow.uaPayText=uaPayText;');
   s=once(s,"'+money(j.sal[0])+'–'+money(j.sal[1])+'<small>per year</small>","'+(uaPayText(j)?uaPayText(j)+'<small>'+(j.salUnit===\"hour\"?'per hour':'per year')+'</small>':'Pay not listed')+'");
-  s=once(s,"var salOk=job.sal[1]>=p.salary;","var unk=job.sal[1]<=0||job.salUnit===\"hour\";var salOk=unk||job.sal[1]>=p.salary;");
-  s=once(s,'s:salOk?1:(sa>=0.9?0.5:0),ask:money(job.sal[0])+" to "+money(job.sal[1])','s:unk?0.5:salOk?1:(sa>=0.9?0.5:0),ask:unk?(uaPayText(job)?uaPayText(job,1):"Not listed"):money(job.sal[0])+" to "+money(job.sal[1])');
+  /* the lowest pay is per year or per hour (Profile setup, step 3), and a posting's pay too: both are put on one scale for matching only
+     (an hour is 1/2080 of a year), so an hourly seeker is matched against yearly postings and the reverse. The card still shows the
+     posting's own figure and unit, never a converted one. A posting with no pay scores as not listed */
+  s=once(s,"var salOk=job.sal[1]>=p.salary;","var unk=job.sal[1]<=0,JY=uaYearly(job.sal[1],job.salUnit),PY=uaYearly(p.salary,p.payUnit);sa=PY<=0?1:Math.min(1,JY/PY);var salOk=unk||JY>=PY;");
+  s=once(s,'s:salOk?1:(sa>=0.9?0.5:0),ask:money(job.sal[0])+" to "+money(job.sal[1])','s:unk?0.5:salOk?1:(sa>=0.9?0.5:0),ask:unk?"Not listed":job.salUnit==="hour"?uaPayText(job,1):money(job.sal[0])+" to "+money(job.sal[1])');
   /* every real listing names its source and links to the original; example listings say they are examples */
   s=once(s,"<p class=\"blurb\">'+esc(j.blurb)+'</p>","<p class=\"blurb\">'+esc(j.blurb)+'</p>'+(j.url?'<button type=\"button\" class=\"linkbtn\" data-open=\"'+esc(j.url)+'\">View original posting ↗</button>':'')+(j.live?'<small class=\"note\">Source: '+esc(j.source||'the employer')+'</small>':'<small class=\"note\">Example listing, not a real opening.</small>')+'");
   s=once(s,'toast(dir==="applied"?"Applied to "+job.co+" · "+m.pct+"% match":"Passed on "+job.co,"Undo",undo);',
@@ -192,7 +196,7 @@ function apply(w,host){
     if((S.decisions&&S.decisions[HOLD])||stackType()!==HOLDT){HOLD=0;return q}
     if(WANT&&q.length&&q[0].j.id===WANT&&HOLD!==WANT){HOLD=0;return q}   /* a shared job that turns up later goes in front (Share this job) */
     for(var i=0;i<q.length;i++)if(q[i].j.id===HOLD){if(i>0)q.unshift(q.splice(i,1)[0]);return q}
-    var j=BY[HOLD];if(j)q.unshift({j:j,m:evaluate(j,S.profile)});else HOLD=0;
+    var j=BY[HOLD];if(j&&w.__uaply&&w.__uaply.JOBS.indexOf(j)>-1)q.unshift({j:j,m:evaluate(j,S.profile)});else HOLD=0;   /* a job no longer in the list is not held */
     return q;
   };
   function hold(){try{var c=d.querySelector("#deck .card.top[data-id]");HOLD=c?+c.getAttribute("data-id"):0;HOLDT=stackType()}catch(e){HOLD=0}}
@@ -454,7 +458,7 @@ function kitApply(w,host){
   d.addEventListener("visibilitychange",function(){if(d.visibilityState==="visible")dropExpired()});
   w.addEventListener("pageshow",dropExpired);w.addEventListener("focus",dropExpired);
   /* first application only: say plainly what a swipe right does with the person's details, and get agreement */
-  var CONSENT_V=5;   /* 2: also explains the optional hiring-manager message and that voluntary answers are never sent.
+  var CONSENT_V=6;   /* 2: also explains the optional hiring-manager message and that voluntary answers are never sent.
                        3 (October 21, 2026, the owner's position, drafted for the Terms in LEGAL-REVIEW.md): the person authorizes UAply to
                        complete and submit applications on their behalf; recorded with the time ({v:3,at,agent:true}), so everyone agrees again once.
                        4 (October 23, 2026, pending the lawyer: LEGAL-REVIEW.md section 12): applications emailed to postings that ask for them, the
@@ -473,9 +477,12 @@ function kitApply(w,host){
     "By email, with your resume, where the job posting gives an address for applications.",
     "Everywhere else, saved to Job Tracker with a receipt, and you finish on the employer's site; in the UAply phone app the employer's form opens filled in for you to check and submit.",
     "UAply never answers questions about race, gender, veteran status or disability, and never completes a security check.",
-    "You are responsible for keeping your profile accurate. You can tap Undo right after a swipe.",
+    "You can tap Undo right after a swipe.",
     "To stop UAply sending applications for you, turn off Send applications for me in Profile, Account.",
     "By continuing you agree to the Terms and Privacy Policy."];
+  /* version 6 (Saif, October 24, lawyer-approved): two ticks, both required before Agree; the words go to the server after the rest */
+  var CONSENT_TICKS=["I authorize UAply to submit job applications on my behalf, using my profile, through any channel available for that job (the employer's hiring system, its application form, or email).",
+    "I confirm my profile information is accurate."];
   /* the separate tick, off by default: only with it may the phone app press an employer's Submit for the person, where that is allowed.
      Where that is comes from shared/assist-systems.json (the owner's per-system switch, the same rule as assistMode in uaply-nav.js), so the
      line updates itself when a system is switched on; consent_api.py builds the same words from the same file (tools/test-consent.py) */
@@ -488,11 +495,11 @@ function kitApply(w,host){
   w.__uaplyAgentClause=AGENT_CLAUSE;w.__uaplyConsentV=CONSENT_V;
   /* the words agreed to, as the server checks them: one entry per line, in the order shown, with the Automatic submit line (as it was shown,
      when the box is open) after the four ways when it was ticked */
-  function consentWords(auto,shown){return CONSENT_TEXT.slice(0,AUTO_AT).concat(auto?[shown||autoText()]:[]).concat(CONSENT_TEXT.slice(AUTO_AT)).join("\n")}
+  function consentWords(auto,shown){return CONSENT_TEXT.slice(0,AUTO_AT).concat(auto?[shown||autoText()]:[]).concat(CONSENT_TEXT.slice(AUTO_AT)).concat(CONSENT_TICKS).join("\n")}
   function storedConsent(){try{var c=JSON.parse(w.localStorage.getItem(consentKey()));return c&&typeof c==="object"?c:null}catch(e){return null}}
   /* the agreement goes on the account (POST /api/consent): the record every application UAply sends itself needs. Resolves true when kept */
   function recordConsent(auto,shown){
-    return post("/api/consent",{version:CONSENT_V,text:consentWords(!!auto,shown),auto:!!auto}).then(function(r){
+    return post("/api/consent",{version:CONSENT_V,text:consentWords(!!auto,shown),auto:!!auto,ticks:{authorize:true,accurate:true}}).then(function(r){
       if(r.ok&&r.j)w.__uaplyConsentRec=r.j.consent||null;return !!r.ok},function(){return false});
   }
   function legalBase(){var p=(host&&host.defaultView&&host.defaultView.location.pathname)||"/";return /\/(sandbox|dev)\/(index\.html)?$/.test(p)?"../legal/":"legal/"}   /* the hosted copies live at /dev/ and /sandbox/, with legal/ beside them */
@@ -526,13 +533,16 @@ function kitApply(w,host){
     o.innerHTML='<div role="dialog" aria-modal="true" aria-labelledby="kcH" style="background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:20px;max-width:460px;width:100%;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:10px;font-size:14px">'+
       '<h2 id="kcH" style="margin:0;font:800 20px var(--display)">'+(consentFirst?"Before you start swiping":"Before your first application")+'</h2>'+
       CONSENT_TEXT.map(para).join("")+
-      (consentFirst?'<p style="margin:0">You only see this once. After you agree, every swipe is just a swipe.</p>':'')+
+      CONSENT_TICKS.map(function(t,i){return '<label for="kcT'+i+'" style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:12px;cursor:pointer"><input type="checkbox" id="kcT'+i+'" class="kcTick" style="margin-top:3px;min-width:20px;min-height:20px"><span><b>'+esc(t)+'</b></span></label>'}).join("")+
+      (consentFirst?'<p style="margin:0">You see this again only if the agreement changes. After you agree, every swipe is just a swipe.</p>':'')+
       '<div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button type="button" class="btn ghost" id="kcNo">'+(consentFirst?"Not now":"Cancel")+'</button><button type="button" class="btn" id="kcYes">'+(consentFirst?"Agree and start swiping":"Agree and continue")+'</button></div></div>';
     d.body.appendChild(o);
-    d.getElementById("kcYes").focus();
+    var yes=d.getElementById("kcYes");function ticked(){return [].every.call(o.querySelectorAll(".kcTick"),function(c){return c.checked})}
+    yes.disabled=!ticked();o.querySelectorAll(".kcTick").forEach(function(c){c.addEventListener("change",function(){yes.disabled=!ticked()})});   /* both ticks, or no Agree */
+    d.getElementById("kcT0").focus();
     function answer(ok){o.remove();var waiting=consentWait.splice(0);(ok?go:cancel)();waiting.forEach(function(p){(ok?p[0]:p[1])()})}
     /* the tick is the person's own choice, off unless they tick it; the agreement is kept on this device and on the account */
-    d.getElementById("kcYes").onclick=function(){var auto=!!d.getElementById("kcAuto").checked;try{w.localStorage.setItem(consentKey(),JSON.stringify({v:CONSENT_V,at:Date.now(),agent:true,auto:auto}))}catch(e){}recordConsent(auto,d.getElementById("kcAutoT").textContent);answer(true)};
+    d.getElementById("kcYes").onclick=function(){if(!ticked())return;var auto=!!d.getElementById("kcAuto").checked;try{w.localStorage.setItem(consentKey(),JSON.stringify({v:CONSENT_V,at:Date.now(),agent:true,auto:auto,authorize:true,accurate:true}))}catch(e){}recordConsent(auto,d.getElementById("kcAutoT").textContent);answer(true)};
     d.getElementById("kcNo").onclick=function(){answer(false)};
     o.addEventListener("keydown",function(e){if(e.key==="Escape")answer(false)});
   }
@@ -853,9 +863,16 @@ function kitApply(w,host){
     /* "One tap to finish" only when it is true: the phone app has just opened the employer's form, filled. Anywhere else (the website, a
        system the app does not fill) the copy says only that it was saved; Job Tracker shows how to finish (never a promise the page cannot keep) */
     function savedToast(opened){toast(opened?"Saved to Job Tracker. One tap to finish on their site.":"Saved "+job.co+" to Job Tracker.","Undo",undoThis,9000)}
-    function mark(status,to){var dec=S&&S.decisions&&S.decisions[job.id];if(dec){dec.sent={at:Date.now(),to:to||"",status:status};if(save)save();if(w.__uaplyTrack)w.__uaplyTrack()}}   /* the Applied list, if it is open, shows the new state at once */
+    function mark(status,to,via){var dec=S&&S.decisions&&S.decisions[job.id];if(dec){dec.sent={at:Date.now(),to:to||"",status:status};if(via)dec.sent.via=via;if(save)save();if(w.__uaplyTrack)w.__uaplyTrack()}}   /* the Applied list, if it is open, shows the new state at once */
     var rdy=w.__uaplyReadiness?w.__uaplyReadiness():null;
-    if(rdy&&!rdy.min&&!retry){revert();if(w.__uaplyFinishProfile)w.__uaplyFinishProfile(job);return}
+    /* an incomplete profile: saved to Job Tracker as "Needs profile" (sent from there once the profile is complete); the line says so once a session */
+    if(rdy&&!rdy.min){
+      mark("needs_profile");if(w.__uaplyBadge)w.__uaplyBadge();
+      var told=false;try{told=w.sessionStorage.getItem("uaply.np")==="1"}catch(e){told=!!w.__uaplyNPTold}
+      if(!told){try{w.sessionStorage.setItem("uaply.np","1")}catch(e){}w.__uaplyNPTold=true;
+        toast("Saved to your Job Tracker. Complete your profile, then send them from Job Tracker.","Complete profile",function(){if(w.__uaplyCompleteProfile)w.__uaplyCompleteProfile()},9000)}
+      else savedToast(false);
+      return}
     if(!(p.name&&EMAIL.test(p.email||"")&&(!live||p.custom))){
       revert();toast("Add your name and email in Profile setup, under About you, so employers can reply. "+job.co+" is back in your deck.","Open Profile",function(){openProfile("about")},9000);return;
     }
@@ -868,7 +885,7 @@ function kitApply(w,host){
     }
     function deliver(){
       /* the application is the profile itself: no cover note or message is written for the recruiter, unless the person
-         turned on the opt-in "Message the hiring manager" preference (Plus and Pro; off by default) */
+         turned on the opt-in "Message to the employer" preference (Plus and Pro; off by default) */
       var msgOn=!!(w.__uaplyAutoMsg&&w.__uaplyAutoMsg()&&w.__uaplyMessage);
       if(!(S&&S.decisions&&S.decisions[job.id]))return;   /* undone or withdrawn in the meantime (also while it waited for a connection): send nothing */
       post("/api/apply",{consent:true,confirm_real:live,match:m.pct,note:msgOn?w.__uaplyMessage(job,m,p):"",
@@ -882,6 +899,7 @@ function kitApply(w,host){
           /* nothing was sent (a limit, a missing detail, an unverified email): the job goes back to the deck rather than sitting in Applied.
              A waiting application sent again later stays in Applied, marked not sent, with Try again. */
           if(retry){if(j.code!=="server")mark("failed");return}          /* a server hiccup keeps it waiting for the next try */
+          if(j.code==="limit")w.__uaplyLimitHit=new Date().toDateString();   /* the deck says today's limit is reached */
           revert();
           var act=j.code==="limit"?["See plans",function(){var b=d.getElementById("nb-prof");if(b){b.click();var it=d.querySelector('.nwrap[data-k=prof] .nitem[data-v=plan]');if(it)it.click()}}]
                   :j.code==="slow_down"||j.code==="server"||j.code==="preview"?["",null]:(j.code==="signin"||j.code==="verify")?["Open Account",openAccount]
@@ -908,7 +926,7 @@ function kitApply(w,host){
           if(j.was)mark(j.was,j.to);
           if(j.was==="handoff"){if(!retry)savedToast();return}      /* a hand-off swiped again: quiet, the Applied row has the links */
         }
-        else mark(j.status,j.to);
+        else mark(j.status,j.to,j.via);          /* the channel it went by (the server says: ats, email), named in Job Tracker */
         var cp=receiptNote(j),pl=j.plan;
         var auto=pl&&pl.total?" UAply filled in "+pl.filled+" of "+pl.total+" answers.":"";
         if(j.status==="delivered_test")toast("Applied to "+job.co+" (test)."+auto+cp,"","",9000);
@@ -951,7 +969,7 @@ function kitApply(w,host){
      A job whose employer connected its hiring system: the posting's own form is read ahead (POST /api/apply/plan: the same reading a swipe
      right does, nothing recorded or sent), kept per posting until the profile or a saved answer changes, and the card says "Ready to apply"
      or "N answers needed". An employer who takes email, and every hand-off: "Ready" once the profile has READY_MIN. Below it, every card
-     says "Finish your profile", and a swipe right opens "Finish your profile first" instead of applying (__uaplyReadyGate). */
+     shows nothing, and a swipe right saves it to Job Tracker as "Needs profile" (quietApply). */
   var RDY={},RDYQ={};
   function rdyApplies(job){return !!(job&&w.__uaplySubmitOn&&w.__uaplyMode&&!(w.__uaplyPreview&&w.__uaplyPreview())&&(job.live||w.__uaplyMode==="test"))}
   function rdyConnected(job){return !!(job.live&&job.instant&&!job.contact&&!job.webhook)}
@@ -978,7 +996,7 @@ function kitApply(w,host){
   /* the card's state now (null: nothing to show yet); a connected employer's form is read once per posting and profile */
   function rdyState(job,then){
     var r=w.__uaplyReadiness?w.__uaplyReadiness():{min:true};
-    if(!r.min)return {k:"need",t:"Finish your profile"};
+    if(!r.min)return null;          /* no per-card nagging (Saif, October 24): the saved line and the Job Tracker badge say it */
     if(!rdyReadsForm(job))return {k:"ok",t:"Ready"};
     var pl=rdyPayload(job),sig=rdySig(pl),c=RDY[job.id];
     if(c&&c.sig===sig)return c.st;
@@ -1010,6 +1028,7 @@ function kitApply(w,host){
   /* a swipe right below READY_MIN, wherever it comes from (a finger, Apply, the arrow key): nothing happens to the card, and the box says
      what is missing (called by prod's decide(), patched in kitPatch, before the card moves) */
   w.__uaplyReadyGate=function(job){
+    if(job)return false;          /* Saif, October 24: an incomplete profile never blocks a swipe; quietApply saves it as "Needs profile" */
     if(!job||!rdyApplies(job))return false;
     var r=w.__uaplyReadiness?w.__uaplyReadiness():null;
     if(!r||r.min)return false;
@@ -1044,8 +1063,8 @@ function kitApply(w,host){
   w.__uaplyConsentAgain=function(done){try{w.localStorage.removeItem(consentKey())}catch(e){}var o=d.getElementById("kitConsent");if(o)o.remove();
     /* not agreeing this time takes the agreement back on the account too: nothing is sent for the person until they agree again */
     ensureConsent(function(){if(done)done(true)},function(){post("/api/consent",{withdraw:true}).then(function(r){if(r.ok)w.__uaplyConsentRec=null},function(){});if(done)done(false)},true);
-    /* shown again on request, so "You only see this once" is no longer true: that line goes */
-    var box=d.getElementById("kitConsent");if(box)[].slice.call(box.querySelectorAll("p")).forEach(function(p){if(/^You only see this once/.test(p.textContent))p.remove()})};
+    /* shown again on request, so "You see this again only if the agreement changes" is no longer the whole truth: that line goes */
+    var box=d.getElementById("kitConsent");if(box)[].slice.call(box.querySelectorAll("p")).forEach(function(p){if(/^You see this again only if the agreement changes/.test(p.textContent))p.remove()})};
   if(consentFirst&&!showSheet){
     /* not while someone is in Hiring mode: employers do not swipe. Hiring mode calls this again when they switch back */
     w.__uaplyAskConsent=function(){if(!hasConsent()&&!d.body.classList.contains("hire"))ensureConsent(function(){},function(){},true)};

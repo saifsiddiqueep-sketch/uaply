@@ -368,7 +368,8 @@ def public_user(row):
     return {"id": row["id"], "email": row["email"], "hasPassword": bool(row["has_password"]), "emailVerified": bool(row["email_verified"]),
             "plan": (row["plan"] if "plan" in keys and row["plan"] in ("free", "plus", "pro") else "free"),
             "first": (row["first_name"] if "first_name" in keys else "") or "", "last": (row["last_name"] if "last_name" in keys else "") or "",
-            "sendForMe": bool(row["send_for_me"]) if "send_for_me" in keys else True}
+            "sendForMe": bool(row["send_for_me"]) if "send_for_me" in keys else True,
+            "termsAt": int(row["terms_at"] or 0) if "terms_at" in keys else 0}     # when this account ticked the Terms (Data and privacy says so)
 
 
 def clean_name(v):
@@ -536,19 +537,30 @@ CONSENTS_TABLE = """CREATE TABLE IF NOT EXISTS consents(
             at INTEGER NOT NULL,
             ip TEXT NOT NULL,
             text_sha256 TEXT NOT NULL,
-            auto INTEGER NOT NULL DEFAULT 0)"""
+            auto INTEGER NOT NULL DEFAULT 0,
+            authorize INTEGER NOT NULL DEFAULT 0,
+            accurate INTEGER NOT NULL DEFAULT 0)"""
+
+
+def _consent_cols(c):
+    """The consents table, with the version 6 ticks' columns on a database made before them."""
+    c.execute(CONSENTS_TABLE)
+    have = {r[1] for r in c.execute("PRAGMA table_info(consents)").fetchall()}
+    for col in ("authorize", "accurate"):
+        if col not in have:
+            c.execute("ALTER TABLE consents ADD COLUMN %s INTEGER NOT NULL DEFAULT 0" % col)
 CONSENT_ROWS = 20                # the most agreements kept per account (the latest one counts; older ones show what was agreed before)
 
 
-def record_consent(user_id, version, ip, text_sha256, auto=False):
+def record_consent(user_id, version, ip, text_sha256, auto=False, authorize=False, accurate=False):
     """Keep one first-swipe agreement on the account (consent_api.py): its version, the time on this server's clock, the visitor's address
     (the last hop, as every limit reads it) and the SHA-256 of the exact words agreed to. Version 0 records that the person took it back.
     The rows go with the account when it is deleted. Returns consent_for(user_id)."""
     uid = int(user_id)
     with _lock, _db() as c:
-        c.execute(CONSENTS_TABLE)
-        c.execute("INSERT INTO consents(user_id, version, at, ip, text_sha256, auto) VALUES(?,?,?,?,?,?)",
-                  (uid, int(version), int(time.time()), str(ip or "")[:64], str(text_sha256 or "")[:64], 1 if auto else 0))
+        _consent_cols(c)
+        c.execute("INSERT INTO consents(user_id, version, at, ip, text_sha256, auto, authorize, accurate) VALUES(?,?,?,?,?,?,?,?)",
+                  (uid, int(version), int(time.time()), str(ip or "")[:64], str(text_sha256 or "")[:64], 1 if auto else 0, 1 if authorize else 0, 1 if accurate else 0))
         c.execute("DELETE FROM consents WHERE user_id=? AND id NOT IN (SELECT id FROM consents WHERE user_id=? ORDER BY id DESC LIMIT ?)",
                   (uid, uid, CONSENT_ROWS))
     return consent_for(uid)
@@ -561,11 +573,11 @@ def consent_for(user_id):
     except (TypeError, ValueError):
         return None
     with _lock, _db() as c:
-        c.execute(CONSENTS_TABLE)
-        row = c.execute("SELECT version, at, auto FROM consents WHERE user_id=? ORDER BY id DESC LIMIT 1", (uid,)).fetchone()
+        _consent_cols(c)
+        row = c.execute("SELECT version, at, auto, authorize, accurate FROM consents WHERE user_id=? ORDER BY id DESC LIMIT 1", (uid,)).fetchone()
     if not row or not row["version"]:
         return None
-    return {"v": int(row["version"]), "at": int(row["at"]), "auto": bool(row["auto"])}
+    return {"v": int(row["version"]), "at": int(row["at"]), "auto": bool(row["auto"]), "authorize": bool(row["authorize"]), "accurate": bool(row["accurate"])}
 
 
 def user_by_id(user_id):
@@ -575,7 +587,7 @@ def user_by_id(user_id):
     except (TypeError, ValueError):
         return None
     with _lock, _db() as c:
-        row = c.execute("SELECT id, email, has_password, email_verified, plan, first_name, last_name, send_for_me FROM users WHERE id=?", (uid,)).fetchone()
+        row = c.execute("SELECT id, email, has_password, email_verified, plan, first_name, last_name, send_for_me, terms_at FROM users WHERE id=?", (uid,)).fetchone()
     return public_user(row) if row else None
 
 
@@ -583,7 +595,7 @@ def user_for(token):
     if not isinstance(token, str) or not (20 <= len(token) <= 100):
         return None
     with _lock, _db() as c:
-        row = c.execute("SELECT u.id, u.email, u.has_password, u.email_verified, u.plan, u.first_name, u.last_name, u.send_for_me FROM sessions s JOIN users u ON u.id=s.user_id "
+        row = c.execute("SELECT u.id, u.email, u.has_password, u.email_verified, u.plan, u.first_name, u.last_name, u.send_for_me, u.terms_at FROM sessions s JOIN users u ON u.id=s.user_id "
                         "WHERE s.token_hash=? AND s.expires_at>?",
                         (hashlib.sha256(token.encode()).hexdigest(), int(time.time()))).fetchone()
     return public_user(row) if row else None

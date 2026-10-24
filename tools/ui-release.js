@@ -47,7 +47,7 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
     /The match percentage is worked out automatically/.test(agree) &&
     (await ev("(" + F + ").querySelectorAll('#kitConsent a[href*=legal]').length")) === 3, agree.slice(0, 120));
   await scan("the first screen, with the agreement open");
-  await ev(F + ".getElementById('kcYes').click()"); await sleep(500);
+  await ev(F + ".querySelectorAll('.kcTick,#kcYes').forEach(c=>{if(c.id==='kcYes'){c.disabled=false;c.click()}else c.checked=true})"); await sleep(500);
   check("Hiring mode is not in the release build (no Switch to hiring pill)", !/Switch to hiring/.test(await pageText()));
   await scan("the first screen");
   console.log("   first card:", (await ev("(" + F + ").body.innerText.split(" + nl + ").filter(x=>x.trim()).slice(3,12).join(' | ')")).slice(0, 180));
@@ -83,7 +83,7 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
       check("Data & privacy says when you agreed", /^You agreed to the Terms and Privacy Policy on .*[0-9]{4}[.]$/.test(line), line);
       await sub("Show it again"); await sleep(700);
       check("Show it again clears the saved agreement and opens the box", await ev("!!" + F + ".getElementById('kcYes')") && (await ev("(()=>{try{return " + F + ".defaultView.localStorage.getItem(" + F + ".defaultView.__uaplyKey+'.consent')}catch(e){return 'x'}})()")) === null);
-      await ev(F + ".getElementById('kcYes').click()"); await sleep(600);
+      await ev(F + ".querySelectorAll('.kcTick,#kcYes').forEach(c=>{if(c.id==='kcYes'){c.disabled=false;c.click()}else c.checked=true})"); await sleep(600);
       check("agreeing again saves it and the line comes back", /^You agreed to the Terms and Privacy Policy on /.test(await ev("((" + F + ").getElementById('aAgreed')||{}).textContent||''")));
     }
     if (s === "Plan") {
@@ -162,19 +162,18 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
 
   // swiping right on a real job: consent once, then the hand-off to the employer's own page, and it appears under Applied
   await pick("nb-svc", "Internships"); await sleep(800);
-  // first with the example profile: the release build never applies with it; "Finish your profile first" says what is missing, the card stays
+  // first with the example profile (Saif, October 24): the swipe is never blocked; the job is saved as "Needs profile" and nothing is sent
   const top0 = await ev("(()=>{const c=" + F + ".querySelector('.card.top');return c?+c.getAttribute('data-id'):0})()");
   await ev(F + ".getElementById('btnYes').click()"); await sleep(1200);
-  const fin = await ev("(()=>{const b=" + F + ".getElementById('rdyBox');return b?b.innerText.split(/\\s+/).join(' '):''})()");
-  check("a swipe right with the example profile opens Finish your profile first, and the card stays", /^Finish your profile first/.test(fin) &&
-    (await ev("(()=>{const c=" + F + ".querySelector('.card.top');return c?+c.getAttribute('data-id'):0})()")) === top0, fin.slice(0, 120));
-  await ev("(()=>{const b=" + F + ".getElementById('rdyNo');if(b)b.click()})()"); await sleep(300);
+  check("a swipe right with the example profile saves it as Needs profile, nothing is sent, and the deck moves on",
+    (await ev("(()=>{const x=document.querySelector('iframe').contentWindow.__uaply.S.decisions[" + top0 + "];return x&&x.sent?x.sent.status:''})()")) === "needs_profile" &&
+    (await ev("(()=>{const c=" + F + ".querySelector('.card.top');return c?+c.getAttribute('data-id'):0})()")) !== top0 && !(await ev("!!" + F + ".getElementById('rdyBox')")), "");
   // then with the least a swipe needs: a name, an email and a phone number
   await ev("(()=>{const A=document.querySelector('iframe').contentWindow.__uaply;Object.assign(A.S.profile,{name:'Release Tester',email:'release.tester@example.com',custom:true});A.S.profile.ext=Object.assign({},A.S.profile.ext,{phone:'+1 215 555 0100'});A.save();A.renderAll()})()");
   await sleep(600);
   await ev(F + ".getElementById('btnYes').click()"); await sleep(1200);
   check("no agreement box at the first swipe right (it was answered at first open)", !(await ev("!!" + F + ".getElementById('kcYes')")));
-  await ev("(()=>{const m=" + F + ".getElementById('kcYes');if(m)m.click()})()"); await sleep(2200);
+  await ev("(()=>{const m=" + F + ".getElementById('kcYes');if(m){m.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});m.disabled=false;m.click()}})()"); await sleep(2200);
   const after = await pageText();
   check("swiping right on a real job says only that it was saved (or applied), never 'Finish on their site'", /Saved .+ to Applied · \d+% match|Saved [^.]+ to Job Tracker\.(?! Send applications for me is off)|Applied to/.test(after) && !/finish on their site|not sent yet|finish now/i.test(after.slice(-200)), after.slice(-160));
   await ev(F + ".getElementById('nb-dash').click()"); await sleep(400);

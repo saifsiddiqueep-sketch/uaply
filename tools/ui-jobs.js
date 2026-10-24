@@ -27,7 +27,7 @@ module.exports = async ({ ev, sleep, nav, shot, logs }) => {
   const before = logs.length;
   await ev(F + ".getElementById('btnYes').click()"); await sleep(1500);
   console.log("swipe right -> consent dialog:", await ev("!!" + F + ".getElementById('kcYes')"));
-  await ev("(()=>{const m=" + F + ".getElementById('kcYes');if(m)m.click()})()"); await sleep(2500);
+  await ev("(()=>{const m=" + F + ".getElementById('kcYes');if(m){m.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});m.disabled=false;m.click()}})()"); await sleep(2500);
   console.log("after agreeing, what the person sees:");
   console.log("   ", await ev("[...(" + F + ").querySelectorAll('[role=dialog],[role=status],[role=alert],.toast,.sheet,#kitSheet,.kit')].map(e=>e.innerText.split(String.fromCharCode(10)).join(' ').slice(0,260)).filter(Boolean).join(' || ')"));
   await shot(T.join(O, "jobs-after-swipe.png"));

@@ -92,6 +92,23 @@ def _headline(status, job, test, channels=(), to=""):
             "You swiped right on %s at %s. This is a test: UAply recorded the application in its test inbox and sent nothing to %s." % (role, co, co))
 
 
+def channel_words(status, channels=(), why=""):
+    """How the application went, in the words the receipt and Job Tracker use (Saif, October 24): the employer's form, their hiring
+    system, email, or the person finishes on the employer's site."""
+    ch = [str(c) for c in channels or []]
+    if status in ("sent", "delivered_test"):
+        if any(c.startswith("form") for c in ch):
+            return "Submitted on the employer's form"
+        if any(c.startswith("hiring system") for c in ch):
+            return "Submitted into their hiring system"
+        if any(c.startswith("email") for c in ch):
+            return "Sent by email"
+        return "Sent"
+    if status == "handoff":
+        return "Finish on their site: their form has a security check, so you press Submit" if why == "security check" else "Finish on their site"
+    return ""
+
+
 def subject_for(status, job, test):
     co, role = job.get("co", ""), job.get("role", "")
     s = ("Finish your application: %s at %s" if status == "handoff" else "Applied: %s at %s") % (role, co)
@@ -154,7 +171,8 @@ def applicant_receipt(ctx):
     t = []
     if test:
         t += ["*** TEST EMAIL ***", test_note, ""]
-    t += ["Hi %s," % name, "", head, "", lead, "", "%s: %s" % (when_label, when), ""]
+    how = channel_words(status, ctx.get("channels"), ctx.get("why") or "")
+    t += ["Hi %s," % name, "", head, "", lead, "", "%s: %s" % (when_label, when)] + (["How: %s" % how] if how else []) + [""]
     t += ["THE JOB"] + ["  %s: %s" % kv for kv in summary]
     if posting:
         t += ["  Posting: %s" % posting]
@@ -189,6 +207,8 @@ def applicant_receipt(ctx):
     parts.append('<h1 style="margin:0 0 8px;font:700 22px/1.25 Arial,sans-serif;color:#2A1218">%s</h1>' % e(head))
     parts.append('<p style="margin:0 0 4px;color:#2A1218">Hi %s,</p><p style="margin:0 0 6px;color:#2A1218">%s</p>' % (e(name), e(lead)))
     parts.append('<p style="margin:0;color:#7B5560;font-size:13px">%s %s</p>' % (e(when_label), e(when)))
+    if how:
+        parts.append('<p style="margin:0;color:#7B5560;font-size:13px">How: %s</p>' % e(how))
     parts.append(h("THE JOB"))
     parts.append('<table role="presentation" style="border-collapse:collapse;font-size:14px">%s</table>' % card_rows(summary))
     if desc:

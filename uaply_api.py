@@ -247,6 +247,11 @@ def _ext(raw):
         salary = salary if 0 < salary <= 10000000 else ""
     except (TypeError, ValueError, OverflowError):
         salary = ""
+    try:                                           # the same pay per hour (Profile setup step 3 is per year or per hour), for a form that asks per hour
+        salary_hour = round(float(x.get("salaryHour")), 2)
+        salary_hour = salary_hour if 0 < salary_hour <= 5000 else ""
+    except (TypeError, ValueError, OverflowError):
+        salary_hour = ""
     return {"phone": phone, "headline": _s(x.get("headline"), 120), "summary": _s(x.get("summary"), 600),
             "resume": _https(x.get("resume")), "linkedin": _linkedin(x.get("linkedin")), "portfolio": _https(x.get("portfolio")),
             "school": _s(x.get("school"), 100), "major": _s(x.get("major"), 100), "grad": grad, "gpa": gpa,
@@ -257,7 +262,8 @@ def _ext(raw):
             "notice": _pick(x.get("notice"), tuple(autofill._NOTICE)),
             # the common questions employers' own forms ask (used by autofill.py to fill those forms; none of them is shown to a recruiter otherwise)
             "zip": zipc if re.match(r"^\d{5}(-\d{4})?$", zipc) else "", "state": state if re.match(r"^[A-Za-z .]{2,30}$", state) else "",
-            "country": _pick(x.get("country"), _COUNTRIES), "salary": salary,     # expected yearly pay: kept only when a form asked for it (see submit)
+            "country": _pick(x.get("country"), _COUNTRIES), "salary": salary, "salaryHour": salary_hour,
+            "payUnit": "hour" if x.get("payUnit") == "hour" else "year",     # expected yearly pay: kept only when a form asked for it (see submit)
             "relocate": _pick(x.get("relocate"), ("yes", "no")), "office": _pick(x.get("office"), ("yes", "no")),
             "former": _pick(x.get("former"), ("no", "ask")), "govt": _pick(x.get("govt"), ("yes", "no")), "phd": _pick(x.get("phd"), ("yes", "no")),
             "pronouns": _s(x.get("pronouns"), 30), "ack": x.get("ack") is True, "why": _s(x.get("why"), 600)}
@@ -600,7 +606,7 @@ def _mail_ctx(cfg, rec, note, user_email="", site=""):
     test = rec["mode"] != "live" and not (PUBLIC and rec["status"] == "handoff")
     return {"test": test, "status": rec["status"], "cand": rec["candidate"], "job": rec["job"], "at": rec["at"],
             "match": rec.get("match", 0), "to": rec.get("to", ""), "rows": _detail_rows(rec["candidate"], note), "note": note,
-            "channels": rec.get("channels") or [], "user_email": user_email, "base_url": _site_base(cfg, site), "support_email": _s(cfg.get("support_email"), 120),
+            "channels": rec.get("channels") or [], "why": rec.get("why") or "", "user_email": user_email, "base_url": _site_base(cfg, site), "support_email": _s(cfg.get("support_email"), 120),
             "preview": rec.get("preview") is True}
 
 
@@ -1031,8 +1037,25 @@ def email_events(body, authorization):
 
 
 def recruitee_on(cfg=None):
-    """The owner's switch for sending to Recruitee's public apply endpoint ("recruitee_submit" in the config; off unless set to true, flipped after one real-offer test)."""
-    return (cfg or config()).get("recruitee_submit", False) is True
+    """The owner's switch for sending to Recruitee's public apply endpoint ("recruitee_submit" in the config; on unless set to false:
+    Saif, October 24, lawyer-approved)."""
+    return (cfg or config()).get("recruitee_submit", True) is not False
+
+
+def counsel_on(cfg=None):
+    """The owner's switch over shared/assist-systems.json's counsel_approved (Saif, October 24: the lawyer approved): "counsel_approved" in
+    the config, on unless set to false; set to false, every system is served as not approved."""
+    return (cfg or config()).get("counsel_approved", True) is not False
+
+
+def assist_systems(cfg=None):
+    """shared/assist-systems.json as the app gets it (/assist-systems.json), with the owner's counsel_approved switch applied."""
+    c = json.loads(json.dumps(consent_api.systems() or {}))
+    if not counsel_on(cfg):
+        for x in (c.get("systems") or {}).values():
+            if isinstance(x, dict):
+                x["counsel_approved"] = False
+    return c
 
 
 def submit(p, user=None, site=""):
@@ -1301,7 +1324,11 @@ def submit(p, user=None, site=""):
             if err:
                 rec["error"] = err
             _append("applications.jsonl", rec)
-    out = {"status": rec["status"], "id": rec["id"], "to": rec["to"], "mode": mode, "simulated": rec["simulated"], "copied": False}
+    out = {"status": rec["status"], "id": rec["id"], "to": rec["to"], "mode": mode, "simulated": rec["simulated"], "copied": False,
+           "channel": emails.channel_words(rec["status"], rec.get("channels"), rec.get("why") or "")}
+    chs = [str(c) for c in rec.get("channels") or []]
+    out["via"] = ("ats" if any(c.startswith("hiring system") for c in chs) else "email" if any(c.startswith("email") for c in chs)
+                  else "handoff" if rec["status"] == "handoff" else "")       # Job Tracker names the channel (Saif, October 24)
     if send_off:
         out["sendForMe"] = False                         # the page says the job was only saved, and why
     if rec.get("preview"):

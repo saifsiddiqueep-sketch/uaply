@@ -16,7 +16,7 @@ module.exports = async ({ ev, sleep, nav }) => {
   check("the server hands out the assist script and the per-system switch",
     (await ev("Promise.all([fetch('/uaply-assist.js').then(r=>r.status+':'+r.headers.get('content-type')),fetch('/assist-systems.json').then(r=>r.json()).then(j=>Object.keys(j.systems).length)]).then(a=>a.join(' '))")).startsWith("200:"));
   // a person with a profile, the agreement given, and a resume file; and voluntary answers saved on the device, which must never leave it
-  await ev("(()=>{const w=" + FW + ";w.localStorage.setItem((w.__uaplyKey||'uaply')+'.consent',JSON.stringify({v:5,at:Date.now(),agent:true}));" +
+  await ev("(()=>{const w=" + FW + ";w.localStorage.setItem((w.__uaplyKey||'uaply')+'.consent',JSON.stringify({v:6,at:Date.now(),agent:true}));" +
     "w.localStorage.removeItem((w.__uaplyKey||'uaply')+'.answers');" +
     "const A=w.__uaply;Object.assign(A.S.profile,{name:'Sam Rivera',email:'sam.rivera.test@example.com',custom:true,title:'Data Analyst',years:1,skills:['Python','SQL','Excel'],loc:'Philadelphia, PA',edu:'Bachelor',ext:{phone:'215-555-0142',auth:'citizen',sponsor:'no',school:'Temple University',start:'now',pronouns:'they/them'}});A.save()})()");
   await nav(base); await sleep(4500);

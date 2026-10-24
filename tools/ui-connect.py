@@ -109,7 +109,7 @@ try:
             time.sleep(0.25)
     s, out, ck = req("POST", "/api/auth/signup", {"email": "pat@example.org", "password": "pass for pat", "agree": True, "first": "Pat", "last": "Doe"})
     me = ck[0]
-    req("POST", "/api/consent", {"version": consent_api.VERSION, "text": consent_api.full_text(False), "auto": False}, me)
+    req("POST", "/api/consent", {"version": consent_api.VERSION, "text": consent_api.full_text(False), "auto": False, "ticks": {"authorize": True, "accurate": True}}, me)
     job = [j for j in req("GET", "/api/jobs", cookie=me)[1]["jobs"] if j["role"] == "Robotics Intern"][0]
     t("before the employer connects, their posting is a hand-off", job.get("instant", False), False)
     t("only the owner makes a connect link (an unknown system is refused)", req("POST", "/api/setup/connect-invite", {"kind": "taleo", "board": "acme"})[0], 400)
