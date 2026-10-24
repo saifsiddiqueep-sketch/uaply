@@ -552,6 +552,57 @@ def _consent_cols(c):
 CONSENT_ROWS = 20                # the most agreements kept per account (the latest one counts; older ones show what was agreed before)
 
 
+# the profile kept on the account (Saif, October 24, P0: a Google sign-in, a second device or a cleared browser lost the profile setup,
+# which lived on the device only): one row per account, {key: {v, at}} where at is the device's time of that field's last change; a
+# merge keeps the newer of each field. Voluntary self-identification answers and the resume file itself are never part of it.
+PROFILES_TABLE = """CREATE TABLE IF NOT EXISTS profiles(
+            user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+            data TEXT NOT NULL,
+            at INTEGER NOT NULL)"""
+PROFILE_MAX = 200000             # bytes of one account's kept profile
+PROFILE_KEY_RE = re.compile(r"^[pa]\.[A-Za-z][A-Za-z0-9_]{0,40}$")
+
+
+def profile_get(user_id):
+    """The account's kept profile {key: {v, at}} ({} when there is none)."""
+    with _lock, _db() as c:
+        c.execute(PROFILES_TABLE)
+        row = c.execute("SELECT data FROM profiles WHERE user_id=?", (int(user_id),)).fetchone()
+    try:
+        d = json.loads(row["data"]) if row else {}
+        return d if isinstance(d, dict) else {}
+    except ValueError:
+        return {}
+
+
+def profile_merge(user_id, fields):
+    """Merge a device's fields into the account's kept profile, the newer of each field winning. Returns (ok, merged or reason)."""
+    if not isinstance(fields, dict):
+        return False, "fields"
+    clean = {}
+    for k, x in fields.items():
+        if isinstance(k, str) and PROFILE_KEY_RE.match(k) and k != "a.eeo" and isinstance(x, dict) and isinstance(x.get("at"), (int, float)):
+            clean[k] = {"v": x.get("v"), "at": int(x["at"])}
+    uid = int(user_id)
+    with _lock, _db() as c:
+        c.execute(PROFILES_TABLE)
+        row = c.execute("SELECT data FROM profiles WHERE user_id=?", (uid,)).fetchone()
+        try:
+            cur = json.loads(row["data"]) if row else {}
+        except ValueError:
+            cur = {}
+        cur = cur if isinstance(cur, dict) else {}
+        for k, x in clean.items():
+            if k not in cur or x["at"] >= int((cur.get(k) or {}).get("at") or 0):
+                cur[k] = x
+        data = json.dumps(cur, separators=(",", ":"))
+        if len(data.encode("utf-8")) > PROFILE_MAX:
+            return False, "too large"
+        c.execute("INSERT INTO profiles(user_id, data, at) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET data=excluded.data, at=excluded.at",
+                  (uid, data, int(time.time())))
+    return True, cur
+
+
 def record_consent(user_id, version, ip, text_sha256, auto=False, authorize=False, accurate=False):
     """Keep one first-swipe agreement on the account (consent_api.py): its version, the time on this server's clock, the visitor's address
     (the last hop, as every limit reads it) and the SHA-256 of the exact words agreed to. Version 0 records that the person took it back.
