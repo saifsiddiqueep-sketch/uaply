@@ -344,8 +344,8 @@ try:
       sorted(g["system"] for g in gq) == ["ashby", "greenhouse", "smartrecruiters", "workable"], sorted(g["system"] for g in gq))
     t("readiness", "nothing the readiness swipes sent carries a voluntary answer", all(no_eeo(g) for g in got2), "")
     mails_ready = [m for m in mails() if "hr@mailco.example" in [x.lower() for x in (m.get("to") or [])]]
-    t("readiness", "the email employer got one message per readiness swipe that was sent (no-phone, no-resume, no-auth), none below the minimum",
-      len(mails_ready) == 1 + sum(1 for k2, v in outs.items() if k2.endswith("|mail") and v.get("got") == "sent"), len(mails_ready))
+    t("readiness", "the email employer got one message per readiness swipe that was sent (no-phone, no-resume, no-auth), plus the one saved below the minimum and sent once the profile was complete",
+      len(mails_ready) == 2 + sum(1 for k2, v in outs.items() if k2.endswith("|mail") and v.get("got") == "sent"), len(mails_ready))
     qs = get(APP, "/api/status").get("questions") or {}
     keys = [q2.get("key") for q2 in qs.get("top") or []]
     t("readiness", "the owner's /api/status counts the question types asked (the employers' own question, phone, work authorization), by kind",
@@ -395,8 +395,8 @@ try:
     app = server(cfg2)
     call("/api/auth/login", {"email": "elena.rossi@example.com", "password": summary["password"]})
     s, b = call("/api/billing/status")
-    # the first browser half sent 8: five hiring systems, the email employer, the email posting and the answered question
-    sent_run = 8 + len(sent_into) + sum(1 for k2, v in outs.items() if k2.endswith("|mail") and v.get("got") == "sent")
+    # (9: plus the job saved below the minimum, sent from Job Tracker once the profile was complete) the first browser half sent 8: five hiring systems, the email employer, the email posting and the answered question
+    sent_run = 9 + len(sent_into) + sum(1 for k2, v in outs.items() if k2.endswith("|mail") and v.get("got") == "sent")
     t("limit", "Plan and billing shows the week used up on Free: %d of 50 (the 50 above plus the %d sent in this run)" % (50 + sent_run, sent_run),
       (s, b.get("used"), b.get("cap"), b.get("plan")) == (200, 50 + sent_run, 50, "free"), b)
     before = len(get(MOCK, "/__received"))

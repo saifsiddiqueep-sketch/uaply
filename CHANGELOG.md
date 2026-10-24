@@ -6,6 +6,17 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 
+### Always jobs, and an incomplete profile never blocks a swipe (Saif, October 24)
+- The deck never runs dry while there are jobs: the filters (stack, work style, minimum match, the rest) rank first; under 20 cards the
+  deck goes on with the jobs outside them, nearest first, each card saying "Outside your filters: ..." on one line. Blocked companies and
+  keywords, closed postings and Hiring mode's eligibility stay hard rules. Minimum match stays an optional filter (off by default).
+  The empty deck shows only when everything was swiped ("You have seen every one of these") or today's limit is reached ("You reached today's limit").
+- The learner also weighs the match band of what people swipe right on, so the order drifts toward the band they favour.
+- A swipe right with an incomplete profile saves the job to Job Tracker as "Needs profile" and says once a session "Saved to your Job
+  Tracker. Complete your profile to send applications automatically." with Complete profile (Profile setup at the first missing step).
+  Job Tracker marks it, with a small badge, and once the profile is complete the row sends it with Send now. A complete profile is unchanged.
+- Tests: tools/ui-always-jobs.js (new); ui-swipe-ready, ui-ready-walk, ui-walk and ui-release follow the new rule.
+
 ### A swipe right that submits, phase B (Saif, October 23)
 - **Recruitee.** A posting on a Recruitee careers site is Ready: a swipe right sends the name, email, phone and resume through the site's
   own public apply endpoint (`POST https://{company}.recruitee.com/api/offers/{slug}/candidates`, no employer key), with the consent record,

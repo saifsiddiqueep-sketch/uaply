@@ -65,6 +65,9 @@ function attrs(j){
   add("o",origin(j));
   return a;
 }
+/* the same, plus the match band (always jobs, October 24): what they swipe right on includes the band they favour */
+function attrsFit(j,fit){var a=attrs(j);if(j&&typeof j==="object"&&fit!=null&&isFinite(fit))a.push("b:"+band(fit));return a}
+function band(f){f=+f||0;return f>=90?"90":f<50?"0":String(Math.floor(f/10)*10)}
 function title1(s){return String(s).replace(/\b[a-z]/g,function(c){return c.toUpperCase()})}
 /* the words a card uses for an attribute ("remote jobs", "jobs at Figma") */
 function label(a,j){
@@ -77,6 +80,7 @@ function label(a,j){
   if(k==="y")return v==="0"?"jobs that ask for no experience":v==="5+"?"jobs that ask for more than 5 years":"jobs that ask for "+v.replace("-"," to ")+" years";
   if(k==="l")return "jobs in "+title1(v);
   if(k==="s"){hit=j&&Array.isArray(j.skills)?j.skills.filter(function(x){return String(x).trim().toLowerCase()===v})[0]:"";return "jobs asking for "+(hit||v)}
+  if(k==="b")return v==="90"?"jobs at a 90% match or more":v==="0"?"jobs under a 50% match":"jobs at a "+v+"% to "+(+v+9)+"% match";
   if(k==="o")return {board:"jobs from employers' own job boards",uaply:"jobs posted on UAply",partner:"jobs from partner employers",example:"example listings"}[v]||"jobs from "+title1(v);
   return v;
 }
@@ -112,7 +116,7 @@ function sig(z){return 1/(1+Math.exp(-z))}
 function score(j,fit,E){
   fit=Math.max(0,Math.min(100,+fit||0));
   var p0=Math.min(0.99,Math.max(0.01,fit/100)),z=logit(p0),parts=[],mass=0,base=K.center?Math.log(((E.L||0)+1)/((E.D||0)+1)):0;
-  attrs(j).forEach(function(a){
+  attrsFit(j,fit).forEach(function(a){
     var l=E.like[a]||0,d=E.dis[a]||0,c0=E.cnt[a];if(!l&&!d)return;
     if(c0&&c0.yes+c0.no<K.minA)return;                                    /* per attribute: too little evidence yet (see minA) */
     var raw=Math.log((l+1)/(d+1))-base,c=Math.max(-K.cap,Math.min(K.cap,raw));
@@ -193,15 +197,15 @@ function clean(x){
   if(!x||typeof x!=="object"||!Array.isArray(x.ev))return fresh();
   var ev=x.ev.filter(function(e){return e&&typeof e==="object"&&/^[RDFLU]$/.test(e.k)&&isFinite(+e.at)&&Array.isArray(e.a)}).slice(-K.keep).map(function(e){
     return {id:typeof e.id==="number"?e.id:String(e.id).slice(0,40),at:+e.at,k:e.k,d:Math.max(0,Math.min(36e5,+e.d||0)),
-      a:e.a.filter(function(a){return typeof a==="string"&&/^[mtrclpyso]:./.test(a)}).slice(0,24).map(function(a){return a.slice(0,64)})};   /* only job attributes can be stored */
+      a:e.a.filter(function(a){return typeof a==="string"&&/^[mtrclpysob]:./.test(a)}).slice(0,24).map(function(a){return a.slice(0,64)})};   /* only job attributes can be stored */
   });
   return {v:1,seed:(+x.seed|0)||fresh().seed,n:Math.max(0,Math.min(1e6,+x.n|0)),ver:Math.max(0,+x.ver|0),ev:ev};
 }
 function last(st,id){for(var i=st.ev.length-1;i>=0;i--)if(st.ev[i].id===id)return i;return -1}
 /* a swipe: one entry per job (swiping the same job again replaces the old entry) */
-function swipe(st,j,dir,dwell,read,now){
+function swipe(st,j,dir,dwell,read,now,fit){
   var i=last(st,j.id);if(i>-1)st.ev.splice(i,1);
-  st.ev.push({id:j.id,at:now,k:dir==="applied"?(read?"D":"R"):"L",d:dir==="applied"?0:Math.max(0,Math.round(+dwell||0)),a:attrs(j)});
+  st.ev.push({id:j.id,at:now,k:dir==="applied"?(read?"D":"R"):"L",d:dir==="applied"?0:Math.max(0,Math.round(+dwell||0)),a:attrsFit(j,fit)});
   if(st.ev.length>K.keep)st.ev=st.ev.slice(-K.keep);
   st.n++;st.ver++;
 }
@@ -245,12 +249,14 @@ function apply(w){
   var d=w.document,A=w.__uaply;if(!A||!A.S)throw new Error("app hooks missing");
   var st=A.S.learn=clean(A.S.learn),pin=null,top=null,shownAt={},read={};
   var reduce=!!(w.matchMedia&&w.matchMedia("(prefers-reduced-motion: reduce)").matches);
-  w.__uaplyLearnOrder=function(q){try{return order(q,st,Date.now(),pin)}catch(e){return q}};   /* a learner problem never empties the deck */
+  /* the cards outside the person's filters (always jobs) keep their place after the rest, nearest first */
+  w.__uaplyLearnOrder=function(q){try{var a=q.filter(function(x){return !x.out}),b=q.filter(function(x){return x.out});return order(a,st,Date.now(),pin).concat(b)}catch(e){return q}};   /* a learner problem never empties the deck */
   w.__uaplyLearnLine=lineHTML;
   w.__uaplyLearnSwipe=function(job,dir){
     if(!job)return;
     var now=Date.now(),t=shownAt[job.id];
-    swipe(st,job,dir,t?now-t-(reduce?0:280):K.slowMs,!!read[job.id],now);   /* 280 ms: the card's fly-away before the page records the swipe */
+    var fit=null;try{fit=A.evaluate(job,A.S.profile).pct}catch(e){}
+    swipe(st,job,dir,t?now-t-(reduce?0:280):K.slowMs,!!read[job.id],now,fit);   /* 280 ms: the card's fly-away before the page records the swipe */
     pin=null;delete read[job.id];summary();
   };
   w.__uaplyLearnUndo=function(id){undo(st,+id);pin=+id;summary()};
@@ -297,5 +303,5 @@ function apply(w){
 }
 
 window.UAplyLearn={patch:patch,apply:apply,
-  core:{K:K,family:family,attrs:attrs,label:label,weight:weight,evidence:evidence,score:score,explain:explain,order:order,draw:draw,fresh:fresh,clean:clean,swipe:swipe,undo:undo,finish:finish,reset:reset,lineHTML:lineHTML}};
+  core:{K:K,family:family,attrs:attrs,attrsFit:attrsFit,band:band,label:label,weight:weight,evidence:evidence,score:score,explain:explain,order:order,draw:draw,fresh:fresh,clean:clean,swipe:swipe,undo:undo,finish:finish,reset:reset,lineHTML:lineHTML}};
 })();
