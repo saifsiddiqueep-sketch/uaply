@@ -530,7 +530,7 @@ function kitApply(w,host){
     o.innerHTML='<div role="dialog" aria-modal="true" aria-labelledby="kcH" style="background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:20px;max-width:460px;width:100%;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:10px;font-size:14px">'+
       '<h2 id="kcH" style="margin:0;font:800 20px var(--display)">'+(consentFirst?"Before you start swiping":"Before your first application")+'</h2>'+
       CONSENT_TEXT.map(para).join("")+
-      (consentFirst?'<p style="margin:0">You only see this once. After you agree, every swipe is just a swipe.</p>':'')+
+      (consentFirst?'<p style="margin:0">You see this again only if the agreement changes. After you agree, every swipe is just a swipe.</p>':'')+
       '<div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button type="button" class="btn ghost" id="kcNo">'+(consentFirst?"Not now":"Cancel")+'</button><button type="button" class="btn" id="kcYes">'+(consentFirst?"Agree and start swiping":"Agree and continue")+'</button></div></div>';
     d.body.appendChild(o);
     d.getElementById("kcYes").focus();
@@ -1048,8 +1048,8 @@ function kitApply(w,host){
   w.__uaplyConsentAgain=function(done){try{w.localStorage.removeItem(consentKey())}catch(e){}var o=d.getElementById("kitConsent");if(o)o.remove();
     /* not agreeing this time takes the agreement back on the account too: nothing is sent for the person until they agree again */
     ensureConsent(function(){if(done)done(true)},function(){post("/api/consent",{withdraw:true}).then(function(r){if(r.ok)w.__uaplyConsentRec=null},function(){});if(done)done(false)},true);
-    /* shown again on request, so "You only see this once" is no longer true: that line goes */
-    var box=d.getElementById("kitConsent");if(box)[].slice.call(box.querySelectorAll("p")).forEach(function(p){if(/^You only see this once/.test(p.textContent))p.remove()})};
+    /* shown again on request, so "You see this again only if the agreement changes" is no longer the whole truth: that line goes */
+    var box=d.getElementById("kitConsent");if(box)[].slice.call(box.querySelectorAll("p")).forEach(function(p){if(/^You see this again only if the agreement changes/.test(p.textContent))p.remove()})};
   if(consentFirst&&!showSheet){
     /* not while someone is in Hiring mode: employers do not swipe. Hiring mode calls this again when they switch back */
     w.__uaplyAskConsent=function(){if(!hasConsent()&&!d.body.classList.contains("hire"))ensureConsent(function(){},function(){},true)};

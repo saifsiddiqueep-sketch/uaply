@@ -29,7 +29,7 @@
    "id": "profile-setup",
    "title": "How do I set up my profile?",
    "tags": "profile settings name email phone setup fill in details complete readiness",
-   "body": "Open Profile, then Profile setup. It is five short steps: About you, Jobs you want, Where and pay, Background and links, and Eligibility and extras. Tap Save and continue on each step; your answers are saved as you go and you can jump between steps any time. The bar at the top shows how complete your profile is. On a computer, a card beside the questions shows what employers will see. Your profile is what employers receive when you apply.",
+   "body": "Open Profile, then Profile setup. It is five short steps: About you, Jobs you want, Location and pay, Background and links, and Eligibility and extras. Tap Save and continue on each step; your answers are saved as you go and you can jump between steps any time. The bar at the top shows how complete your profile is. On a computer, a card beside the questions shows what employers will see. Your profile is what employers receive when you apply.",
    "go": "prof:settings"
   },
   {
@@ -71,7 +71,7 @@
    "go": "prof:filters",
    "release": {
     "go": "prof:where",
-    "body": "Distance is in Profile setup, under Where and pay, and it only appears when you tick Hybrid or On-site under work style, because remote jobs don't need it. Choose 10, 20, 50 or 100 miles from where you live. UAply finds that from your city and state, or from your ZIP code if it doesn't know the city. Distance works for most larger US cities. If you tapped Use my location, Profile, then Filters has a Commute distance slider that measures from where you are; to stop using your location, open Profile, then Filters, and tap Stop using my location."
+    "body": "Distance is in Profile setup, under Location and pay, and it only appears when you tick Hybrid or On-site under work style, because remote jobs don't need it. Choose 10, 20, 50 or 100 miles from where you live. UAply finds that from your city and state, or from your ZIP code if it doesn't know the city. Distance works for most larger US cities. If you tapped Use my location, Profile, then Filters has a Commute distance slider that measures from where you are; to stop using your location, open Profile, then Filters, and tap Stop using my location."
    }
   },
   {
@@ -85,7 +85,7 @@
    "id": "resume",
    "title": "Adding my resume",
    "tags": "resume cv upload file pdf word link document",
-   "body": "Open Profile, then Profile setup, step 4 (Background and links). Upload your resume file (PDF, Word or text, up to 1 MB), or add a link to it, such as a Google Drive link anyone can open. The file is saved on your device and goes along with each application UAply sends to an employer; UAply's server does not keep a copy. For jobs you finish on the employer's own site, upload it there. To fill in your profile from it, choose your resume under Fill from your resume at the top of that step: UAply fills in the fields that are still empty, never changes what you typed (it offers Replace where your resume differs), and shows the line each answer came from so you can check it. The file is read on UAply's server for a moment and not kept.",
+   "body": "Open Profile, then Profile setup, step 4 (Background and links). Tap Choose your resume at the top of that step and pick your file (PDF, Word .docx or text, up to 1 MB), or add a link to it, such as a Google Drive link anyone can open. The file is saved on your device and goes along with each application UAply sends to an employer; choosing another file later replaces it. For jobs you finish on the employer's own site, upload it there. UAply also fills in your profile from it: only the fields that are still empty, never what you typed (it offers Replace where your resume differs), and it shows the line each answer came from so you can check it. The file is read on UAply's server for a moment and not kept.",
    "go": "prof:back",
    "release": {"body": "Open Profile, then Profile setup, step 4 (Background and links). Upload your resume file (PDF, Word or text, up to 1 MB), or add a link to it, such as a Google Drive link anyone can open. The file is saved on your device and goes along with each application UAply sends to an employer; UAply's server does not keep a copy. For jobs you finish on the employer's own site, upload it there."}
   },
@@ -154,12 +154,12 @@
    "id": "plans",
    "title": "Plans and billing",
    "tags": "plan plans billing price prices pricing cost costs pay paid fee fees charge charged expensive cheap money monthly subscription free plus pro upgrade cancel refund limit weekly applications many",
-   "body": "There are three plans. Free: 50 applications a week. Plus ($9.99 a month): 250 a week, plus extra filters and Message the hiring manager. Pro ($19.99 a month): unlimited applications. Limits count the last 7 days. Open Profile, then Plan and billing to see your usage, switch or cancel. In this test version no real payments are taken: choosing a plan only records a test payment and no card is ever asked for.",
+   "body": "There are three plans. Free: 50 applications a week. Plus ($9.99 a month): 250 a week, plus extra filters and a message to the employer with each application UAply sends (by email or into their hiring system). Pro ($19.99 a month): unlimited applications. Limits count the last 7 days. Open Profile, then Plan and billing to see your usage, switch or cancel. In this test version no real payments are taken: choosing a plan only records a test payment and no card is ever asked for.",
    "go": "prof:plan",
    "release": {
-    "body": "UAply is free during early access: nothing is charged, there is no weekly limit on applications, and every filter and Message the hiring manager are included. When paid plans start there will be three: Free (50 applications a week), Plus ($9.99 a month, 250 a week) and Pro ($19.99 a month, unlimited). Open Profile, then Plan and billing to see which applies today: while it says paid plans are coming, everything is free. To choose a paid plan you need an account; payment is made on Stripe's own secure page, so UAply never sees your card number, and you can cancel any time in Manage billing.",
+    "body": "UAply is free during early access: nothing is charged, there is no weekly limit on applications, and every filter and a message to the employer with each application UAply sends (by email or into their hiring system) are included. When paid plans start there will be three: Free (50 applications a week), Plus ($9.99 a month, 250 a week) and Pro ($19.99 a month, unlimited). Open Profile, then Plan and billing to see which applies today: while it says paid plans are coming, everything is free. To choose a paid plan you need an account; payment is made on Stripe's own secure page, so UAply never sees your card number, and you can cancel any time in Manage billing.",
     "paid": {
-     "body": "There are three plans. Free: 50 applications a week. Plus ($9.99 a month): 250 a week, plus extra filters and Message the hiring manager. Pro ($19.99 a month): unlimited applications (fair use). Limits count the last 7 days. To choose a plan you need an account: open Profile, then Plan and billing, and tap Choose Plus or Choose Pro. Payment is made on Stripe's own secure page, so UAply never sees your card number. To cancel, open Plan and billing and tap Manage billing; your plan stays until the end of the month you paid for."
+     "body": "There are three plans. Free: 50 applications a week. Plus ($9.99 a month): 250 a week, plus extra filters and a message to the employer with each application UAply sends (by email or into their hiring system). Pro ($19.99 a month): unlimited applications (fair use). Limits count the last 7 days. To choose a plan you need an account: open Profile, then Plan and billing, and tap Choose Plus or Choose Pro. Payment is made on Stripe's own secure page, so UAply never sees your card number. To cancel, open Plan and billing and tap Manage billing; your plan stays until the end of the month you paid for."
     },
     "hidden": {
      "body": "Right now UAply has one plan: Free. Plus and Pro are coming soon, and Plan and billing will show their prices before anything can be bought. Nothing is charged and no card is asked for. Open Profile, then Plan and billing to see your plan and, if a weekly limit applies, how many applications you have used."

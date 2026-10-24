@@ -1,4 +1,4 @@
-// One pay question, per year or per hour (Saif, October 24): Profile setup step 3 "Where and pay" asks the lowest pay with a per year /
+// One pay question, per year or per hour (Saif, October 24): Profile setup step 3 "Location and pay" asks the lowest pay with a per year /
 // per hour choice beside it, remembered across a reload; step 5 no longer asks a second, yearly-only pay question (employers' forms get
 // step 3's amount, per year and per hour); matching puts hourly and yearly pay on one scale (an hour is 1/2080 of a year) while the card
 // still shows each posting's own figure and unit.

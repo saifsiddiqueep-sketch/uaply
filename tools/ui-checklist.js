@@ -11,7 +11,7 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   const F = "document.querySelector('iframe').contentDocument";
   let bad = 0;
   const check = (n, ok, x) => { if (!ok) bad++; console.log((ok ? "PASS " : "FAIL ") + n + (x ? "  " + x : "")); };
-  const STEP = { about: "About you", jobs: "Jobs you want", where: "Where and pay", back: "Background and links", final: "Eligibility and extras" };
+  const STEP = { about: "About you", jobs: "Jobs you want", where: "Location and pay", back: "Background and links", final: "Eligibility and extras" };
   const press = async (p) => {
     if (PHONE) {
       await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: p.x, y: p.y, id: 1 }] }); await sleep(40);

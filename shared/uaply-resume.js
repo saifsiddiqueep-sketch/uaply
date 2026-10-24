@@ -1,15 +1,16 @@
 /* "resume" experiment (sandbox first): Fill from your resume.
    Adds a box at the top of Profile setup, Background and links (the step with the resume file). The person chooses their resume (PDF, Word
-   .docx or text, up to 5 MB); the server reads it for a moment (resume_parse.py, POST /api/profile/resume, nothing is kept) and answers
+   .docx or text, up to 1 MB); the server reads it for a moment (resume_parse.py, POST /api/profile/resume, nothing is kept) and answers
    with the fields it found. This file then fills every EMPTY profile field with them. A field the person already typed is never changed:
    when the resume says something different, the list offers Replace for that field. The list shows each answer with the line of the
    resume it came from, so the person can check it before applying. Nothing is saved until the person saves the step, as with typing.
-   The same file is also kept as the resume that goes with applications, through the resume file box Bottom navigation already has (one
-   store, on this device), unless a different resume file is already there; then the list offers to use this one instead.
+   The same file is also kept as the resume that goes with applications, in Bottom navigation's resume store (on this device), so this
+   box's button is the only resume picker on the step (Bottom navigation's own picker is hidden) and its limit is the same 1 MB: the
+   file travels inside each application, and the server takes an application of up to 1.5 MB.
    Needs Bottom navigation; uses the Application profile's fields when that experiment is on. Registered in uaply-envs.js as "resume". */
 (function(){
 "use strict";
-var MAX=5*1024*1024,OK_EXT=/\.(pdf|docx|txt)$/i;
+var MAX=1048576,OK_EXT=/\.(pdf|docx|txt)$/i;
 var MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 var CSS=".rsBox{border:1px dashed var(--accent);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:8px;margin-bottom:14px;background:var(--surface)}"+
@@ -60,7 +61,7 @@ function apply(w){
     {k:"job_title",label:"Your job title there",id:"px-job_title"},
     {k:"job_start",label:"Started",id:"px-job_start",show:month,when:ym},
     {k:"job_end",label:"Ended",id:"px-job_end",show:month,when:ym},
-    {k:"summary",label:"About you",id:PX?"px-summary":"aSummary",twin:PX?"aSummary":""},
+    {k:"summary",label:"Summary",id:PX?"px-summary":"aSummary",twin:PX?"aSummary":""},
     {k:"linkedin",label:"LinkedIn",id:PX?"px-linkedin":"aLinked",twin:PX?"aLinked":""},
     {k:"portfolio",label:"Portfolio or GitHub",id:PX?"px-portfolio":"aSite",twin:PX?"aSite":""},
     {k:"school",label:"School",id:"px-school"},
@@ -80,9 +81,10 @@ function apply(w){
     '<div class="rsActs"><button type="button" class="btn" id="rsChoose">Choose your resume</button>'+
     '<input type="file" class="rsPick" id="rsFile" tabindex="-1" aria-hidden="true" accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain">'+
     '<button type="button" class="linkbtn" id="rsSaved" hidden></button></div>'+
-    '<p><small>PDF, Word (.docx) or text, up to 5 MB. The file is read on UAply\'s server for a moment and not kept there.</small></p>'+
+    '<p><small>PDF, Word (.docx) or text, up to 1 MB. Kept on this device and sent with each application UAply delivers. The file is read on UAply\'s server for a moment and not kept there.</small></p>'+
     '<p id="rsMsg" role="status" aria-live="polite"></p><div id="rsOut"></div>';
   box0.insertBefore(box,box0.firstChild);
+  var pick0=d.getElementById("resPick");if(pick0)pick0.hidden=true;   /* one resume picker on the step: this box's */
   var input=d.getElementById("rsFile"),choose=d.getElementById("rsChoose"),savedBtn=d.getElementById("rsSaved"),msgEl=d.getElementById("rsMsg"),out=d.getElementById("rsOut");
   var last=null;   /* the last answer, so Replace can use it */
 
@@ -168,22 +170,18 @@ function apply(w){
     keep(file);
   }
 
-  /* keep the same file as the resume sent with applications, through Bottom navigation's resume file box (the one store) */
+  /* keep the same file as the resume sent with applications, in Bottom navigation's resume store (one picker, one store): the
+     resume you choose here is your resume, so it also replaces an older file */
   function keep(file){
     var k=d.getElementById("rsKeep");if(!k||!file||!file.blob)return;
-    var have=stored(),pick=d.getElementById("pResFile");
+    var have=stored();
     if(have&&have.name===file.name&&have.size===file.size){k.textContent="This is also the resume file sent with your applications.";return}
-    if(file.size>1048576){k.textContent="Your resume is over 1 MB, so it was read but not kept for applications. Save a smaller PDF and add it under Resume below.";return}
-    if(!pick||typeof w.DataTransfer!=="function"){k.textContent="To send this file with your applications, add it under Resume below.";return}
-    function put(){
-      try{var dt=new w.DataTransfer();dt.items.add(new w.File([file.blob],file.name,{type:file.blob.type||""}));pick.files=dt.files}catch(e){k.textContent="To send this file with your applications, add it under Resume below.";return false}
-      pick.dispatchEvent(new w.Event("change",{bubbles:true}));
-      setTimeout(paintSaved,300);
-      return true;
-    }
-    if(!have){if(put())k.textContent="We also added it as the resume file sent with your applications.";return}
-    k.innerHTML='Your applications send '+esc(have.name)+'. <button type="button" class="linkbtn" id="rsUse">Send this resume instead</button>';
-    d.getElementById("rsUse").onclick=function(){if(put())k.textContent="Done: your applications now send "+file.name+"."};
+    if(typeof w.__uaplySetResumeFile!=="function")return;
+    w.__uaplySetResumeFile(file.blob,function(ok){
+      paintSaved();
+      k.textContent=!ok?"Your resume was read, but this browser could not keep the file for applications.":
+        have?"Your applications now send "+file.name+" instead of "+have.name+".":"We also added it as the resume file sent with your applications.";
+    });
   }
 
   out.addEventListener("click",function(e){
@@ -214,7 +212,7 @@ function apply(w){
   input.addEventListener("change",function(){
     var f=input.files&&input.files[0];input.value="";if(!f)return;
     if(!OK_EXT.test(f.name)){say(/\.doc$/i.test(f.name)?"That is an older Word file (.doc). Open it in Word, save it as .docx or PDF, and try again.":/\.(png|jpe?g|heic|gif|webp)$/i.test(f.name)?"That is a picture, not a document. Use the PDF or Word file of your resume instead.":"Use a PDF, a Word file (.docx) or a text file (.txt).",true);return}
-    if(f.size>MAX){say("That file is over 5 MB. Save your resume as a smaller PDF or Word file and try again.",true);return}
+    if(f.size>MAX){say("That file is over 1 MB. Save your resume as a smaller PDF or Word file and try again.",true);return}
     if(!f.size){say("That file is empty. Choose the file of your resume and try again.",true);return}
     var rd=new w.FileReader();
     rd.onload=function(){send(f.name,String(rd.result||""),{name:f.name.slice(0,120),size:f.size,blob:f})};

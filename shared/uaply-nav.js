@@ -67,7 +67,7 @@ function patch(s){
   s=once(s,'var mo=p.modes[job.mode]?1:((job.mode==="hybrid"&&p.modes.remote)?0.5:0);','var anyM=p.modes.remote||p.modes.hybrid||p.modes.onsite;var mo=!anyM?1:(p.modes[job.mode]?1:((job.mode==="hybrid"&&p.modes.remote)?0.5:0));');
   s=once(s,'have:mo===1?"Accepted":(mo?"Hybrid, you prefer remote":"Not on your list")','have:mo===1?(anyM?"Accepted":"No preference set"):(mo?"Hybrid, you prefer remote":"Not on your list")');
   s=once(s,'$("pm-remote").checked=!!p.modes.remote;$("pm-hybrid").checked=!!p.modes.hybrid;$("pm-onsite").checked=!!p.modes.onsite;$("pReloc").checked=!!p.reloc;','var mm=X?{}:p.modes;$("pm-remote").checked=!!mm.remote;$("pm-hybrid").checked=!!mm.hybrid;$("pm-onsite").checked=!!mm.onsite;$("pReloc").checked=X?false:!!p.reloc;');
-  /* skills also count when your headline, About you or major says them (a job asking for "SQL" is met if your summary mentions SQL) */
+  /* skills also count when your headline, summary or major says them (a job asking for "SQL" is met if your summary mentions SQL) */
   s=once(s,'var have=p.skills.map(norm);','var have=p.skills.map(norm).concat(window.__uaplyTextSkills?window.__uaplyTextSkills(job,p).map(norm):[]);');
   s=once(s,'have:matched.length+" of "+job.skills.length+" skills"}','have:matched.length+" of "+job.skills.length+" skills"+(window.__uaplyTextNote?window.__uaplyTextNote(job,p):"")}');
   s=once(s,'var have=S.profile.skills.map(norm);','var have=S.profile.skills.map(norm).concat(window.__uaplyTextSkills?window.__uaplyTextSkills(j,S.profile).map(norm):[]);');
@@ -533,7 +533,7 @@ function apply(w,host){
     interview:[["accepted","Accepted"],["rejected","Rejected"],["applied","Back to applied"],["withdraw","Withdraw"]]
   };
   var EMPTY={
-    applied:"No applications yet. Swipe right on a job, internship or co-op: UAply applies for you at connected employers and takes you to the employer\'s page everywhere else.",
+    applied:"No applications yet. Swipe right on a job, internship or co-op: UAply sends your application into the employer\'s hiring system or by email where it can, and everywhere else saves it here with a receipt so you finish on the employer\'s site.",
     accepted:"Nothing here yet. Tap Accepted on an application when you get an offer.",
     rejected:"Nothing here. Tap Rejected on an application when you hear back.",
     interview:"Nothing here yet. Tap Interview on an application when a company invites you."
@@ -647,7 +647,7 @@ function apply(w,host){
      and this job's own page are ever filled (AssistActivity checks the address before every look at the page). */
   var ASSIST_KEEP=/^(city|state|country|school|degree|major|grad|jobStart|jobEnd|auth|sponsor|adult|start|relocate|office|former|govt|phd|heard)$/;
   var ASSIST_STANDIN={first:"A",last:"B",name:"A B",email:"a@example.com",phone:"2155550100",linkedin:"https://www.linkedin.com/in/a",website:"https://example.com",street:"1 Main St",zip:"00000",gpa:"3.0",salary:"1"};
-  var ASSIST_NEED={first:"first name",last:"last name",name:"name first last",email:"email",phone:"phone country",phonecc:"country",linkedin:"linkedin",github:"website",twitter:"twitter",website:"website",company:"company jobEnd",title:"title jobEnd",current:"company jobEnd",school:"school",degree:"degree",major:"major",grad:"grad",gradmonth:"grad",gradyear:"grad",gpa:"gpa",start:"start",jobmonth:"jobStart",jobyear:"jobStart",endmonth:"jobEnd company",endyear:"jobEnd company",heard:"heard",salary:"salary",why:"why",summary:"summary",headline:"headline",zip:"zip",csz:"city state zip",street:"street city state zip",country:"country",state:"state",city:"city state country",auth:"auth sponsor",sponsor:"sponsor auth",nosponsor:"auth sponsor",relocate:"relocate",office:"office",former:"former",govt:"govt",phd:"phd",adult:"adult"};
+  var ASSIST_NEED={first:"first name",last:"last name",name:"name first last",email:"email",phone:"phone country",phonecc:"country",linkedin:"linkedin",github:"website",twitter:"twitter",website:"website",company:"company jobEnd",title:"title jobEnd",current:"company jobEnd",school:"school",degree:"degree",major:"major",grad:"grad",gradmonth:"grad",gradyear:"grad",gpa:"gpa",start:"start",jobmonth:"jobStart",jobyear:"jobStart",endmonth:"jobEnd company",endyear:"jobEnd company",heard:"heard",salary:"salary",why:"why",cover:"note",summary:"summary",headline:"headline",zip:"zip",csz:"city state zip",street:"street city state zip",country:"country",state:"state",city:"city state country",auth:"auth sponsor",sponsor:"sponsor auth",nosponsor:"auth sponsor",relocate:"relocate",office:"office",former:"former",govt:"govt",phd:"phd",adult:"adult"};
   function assistShape(p){var s={};Object.keys(p||{}).forEach(function(k){var v=p[k];if(k==="answers"){var a={};Object.keys(v||{}).forEach(function(q){var x=String(v[q]||"");a[q]=x.length<=80?x:"A"});s.answers=a}else if(k==="resume")s.resume=v?{name:"resume.pdf",type:String(v.type||"application/pdf")}:null;else if(ASSIST_KEEP.test(k))s[k]=v;else s[k]=v?(Object.prototype.hasOwnProperty.call(ASSIST_STANDIN,k)?ASSIST_STANDIN[k]:"A"):""});return s}
   function assistOnly(p,sc,asked){var o={answers:{}},own=Object.prototype.hasOwnProperty;if(!p||!sc)return o;(sc.keys||[]).forEach(function(k){if(own.call(ASSIST_NEED,k))ASSIST_NEED[k].split(" ").forEach(function(f){if(own.call(p,f)&&f!=="answers"&&f!=="resume")o[f]=p[f]})});var want={};(sc.answerKeys||[]).concat(asked||[]).forEach(function(k){want[String(k)]=1});Object.keys(p.answers||{}).forEach(function(k){if(own.call(want,k))o.answers[k]=p.answers[k]});if(sc.resume===true&&p.resume)o.resume=p.resume;return o}
   function assistHosts(cfg,url){var out=[],add=function(h){h=String(h||"").toLowerCase();if(/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(h)&&out.indexOf(h)<0)out.push(h)},s=cfg&&cfg.systems||{};Object.keys(s).forEach(function(k){var hs=s[k]&&s[k].hosts;if(Array.isArray(hs))hs.forEach(add)});try{var u=new w.URL(url);if(u.protocol==="https:")add(u.hostname)}catch(e){}return out}
@@ -796,7 +796,7 @@ function apply(w,host){
   var PLANS={
     /* internal keys stay trial/starter/pro so saved choices keep working; the names and limits are the decided plan */
     trial:{name:"Free",price:0,cap:50,perks:["50 applications a week","The full Job Tracker","Core filters"]},
-    starter:{name:"Plus",price:9.99,cap:250,perks:["250 applications a week","Benefits, applicant and dealbreaker filters","Message the hiring manager"]},
+    starter:{name:"Plus",price:9.99,cap:250,perks:["250 applications a week","Benefits, applicant and dealbreaker filters","A message to the employer with each application UAply sends (by email or into their hiring system)"]},
     pro:{name:"Pro",price:19.99,cap:0,perks:["Unlimited applications (fair use)","Everything in Plus","Priority support"]}
   };
   var PERKS=[["health","Health insurance"],["dental","Dental insurance"],["vision","Vision insurance"],["k401","401(k)"],["match","401(k) with employer match"],["loan","Student loan repayment"],["stock","Stock options"],["pto","Paid time off (PTO)"],["maternity","Paid maternity leave"],["paternity","Paid paternity leave"],["tuition","Tuition assistance"]];
@@ -1087,7 +1087,7 @@ function apply(w,host){
     return b.fr>=0.99?{s:1,have:'Matches "'+b.name+'"'}:(b.fr>=0.6?{s:0.5,have:'Partly matches "'+b.name+'"'}:{s:0,have:"Not one of your titles"});
   };
   w.__uaplyHome=function(){return homeGeo()};
-  /* skills your own words already say: your headline, About you and major count as skills a job asks for (JS counts as JavaScript) */
+  /* skills your own words already say: your headline, summary and major count as skills a job asks for (JS counts as JavaScript) */
   var TXT_ALIAS={js:"javascript",ts:"typescript",py:"python",postgres:"postgresql",reactjs:"react","react.js":"react",nodejs:"node","node.js":"node",k8s:"kubernetes",ml:"machine learning"};
   function normTxt(s){return " "+String(s).toLowerCase().replace(/[^a-z0-9+#.\s]/g," ").replace(/\.(?=\s|$)/g,"").replace(/\s+/g," ").trim()+" "}
   var TXT={key:null,hay:" "};
@@ -1483,7 +1483,7 @@ function apply(w,host){
       (NEAR?'<div id="fMilesWrap" class="nearbox"><label for="fMiles">Commute distance</label><input type="range" id="fMiles" min="0" max="105" step="5" value="105" aria-describedby="fMilesV"><div class="rngrow"><b id="fMilesV" aria-live="polite"></b><span class="m">Left end: remote only. Right end: any distance.</span></div><small id="fMilesNote"></small><div id="fLoc"><small id="fLocState"></small><button type="button" class="btn ghost" id="fLocBtn">Use my location</button></div></div>'
         :'<div id="fMilesWrap"><label for="fMiles">Distance from your city</label><select id="fMiles"><option value="any">Any distance</option><option value="10">Within 10 miles</option><option value="20">Within 20 miles</option><option value="50">Within 50 miles</option><option value="100">Within 100 miles</option></select><small id="fMilesNote"></small></div>')+
       '<div class="checks" style="margin-top:8px"><label><input type="checkbox" id="fTitleOnly"> Hide roles that do not match my target titles</label></div><small>Uses your target titles in Profile setup. Off if you have not set your own details. Internships and co-ops are never hidden by title, and when no listing in a section matches your titles, all its roles are shown.</small>'+
-      '<div class="checks" style="margin-top:8px"><label><input type="checkbox" id="fWsPick"> Hide work styles I did not pick</label></div><small>Uses the work styles ticked in Profile setup, under Where and pay. If none are ticked, every style shows.</small>'+
+      '<div class="checks" style="margin-top:8px"><label><input type="checkbox" id="fWsPick"> Hide work styles I did not pick</label></div><small>Uses the work styles ticked in Profile setup, under Location and pay. If none are ticked, every style shows.</small>'+
       '<div id="fCommWrap"><div class="checks" style="margin-top:8px"><label><input type="checkbox" id="fNoComm"> Remove commission-only roles</label></div><small>Shown because your titles are in sales. Based on what the posting says.</small></div>'+
       '<span class="l" style="margin-top:8px;display:block">Experience level</span><div class="checks" id="fLevels">'+XP.map(function(x){return '<label><input type="checkbox" data-lvl="'+x[0]+'"> '+x[1]+'</label>'}).join("")+'</div><small>Pick none to see every level.</small>'+
       '<details id="fPerks" style="margin-top:8px"><summary style="cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:600" id="fPerksSum">Benefits</summary><div class="checks" style="flex-direction:column;align-items:flex-start;gap:6px">'+
@@ -1548,7 +1548,7 @@ function apply(w,host){
     sync();
   })();
 
-  /* Profile setup: target titles and the level readout (Jobs you want), home address and distance (Where and pay; distance only
+  /* Profile setup: target titles and the level readout (Jobs you want), home address and distance (Location and pay; distance only
      for hybrid or on-site), work eligibility and the voluntary questions (Eligibility and extras). */
   (function(){
     function syncMeta(){if(w.__uaplySyncPrefs)w.__uaplySyncPrefs()}
@@ -1640,7 +1640,7 @@ function apply(w,host){
       if(vol.length){L.push("","Voluntary self-identification:");vol.forEach(function(x){add(x[0],x[1])})}
       return L.join("\n");
     };
-    /* distance moves into Profile setup, Where and pay, and shows only for hybrid or on-site */
+    /* distance moves into Profile setup, Location and pay, and shows only for hybrid or on-site */
     var mf=null;
     if(!NEAR){   /* the sandbox keeps the commute slider in Filters instead */
       mf=d.createElement("div");mf.className="field full";mf.id="aMilesF";mf.appendChild(d.getElementById("fMilesWrap"));
@@ -1658,7 +1658,7 @@ function apply(w,host){
   (function(){
     var rf=d.createElement("div");rf.className="field full";rf.id="aResF";
     rf.innerHTML='<span class="l">Resume</span><div id="resNow"></div>'+
-      '<label for="pResFile" style="margin-top:4px">Upload your resume file</label><input type="file" id="pResFile" accept=".pdf,.doc,.docx,.txt,.md"><small>PDF, Word or text, up to 1 MB. Kept on this device, and sent with each application UAply delivers to an employer.</small>'+
+      '<div id="resPick" style="display:flex;flex-direction:column;gap:5px"><label for="pResFile" style="margin-top:4px">Upload your resume file</label><input type="file" id="pResFile" accept=".pdf,.doc,.docx,.txt,.md"><small>PDF, Word or text, up to 1 MB. Kept on this device, and sent with each application UAply delivers to an employer.</small></div>'+
       '<div id="resLinkWrap" style="display:flex;flex-direction:column;gap:5px"><label for="pResUrl" style="margin-top:8px">Or add a link to your resume (optional)</label><input type="text" id="pResUrl" inputmode="url" maxlength="300" placeholder="https://drive.google.com/..."></div><small id="resMsg" role="status"></small>';
     d.querySelector("#form .grid").appendChild(rf);FIELDS.preferences.push("aResF");
     function paintRes(m){
@@ -1670,18 +1670,24 @@ function apply(w,host){
       d.getElementById("resMsg").textContent=m||"";
       var rm=d.getElementById("resRm");if(rm)rm.onclick=function(){acct.resumeName="";acct.resumeData="";acct.resumeSize=0;saveA();paintRes("Resume file removed.")};
     }
-    d.getElementById("pResFile").addEventListener("change",function(){
-      var f=this.files[0],inp=this;if(!f)return;
-      if(f.size>1048576){inp.value="";paintRes("That file is over 1 MB.");return}
-      if(!/\.(pdf|docx?|txt|md)$/i.test(f.name)){inp.value="";paintRes("Use a PDF, Word or text file.");return}
+    /* one resume file, up to 1 MB: it goes inside each application, and the server takes an application of up to 1.5 MB (serve.py
+       MAX_APPLY_BODY). Fill from your resume (sandbox) chooses the file with its own button and hands it here, so there is one picker */
+    function takeFile(f,done){
+      done=done||function(){};
+      if(f.size>1048576){paintRes("That file is over 1 MB.");done(false);return}
+      if(!/\.(pdf|docx?|txt|md)$/i.test(f.name)){paintRes("Use a PDF, Word or text file.");done(false);return}
       readFile(f,false,function(u){
-        inp.value="";
-        if(!u||!DATA_URL.test(u)){paintRes("Could not read that file.");return}
+        if(!u||!DATA_URL.test(u)){paintRes("Could not read that file.");done(false);return}
         var prev=[acct.resumeName,acct.resumeSize,acct.resumeData];
         acct.resumeName=f.name.slice(0,120);acct.resumeSize=f.size;acct.resumeData=u;
-        if(saveA())paintRes("Resume added.");
-        else{acct.resumeName=prev[0];acct.resumeSize=prev[1];acct.resumeData=prev[2];paintRes("Not enough browser storage for that file.")}
+        if(saveA()){paintRes("Resume added.");done(true)}
+        else{acct.resumeName=prev[0];acct.resumeSize=prev[1];acct.resumeData=prev[2];paintRes("Not enough browser storage for that file.");done(false)}
       });
+    }
+    w.__uaplySetResumeFile=takeFile;
+    d.getElementById("pResFile").addEventListener("change",function(){
+      var f=this.files[0],inp=this;if(!f)return;
+      takeFile(f,function(){inp.value=""});
     });
     var url=d.getElementById("pResUrl");
     url.addEventListener("change",function(){
@@ -1812,7 +1818,7 @@ function apply(w,host){
     }
     if(!!BILL.signedIn!==!!SRV.user&&BILL._asked!==who){BILL._asked=who;loadBilling()}       /* signed in or out since the plan was last read: read it again (the screen redraws when it arrives) */
     if(earlyAccess())return '<div class="plan" data-cur="true" style="display:flex;flex-direction:column;gap:6px"><b>Current plan: Free (early access)</b>'+
-      '<ul><li>No weekly limit on applications</li><li>The full Job Tracker</li><li>Every filter</li><li>Message the hiring manager</li></ul>'+
+      '<ul><li>No weekly limit on applications</li><li>The full Job Tracker</li><li>Every filter</li><li>A message to the employer with each application UAply sends (by email or into their hiring system)</li></ul>'+
       '<small>Nothing is charged and no card is ever asked for. Before any paid plan starts, you will see its price here first.</small>'+(BILL.hidden?'<small id="plansSoon"><b>Plus and Pro are coming soon.</b></small>':'')+'</div>';
     var keys=["free","plus","pro"],cur=BILL.plan||"free",P=BILL.plans;
     /* a free-only launch (billing_api.hidden): only Free, and an existing paid plan's own card so Manage billing stays reachable; no Choose buttons */
@@ -1843,6 +1849,9 @@ function apply(w,host){
     var c=w.__uaplyConsentInfo?w.__uaplyConsentInfo():null;
     if(c&&c.current&&c.at)return "You agreed to the Terms and Privacy Policy on "+new Date(c.at).toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"})+".";
     if(c)return "You agreed to an earlier version of the Terms and Privacy Policy. UAply asks you again before your next swipe right.";
+    /* the account's own agreement (the Terms tick at sign-up, kept by the server as terms_at): signed in, the person has agreed */
+    var t=SRV.user&&+SRV.user.termsAt;
+    if(t>0)return "You agreed to the Terms and Privacy Policy on "+new Date(t*1000).toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"})+", when you created your account. Before your first swipe right on this device, UAply shows what a swipe right does and asks you to agree to that.";
     return "You have not agreed to the Terms and Privacy Policy on this device yet. UAply asks before your first swipe right.";
   }
   function billingAction(k,btn){
@@ -1905,7 +1914,7 @@ function apply(w,host){
      2026-10-13, so it needs the attorney review before launch. */
   function autoAllowed(){if(REL||(typeof SRV!=="undefined"&&SRV&&SRV.up))return BILL.plan!=="free"||!BILL.enabled;var s=planState();return s.plan!==PLANS.trial&&s.ok}
   w.__uaplyAutoMsg=function(){return autoAllowed()&&!!acct.fAuto};
-  /* what the application sends besides the profile: the details saved in Profile setup, Background and links (phone, LinkedIn, portfolio, About you, resume link) win over the optional profile form */
+  /* what the application sends besides the profile: the details saved in Profile setup, Background and links (phone, LinkedIn, portfolio, summary, resume link) win over the optional profile form */
   w.__uaplyApplyExt=function(){var x=Object.assign({},XV());var ph=phoneOf(),li=linkOf("linkedin"),pf=linkOf("portfolio"),su=summaryOf(),rs=resumeLinkOf();if(ph)x.phone=ph;if(!x.start&&acct.notice)x.notice=acct.notice;if(li)x.linkedin=li;if(pf)x.portfolio=pf;if(su)x.summary=su;if(rs)x.resume=rs;var ad=acct.addr||{};if(ad.zip)x.zip=ad.zip;if(A.S.profile&&A.S.profile.reloc&&x.relocate!=="no")x.relocate="yes";if(ad.state)x.state=ad.state;x.ack=x.ack==="yes";return x};
   w.__uaplyResume=function(){return acct.resumeData&&DATA_URL.test(acct.resumeData)?{name:acct.resumeName,size:acct.resumeSize,data:acct.resumeData}:null};   /* the file uploaded in Profile setup, Background and links */
   /* assisted apply (phone app, docs/assisted-apply.md): the profile shared/uaply-assist.js fills an employer's form with. Only what the
@@ -1936,6 +1945,9 @@ function apply(w,host){
       sponsor:sp==="yes"||/^yes/i.test(es)?"yes":sp==="no"||/^no/i.test(es)?"no":"",
       start:x.start||acct.notice||"",relocate:x.relocate||"",office:x.office||"",former:x.former||"",govt:x.govt||"",phd:x.phd||"",salary:x.salary||"",salaryHour:x.salaryHour||"",
       summary:summaryOf(),headline:x.headline||"",why:x.why||"",heard:"UAply",adult:"yes",answers:ans&&typeof ans==="object"?ans:{},
+      /* the message to the employer (Plus and Pro, the person's own switch in Profile setup): the same words UAply sends with an
+         application by email or into a hiring system, so the one-tap form fill puts it in the form's cover letter box */
+      note:job&&job.co&&job.role&&w.__uaplyAutoMsg&&w.__uaplyAutoMsg()?w.__uaplyMessage(job,(A.evaluate?A.evaluate(job,p):null)||{},p):"",
       resume:m?{name:res.name||"resume.pdf",type:m[1],b64:m[2]}:null};
   };
   w.__uaplyMessage=function(job,m,p){
@@ -1959,7 +1971,7 @@ function apply(w,host){
       cb.disabled=!ok;cb.checked=ok&&!!acct.fAuto;
       d.getElementById("aAutoPlans").hidden=ok||REL;
       d.getElementById("aAutoNote").textContent=ok
-        ?"Off until you turn it on. The message is written from your profile and the job (a template for now) and goes out with your application, only to employers that accept applications through UAply. An application cannot be unsent."
+        ?"Off until you turn it on. The message is written from your profile and the job (from a template) and goes out with your application, only to employers that accept applications through UAply. An application cannot be unsent."
         :"A Plus and Pro feature. Plus and Pro members can turn this on.";
     }
     d.getElementById("aAutoMsg").addEventListener("change",function(e){acct.fAuto=e.target.checked&&autoAllowed();saveA();sync()});
@@ -2296,7 +2308,7 @@ function apply(w,host){
   }
   function verifyHTML(){
     if(!SRV.user||SRV.user.emailVerified!==false)return "";
-    var where=SRV.canEmail?"We emailed a 6-digit code to "+E(SRV.user.email)+".":(SRV.testInbox?"No real email is connected on this computer, so the code is in the <a href='/outbox' target='_blank' rel='noopener noreferrer'>test inbox</a>. To send it to the real inbox, <a href='/setup#gmail' target='_blank' rel='noopener noreferrer'>connect Gmail</a> (about 3 minutes).":"");
+    var where=SRV.canEmail?"We emailed a 6-digit code to "+E(SRV.user.email)+".":(SRV.testInbox?"No real email is connected on this computer, so the code is in the <a href='/outbox' target='_blank' rel='noopener noreferrer'>test inbox</a>. To send it to the real inbox, <a href='/setup#gmail' target='_blank' rel='noopener noreferrer'>set up email in /setup</a> (about 3 minutes).":"");
     if(!where)return '<div class="plan" style="display:flex;flex-direction:column;gap:6px;border:1px solid var(--line)"><b>Verify your email</b><small>Email is not switched on for this site yet, so there is no code to enter. Your account works and you can swipe. Once email is on, this box shows a Send a new code button; confirmation emails and direct applications to employers need a verified email.</small></div>';
     return '<div class="plan" style="display:flex;flex-direction:column;gap:8px;border:1px solid var(--accent)"><b>Verify your email</b><small>'+where+' It works for 10 minutes. Until you verify, you will not get confirmation emails and cannot apply directly to employers.</small>'+
       '<div class="field"><label for="sCode">6-digit code</label><input type="text" id="sCode" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="123456"></div>'+
@@ -2403,7 +2415,7 @@ function apply(w,host){
     if(!SRV.user&&AUI.reset)return resetHTML();
     if(!SRV.user&&AUI.forgot&&AUI.sMode==="in")return forgotHTML();
     if(SRV.user)return '<div class="plan" style="display:flex;flex-direction:column;gap:8px"><b>You are signed in</b><small>'+E(SRV.user.email)+(SRV.user.emailVerified===false?' · email not verified yet':' · email verified')+'</small>'+verifyHTML()+
-      '<p class="note" style="margin:0">'+(SRV.user.emailVerified===false?'Once your email is verified, each swipe right sends a confirmation to it':'Every time you swipe right, a confirmation goes to this email')+(SRV.canEmail?'':SRV.testInbox?' (no real email is connected here yet, so it is saved in the <a href="/outbox" target="_blank" rel="noopener noreferrer">test inbox</a>; <a href="/setup#gmail" target="_blank" rel="noopener noreferrer">connect Gmail</a> to send real ones)':' (email is not switched on for this site yet, so no confirmation goes out for now)')+'.</p>'+
+      '<p class="note" style="margin:0">'+(SRV.user.emailVerified===false?'Once your email is verified, each swipe right sends a confirmation to it':'Every time you swipe right, a confirmation goes to this email')+(SRV.canEmail?'':SRV.testInbox?' (no real email is connected here yet, so it is saved in the <a href="/outbox" target="_blank" rel="noopener noreferrer">test inbox</a>; <a href="/setup#gmail" target="_blank" rel="noopener noreferrer">set up email in /setup</a> to send real ones)':' (email is not switched on for this site yet, so no confirmation goes out for now)')+'.</p>'+
       (AUI.survey||AUI.delOpen?'':sendForMeHTML()+'<div class="acts"><button type="button" class="btn ghost" data-auth="sout">Sign out</button></div>'+changeHTML())+
       deleteHTML()+
       '</div>';
@@ -2633,7 +2645,7 @@ function apply(w,host){
   var STEPS=[
     {k:"about",t:"About you",s:"About you",q:"Who should employers contact?",use:"These details go on every application you send, so an employer can reply to you.",anchors:["pName","pEmail","pPhone","px-phone","px-headline"]},
     {k:"jobs",t:"Jobs you want",s:"Jobs",q:"What kind of work are you looking for?",use:"This is the core of your matches. Titles, skills, experience and education change every score and decide which jobs show. The opportunity types you pick open first in the Jobs menu at the bottom.",anchors:["pTitle","px-types-fulltime","pSkills","pYears","pEdu"]},
-    {k:"where",t:"Where and pay",s:"Where and pay",q:"Where, how, and for how much?",use:"City, work style, distance, willingness to relocate and minimum pay all change your match score and which jobs show. Your state, ZIP code and country also fill in employer forms, and your state and ZIP code help find your location for distance. Your street stays on this device.",anchors:["aAddr","pm-remote","aMilesF","pSalary","px-start","aNoticeF"]},
+    {k:"where",t:"Location and pay",s:"Location and pay",q:"Where, how, and for how much?",use:"City, work style, distance, willingness to relocate and minimum pay all change your match score and which jobs show. Your state, ZIP code and country also fill in employer forms, and your state and ZIP code help find your location for distance. Your street stays on this device.",anchors:["aAddr","pm-remote","aMilesF","pSalary","px-start","aNoticeF"]},
     {k:"back",t:"Background and links",s:"Background",q:"Show employers who you are.",use:"Sent with your applications. Your headline, summary and major also count as skills when a job asks for them. GPA is optional and never changes a match.",anchors:["px-school","px-major","px-grad","px-gpa","px-employer","px-job_title","px-job_start","px-job_end","px-summary","px-resume","px-linkedin","px-portfolio","aResF","aSummaryF","aLinkedF","aSiteF","aCoverF"]},
     {k:"final",t:"Eligibility and extras",s:"Eligibility",q:"Last details.",use:"Work authorization is added to applications only. It never changes a match or hides a job. The optional section at the bottom is yours to skip.",anchors:["px-auth","px-sponsor","aElig","aAutoF","aKept","aEeo"]}
   ];
@@ -2674,7 +2686,7 @@ function apply(w,host){
     var job=px?[fv("px-employer"),[fv("px-job_title"),mon("px-job_start")?mon("px-job_start")+" to "+(mon("px-job_end")||"present"):""].filter(Boolean).join(", ")].filter(Boolean).join(": "):"";
     var rows=[["Email",fv("pEmail")],["Location",loc],["Experience",yrs?yrs+(+yrs===1?" year":" years"):""]];
     function site(u){try{var x=new w.URL(u);return x.hostname.replace(/^www\./,"")+(x.pathname.length>1?"/…":"")}catch(e){return u}}
-    if(px)rows.push(["Phone",fv("px-phone")],["Resume link",fv("px-resume")&&site(fv("px-resume"))],["LinkedIn",fv("px-linkedin")&&site(fv("px-linkedin"))],["Portfolio",fv("px-portfolio")&&site(fv("px-portfolio"))],["Education",edu],["Most recent employer",job],["Country",selText("px-country")],["Work authorization",auth],["Earliest start",selText("px-start")],["Willing to relocate",fv("px-relocate")&&selText("px-relocate")],["Looking for",types]);
+    if(px)rows.push(["Phone",fv("px-phone")],["Resume link",fv("px-resume")&&site(fv("px-resume"))],["LinkedIn",fv("px-linkedin")&&site(fv("px-linkedin"))],["Portfolio",fv("px-portfolio")&&site(fv("px-portfolio"))],["Education",edu],["Most recent employer",job],["Country",selText("px-country")],["Work authorization",auth],["Earliest start",selText("px-start")],["Willing to relocate",d.getElementById("pReloc")&&(d.getElementById("pReloc").checked?"Yes":"No")],["Looking for",types]);
     wzPrev.innerHTML='<div class="pvh">What employers see</div><div class="pv"><div class="pvTop"><span class="pvAv" aria-hidden="true">'+E(ini)+'</span><div><b>'+E(name||"Your name")+'</b><span>'+E(head||"Your title or headline")+'</span></div></div>'+
       (skills.length?'<div class="chips">'+skills.slice(0,8).map(function(s){return '<span class="chip">'+E(s)+'</span>'}).join("")+(skills.length>8?'<span class="chip">+'+(skills.length-8)+' more</span>':"")+'</div>':'<div class="pvMeta">No skills added yet</div>')+
       '<ul>'+rows.map(function(r){return '<li class="'+(r[1]?"":"no")+'"><span>'+r[0]+'</span><span>'+(r[1]?E(r[1]):"Not added yet")+'</span></li>'}).join("")+'</ul></div>'+

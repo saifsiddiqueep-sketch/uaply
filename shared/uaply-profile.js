@@ -32,7 +32,7 @@ var SPEC=[
   {k:"headline",label:"Headline",type:"text",ph:"Frontend developer who builds fast, accessible interfaces",max:120}]},
  {sec:"settings",title:"Resume and links",items:[
   {k:"resume",label:"Resume link",type:"url",full:1,ph:"https://drive.google.com/...",hint:"A file that anyone with the link can open. Employers click this.",val:urlOk},
-  {k:"summary",label:"About you",type:"textarea",full:1,ph:"Two or three sentences on what you do best and what you want next.",max:600},
+  {k:"summary",label:"Summary",type:"textarea",full:1,ph:"Two or three sentences on what you do best and what you want next.",max:600},
   {k:"linkedin",label:"LinkedIn",type:"url",ph:"https://www.linkedin.com/in/...",val:urlOk},
   {k:"portfolio",label:"Portfolio or GitHub",type:"url",ph:"https://github.com/...",val:urlOk}]},
  {sec:"settings",title:"Education and experience",items:[
@@ -52,10 +52,8 @@ var SPEC=[
  {sec:"preferences",title:"What you are looking for",items:[
   {k:"types",label:"Opportunity types",type:"checks",full:1,opts:[["fulltime","Full-time"],["parttime","Part-time"],["internship","Internship"],["coop","Co-op"]]}]},
  /* the questions most employers' own application forms ask; answered once here, UAply fills them in on every application
-    ("Willing to relocate" here and the box under Work style are the same answer: changing one changes the other) */
+    (relocating and working from the office are not asked again here: both come from Work style in step 3, see officeAndReloc below) */
  {sec:"preferences",title:"Questions employers ask",items:[
-  {k:"office",label:"Willing to work from the job's office (hybrid or on-site)?",type:"select",opts:[["","Choose"],["yes","Yes"],["no","No"]]},
-  {k:"relocate",label:"Willing to relocate for the right job?",type:"select",opts:[["","Choose"],["yes","Yes"],["no","No"]]},
   {k:"former",label:"Have you worked at the companies you apply to?",type:"select",full:1,hint:"Choose No only if you have never worked at any company you swipe right on.",opts:[["","Ask me each time"],["no","No, never"]]},
   {k:"govt",label:"Are you, or a close relative, a government official?",type:"select",opts:[["","Choose"],["no","No"],["yes","Yes"]]},
   {k:"phd",label:"Currently in a PhD program?",type:"select",opts:[["","Choose"],["no","No"],["yes","Yes"]]},
@@ -103,13 +101,15 @@ function apply(w){
 
   /* the country belongs with the home address (city, state and ZIP code), so it is asked right after the ZIP code */
   var zipF=d.getElementById("adZip");if(zipF&&zipF.closest(".field"))zipF.closest(".field").after(el("country").closest(".field"));
-  /* "Willing to relocate" is also a box under Work style (it changes which jobs show); the two always give the same answer */
-  var relBox=d.getElementById("pReloc"),relSel=el("relocate");
-  if(relBox){
-    relSel.addEventListener("change",function(){if(relSel.value)relBox.checked=relSel.value==="yes"});
-    relBox.addEventListener("change",function(){relSel.value=relBox.checked?"yes":"no"});
+  /* asked once (Saif, October 24): employers' "willing to relocate?" is the Willing to relocate box under Work style in step 3, and
+     "willing to work from the office?" is Yes when Hybrid or On-site is ticked there, No when only Remote is (nothing ticked: asked each time) */
+  function officeAndReloc(x){
+    var c=function(i){var b=d.getElementById(i);return !!(b&&b.checked)},rb=d.getElementById("pReloc");
+    if(rb)x.relocate=rb.checked?"yes":"no";
+    x.office=c("pm-hybrid")||c("pm-onsite")?"yes":c("pm-remote")?"no":"";
+    if(!x.office)delete x.office;
+    return x;
   }
-  function relSync(){if(relBox&&!relSel.value&&relBox.checked)relSel.value="yes"}
   function readItem(it){
     if(it.type==="checks")return it.opts.filter(function(o){return d.getElementById(id(it.k,o[0])).checked}).map(function(o){return o[0]});
     if(it.type==="url")return fullLink(el(it.k).value);   /* what is saved and sent is always the completed https:// link */
@@ -122,7 +122,7 @@ function apply(w){
       else{el(it.k).value=typeof o[it.k]==="string"||typeof o[it.k]==="number"?o[it.k]:"";if(it.type==="select"&&el(it.k).selectedIndex<0)el(it.k).selectedIndex=0}   /* a list with no "Choose" (country) starts on its first answer */
     });
     ALL.forEach(validate);update();
-    setTimeout(function(){relSync();update()},0);   /* the app fills its own fields (like email and Work style) right after this, so recount once it is done */
+    setTimeout(update,0);   /* the app fills its own fields (like email and Work style) right after this, so recount once it is done */
   }
   /* one pay question (Saif, October 24): the lowest pay in step 3, per year or per hour, is also what employers' forms get when they ask
      what pay you expect (step 5 used to ask again, per year only). Stored with the rest as salary (a year, whole dollars) and salaryHour
@@ -134,7 +134,7 @@ function apply(w){
     else{x.salary="";x.salaryHour=""}
     return x;
   }
-  w.__uaplyExtRead=function(){return payFromStep3(read())};
+  w.__uaplyExtRead=function(){return officeAndReloc(payFromStep3(read()))};
   /* an older profile answered step 5's yearly pay and left step 3 blank: that answer becomes the lowest pay, per year */
   w.__uaplyExtFill=function(x){fill(x);try{var i=d.getElementById("pSalary"),p=w.__uaply&&w.__uaply.S.profile;if(i&&!(+i.value>0)&&!(p&&p.salary>0)&&+(x&&x.salary)>0){i.value=String(+x.salary);var y=d.getElementById("pu-year");if(y)y.checked=true}}catch(e){}};
 
