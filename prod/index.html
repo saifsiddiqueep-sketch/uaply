@@ -565,7 +565,7 @@ function setPayUnit(u){var h=$("pu-hour"),y=$("pu-year");if(h)h.checked=u==="hou
 function fillForm(){
   var p=S.profile;setPayUnit(p.payUnit);
   $("pName").value=p.name;$("pTitle").value=p.title;$("pYears").value=p.years;$("pEdu").value=p.edu;
-  $("pSkills").value=p.skills.join(", ");$("pSalary").value=p.salary;$("pLoc").value=p.loc;
+  $("pSkills").value=p.skills.join(", ");$("pSalary").value=p.salary>0?p.salary:"";$("pLoc").value=p.loc;
   suggest();$("pm-remote").checked=!!p.modes.remote;$("pm-hybrid").checked=!!p.modes.hybrid;$("pm-onsite").checked=!!p.modes.onsite;$("pReloc").checked=!!p.reloc;
 }
 ["pu-year","pu-hour"].forEach(function(id){var r=$(id);if(r)r.addEventListener("change",function(){setPayUnit(payUnitOf())})});

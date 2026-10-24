@@ -26,10 +26,19 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   const prof = () => ev("JSON.stringify((()=>{const p=" + FW + ".__uaply.S.profile;return {payUnit:p.payUnit,salary:p.salary,ext:{salary:p.ext&&p.ext.salary,salaryHour:p.ext&&p.ext.salaryHour,payUnit:p.ext&&p.ext.payUnit}}})())").then(JSON.parse);
 
   // ---- the question: one amount and per year / per hour, 14 px, 44 px targets, fits the screen ----
+  await load();
+  // the person's own profile with no pay yet (as sign-up's questions make it: salary 0), saved and read back after a reload
+  await ev("(()=>{const A=" + FW + ".__uaply;Object.assign(A.S.profile,{custom:true,name:'Pay Tester',salary:0});A.save()})()");
   await load(); await step3();
   let f = await field();
   check("step 3 asks the lowest pay with a per year / per hour choice beside it, per year by default", !!f && f.vis && f.unit === "year" && JSON.stringify(f.labels) === '["per year","per hour"]' && /Lowest pay/.test(f.label), JSON.stringify(f));
   check("the choices are 44 px tall targets in 14 px text, and the row fits the screen (no sideways scroll)", f.h.every((x) => x >= 44) && f.fs.every((x) => x >= 14) && !f.row.sw && f.row.right <= f.row.vw, JSON.stringify(f));
+  check("no pay set yet: the box is empty (the example shows), never a 0 that typing joins onto", f.val === "", JSON.stringify(f));
+  await ev("(()=>{const i=" + F + ".getElementById('pSalary');i.focus();i.select&&i.select()})()");
+  await send("Input.insertText", { text: "18" }); await sleep(150);
+  const typed = await ev("(" + F + ".getElementById('pSalary')||{}).value");
+  check("typing 18 in the empty box gives 18 (it showed 018 on the Galaxy)", typed === "18", typed);
+  await ev("(()=>{const i=" + F + ".getElementById('pSalary');i.value='';i.dispatchEvent(new Event('input',{bubbles:true}))})()");
   check("plain example and help: e.g. 55000 per year, or 18 per hour", f.ph === "e.g. 55000" && /55000 per year/.test(f.help) && /18 per hour/.test(f.help), JSON.stringify(f));
   const s5 = await ev("(()=>{const d=" + F + ";return JSON.stringify({box:!!d.getElementById('px-salary'),text:/Expected yearly pay/.test(d.body.innerText)})})()").then(JSON.parse);
   check("step 5 no longer asks a second pay question (Expected yearly pay)", !s5.box && !s5.text, JSON.stringify(s5));
