@@ -51,7 +51,7 @@ module.exports = async ({ ev, sleep, nav, send, on, logs }) => {
   // ---- 1. a person with that target title: the first card from page 1, then the whole list ranked, the top card held ----
   await send("Page.navigate", { url: base + "/" });
   for (let i = 0; i < 80 && !(await ev("!!(" + F + "&&" + FW + ".__uaply&&" + F + ".getElementById('bnav'))").catch(() => false)); i++) await sleep(250);
-  await ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b)b.click()})()"); await sleep(300);
+  await ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b){b.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});b.disabled=false;b.click()}})()"); await sleep(300);
   // let this first visit's whole list finish (it saves a copy of the list on the device) before that copy is cleared below: cleared
   // while it was still coming, the copy came back and the next visit drew its first card from it (600 jobs, not the first page alone)
   for (let i = 0; i < 120 && !(await ev("(()=>{try{const w=" + FW + ";return !w.document.documentElement.classList.contains('uaRank')&&w.__uaply.JOBS.filter(j=>j.live).length>260}catch(e){return false}})()")); i++) await sleep(250);

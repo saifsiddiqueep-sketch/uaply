@@ -11,7 +11,7 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   const F = "document.querySelector('iframe').contentDocument";
   let bad = 0;
   const check = (n, ok, x) => { if (!ok) bad++; console.log((ok ? "PASS " : "FAIL ") + n + (x ? "  " + x : "")); };
-  const STEP = { about: "About you", jobs: "Jobs you want", where: "Where and pay", back: "Background and links", final: "Eligibility and extras" };
+  const STEP = { about: "About you", jobs: "Jobs you want", where: "Location and pay", back: "Background and links", final: "Eligibility and extras" };
   const press = async (p) => {
     if (PHONE) {
       await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: p.x, y: p.y, id: 1 }] }); await sleep(40);
@@ -28,7 +28,7 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   };
   await nav("http://127.0.0.1:" + PORT + "/");
   await sleep(3500);
-  await ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b)b.click()})()"); await sleep(300);
+  await ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b){b.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});b.disabled=false;b.click()}})()"); await sleep(300);
   await overview();
   const items = JSON.parse(await ev("JSON.stringify([...(" + F + ").querySelectorAll('#pane-track button[data-go]')].filter(b=>b.offsetParent&&b.innerText.trim()==='Add').map(b=>[b.parentNode.querySelector('span').innerText.trim(),b.getAttribute('data-go')]))"));
   check("the Overview lists what is missing from the profile, each with an Add button", items.length > 0, items.length + " item(s)");

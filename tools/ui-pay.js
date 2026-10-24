@@ -20,7 +20,7 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   await send("Page.navigate", { url: base + "/" });
   for (let i = 0; i < 80 && !(await ev("(()=>{try{const w=" + FW + ";return !!(w.__uaply&&w.__uaplyJobs&&w.document.getElementById('bnav'))}catch(e){return false}})()")); i++) await sleep(250);
   await sleep(1500);
-  await ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b)b.click()})()"); await sleep(800);
+  await ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b){b.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});b.disabled=false;b.click()}})()"); await sleep(800);
   await ev("(()=>{const b=[...(" + F + ").querySelectorAll('#locAsk button')].find(x=>/Not now/.test(x.innerText));if(b)b.click()})()");
 
   // the three postings, and nothing else in the deck; the profile asks for $100k a year
@@ -48,7 +48,9 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
     check("an hourly range: the card shows it as given with its unit and cents, $18–$22.50 per hour", Hr.pay === EXPECT[4243002].pay, Hr.pay);
     check("no pay: the card says Pay not listed in the pay line's place", U.pay === EXPECT[4243003].pay, U.pay);
     check("the Salary line: the yearly range against the yearly minimum, as before", /\$60k to \$80k/.test(Y.sal) && /You want \$100k\+/.test(Y.sal), Y.sal);
-    check("the Salary line of the hourly job names the hourly pay and is not scored against the yearly minimum (Partly met, never Not met)", Hr.sal.includes(EXPECT[4243002].ask) && Hr.dot === "Partly met", Hr.sal + " / " + Hr.dot);
+    // since October 24 hourly and yearly pay are matched on one scale (an hour is 1/2080 of a year): $18 to $22.50 an hour is about $47k a
+    // year, under this person's $100k a year, so the Salary line is not met; the line itself still names the pay as the posting gives it
+    check("the Salary line of the hourly job names the hourly pay, measured against the yearly minimum on one scale (Not met: about $47k a year)", Hr.sal.includes(EXPECT[4243002].ask) && Hr.dot === "Not met", Hr.sal + " / " + Hr.dot);
     check("the Salary line of the job with no pay says Not listed", /Salary\s*Not listed/.test(U.sal), U.sal);
     check("no card shows a figure made from another (an hourly range as a year, or a yearly one as an hour)", ![Y, Hr, U].some((x) => DERIVED.test(x.card)), [Y, Hr, U].map((x) => x.card).join(" || "));
     check("the pay line fits the card", [Y, Hr, U].every((x) => x.w <= x.cw), JSON.stringify([Y, Hr, U].map((x) => [x.w, x.cw])));

@@ -239,7 +239,7 @@ module.exports = async ({ ev, sleep, nav, send }) => {
     await swipe("d.querySelector('#kitConsent [role=dialog] p')", 0, -400, 300);
     await step("agreement-scrolled", "agreement, scrolled to its end");
     if (LIVE) { log("live: the agreement is left unanswered (read only)"); }
-    else await tap("d.getElementById('kcYes')");
+    else await tap("(()=>{d.querySelectorAll('.kcTick').forEach(c=>{c.checked=true;c.dispatchEvent(new Event('change'))});return d.getElementById('kcYes')})()");
   }
   if (!LIVE) {
     // ---- 2. the deck: real swipes, Undo, the buttons ---------------------------------------------------------------------------------

@@ -51,5 +51,5 @@ module.exports = async function gateSignup({ ev, sleep, nav }, base, tag, opts) 
   const u = await me();
   const ok = !!u && u.email === email;
   console.log((ok ? "     " : "FAIL ") + "the test person signed up first (" + (gated ? "through the sign-in gate's card" : "POST /api/auth/signup") + "): " + (ok ? email + (u.emailVerified ? ", confirmed" : ", not yet confirmed") : "not signed in"));
-  return { email, how: gated ? "card" : "api", ok };
+  return { email, pw: PW, how: gated ? "card" : "api", ok };
 };

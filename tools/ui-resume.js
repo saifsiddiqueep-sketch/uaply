@@ -26,7 +26,7 @@ module.exports = async ({ ev, sleep, nav, shot, logs }) => {
   // behind the sign-in gate: wait until the session is known and the app (not the card) is on screen, so nothing redraws Profile setup after
   for (let i = 0; i < 40 && !(await ev("(()=>{try{const d=" + F + ";return !!d.getElementById('bnav')&&!d.body.classList.contains('sgGated')}catch(e){return false}})()")); i++) await sleep(250);
   await sleep(800);
-  await ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b)b.click()})()"); await sleep(300);
+  await ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b){b.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});b.disabled=false;b.click()}})()"); await sleep(300);
   await ev("(()=>{" + W + ".__uaplyOpenProf('back')})()"); await sleep(800);
   const step = await ev("(()=>{const c=" + F + ".querySelector('.wzDots button[aria-current=step]');return c?c.getAttribute('aria-label'):''})()");
   check("Profile setup opens on Background and links", /Background and links/.test(step), step);
@@ -35,6 +35,10 @@ module.exports = async ({ ev, sleep, nav, shot, logs }) => {
   check("the box fits the phone's width", boxOn && boxOn.right <= boxOn.vw + 1, JSON.stringify(boxOn));
   const tap = JSON.parse(await ev("JSON.stringify((()=>{const r=" + F + ".getElementById('rsChoose').getBoundingClientRect();return {h:r.height,w:r.width}})())"));
   check("Choose your resume is a full-size tap target (44px)", tap.h >= 44, JSON.stringify(tap));
+  // one resume picker on the step, with one limit (Saif, October 24): the box's button; Bottom navigation's own file picker is hidden
+  const one = JSON.parse(await ev("JSON.stringify((()=>{const d=" + F + ",p=d.getElementById('pResFile'),b=d.getElementById('rsBox'),s=d.getElementById('aResF');" +
+    "return {pick:!!(p&&p.getClientRects().length),files:[...d.querySelectorAll('#form input[type=file]')].filter(i=>i.getClientRects().length||i.id==='rsFile').map(i=>i.id),mb:(s.innerText.match(/up to [0-9]+ MB/g)||[])}})())"));
+  check("one resume picker on the step (the box's), and one limit: up to 1 MB", !one.pick && JSON.stringify(one.files) === '["rsFile"]' && one.mb.length >= 1 && one.mb.every((x) => x === "up to 1 MB"), JSON.stringify(one));
 
   // the person already typed a school; the resume says another one
   await ev("(()=>{const w=" + W + ",e=w.document.getElementById('px-school');e.value='Drexel University';e.dispatchEvent(new w.Event('input',{bubbles:true}))})()");
@@ -80,17 +84,22 @@ module.exports = async ({ ev, sleep, nav, shot, logs }) => {
   // plain error sentences
   await choose("photo.png", "x", "image/png"); await sleep(200);
   check("a picture gets a plain sentence", /picture, not a document/.test(await ev(F + ".getElementById('rsMsg').textContent")));
-  await choose("big.pdf", "", "application/pdf", 5 * 1024 * 1024 + 1); await sleep(300);
-  check("a file over 5 MB gets a plain sentence", /over 5 MB/.test(await ev(F + ".getElementById('rsMsg').textContent")));
+  await choose("big.pdf", "", "application/pdf", 1048577); await sleep(300);
+  check("a file over 1 MB gets a plain sentence", /over 1 MB/.test(await ev(F + ".getElementById('rsMsg').textContent")));
   await choose("broken.pdf", "this is not really a pdf, only text pretending", "application/pdf"); await waitMsg();
   const broken = await ev(F + ".getElementById('rsMsg').textContent");
   check("a file that is not really a PDF gets a plain sentence from the server", /could not read|not switched on|scanned/i.test(broken), broken);
   await snap("resume-error");
+  // choosing another resume file makes it the one sent with applications (one picker, one store)
+  await choose("maya-patel-2026.txt", STUDENT + " ", "text/plain"); await waitMsg(); await sleep(400);
+  const kept2 = await ev("JSON.stringify((" + W + ".__uaplyResume&&" + W + ".__uaplyResume())||null)");
+  const keep2 = await ev("(" + F + ".getElementById('rsKeep')||{}).textContent||''");
+  check("a new resume chosen in the box replaces the one sent with applications, and says so", /"name":"maya-patel-2026.txt"/.test(kept2) && /now send maya-patel-2026.txt instead of student.txt/.test(keep2), keep2 + " " + String(kept2).slice(0, 60));
 
   // a business student, fresh browser: the latest job is part-time (Barista), so it fills the job fields, not the target title
   await ev("localStorage.clear()");
   await nav("http://127.0.0.1:" + PORT + "/?app=1"); await sleep(3500);
-  await ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b)b.click()})()"); await sleep(300);
+  await ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b){b.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});b.disabled=false;b.click()}})()"); await sleep(300);
   await ev("(()=>{" + W + ".__uaplyOpenProf('back')})()"); await sleep(800);
   const BIZ = fs.readFileSync(path.join(__dirname, "fixtures", "resumes", "business.pdf")).toString("base64");
   await ev("(()=>{const w=" + W + ",d=w.document,i=d.getElementById('rsFile');const b=Uint8Array.from(atob(" + JSON.stringify(BIZ) + "),c=>c.charCodeAt(0));const dt=new w.DataTransfer();" +

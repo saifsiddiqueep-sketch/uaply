@@ -53,7 +53,7 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
       const before = logs.length;
       console.log("   -- /uaply/" + at);
       await nav("http://127.0.0.1:" + PORT + "/uaply/" + at); await sleep(3500);
-      await ev("(()=>{const y=" + F + ".getElementById('kcYes');if(y)y.click()})()");          // a first-visit box, if any
+      await ev("(()=>{const y=" + F + ".getElementById('kcYes');if(y){y.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});y.disabled=false;y.click()}})()");          // a first-visit box, if any
       // Account: the header's Sign in button, then Sign in / Create account
       await ev(F + ".getElementById('hdrAcct').click()"); await sleep(700);
       let acct = await text("#acctSec");

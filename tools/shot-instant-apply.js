@@ -36,7 +36,7 @@ module.exports = async ({ ev, sleep, nav, shot }) => {
   console.log("card shows Apply instantly:", await ev("(" + F + ").body.innerText.indexOf('Apply instantly')>=0"));
   // swipe right: the undo window, then the result
   await ev(F + ".getElementById('btnYes').click()"); await sleep(1300);
-  await ev("(()=>{const m=" + F + ".getElementById('kcYes');if(m)m.click()})()"); await sleep(1800);
+  await ev("(()=>{const m=" + F + ".getElementById('kcYes');if(m){m.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});m.disabled=false;m.click()}})()"); await sleep(1800);
   await shot(path.join(OUT, "apply-2-undo-window.png"));
   await sleep(6500);
   await shot(path.join(OUT, "apply-3-applied.png"));

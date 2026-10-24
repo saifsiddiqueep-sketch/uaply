@@ -168,6 +168,7 @@
 
   /* what a label asks for, as a profile key (null: not something the profile answers). The first rule that matches wins. */
   var RULES = [
+    ["cover", /^(cover letter|covering letter|motivation(al)? letter)\b|^(a )?(message|note) (to|for) (the )?(hiring (manager|team)|recruiter|employer)\b/i],
     ["why", /^why\b|why (do you want|are you interested|you want)|what (makes|draws|attracts) you to (join|work)|interested in (working|joining)/i],
     ["name", /\bfirst (name )?(and|&) last name\b|\bfirst and last\b/i],
     ["first", /\b(first|given|preferred first|legal first)[ -]?name\b|^first$|^preferred name\b|^nickname\b/i],
@@ -355,8 +356,12 @@
         if (!/^\d{4}-\d{2}$/.test(ym || "")) return "";
         return /year$/.test(key) ? ym.slice(0, 4) : MONTHS[+ym.slice(5) - 1];
       case "heard": return p.heard || "UAply";
-      case "salary": return req ? (p.salary ? String(p.salary) : "") : "";   /* only where the form requires it (Profile setup says so) */
+      case "salary":   /* only where the form requires it (Profile setup says so); per hour when the field says hour */
+        if (!req) return "";
+        if (/\bhour|hourly/i.test(labelOf(el) || "") && p.salaryHour) return String(p.salaryHour);
+        return p.salary ? String(p.salary) : "";
       case "why": return el && (el.tagName === "TEXTAREA" || el.type === "text") ? fillIn(p.why, job) : "";
+      case "cover": return el && el.tagName === "TEXTAREA" ? (p.note || "") : "";   /* the message to the employer, when the person turned it on */
       case "summary": return el && (el.tagName === "TEXTAREA" || el.type === "text") ? p.summary : "";
       case "headline": return p.headline;
       case "zip": return p.zip;

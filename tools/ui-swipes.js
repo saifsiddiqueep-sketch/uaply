@@ -12,7 +12,15 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   const decisions = () => ev("JSON.stringify(Object.values(" + FW + ".__uaply.S.decisions||{}).reduce((a,d)=>{a[d.s]=(a[d.s]||0)+1;return a},{}))").then(JSON.parse);
   const click = (id) => ev("(()=>{const b=" + F + ".getElementById('" + id + "');if(!b||b.disabled)return false;b.click();return true})()");
   const key = (k) => ev(F + ".dispatchEvent(new KeyboardEvent('keydown',{key:'" + k + "',bubbles:true}))");
-  const agree = async () => { await sleep(900); return ev("(()=>{const m=" + F + ".getElementById('kcYes');if(m){m.click();return true}return false})()"); };
+  let ticksChecked = false;
+  const agree = async () => { await sleep(900);
+    if (!ticksChecked && await ev("!!" + F + ".getElementById('kcYes')")) {   // version 6: Agree works only with both ticks (checked once, on the first box)
+      ticksChecked = true;
+      const st = JSON.parse(await ev("(()=>{const d=" + F + ",y=d.getElementById('kcYes'),t=[...d.querySelectorAll('.kcTick')];const r={n:t.length,off0:y.disabled};" +
+        "t[0].click();r.off1=y.disabled;t[1].click();r.on=!y.disabled;t[1].click();r.off2=y.disabled;t[1].click();return JSON.stringify(r)})()"));
+      check("consent v6: two ticks, and Agree stays off until both are ticked", st.n === 2 && st.off0 && st.off1 && st.on && st.off2, JSON.stringify(st));
+    }
+    return ev("(()=>{const m=" + F + ".getElementById('kcYes');if(m){m.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});m.disabled=false;m.click();return true}return false})()"); };
   const setVal = (id, v) => ev("(()=>{const e=" + F + ".getElementById('" + id + "');if(!e)return false;e.value=" + JSON.stringify(v) + ";e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));return true})()");
   const pick = async (nb, label) => { await ev(F + ".getElementById('" + nb + "').click()"); await sleep(450); return ev("(()=>{const e=[...(" + F + ").querySelectorAll('.nitem')].find(b=>b.innerText.trim().startsWith(" + JSON.stringify(label) + "));if(!e)return false;e.click();return true})()"); };
   const reqs = () => ev("JSON.stringify((window.__reqs||[]).concat(" + FW + ".__reqs||[]))").then(JSON.parse);

@@ -73,7 +73,7 @@ module.exports = async ({ ev, sleep, nav }) => {
   }
   const appsBefore = await ev("fetch('/api/outbox').then(r=>r.json()).then(j=>j.applications.length)");
   await ev(F + ".getElementById('btnYes').click()"); await sleep(1500);
-  await ev("(()=>{const m=" + F + ".getElementById('kcYes');if(m)m.click()})()"); await sleep(3500);
+  await ev("(()=>{const m=" + F + ".getElementById('kcYes');if(m){m.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});m.disabled=false;m.click()}})()"); await sleep(3500);
   // the sandbox fills in the employer's real form and asks once for anything only the person can answer: answer (with hostile text too) and send
   if (await ev("(()=>{const o=" + F + ".getElementById('kitAsk');if(!o)return false;o.querySelectorAll('[data-k]').forEach(el=>{if(el.tagName==='SELECT')el.value=el.options[1]?el.options[1].text:'';else el.value=" + JSON.stringify("<img src=x onerror=\"window.top.__xss=1\">") + "});const b=" + F + ".getElementById('kaYes');if(b&&!/Profile/.test(b.innerText)){b.click();return true}return false})()")) await sleep(3500);
   const appsAfter = await ev("fetch('/api/outbox').then(r=>r.json()).then(j=>j.applications.length)");

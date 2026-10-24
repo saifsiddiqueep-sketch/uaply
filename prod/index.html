@@ -213,6 +213,10 @@ main{flex:1;min-height:0;overflow-y:auto;max-width:1100px;width:100%;margin-inli
 .field .l{font-weight:600;font-size:14px}
 .field small{color:var(--muted);font-size:14px}
 .field input[type=text],.field input[type=number],.field select{width:100%;padding:9px 11px;border-radius:10px;border:1px solid var(--line);background:var(--surface)}
+.payrow{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap}.payrow input{flex:1 1 120px;min-width:0}
+.payunit{display:flex;gap:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;flex:0 0 auto}
+.payunit label{display:flex;align-items:center;gap:6px;min-height:44px;padding:0 12px;font-size:14px;cursor:pointer;background:var(--surface)}
+.payunit label:has(input:checked){background:color-mix(in srgb,var(--accent) 14%,var(--surface));font-weight:600}
 .checks{display:flex;gap:8px;flex-wrap:wrap}
 .checks label{display:flex;gap:6px;align-items:center;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;font-weight:500}
 .full{grid-column:1/-1}
@@ -273,7 +277,10 @@ main{flex:1;min-height:0;overflow-y:auto;max-width:1100px;width:100%;margin-inli
         <div class="field"><label for="pEdu">Highest education</label>
           <select id="pEdu"><option>High school</option><option>Associate</option><option>Bachelor</option><option>Master</option><option>Doctorate</option></select></div>
         <div class="field full"><label for="pSkills">Skills</label><input type="text" id="pSkills" placeholder="React, SQL, Figma" aria-describedby="skillHelp"><small id="skillHelp">Separate with commas, or tap a suggestion below.</small><div class="chips" id="skillSug" aria-label="Suggested skills"></div></div>
-        <div class="field"><label for="pSalary">Minimum salary (USD/year)</label><input type="number" id="pSalary" min="0" step="1000" inputmode="numeric"></div>
+        <div class="field"><label for="pSalary">Lowest pay you would take (US dollars)</label>
+          <div class="payrow"><input type="number" id="pSalary" min="0" step="any" inputmode="decimal" placeholder="e.g. 55000" aria-describedby="payHelp">
+            <div class="payunit" role="radiogroup" aria-label="That amount is"><label><input type="radio" name="payUnit" id="pu-year" value="year" checked> per year</label><label><input type="radio" name="payUnit" id="pu-hour" value="hour"> per hour</label></div></div>
+          <small id="payHelp">For example 55000 per year, or 18 per hour. Jobs paying less are matched lower. Employers' forms that ask what pay you expect get it too; leave it blank to be asked each time.</small></div>
         <div class="field"><label for="pLoc">City you live in</label><input type="text" id="pLoc" placeholder="New York" autocomplete="address-level2"></div>
         <div class="field full"><span class="l" id="wsLabel">Work style you accept</span>
           <div class="checks" role="group" aria-labelledby="wsLabel">
@@ -312,7 +319,7 @@ var JOBS=[
  {id:12,co:"Juniper Press",role:"Content Marketing Lead",loc:"Remote (US)",mode:"remote",sal:[75000,95000],yrs:3,edu:"Bachelor",skills:["SEO","Copywriting","Analytics","Hiring"],blurb:"Grow readership for a publisher of regional cookbooks."}
 ];
 var JOB_BY_ID={};JOBS.forEach(function(j){JOB_BY_ID[j.id]=j});
-var SAMPLE={name:"Jordan Lee",title:"Frontend Developer",years:3,edu:"Bachelor",skills:["JavaScript","React","TypeScript","CSS","HTML","SQL","Figma"],salary:100000,loc:"New York",modes:{remote:true,hybrid:true,onsite:false},reloc:false,custom:false};
+var SAMPLE={name:"Jordan Lee",title:"Frontend Developer",years:3,edu:"Bachelor",skills:["JavaScript","React","TypeScript","CSS","HTML","SQL","Figma"],payUnit:"year",salary:100000,loc:"New York",modes:{remote:true,hybrid:true,onsite:false},reloc:false,custom:false};
 var KEY="hireswipe.v1";
 var S={profile:clone(SAMPLE),decisions:{},history:[],tips:true,scheme:"rose",v:2};
 
@@ -335,6 +342,7 @@ function sanitizeProfile(p){
     years:num(p.years,0,50),
     edu:LEVELS.indexOf(p.edu)>-1?p.edu:base.edu,
     skills:Array.isArray(p.skills)?dedupe(p.skills.filter(function(s){return typeof s==="string"})):[],
+    payUnit:p.payUnit==="hour"?"hour":"year",   /* the lowest pay is per year or per hour (old profiles: per year) */
     salary:num(p.salary,0,10000000),
     loc:typeof p.loc==="string"?p.loc:"",
     modes:{remote:!!modes.remote,hybrid:!!modes.hybrid,onsite:!!modes.onsite},
@@ -551,18 +559,22 @@ function suggest(){
 }
 $("pSkills").addEventListener("input",suggest);
 $("resetBtn").onclick=function(){S.decisions={};S.history=[];save();renderAll();toast("Swipes cleared. All jobs are back.","OK",clearToast)};
+/* the unit of the lowest pay: the two radio buttons beside the amount, and the amount's example changes with them */
+function payUnitOf(){var h=$("pu-hour");return h&&h.checked?"hour":"year"}
+function setPayUnit(u){var h=$("pu-hour"),y=$("pu-year");if(h)h.checked=u==="hour";if(y)y.checked=u!=="hour";var i=$("pSalary");if(i)i.placeholder=u==="hour"?"e.g. 18":"e.g. 55000"}
 function fillForm(){
-  var p=S.profile;
+  var p=S.profile;setPayUnit(p.payUnit);
   $("pName").value=p.name;$("pTitle").value=p.title;$("pYears").value=p.years;$("pEdu").value=p.edu;
-  $("pSkills").value=p.skills.join(", ");$("pSalary").value=p.salary;$("pLoc").value=p.loc;
+  $("pSkills").value=p.skills.join(", ");$("pSalary").value=p.salary>0?p.salary:"";$("pLoc").value=p.loc;
   suggest();$("pm-remote").checked=!!p.modes.remote;$("pm-hybrid").checked=!!p.modes.hybrid;$("pm-onsite").checked=!!p.modes.onsite;$("pReloc").checked=!!p.reloc;
 }
+["pu-year","pu-hour"].forEach(function(id){var r=$(id);if(r)r.addEventListener("change",function(){setPayUnit(payUnitOf())})});
 $("form").addEventListener("submit",function(e){
   e.preventDefault();
   S.profile={
     name:$("pName").value.trim(),title:$("pTitle").value.trim(),years:num($("pYears").value,0,50),edu:$("pEdu").value,
     skills:dedupe($("pSkills").value.split(",").map(function(s){return s.trim()})),
-    salary:num($("pSalary").value,0,10000000),loc:$("pLoc").value.trim(),
+    payUnit:payUnitOf(),salary:num($("pSalary").value,0,10000000),loc:$("pLoc").value.trim(),
     modes:{remote:$("pm-remote").checked,hybrid:$("pm-hybrid").checked,onsite:$("pm-onsite").checked},reloc:$("pReloc").checked,custom:true
   };
   save();renderAll();show("swipe");toast("Profile saved. Matches updated.","OK",clearToast);

@@ -6,7 +6,7 @@
 // 3. a LinkedIn link typed as "linkedin.com/in/..." is completed to https:// instead of blocking Save
 // 4. when no listing matches the target titles, the deck shows the roles anyway with "Showing all roles: none matched your target
 //    titles" and a way to Filters (since Oct 21); an empty deck that other filters hide says so (not "You have seen every one of these")
-// 5. Data & privacy: a restore says "Restored." (the message used to be wiped at once); "Show it again" drops "You only see this once"
+// 5. Data & privacy: a restore says "Restored." (the message used to be wiped at once); "Show it again" drops "You see this again only if the agreement changes"
 // 6. Account: the line above "You are signed in" no longer asks to sign in; "Sign in" everywhere (not "Log in"); a sign-out or a
 //    password change that reaches a restarting server (502) says so, and a failed sign-out never claims "Signed out."
 // 7. help: an answer that did not help offers "Talk to a person" at once
@@ -70,17 +70,18 @@ module.exports = async ({ ev, sleep, nav, send, logs, on }) => {
   console.log("     size " + VW + "x" + VH + ": the app frame is " + (await q("return w.innerWidth+'x'+w.innerHeight")));
   if (!check("the deck shows job cards", !!jobs, "no card after 60 s (does the server have its job feeds on?)")) { console.log("\n" + pass + " / " + (pass + fail)); return; }
   await waitFor("return d.getElementById('kcYes')", 5000);
-  await tap("d.getElementById('kcYes')");
+  await tap("(()=>{d.querySelectorAll('.kcTick').forEach(c=>{c.checked=true;c.dispatchEvent(new Event('change'))});return d.getElementById('kcYes')})()");
   await tap(byText("/^Not now$/"));
   await tap("d.getElementById('tipsClose')");
 
-  // 0. (October 21) a swipe right with an empty profile never applies: it opens "Finish your profile first", and the card stays on top
+  // 0. (Saif, October 24) a swipe right with an empty profile is never blocked: the job is saved to Job Tracker and nothing is sent
   const top0 = await q("return +d.querySelector('.card.top').getAttribute('data-id')");
   await swipe(240);
-  const fin = await waitFor("const b=d.getElementById('rdyBox');return b?b.innerText.replace(/\\s+/g,' '):''", 4000);
-  check("0. a swipe right with an empty profile opens Finish your profile first (nothing is sent)", /^Finish your profile first/.test(fin || ""), fin);
-  check("0. ...and the card stays on top", (await q("return +d.querySelector('.card.top').getAttribute('data-id')")) === top0 && (await q("return !w.__uaply.S.decisions[" + top0 + "]")) === true, "");
-  await tap("d.getElementById('rdyNo')");
+  await sleep(600);
+  check("0. a swipe right with an empty profile saves the job (nothing is sent) and the deck moves on",
+    (await q("const x=w.__uaply.S.decisions[" + top0 + "];return !!x&&!(x.sent&&(x.sent.status==='sent'||x.sent.status==='delivered_test'))")) === true &&
+    (await q("const c=d.querySelector('.card.top');return c?+c.getAttribute('data-id'):0")) !== top0, "");
+  check("0. ...with no Finish your profile box over the deck", (await q("return !d.getElementById('rdyBox')")) === true, "");
   // 1. the message after a swipe (here "Passed on ..."): as wide as the phone allows, not a column half the screen wide over the card
   await swipe(-240);
   const t1 = await waitFor("const t=[...d.querySelectorAll('.toast')].find(x=>x.getClientRects().length&&x.innerText.length>10);return t?JSON.stringify({w:Math.round(t.getBoundingClientRect().width),h:Math.round(t.getBoundingClientRect().height),vw:w.innerWidth,t:t.innerText.slice(0,70)}):''", 6000);
@@ -145,8 +146,8 @@ module.exports = async ({ ev, sleep, nav, send, logs, on }) => {
   try { fs.unlinkSync(file); } catch (e) {}
   await tap(byText("/^Show it again$/"));
   const again = await waitFor("const b=d.getElementById('kitConsent');return b?b.innerText:''", 4000);
-  check("5. the agreement shown again no longer says 'You only see this once'", !!again && !/You only see this once/.test(again), (again || "").slice(-120));
-  await tap("d.getElementById('kcYes')");
+  check("5. the agreement shown again no longer says 'You see this again only if the agreement changes'", !!again && !/You see this again only if/.test(again), (again || "").slice(-120));
+  await tap("(()=>{d.querySelectorAll('.kcTick').forEach(c=>{c.checked=true;c.dispatchEvent(new Event('change'))});return d.getElementById('kcYes')})()");
 
   // 6. Account: sign up, the line above "You are signed in", a failed sign-out, Sign in wording (the first account signs out for it)
   await ev("fetch('/api/auth/logout',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:'{}'})");

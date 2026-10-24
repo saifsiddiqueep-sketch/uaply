@@ -25,7 +25,8 @@ work of each release is in `CHANGELOG.md`. The live record of tasks is the Trell
   two reviewers for changes under 100 lines). One task per chat on Saif's side starts with it, Monday October 26.
 - After a merge to dev: trigger the deploy if it did not start, run the live checks, tag `v1.0.0-rc.N`, add the CHANGELOG entry.
 - Never automate a job board's apply flow (LinkedIn, Indeed, ZipRecruiter, Handshake). Never submit into a hiring system without a
-  key the employer created. Never answer a question the profile cannot. Never send voluntary self-identification. Never get past a
+  key the employer created or a public apply endpoint the system provides for that posting (Recruitee's), and never where terms forbid
+  automation (SmartRecruiters). Never answer a question the profile cannot. Never send voluntary self-identification. Never get past a
   bot wall or a human check.
 
 ## Instances and where they run

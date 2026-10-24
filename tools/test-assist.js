@@ -207,16 +207,24 @@ module.exports = async ({ ev, sleep, send }) => {
     ["When did you graduate from High School?", null], ["Portfolio Password or Access Code(s)", null], ["Is there any other context you'd like to share about your U.S. work authorization?", null],
     ["Have you ever been previously employed by Spotify?", "former"], ["Which location are you applying for?", null], ["What is your current City, State, and Zip Code", "csz"],
     ["Will you now or in the future require visa sponsorship?", "sponsor"], ["Are you legally authorized to work in the United States?", "auth"], ["Current Street Address", "street"], ["Are you at least 18 years of age?", "adult"], ["Are you over the age of 21?", null],
-    ["Phone country code", "phonecc"], ["Graduation month", "gradmonth"], ["Graduation year", "gradyear"], ["Preferred Name", "first"], ["Can you work without sponsorship?", "nosponsor"]];
+    ["Phone country code", "phonecc"], ["Graduation month", "gradmonth"], ["Graduation year", "gradyear"], ["Preferred Name", "first"], ["Can you work without sponsorship?", "nosponsor"],
+    ["Cover Letter", "cover"], ["Message to the hiring manager", "cover"]];
   await ev(ENGINE);
   for (const [q, k] of KEYS) { const got = await ev("UAplyAssist.keyOf(" + JSON.stringify(q) + ")"); check("label read as " + (k || "nothing to fill") + ": " + q, got === k, "got " + got); }
+  // the message to the employer (Profile setup, the person's own switch) goes into a cover letter box; with it off the box is left alone
+  for (const [note, want, name] of [["Hi Example Co hiring team, I just applied.", "Hi Example Co hiring team, I just applied.", "with the message on"], ["", "", "with the message off"]]) {
+    await send("Page.navigate", { url: "data:text/html,<form><label for=c>Cover letter</label><textarea id=c></textarea></form>" }); await sleep(300); await ev(ENGINE);
+    await ev("UAplyAssist.fill(" + JSON.stringify({ first: "A", note }) + ",{job:{co:'Example Co',role:'Analyst'},banner:false}).then(r=>JSON.stringify(r))");
+    const got = await ev("document.getElementById('c').value");
+    check("a cover letter box gets the message to the employer " + name, got === want, JSON.stringify(got));
+  }
   // a page that is not a form and says nothing about an application is not a confirmation
   await send("Page.navigate", { url: "data:text/html,<h1>Careers at Example Co</h1><p>We are hiring.</p>" }); await sleep(300); await ev(ENGINE);
   check("a careers page is not a confirmation", (await ev("UAplyAssist.confirmed()")) === false);
 
   // the switch: shipped "assisted" everywhere, and the rule that turns "automatic" on
   const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "shared", "assist-systems.json"), "utf8"));
-  check("assist-systems.json: every system ships assisted, none approved by counsel", Object.values(cfg.systems).every((s) => s.mode === "assisted" && s.counsel_approved === false));
+  check("assist-systems.json (October 24 review): Greenhouse, Lever, Ashby and Workable automatic and approved; SmartRecruiters (its terms) and other assisted, not approved", ["greenhouse", "lever", "ashby", "workable"].every((k) => cfg.systems[k].mode === "automatic" && cfg.systems[k].counsel_approved === true) && ["smartrecruiters", "other"].every((k) => cfg.systems[k].mode === "assisted" && cfg.systems[k].counsel_approved === false));
   const nav = fs.readFileSync(path.join(__dirname, "..", "shared", "uaply-nav.js"), "utf8");
   const src = /function assistMode\(cfg,sys\)\{[^\n]*?\}(?=\n)/.exec(nav);
   check("uaply-nav.js has the mode rule", !!src);

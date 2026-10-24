@@ -61,11 +61,11 @@ if m_where and m_tail:
     js_lines = json.loads(out.stdout or "[]")
 t("the Automatic submit line is the server's, built from the same systems file (as shipped, two switched on, and none read)", js_lines,
   [consent_api.auto_text(SHIPPED), consent_api.auto_text(ON), consent_api.auto_text({})])
-t("...and while nothing is switched on it says so, not a system's name", consent_api.auto_text(SHIPPED).startswith("Automatic submit: where a hiring system allows it; none is switched on yet."), True)
+t("...and it names what is switched on (October 24 review: Ashby, the one approved system with no human check measured)", consent_api.auto_text(SHIPPED).startswith("Automatic submit: where a hiring system allows it; switched on now: Ashby."), True)
 t("...and once one is, it names it (only a system with the lawyer's approval and no human check measured)", "switched on now: Ashby, Lever." in consent_api.auto_text(ON), True)
 js_auto = js_lines[0] if js_lines else ""
 t("the words agreed to, as the page builds them, hash to the server's own (without and with the tick, the tick after the four ways)",
-  (consent_api.digest("\n".join(js_text)), consent_api.digest("\n".join(js_text[:consent_api.AUTO_AT] + [js_auto] + js_text[consent_api.AUTO_AT:]))),
+  (consent_api.digest("\n".join(js_text + list(consent_api.TICKS))), consent_api.digest("\n".join(js_text[:consent_api.AUTO_AT] + [js_auto] + js_text[consent_api.AUTO_AT:] + list(consent_api.TICKS)))),
   (consent_api.digest(consent_api.full_text(False)), consent_api.digest(consent_api.full_text(True))))
 t("the hash is the SHA-256 of the words, one paragraph per line", consent_api.digest("a  b\n\nc "), hashlib.sha256(b"a b\nc").hexdigest())
 t("the box (version 5) says the authorization, the match line, the three ways plainly, how to stop it, and the tick",
@@ -74,7 +74,7 @@ t("the box (version 5) says the authorization, the match line, the three ways pl
    consent_api.TEXT[2] == "A swipe right goes one of three ways:", consent_api.TEXT[3].startswith("Into the employer's own hiring system"),
    consent_api.TEXT[4].startswith("By email, with your resume"), consent_api.TEXT[5].startswith("Everywhere else, saved to Job Tracker with a receipt"),
    "turn off Send applications for me in Profile, Account" in consent_api.TEXT[8], consent_api.auto_text().startswith("Automatic submit:")), (True,) * 8)
-t("the tick is off unless the person ticks it (the box's checkbox has no checked attribute)", bool(re.search(r'id="kcAuto"[^>]*checked', LIVE)), False)
+t("two ticks only (consent v6): Automatic submit is said, not ticked (tick 1 covers it; Account has Press Submit for me to turn it off)", ('id="kcAuto"' in LIVE, 'id="kcAutoT"' in LIVE, 'id="aPressSubmit"' in open(os.path.join(ROOT, "shared", "uaply-nav.js"), encoding="utf-8").read()), (False, True, True))
 TERMS = open(os.path.join(ROOT, "legal", "terms.html"), encoding="utf-8").read()
 sub = [li for li in re.findall(r"<li>(.*?)</li>", TERMS, re.S) if "presses its Submit button for you" in li]
 t("Terms section 3 matches the box: UAply presses Submit for you only with the person's Automatic submit setting turned on",
@@ -183,7 +183,7 @@ try:
                 break
         except OSError:
             time.sleep(0.25)
-    good = {"version": consent_api.VERSION, "text": consent_api.full_text(False), "auto": False}
+    good = {"version": consent_api.VERSION, "text": consent_api.full_text(False), "auto": False, "ticks": {"authorize": True, "accurate": True}}
     t("signed out, POST /api/consent answers 401 signin", req(PORT, "POST", "/api/consent", good)[:2][0], 401)
     unv = account("unverified@example.com", verify=False)
     t("...an account whose address is not confirmed answers 403 verify", req(PORT, "POST", "/api/consent", good, unv)[1].get("code"), "verify")
@@ -192,11 +192,19 @@ try:
       (409, {"error": "This page is out of date. Reload UAply and agree to the current terms.", "code": "consent_old"}))
     t("words other than the server's are refused (409 consent_text)", req(PORT, "POST", "/api/consent", dict(good, text=good["text"] + " And more."), ck)[1].get("code"), "consent_text")
     t("...and so is the tick claimed without its words", req(PORT, "POST", "/api/consent", dict(good, auto=True), ck)[1].get("code"), "consent_text")
+    # version 6: both ticks are required, and each is kept on the record
+    t("v6: without the authorization tick it is refused (400 consent_ticks)", req(PORT, "POST", "/api/consent", dict(good, ticks={"accurate": True}), ck)[:2][1].get("code"), "consent_ticks")
+    t("v6: without the accuracy and 18-or-older tick it is refused", req(PORT, "POST", "/api/consent", dict(good, ticks={"authorize": True}), ck)[1].get("code"), "consent_ticks")
+    t("v6: with no ticks at all it is refused", req(PORT, "POST", "/api/consent", {k: v for k, v in good.items() if k != "ticks"}, ck)[1].get("code"), "consent_ticks")
+    t("v6: the box's words end with the two ticks", consent_api.full_text(False).split("\n")[-2:], list(consent_api.TICKS))
+    t("v6: the page shows the same two ticks, word for word", re.search(r"CONSENT_TICKS=\[", LIVE) is not None and all(x in LIVE for x in consent_api.TICKS), True)
     job1, job2 = partner_job("Mail Co", "Marketing Intern"), partner_job("Mail Co", "Sales Intern")
     s, out = apply(ck, "person@example.com", job1)
     t("with no agreement on record, nothing is sent to the employer (403 consent)", (s, out.get("code"), len(mails_to("hr@mailco.example"))), (403, "consent", 0))
     s, out, _ = req(PORT, "POST", "/api/consent", good, ck)
     t("the box's words are kept: 200 with the record", (s, (out.get("consent") or {}).get("v"), (out.get("consent") or {}).get("auto")), (200, consent_api.VERSION, False))
+    t("v6: both ticks are on the record, with the version and the time", ((out.get("consent") or {}).get("authorize"), (out.get("consent") or {}).get("accurate"),
+      (out.get("consent") or {}).get("v"), isinstance((out.get("consent") or {}).get("at"), int)), (True, True, 6, True))
     me = req(PORT, "GET", "/api/auth/me", cookie=ck)[1].get("user") or {}
     t("/api/auth/me shows the agreement on record", ((me.get("consent") or {}).get("v"), (me.get("consent") or {}).get("auto"), isinstance((me.get("consent") or {}).get("at"), int)),
       (consent_api.VERSION, False, True))
@@ -206,7 +214,7 @@ try:
     t("...with the visitor's address (the last hop) and the words' SHA-256", row, (consent_api.VERSION, "127.0.0.1", consent_api.digest(consent_api.full_text(False)), 0))
     s, out = apply(ck, "person@example.com", job1)
     t("now the swipe right is sent", (s, out.get("status")), (200, "sent"))
-    s, out, _ = req(PORT, "POST", "/api/consent", {"version": consent_api.VERSION, "text": consent_api.full_text(True), "auto": True}, ck)
+    s, out, _ = req(PORT, "POST", "/api/consent", {"version": consent_api.VERSION, "text": consent_api.full_text(True), "auto": True, "ticks": {"authorize": True, "accurate": True}}, ck)
     t("agreeing with the Automatic submit tick is kept as such", (s, (out.get("consent") or {}).get("auto"), ((req(PORT, "GET", "/api/auth/me", cookie=ck)[1].get("user") or {}).get("consent") or {}).get("auto")),
       (200, True, True))
     s, out, _ = req(PORT, "POST", "/api/consent", {"withdraw": True}, ck)

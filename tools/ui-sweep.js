@@ -58,7 +58,9 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
   const asked = await ev("(()=>{const o=" + F + ".getElementById('kitAsk');if(!o)return 0;let n=0;o.querySelectorAll('[data-k]').forEach(el=>{n++;if(el.tagName==='SELECT')el.value=el.options[1]?el.options[1].text:'';else el.value=el.tagName==='TEXTAREA'?'Because I build things.':'Sam'});const b=" + F + ".getElementById('kaYes');if(b&&!/Profile/.test(b.innerText))b.click();return n})()");
   const needsFile = await ev("/needs a resume file/.test((" + F + ".getElementById('kitAsk')||{}).innerText||'')");
   if (asked) { console.log("  the employer's form asked", asked, "question(s); answered once" + (needsFile ? " (it also needs a resume file, which this profile has not got)" : "")); await sleep(3000); }
-  const after = JSON.parse(await ev("fetch('/api/outbox').then(r=>r.json()).then(j=>JSON.stringify({n:j.applications.length}))")).n;
+  // the server answers a swipe right in a second or two, longer on a busy machine: wait up to 15 s for the inbox to grow, not a fixed 2.5 s
+  let after = 0;
+  for (let i = 0; i < 30; i++) { after = JSON.parse(await ev("fetch('/api/outbox').then(r=>r.json()).then(j=>JSON.stringify({n:j.applications.length}))")).n; if (after > before) break; await sleep(500); }
   console.log("  applications in inbox before/after:", before, after);
   const newest = await ev("fetch('/api/outbox').then(r=>r.json()).then(j=>(j.applications[0]||{}).status||'')");
   check(REL ? "swipe right on a real job is recorded as a hand-off to the employer's own page" : "swipe right created an application in the test inbox",

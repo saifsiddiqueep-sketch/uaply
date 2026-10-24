@@ -17,7 +17,7 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
   const J = async (expr) => JSON.parse(await ev("JSON.stringify((()=>{" + expr + "})())") || "null");
   await nav("http://127.0.0.1:" + PORT + "/");
   for (let i = 0; i < 60 && !(await ev("!!(" + W + ".__uaply&&" + W + ".__uaply.JOBS.some(j=>j.live&&j.type==='internship'))")); i++) await sleep(1000);
-  await ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b)b.click()})()"); await sleep(300);
+  await ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b){b.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});b.disabled=false;b.click()}})()"); await sleep(300);
   // the student's profile, as Profile setup saves it: two marketing titles, internship and part-time, on-site or hybrid in Philadelphia
   const setTitles = (t) => ev("(()=>{const w=" + W + ",A=w.__uaply;Object.assign(A.S.profile,{name:'Jordan Alvarez',email:'jordan.alvarez@example.edu',custom:true,title:" + JSON.stringify(t[0]) +
     ",loc:'Philadelphia',edu:'Bachelor',years:0,skills:['Excel','SQL','Tableau'],modes:{remote:false,hybrid:true,onsite:true}});A.S.profile.ext=Object.assign(A.S.profile.ext||{},{titles:" + JSON.stringify(t.slice(1)) +
