@@ -75,6 +75,9 @@ function shareGets(){
 function patch(s){
   s=once(s,"<script>","<script>\n("+shareGets.toString()+")();\n");   /* the first script of the page: before anything asks */
   /* paging: the deck holds its top card while the whole list is ranked, then tells live.js how many cards are left */
+  /* Undo brings back exactly the card just swiped, on top: the deck is ranked over the whole list, and the card held on top while it
+     arrived (__uaplyHoldTop) may not be the best-ranked one, so without this Undo put a different card on top (ui-swipes, October 23) */
+  s=once(s,"var id=S.history.pop();if(!id)return;","var id=S.history.pop();if(!id)return;if(window.__uaplyHoldJob)window.__uaplyHoldJob(id);");
   s=once(s,'var q=queue(),deck=$("deck");','var q=queue(),deck=$("deck");if(window.__uaplyHoldTop)q=window.__uaplyHoldTop(q,JOB_BY_ID,S,evaluate);if(window.__uaplyNearEnd)window.__uaplyNearEnd(q.length);');
   var cached=readCache();
   var extra=cached.length?","+JSON.stringify(cached).slice(1,-1).replace(/<\//g,"<\\/"):"";
@@ -155,7 +158,7 @@ function apply(w,host){
      swiped, so nothing moves under a thumb. The "none matched" note waits for that ranking (html.uaRank hides it meanwhile). If the
      whole list cannot come, the deck carries on a page at a time: within NEAR cards of the end of the stack on screen the next page of
      that stack (?type=, its own "next" cursor). __uaplyJobs.add keeps one copy of each id, so no card ever shows twice. */
-  var PAGE=200,NEAR=20,PG=null,pgBusy=false,pgWait=0,FULL=false,fullBusy=false,HOLD=0,HOLDT="";
+  var PAGE=200,NEAR=20,PG=null,pgBusy=false,pgWait=0,FULL=false,fullBusy=false,HOLD=0,HOLDT="",WHOLE_FAILED=false,WANT=0;
   try{var rs=d.createElement("style");rs.textContent="html.uaRank #titleNote{display:none!important}";(d.head||d.documentElement).appendChild(rs)}catch(e){}
   function ranking(on){try{d.documentElement.classList.toggle("uaRank",!!on)}catch(e){}}
   function stackType(){try{var t=w.__uaply.getType&&w.__uaply.getType();return /^(job|parttime|internship|coop)$/.test(t)?t:""}catch(e){return ""}}
@@ -187,13 +190,17 @@ function apply(w,host){
   w.__uaplyHoldTop=function(q,BY,S,evaluate){
     if(!HOLD)return q;
     if((S.decisions&&S.decisions[HOLD])||stackType()!==HOLDT){HOLD=0;return q}
+    if(WANT&&q.length&&q[0].j.id===WANT&&HOLD!==WANT){HOLD=0;return q}   /* a shared job that turns up later goes in front (Share this job) */
     for(var i=0;i<q.length;i++)if(q[i].j.id===HOLD){if(i>0)q.unshift(q.splice(i,1)[0]);return q}
     var j=BY[HOLD];if(j)q.unshift({j:j,m:evaluate(j,S.profile)});else HOLD=0;
     return q;
   };
   function hold(){try{var c=d.querySelector("#deck .card.top[data-id]");HOLD=c?+c.getAttribute("data-id"):0;HOLDT=stackType()}catch(e){HOLD=0}}
+  w.__uaplyHoldJob=function(id){HOLD=+id||0;HOLDT=stackType()};   /* Undo: the card it brings back goes on top, until it is swiped again */
   w.__uaplyNearEnd=function(left){
-    if(!PG||FULL||fullBusy||left>NEAR||pgBusy||Date.now()<pgWait)return;
+    /* a page at a time only once the whole list has failed: before that it is on its way, and extra answers made Share this job's
+       landing (which counts the list's answers) give up on the shared job within a second (ui-share, October 23) */
+    if(!PG||FULL||fullBusy||!WHOLE_FAILED||left>NEAR||pgBusy||Date.now()<pgWait)return;
     var t=stackType(),cur=PG[t]||(t?null:PG[""]);
     if(cur&&!cur.next)return;                                   /* this stack has every page it can get */
     pgBusy=true;
@@ -220,13 +227,13 @@ function apply(w,host){
     if(fullBusy)return Promise.resolve();
     fullBusy=true;ranking(true);
     return fetch("/api/jobs").then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}).then(function(data){
-      hold();fullBusy=false;FULL=true;wTries=0;ranking(false);took(data);
+      hold();fullBusy=false;FULL=true;WHOLE_FAILED=false;wTries=0;ranking(false);took(data);
       if(data.pending>0&&round<15)setTimeout(function(){FULL=false;whole(round+1)},round<3?5000:15000);
-    }).catch(function(){fullBusy=false;try{w.__uaply.renderAll()}catch(x){}again(round)});   /* not now: a page at a time, and the whole list again soon */
+    }).catch(function(){fullBusy=false;WHOLE_FAILED=true;try{w.__uaply.renderAll()}catch(x){}again(round)});   /* not now: a page at a time, and the whole list again soon */
   }
   function loadJobs(round){
   if(round>0)return whole(round);
-  var want=sharedId(),oneP=want?oneJob(want):Promise.resolve(null);
+  var want=sharedId(),oneP=want?oneJob(want):Promise.resolve(null);WANT=want;
   return Promise.all([oneP,fetch("/api/jobs?size="+PAGE+"&page=1")]).then(function(x){var one=x[0],r=x[1];
     /* a plain web host with no UAply server (a 404, or an HTML page): a preview. Show the example jobs and say so; a 5xx stays an outage */
     if(r.status===404||(r.ok&&/text\/html/i.test(r.headers.get("content-type")||""))){var pe=new Error("preview");pe.preview=true;throw pe}
