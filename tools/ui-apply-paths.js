@@ -79,7 +79,7 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
       "onScreen:r.top>=0&&r.bottom<=innerHeight,top:dr.top>=0,off:!d.getElementById('kcAuto').checked,words:(d.getElementById('kcAutoT')||{}).textContent||'',bottom:Math.round(r.bottom),h:innerHeight})})()"));
     check("the agreement: the Automatic submit tick sits after the four ways and above 'By continuing you agree'", box.afterList && box.aboveBy, JSON.stringify(box));
     check("...on screen without scrolling (" + box.bottom + " of " + box.h + " px), the box's top in view, and off", box.onScreen && box.top && box.off, JSON.stringify(box));
-    check("...and it says where: 'where a hiring system allows it; none is switched on yet' (from assist-systems.json)", /^Automatic submit: where a hiring system allows it; none is switched on yet\./.test(box.words), box.words);
+    check("...and it says where: 'where a hiring system allows it; switched on now: Ashby' (from assist-systems.json)", /^Automatic submit: where a hiring system allows it; switched on now: Ashby\./.test(box.words), box.words);
     await ev("(()=>{" + F + ".querySelectorAll('.kcTick,#kcYes').forEach(c=>{if(c.id==='kcYes'){c.disabled=false;c.click()}else c.checked=true});return 1})()"); await sleep(800);
     await walk("Greenhouse partner", ID["GH Partner|Robotics Intern"], 3000, /Applied to GH Partner \(test\)\. UAply filled in \d+ of \d+ answers\. Confirmation is in the test inbox/, /Sent to GH Partner hiring system \(test, nothing reached GH Partner\)/);
     await walk("public Greenhouse posting in dev (hand-off)", ID["Discord|Data Intern"], 3000, /^Saved [^.]+ to Job Tracker\. ?Undo$/, /Finish on their site Not sent yet: Discord takes applications on its own site\. See the job posting ↗ Finish applying on their site ↗/);   // quiet swipe (Oct 20): no "finish on their site" message
@@ -208,7 +208,7 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
     check("the Undo button during the countdown cancels and says so (no toast left counting)", /Cancelled\. Nothing was sent to Mail Co/.test(tc), tc);
     await sleep(5000);
     check("nothing was sent", (await outbox()) === n0, "outbox " + n0 + " -> " + (await outbox()));
-    await walk("live, verified, employer that takes email", id, 8500, /Applied to Mail Co\. Confirmation emailed to ui@example\.com/, /Application sent to hr@mailco\.example/);
+    await walk("live, verified, employer that takes email", id, 8500, /Applied to Mail Co\. Confirmation emailed to ui@example\.com/, /Sent by email to hr@mailco\.example/);   // the channel used (October 24)
     await undoBtn(); await sleep(800);
     const tu = await toast(); say("undo after it was sent | toast", tu);
     check("undo after it was sent says the employer still has it", /Your application to Mail Co was already sent, so Mail Co still has it/.test(tu), tu);
@@ -222,7 +222,7 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
     check("...with the usual countdown", /Applying to Dropbox in/.test(tr), tr);
     await sleep(8000);
     check("...and when it fails again, the row still says not sent", /Not sent: UAply could not deliver it to Dropbox/.test(await row(broken)));
-    await walk("live, Greenhouse partner", ID["GH Partner|Robotics Intern"], 9000, /Applied to GH Partner\. UAply filled in/, /Application sent to GH Partner/);
+    await walk("live, Greenhouse partner", ID["GH Partner|Robotics Intern"], 9000, /Applied to GH Partner\. UAply filled in/, /Submitted into their hiring system: GH Partner/);
     await walk("live, public Greenhouse posting (hand-off)", ID["Discord|Data Intern"], 4000, /^Saved [^.]+ to Job Tracker\. ?Undo$/, /Finish on their site Not sent yet: Discord takes applications on its own site\. See the job posting ↗ Finish applying on their site ↗/);
   }
   if (SRV === "devlive") {

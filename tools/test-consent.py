@@ -61,7 +61,7 @@ if m_where and m_tail:
     js_lines = json.loads(out.stdout or "[]")
 t("the Automatic submit line is the server's, built from the same systems file (as shipped, two switched on, and none read)", js_lines,
   [consent_api.auto_text(SHIPPED), consent_api.auto_text(ON), consent_api.auto_text({})])
-t("...and while nothing is switched on it says so, not a system's name", consent_api.auto_text(SHIPPED).startswith("Automatic submit: where a hiring system allows it; none is switched on yet."), True)
+t("...and it names what is switched on (October 24 review: Ashby, the one approved system with no human check measured)", consent_api.auto_text(SHIPPED).startswith("Automatic submit: where a hiring system allows it; switched on now: Ashby."), True)
 t("...and once one is, it names it (only a system with the lawyer's approval and no human check measured)", "switched on now: Ashby, Lever." in consent_api.auto_text(ON), True)
 js_auto = js_lines[0] if js_lines else ""
 t("the words agreed to, as the page builds them, hash to the server's own (without and with the tick, the tick after the four ways)",
