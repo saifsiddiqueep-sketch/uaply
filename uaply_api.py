@@ -247,6 +247,11 @@ def _ext(raw):
         salary = salary if 0 < salary <= 10000000 else ""
     except (TypeError, ValueError, OverflowError):
         salary = ""
+    try:                                           # the same pay per hour (Profile setup step 3 is per year or per hour), for a form that asks per hour
+        salary_hour = round(float(x.get("salaryHour")), 2)
+        salary_hour = salary_hour if 0 < salary_hour <= 5000 else ""
+    except (TypeError, ValueError, OverflowError):
+        salary_hour = ""
     return {"phone": phone, "headline": _s(x.get("headline"), 120), "summary": _s(x.get("summary"), 600),
             "resume": _https(x.get("resume")), "linkedin": _linkedin(x.get("linkedin")), "portfolio": _https(x.get("portfolio")),
             "school": _s(x.get("school"), 100), "major": _s(x.get("major"), 100), "grad": grad, "gpa": gpa,
@@ -257,7 +262,8 @@ def _ext(raw):
             "notice": _pick(x.get("notice"), tuple(autofill._NOTICE)),
             # the common questions employers' own forms ask (used by autofill.py to fill those forms; none of them is shown to a recruiter otherwise)
             "zip": zipc if re.match(r"^\d{5}(-\d{4})?$", zipc) else "", "state": state if re.match(r"^[A-Za-z .]{2,30}$", state) else "",
-            "country": _pick(x.get("country"), _COUNTRIES), "salary": salary,     # expected yearly pay: kept only when a form asked for it (see submit)
+            "country": _pick(x.get("country"), _COUNTRIES), "salary": salary, "salaryHour": salary_hour,
+            "payUnit": "hour" if x.get("payUnit") == "hour" else "year",     # expected yearly pay: kept only when a form asked for it (see submit)
             "relocate": _pick(x.get("relocate"), ("yes", "no")), "office": _pick(x.get("office"), ("yes", "no")),
             "former": _pick(x.get("former"), ("no", "ask")), "govt": _pick(x.get("govt"), ("yes", "no")), "phd": _pick(x.get("phd"), ("yes", "no")),
             "pronouns": _s(x.get("pronouns"), 30), "ack": x.get("ack") is True, "why": _s(x.get("why"), 600)}

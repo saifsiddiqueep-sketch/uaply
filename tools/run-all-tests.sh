@@ -199,6 +199,8 @@ run "the sign-in gate on a phone (390x844): only the card, its links open, sign-
 run "the sign-in gate on a laptop (1280x800): the same" env W=1280 H=800 PORT=18848 node tools/cdp.js tools/ui-gate.js
 run "pay as the posting gives it (390x844): yearly per year, hourly per hour, none Pay not listed; on the card, Job Tracker, Share rows and the receipt" env W=390 H=844 PORT=18848 node tools/cdp.js tools/ui-pay.js
 run "pay as the posting gives it on a laptop (1280x800): the same" env W=1280 H=800 PORT=18848 node tools/cdp.js tools/ui-pay.js
+run "one pay question, per year or per hour (390x844): step 3 asks it once, kept across a reload, step 5 asks no second one, hourly and yearly matched on one scale" env W=390 H=844 PORT=18848 node tools/cdp.js tools/ui-pay-unit.js
+run "one pay question on a laptop (1280x800): the same" env W=1280 H=800 PORT=18848 node tools/cdp.js tools/ui-pay-unit.js
 
 step "Public server behind HTTPS (how a real host runs it)"
 PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/pub" HOST=0.0.0.0 OWNER_PASSWORD=ownerpw UAPLY_CONFIG_JSON='{}' start python serve.py 18772 dev --api)"

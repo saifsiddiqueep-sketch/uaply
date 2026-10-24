@@ -24,7 +24,6 @@ var EMAIL=/^[^@\s]{1,64}@[^@\s]+\.[A-Za-z]{2,}$/;
 function urlOk(v){return !v||/^https:\/\/[^\s.]+\.[^\s]+$/i.test(v)?"":"Use a full link that starts with https://"}
 function phoneOk(v){return !v||(/^[+()\d\s.-]{7,25}$/.test(v)&&v.replace(/\D/g,"").length>=7)?"":"Enter a phone number with at least 7 digits"}
 function gpaOk(v){return v===""||(+v>=0&&+v<=4.5)?"":"GPA is between 0 and 4.5"}
-function payOk(v){return v===""||(/^\d{1,8}$/.test(v)&&+v>0&&+v<=10000000)?"":"Enter a yearly amount in whole dollars, like 85000"}
 
 var START=[["","Choose"],["now","Right away"],["2w","Within 2 weeks"],["1m","Within a month"],["grad","After I graduate"],["flex","Flexible"]];
 var SPEC=[
@@ -57,7 +56,6 @@ var SPEC=[
  {sec:"preferences",title:"Questions employers ask",items:[
   {k:"office",label:"Willing to work from the job's office (hybrid or on-site)?",type:"select",opts:[["","Choose"],["yes","Yes"],["no","No"]]},
   {k:"relocate",label:"Willing to relocate for the right job?",type:"select",opts:[["","Choose"],["yes","Yes"],["no","No"]]},
-  {k:"salary",label:"Expected yearly pay in US dollars (optional)",type:"number",min:0,max:10000000,step:1,ph:"85000",hint:"Only used when a form requires it. Leave it blank to be asked each time.",val:payOk},
   {k:"former",label:"Have you worked at the companies you apply to?",type:"select",full:1,hint:"Choose No only if you have never worked at any company you swipe right on.",opts:[["","Ask me each time"],["no","No, never"]]},
   {k:"govt",label:"Are you, or a close relative, a government official?",type:"select",opts:[["","Choose"],["no","No"],["yes","Yes"]]},
   {k:"phd",label:"Currently in a PhD program?",type:"select",opts:[["","Choose"],["no","No"],["yes","Yes"]]},
@@ -126,7 +124,19 @@ function apply(w){
     ALL.forEach(validate);update();
     setTimeout(function(){relSync();update()},0);   /* the app fills its own fields (like email and Work style) right after this, so recount once it is done */
   }
-  w.__uaplyExtRead=read;w.__uaplyExtFill=fill;
+  /* one pay question (Saif, October 24): the lowest pay in step 3, per year or per hour, is also what employers' forms get when they ask
+     what pay you expect (step 5 used to ask again, per year only). Stored with the rest as salary (a year, whole dollars) and salaryHour
+     (an hour, to the cent), each from the other when needed, for a form that asks per year or per hour; blank: the form asks you */
+  function payFromStep3(x){
+    var i=d.getElementById("pSalary"),v=i?+i.value||0:0,h=d.getElementById("pu-hour"),u=h&&h.checked?"hour":"year";
+    x.payUnit=u;
+    if(v>0){x.salary=String(Math.round(u==="hour"?v*2080:v));x.salaryHour=String(Math.round((u==="hour"?v:v/2080)*100)/100)}
+    else{x.salary="";x.salaryHour=""}
+    return x;
+  }
+  w.__uaplyExtRead=function(){return payFromStep3(read())};
+  /* an older profile answered step 5's yearly pay and left step 3 blank: that answer becomes the lowest pay, per year */
+  w.__uaplyExtFill=function(x){fill(x);try{var i=d.getElementById("pSalary"),p=w.__uaply&&w.__uaply.S.profile;if(i&&!(+i.value>0)&&!(p&&p.salary>0)&&+(x&&x.salary)>0){i.value=String(+x.salary);var y=d.getElementById("pu-year");if(y)y.checked=true}}catch(e){}};
 
   /* validation, shown under each field */
   function validate(it){

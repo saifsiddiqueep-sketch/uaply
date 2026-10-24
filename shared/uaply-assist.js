@@ -355,7 +355,10 @@
         if (!/^\d{4}-\d{2}$/.test(ym || "")) return "";
         return /year$/.test(key) ? ym.slice(0, 4) : MONTHS[+ym.slice(5) - 1];
       case "heard": return p.heard || "UAply";
-      case "salary": return req ? (p.salary ? String(p.salary) : "") : "";   /* only where the form requires it (Profile setup says so) */
+      case "salary":   /* only where the form requires it (Profile setup says so); per hour when the field says hour */
+        if (!req) return "";
+        if (/\bhour|hourly/i.test(labelOf(el) || "") && p.salaryHour) return String(p.salaryHour);
+        return p.salary ? String(p.salary) : "";
       case "why": return el && (el.tagName === "TEXTAREA" || el.type === "text") ? fillIn(p.why, job) : "";
       case "summary": return el && (el.tagName === "TEXTAREA" || el.type === "text") ? p.summary : "";
       case "headline": return p.headline;

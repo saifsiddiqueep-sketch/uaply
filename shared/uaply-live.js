@@ -104,12 +104,16 @@ function patch(s){
      a yearly one or the reverse, so an hourly job is not compared with the yearly minimum salary (it scores as pay not listed). uaPayText
      is shared with Share this job's rows and anything else that names a job's pay. */
   s=once(s,'function money(n){return "$"+Math.round(n/1000)+"k"}','function money(n){return "$"+Math.round(n/1000)+"k"}\n'+
+    'function uaYearly(x,u){x=+x||0;return u==="hour"?x*2080:x}\n'+   /* matching only: an hourly figure as a year of 40-hour weeks */
     'function uaPayAmt(n,h){n=+n||0;return h?"$"+(Math.round(n*100)%100?n.toFixed(2):String(Math.round(n))):money(n)}\n'+
     'function uaPayText(j,unit){var s=j&&Array.isArray(j.sal)?j.sal:[0,0],h=!!j&&j.salUnit==="hour",lo=+s[0]||0,hi=+s[1]||0;if(!(hi>0))return "";'+
     'var r=lo>0&&lo<hi?uaPayAmt(lo,h)+"–"+uaPayAmt(hi,h):(lo>0?uaPayAmt(hi,h):"Up to "+uaPayAmt(hi,h));return unit?r+(h?" an hour":" a year"):r}\nwindow.uaPayText=uaPayText;');
   s=once(s,"'+money(j.sal[0])+'–'+money(j.sal[1])+'<small>per year</small>","'+(uaPayText(j)?uaPayText(j)+'<small>'+(j.salUnit===\"hour\"?'per hour':'per year')+'</small>':'Pay not listed')+'");
-  s=once(s,"var salOk=job.sal[1]>=p.salary;","var unk=job.sal[1]<=0||job.salUnit===\"hour\";var salOk=unk||job.sal[1]>=p.salary;");
-  s=once(s,'s:salOk?1:(sa>=0.9?0.5:0),ask:money(job.sal[0])+" to "+money(job.sal[1])','s:unk?0.5:salOk?1:(sa>=0.9?0.5:0),ask:unk?(uaPayText(job)?uaPayText(job,1):"Not listed"):money(job.sal[0])+" to "+money(job.sal[1])');
+  /* the lowest pay is per year or per hour (Profile setup, step 3), and a posting's pay too: both are put on one scale for matching only
+     (an hour is 1/2080 of a year), so an hourly seeker is matched against yearly postings and the reverse. The card still shows the
+     posting's own figure and unit, never a converted one. A posting with no pay scores as not listed */
+  s=once(s,"var salOk=job.sal[1]>=p.salary;","var unk=job.sal[1]<=0,JY=uaYearly(job.sal[1],job.salUnit),PY=uaYearly(p.salary,p.payUnit);sa=PY<=0?1:Math.min(1,JY/PY);var salOk=unk||JY>=PY;");
+  s=once(s,'s:salOk?1:(sa>=0.9?0.5:0),ask:money(job.sal[0])+" to "+money(job.sal[1])','s:unk?0.5:salOk?1:(sa>=0.9?0.5:0),ask:unk?"Not listed":job.salUnit==="hour"?uaPayText(job,1):money(job.sal[0])+" to "+money(job.sal[1])');
   /* every real listing names its source and links to the original; example listings say they are examples */
   s=once(s,"<p class=\"blurb\">'+esc(j.blurb)+'</p>","<p class=\"blurb\">'+esc(j.blurb)+'</p>'+(j.url?'<button type=\"button\" class=\"linkbtn\" data-open=\"'+esc(j.url)+'\">View original posting ↗</button>':'')+(j.live?'<small class=\"note\">Source: '+esc(j.source||'the employer')+'</small>':'<small class=\"note\">Example listing, not a real opening.</small>')+'");
   s=once(s,'toast(dir==="applied"?"Applied to "+job.co+" · "+m.pct+"% match":"Passed on "+job.co,"Undo",undo);',
@@ -192,7 +196,7 @@ function apply(w,host){
     if((S.decisions&&S.decisions[HOLD])||stackType()!==HOLDT){HOLD=0;return q}
     if(WANT&&q.length&&q[0].j.id===WANT&&HOLD!==WANT){HOLD=0;return q}   /* a shared job that turns up later goes in front (Share this job) */
     for(var i=0;i<q.length;i++)if(q[i].j.id===HOLD){if(i>0)q.unshift(q.splice(i,1)[0]);return q}
-    var j=BY[HOLD];if(j)q.unshift({j:j,m:evaluate(j,S.profile)});else HOLD=0;
+    var j=BY[HOLD];if(j&&w.__uaply&&w.__uaply.JOBS.indexOf(j)>-1)q.unshift({j:j,m:evaluate(j,S.profile)});else HOLD=0;   /* a job no longer in the list is not held */
     return q;
   };
   function hold(){try{var c=d.querySelector("#deck .card.top[data-id]");HOLD=c?+c.getAttribute("data-id"):0;HOLDT=stackType()}catch(e){HOLD=0}}

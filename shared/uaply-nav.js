@@ -74,7 +74,7 @@ function patch(s){
   /* saving inside the guided setup stays on the same screen; saving from anywhere else still shows the matches */
   s=once(s,'save();renderAll();show("swipe");toast("Profile saved. Matches updated.","OK",clearToast);','save();renderAll();if(!(window.__uaplyAfterSave&&window.__uaplyAfterSave()))show("swipe");if(!window.__uaplyAutoSave)toast("Profile saved. Matches updated.","OK",clearToast);');
   /* no minimum pay set (a new profile has 0): the Salary line said "You want $0k+" */
-  s=once(s,'have:"You want "+money(p.salary)+"+"}','have:p.salary>0?"You want "+money(p.salary)+"+":"No minimum set"}');
+  s=once(s,'have:"You want "+money(p.salary)+"+"}','have:p.salary>0?"You want "+(p.payUnit==="hour"?"$"+(+p.salary)+"+ an hour":money(p.salary)+"+"):"No minimum set"}');
   /* subscription gate: the page (apply) defines window.__uaplyGate; false means "not allowed, a paywall was shown" */
   s=once(s,'var job=JOB_BY_ID[id];','var job=JOB_BY_ID[id];if(dir==="applied"&&window.__uaplyGate&&window.__uaplyGate(job)===false){busy=false;renderAll();return}');
   s=once(s,'function show(t,focusPane){','function show(t,focusPane){if(window.__uaplyOnShow)window.__uaplyOnShow(t);');
@@ -862,7 +862,7 @@ function apply(w,host){
   w.__uaplyHide=function(j){
     if(w.__uaplyHideMore&&w.__uaplyHideMore(j))return true;   /* set by Hiring mode (sandbox): closed postings, eligibility */
     var p=A.S.profile;
-    if(acct.fSal&&p.salary&&j.sal&&j.sal.length>1&&j.salUnit!=="hour"&&j.sal[1]<p.salary)return true;   /* hourly pay is never measured against a yearly minimum */
+    if(acct.fSal&&p.salary&&j.sal&&j.sal.length>1&&j.sal[1]>0&&(j.salUnit==="hour"?j.sal[1]*2080:j.sal[1])<(p.payUnit==="hour"?p.salary*2080:p.salary))return true;   /* hourly and yearly on one scale (an hour is 1/2080 of a year) */   /* hourly pay is never measured against a yearly minimum */
     if(acct.fYrs!=="any"&&j.yrs>(+p.years||0)+(+acct.fYrs))return true;
     var co=String(j.co).toLowerCase(),hay=(String(j.role)+" "+(j.skills||[]).join(" ")).toLowerCase();
     if(list(acct.fCo).some(function(x){return co.indexOf(x)>-1})||list(acct.fKw).some(function(x){return hay.indexOf(x)>-1}))return true;
@@ -1934,7 +1934,7 @@ function apply(w,host){
       school:x.school||"",degree:p.edu||"",major:x.major||"",grad:x.grad||"",gpa:x.gpa||"",
       auth:au==="citizen"||au==="authorized"||/citizen|authorized to work/i.test(ea)&&!/not/i.test(ea)?"yes":au==="none"||/not currently/i.test(ea)?"no":"",
       sponsor:sp==="yes"||/^yes/i.test(es)?"yes":sp==="no"||/^no/i.test(es)?"no":"",
-      start:x.start||acct.notice||"",relocate:x.relocate||"",office:x.office||"",former:x.former||"",govt:x.govt||"",phd:x.phd||"",salary:x.salary||"",
+      start:x.start||acct.notice||"",relocate:x.relocate||"",office:x.office||"",former:x.former||"",govt:x.govt||"",phd:x.phd||"",salary:x.salary||"",salaryHour:x.salaryHour||"",
       summary:summaryOf(),headline:x.headline||"",why:x.why||"",heard:"UAply",adult:"yes",answers:ans&&typeof ans==="object"?ans:{},
       resume:m?{name:res.name||"resume.pdf",type:m[1],b64:m[2]}:null};
   };
@@ -2124,7 +2124,7 @@ function apply(w,host){
     if(p.ext&&typeof p.ext==="object")Object.keys(p.ext).slice(0,30).forEach(function(k){var v=p.ext[k];if(typeof v==="number"&&isFinite(v))ext[k]=v;else if(typeof v==="string")ext[k]=v.slice(0,600);else if(Array.isArray(v))ext[k]=v.filter(function(x){return typeof x==="string"}).slice(0,10).map(function(x){return x.slice(0,40)})});
     var np={name:str(p.name,100),title:str(p.title,100),email:str(p.email,200),ext:ext,years:num(p.years,0,50),edu:LV.indexOf(p.edu)>-1?p.edu:"Bachelor",
       skills:Array.isArray(p.skills)?p.skills.filter(function(s){return typeof s==="string"&&s.trim()}).slice(0,25).map(function(s){return s.slice(0,40)}):[],
-      salary:num(p.salary,0,10000000),loc:str(p.loc,100),modes:{remote:!!m.remote,hybrid:!!m.hybrid,onsite:!!m.onsite},reloc:!!p.reloc,custom:true};
+      payUnit:p.payUnit==="hour"?"hour":"year",salary:num(p.salary,0,10000000),loc:str(p.loc,100),modes:{remote:!!m.remote,hybrid:!!m.hybrid,onsite:!!m.onsite},reloc:!!p.reloc,custom:true};
     var known={};A.JOBS.forEach(function(j){known[j.id]=1});
     var nd={},ids=[];
     if(o.decisions&&typeof o.decisions==="object")Object.keys(o.decisions).forEach(function(k){

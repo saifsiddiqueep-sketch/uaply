@@ -463,5 +463,22 @@ js2 = subprocess.run(["node", "-e", "global.window={};global.document={addEventL
 t("the phone app: Plaid's 'why us' is not Stripe's or an old {co} answer; Stripe's is; a question about the person is answered everywhere (also kept the old way, by its words)",
   js2.stdout.strip(), json.dumps(["", "S", "Yes", "Yes"], separators=(",", ":")))
 
+# ---------- one pay question (October 24): per year or per hour in Profile setup step 3; a form gets it in the unit it asks for ----------
+xh = uaply_api._ext({"salary": "37440", "salaryHour": "18", "payUnit": "hour"})
+t("the server keeps the pay per year, per hour and its unit from the profile", (xh["salary"], xh["salaryHour"], xh["payUnit"]), (37440, 18.0, "hour"))
+xy = uaply_api._ext({"salary": "60000"})
+t("an older profile (yearly pay only, no unit): per year, and no hourly figure of its own", (xy["salary"], xy["salaryHour"], xy["payUnit"]), (60000, "", "year"))
+cand_h = dict(CAND, ext=dict(CAND["ext"], salary=37440, salaryHour=18.0, payUnit="hour"))
+rh = [(re.compile(p, re.I), f) for p, f in autofill._rules(cand_h, cand_h["ext"], {"co": "Acme", "role": "Barista"})]   # compiled, as plan_* does
+ah = autofill._answer("What is your desired hourly rate?", "q1", "text", [], {}, rh, cand_h["ext"])
+ay = autofill._answer("What are your salary expectations?", "q2", "text", [], {}, rh, cand_h["ext"])
+t("a form that asks per hour gets 18, one that asks per year gets 37440", (ah and ah[0], ay and ay[0]), ("18", "37440"))
+cand_y = dict(CAND, ext=dict(CAND["ext"], salary=62400, salaryHour="", payUnit="year"))
+ry = [(re.compile(p, re.I), f) for p, f in autofill._rules(cand_y, cand_y["ext"], {"co": "Acme", "role": "Analyst"})]
+t("a yearly figure, asked per hour: a year is 2080 hours (62400 -> 30)", (autofill._answer("Expected hourly pay?", "q3", "text", [], {}, ry, cand_y["ext"]) or [None])[0], "30")
+cand_0 = dict(CAND, ext=dict(CAND["ext"], salary="", salaryHour=""))
+r0 = [(re.compile(p, re.I), f) for p, f in autofill._rules(cand_0, cand_0["ext"], {"co": "Acme", "role": "Analyst"})]
+t("no pay given: the hourly question is left for the person (asked each time)", autofill._answer("What is your desired hourly rate?", "q4", "text", [], {}, r0, cand_0["ext"]), None)
+
 print("\n%d / %d" % (ok, ok + bad))
 sys.exit(1 if bad else 0)

@@ -238,6 +238,18 @@ def _employed(ext):
     return "no" if _month(ext.get("job_end")) else "yes"
 
 
+def _salary_hour(ext):
+    """Expected pay per hour ("18" or "18.5"), from the profile's per-hour figure or its yearly one (a year is 2080 hours); None when blank."""
+    try:
+        h = float(ext.get("salaryHour") or 0) or float(ext.get("salary") or 0) / 2080
+    except (TypeError, ValueError):
+        return None
+    if not h > 0:
+        return None
+    h = round(h, 2)
+    return str(int(h)) if h == int(h) else ("%.2f" % h)
+
+
 def _salary(ext):
     """Expected yearly pay as plain digits ("85000"), or None when the person left it blank (then a form that requires it asks them)."""
     try:
@@ -247,6 +259,9 @@ def _salary(ext):
     return str(n) if n > 0 else None
 
 
+# a pay question per hour: "desired hourly rate", "expected hourly pay", "hourly wage expectation", "pay rate per hour"
+_SALARY_HOUR = (r"(expected|desired|target|minimum)[^?]{0,20}hourly (rate|pay|wage)|hourly (rate|pay|wage) (expectation|requirement)|"
+                r"(pay|wage) rate per hour|(expected|desired) (pay|rate) per hour")
 # a question that really asks for an amount (a yes/no question that only mentions pay, or a pay notice, is not one)
 _SALARY = (r"(salary|compensation|pay) (expectation|requirement)|(expected|desired|target) (annual |yearly |base )?(salary|compensation|pay)|"
            r"(salary|compensation|pay) (are you|do you|would you) (expect|seek|look|want)|what (salary|compensation|pay)")
@@ -285,6 +300,7 @@ def _rules(cand, ext, job):
         (r"\b(18|eighteen)\b.*(age|old)|of legal age|at least 18", lambda: "yes"),     # confirmed in UAply's first-application agreement
         # expected pay: early, so "your desired salary for this location" is not taken for a location question. Only an amount the person
         # entered, and only to a form that asks for one; any other question about pay is left for the person
+        (_SALARY_HOUR, lambda: _salary_hour(ext)),    # a form that asks per hour gets the hourly figure
         (_SALARY, lambda: _salary(ext)),
         (r"salary|compensation|pay expectation", lambda: None),
         (r"^(if so, )?(are|were) you (eligible|currently)[^?]*\b(opt|optional practical training)\b|\bopt extension|stem (opt )?extension", lambda: opt),
