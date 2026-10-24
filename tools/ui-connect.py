@@ -76,6 +76,9 @@ SRC = [s for s in jobs_api.SOURCES if s[0] == "greenhouse"][0]
 POSTING = jobs_api._normalize(dict(id="1001", title="Robotics Intern", company="Acme Robotics", loc="Philadelphia, PA", remote=None,
                                    url="https://job-boards.greenhouse.io/acme/jobs/1001", salary_text="", posted=int(time.time()),
                                    text="Python and SQL. Build robots with the team. 1 year of experience."), "greenhouse", "Acme Robotics", "acme")
+POSTING2 = jobs_api._normalize(dict(id="1002", title="Controls Intern", company="Acme Robotics", loc="Philadelphia, PA", remote=None,
+                                    url="https://job-boards.greenhouse.io/acme/jobs/1002", salary_text="", posted=int(time.time()),
+                                    text="Python and SQL. Controls with the team. 1 year of experience."), "greenhouse", "Acme Robotics", "acme")
 procs = []
 try:
     data = os.path.join(TMP, "srv")
@@ -84,7 +87,7 @@ try:
     for kind, board, name in jobs_api.SOURCES:
         if kind in ("greenhouse", "lever"):
             cache["%s|%s|%s" % (kind, board, name)] = {"at": time.time(), "jobs": [], "status": "0 jobs"}
-    cache["greenhouse|%s|%s" % SRC[1:]]["jobs"] = [POSTING]
+    cache["greenhouse|%s|%s" % SRC[1:]]["jobs"] = [POSTING, POSTING2]
     LSRC = [s_ for s_ in jobs_api.SOURCES if s_[0] == "lever"][0]
     LPOST = jobs_api._normalize(dict(id="posting-uuid-1", title="Lever Robotics Intern", company="Acme Lever", loc="Philadelphia, PA", remote=None,
                                      url="https://jobs.lever.co/acme/posting-uuid-1", salary_text="", posted=int(time.time()),
@@ -107,7 +110,7 @@ try:
     s, out, ck = req("POST", "/api/auth/signup", {"email": "pat@example.org", "password": "pass for pat", "agree": True, "first": "Pat", "last": "Doe"})
     me = ck[0]
     req("POST", "/api/consent", {"version": consent_api.VERSION, "text": consent_api.full_text(False), "auto": False}, me)
-    job = [j for j in req("GET", "/api/jobs", cookie=me)[1]["jobs"] if j["co"] == "Acme Robotics"][0]
+    job = [j for j in req("GET", "/api/jobs", cookie=me)[1]["jobs"] if j["role"] == "Robotics Intern"][0]
     t("before the employer connects, their posting is a hand-off", job.get("instant", False), False)
     t("only the owner makes a connect link (an unknown system is refused)", req("POST", "/api/setup/connect-invite", {"kind": "taleo", "board": "acme"})[0], 400)
     s, inv, _ = req("POST", "/api/setup/connect-invite", {"kind": "greenhouse", "board": "acme"})
@@ -120,7 +123,7 @@ try:
                        capture_output=True, text=True, encoding="utf-8", timeout=300)
     print(o.stdout.strip())
     t("the employer's walkthrough in the browser passed", o.returncode, 0)
-    job = [j for j in req("GET", "/api/jobs", cookie=me)[1]["jobs"] if j["co"] == "Acme Robotics"][0]
+    job = [j for j in req("GET", "/api/jobs", cookie=me)[1]["jobs"] if j["role"] == "Robotics Intern"][0]
     t("now their posting applies instantly", job.get("instant"), True)
     resume = {"name": "Pat Doe resume.pdf", "data": "data:application/pdf;base64," + base64.b64encode(b"%PDF-1.4 Pat Doe resume for the connect test %%EOF").decode()}
     s, out, _ = req("POST", "/api/apply", {"consent": True, "confirm_real": True, "match": 80, "job": {"id": job["id"], "co": job["co"], "role": job["role"], "url": job["url"]},
@@ -153,7 +156,19 @@ try:
     lv = [j for j in req("GET", "/api/jobs", cookie=me)[1]["jobs"] if j["co"] == "Acme Lever"][0]
     s, out, _ = req("POST", "/api/apply", {"consent": True, "confirm_real": True, "match": 80, "job": {"id": lv["id"], "co": lv["co"], "role": lv["role"], "url": lv["url"]},
                                            "profile": {"name": "Pat Doe", "email": "pat@example.org", "ext": {"phone": "215-555-0188", "auth": "citizen", "sponsor": "no"}}, "resume": resume}, me)
-    t("...Lever refuses the made-up key on the first swipe: not sent, and the key stays pending", (out.get("status"), conn("lever")), ("failed", [("pending", "lever-made-up-key-000")]))
+    t("...Lever refuses the made-up key (401) on the first swipe: the key is dropped and the swipe is only saved, not failed", (out.get("status"), conn("lever")), ("handoff", []))
+    lv = [j for j in req("GET", "/api/jobs", cookie=me)[1]["jobs"] if j["co"] == "Acme Lever"][0]
+    t("...and that board's postings are hand-offs again", lv.get("instant", False), False)
+    # a connected key that gets a 401 keeps today's behaviour: failed, and kept
+    rows = json.load(open(keyfile, encoding="utf-8"))
+    for c in rows["ats_connections"]:
+        if c.get("kind") == "greenhouse":
+            c["api_key"] = "gh-revoked-key-000"
+    json.dump(rows, open(keyfile, "w", encoding="utf-8"))
+    POST2 = [j for j in req("GET", "/api/jobs", cookie=me)[1]["jobs"] if j["role"] == "Controls Intern"][0]
+    s, out, _ = req("POST", "/api/apply", {"consent": True, "confirm_real": True, "match": 80, "job": {"id": POST2["id"], "co": POST2["co"], "role": POST2["role"], "url": POST2["url"]},
+                                           "profile": {"name": "Pat Doe", "email": "pat@example.org", "ext": {"phone": "215-555-0188", "auth": "citizen", "sponsor": "no"}}, "resume": resume}, me)
+    t("a connected key refused (401): failed as today, and the key is kept", (out.get("status"), conn("greenhouse")), ("failed", [("connected", "gh-revoked-key-000")]))
 finally:
     for p_ in procs:
         p_.terminate()

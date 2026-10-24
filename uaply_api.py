@@ -1290,6 +1290,12 @@ def submit(p, user=None, site=""):
         if status == "sent" and ats and any(str(c).startswith("hiring system") for c in channels) and ats.get("key"):
             import connect_api     # imported here: connect_api imports this module
             connect_api.promote(ats.get("kind"), ats.get("board"), ats.get("key"))      # a pending key from the connect page works: connected
+        elif status == "failed" and ats and ats.get("key") and "refused the key" in (err or "") and ("HTTP 401" in err or "HTTP 403" in err):
+            import connect_api
+            if connect_api.drop_pending(ats.get("kind"), ats.get("board"), ats.get("key")):
+                # a pending key, mistyped: dropped, and this application is only saved (finish on their site), not failed
+                status, channels, err = "handoff", [], None
+                rec["why"] = "saved to Job Tracker: finish on their site"
         with _lock:
             rec["status"], rec["channels"] = status, channels
             if err:

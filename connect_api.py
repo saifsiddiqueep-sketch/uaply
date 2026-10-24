@@ -103,6 +103,23 @@ def _used(s):
 USED = (409, {"ok": False, "used": True, "message": "This link was already used. Ask us for a new link: reply to the email it came in."})
 
 
+def drop_pending(kind, board, key):
+    """Their system refused a pending key (401 or 403 on its first send): it was mistyped, so it is removed and that board's postings are
+    hand-offs again. A connected key is never dropped here. True when removed. Never raises."""
+    try:
+        with _lock:
+            data = _load()
+            rows = data.get("ats_connections") or []
+            keep = [c for c in rows if not (isinstance(c, dict) and (c.get("kind"), c.get("board")) == (kind, board) and c.get("api_key") == key and c.get("status") == "pending")]
+            if len(keep) == len(rows):
+                return False
+            data["ats_connections"] = keep
+            _write(data)
+            return True
+    except Exception:
+        return False
+
+
 def promote(kind, board, key):
     """A real application reached their system with this key: a pending connection is now connected. Never raises."""
     try:
