@@ -11,7 +11,7 @@ the account's latest record is this VERSION (uaply_api.submit answers 403 "conse
 for the person only when that record also has auto: the separate "Automatic submit" tick, off by default (shared/uaply-nav.js).
 
 VERSION 6, October 24, 2026 (Saif, lawyer-approved): two required ticks, the authorization through any channel and
-"my profile is accurate and I am 18 or older", each kept on the record with the version and the time. VERSION 5, October 23, 2026 (swipe phase B): the three ways a swipe goes, said plainly. VERSION 4, October 23, 2026, pending the lawyer (LEGAL-REVIEW.md, section 12): Reviewer 3's words (the four ways a swipe right goes, and
+"my profile is accurate" (the age is asked once, at sign-up), each kept on the record with the version and the time. VERSION 5, October 23, 2026 (swipe phase B): the three ways a swipe goes, said plainly. VERSION 4, October 23, 2026, pending the lawyer (LEGAL-REVIEW.md, section 12): Reviewer 3's words (the four ways a swipe right goes, and
 Send applications for me in Profile, Account to stop it), and the optional automatic submit as its own tick. Everyone who agreed to version 3
 sees the box once more."""
 import hashlib
@@ -38,7 +38,7 @@ TEXT = (
 # the two ticks (version 6, Saif, October 24, lawyer-approved): both required before the first swipe right, each kept on the record
 TICKS = (
     "I authorize UAply to submit job applications on my behalf, using my profile, through any channel available for that job (the employer's hiring system, its application form, or email).",
-    "I confirm my profile information is accurate and I am 18 or older.",
+    "I confirm my profile information is accurate.",
 )
 # the separate tick, off by default: only with it may the phone app press an employer's Submit for the person, where that is allowed.
 # Where that is comes from shared/assist-systems.json (the owner's per-system switch), so the words update themselves when a system is
@@ -122,7 +122,7 @@ def post(user, payload, ip, record):
     auto = p.get("auto") is True
     ticks = p.get("ticks") if isinstance(p.get("ticks"), dict) else {}
     if ticks.get("authorize") is not True or ticks.get("accurate") is not True:
-        return 400, {"error": "Tick both boxes to agree: the authorization, and that your profile is accurate and you are 18 or older.", "code": "consent_ticks"}
+        return 400, {"error": "Tick both boxes to agree: the authorization, and that your profile is accurate.", "code": "consent_ticks"}
     want = digest(full_text(auto))
     if digest(p.get("text")) != want:
         return 409, {"error": "This page is out of date. Reload UAply and agree to the current terms.", "code": "consent_text"}

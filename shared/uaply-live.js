@@ -482,7 +482,7 @@ function kitApply(w,host){
     "By continuing you agree to the Terms and Privacy Policy."];
   /* version 6 (Saif, October 24, lawyer-approved): two ticks, both required before Agree; the words go to the server after the rest */
   var CONSENT_TICKS=["I authorize UAply to submit job applications on my behalf, using my profile, through any channel available for that job (the employer's hiring system, its application form, or email).",
-    "I confirm my profile information is accurate and I am 18 or older."];
+    "I confirm my profile information is accurate."];
   /* the separate tick, off by default: only with it may the phone app press an employer's Submit for the person, where that is allowed.
      Where that is comes from shared/assist-systems.json (the owner's per-system switch, the same rule as assistMode in uaply-nav.js), so the
      line updates itself when a system is switched on; consent_api.py builds the same words from the same file (tools/test-consent.py) */
