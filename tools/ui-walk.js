@@ -6,7 +6,7 @@
 // 3. a LinkedIn link typed as "linkedin.com/in/..." is completed to https:// instead of blocking Save
 // 4. when no listing matches the target titles, the deck shows the roles anyway with "Showing all roles: none matched your target
 //    titles" and a way to Filters (since Oct 21); an empty deck that other filters hide says so (not "You have seen every one of these")
-// 5. Data & privacy: a restore says "Restored." (the message used to be wiped at once); "Show it again" drops "You only see this once"
+// 5. Data & privacy: a restore says "Restored." (the message used to be wiped at once); "Show it again" drops "You see this again only if the agreement changes"
 // 6. Account: the line above "You are signed in" no longer asks to sign in; "Sign in" everywhere (not "Log in"); a sign-out or a
 //    password change that reaches a restarting server (502) says so, and a failed sign-out never claims "Signed out."
 // 7. help: an answer that did not help offers "Talk to a person" at once
@@ -145,7 +145,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, on }) => {
   try { fs.unlinkSync(file); } catch (e) {}
   await tap(byText("/^Show it again$/"));
   const again = await waitFor("const b=d.getElementById('kitConsent');return b?b.innerText:''", 4000);
-  check("5. the agreement shown again no longer says 'You only see this once'", !!again && !/You only see this once/.test(again), (again || "").slice(-120));
+  check("5. the agreement shown again no longer says 'You see this again only if the agreement changes'", !!again && !/You see this again only if/.test(again), (again || "").slice(-120));
   await tap("d.getElementById('kcYes')");
 
   // 6. Account: sign up, the line above "You are signed in", a failed sign-out, Sign in wording (the first account signs out for it)

@@ -107,7 +107,7 @@ module.exports = async ({ ev, sleep, nav, send, shot, logs }) => {
   await tap("d.getElementById('kaYes')");                       // Open Profile: the answer is kept, the resume step opens
   const st1 = await waitFor("const x=w.__uaply.S.decisions[" + JOB + "];return x&&x.sent?x.sent.status:''", 5000);
   check("5. the answer is kept and the job waits in Job Tracker as Not sent yet", st1 === "needs_answers", st1);
-  const onStep = await waitFor("const e=d.getElementById('pResFile');return e&&e.offsetParent?'yes':''", 5000);
+  const onStep = await waitFor("const e=d.getElementById('aResF');return e&&e.offsetParent?'yes':''", 5000);   // the resume box (its own picker is hidden where Fill from your resume is the one picker)
   check("5. Profile setup opens on the step with the resume file", onStep === "yes", onStep);
   // the student adds a resume file (a file picker cannot be driven, so the file goes into the same input a picker fills)
   const b64 = fs.readFileSync(path.join(__dirname, "fixtures", "resumes", "newgrad.docx")).toString("base64");

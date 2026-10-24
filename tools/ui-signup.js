@@ -135,7 +135,7 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   check("and Continue once something is picked", (await ev(q(".sg-next") + ".textContent")) === "Continue");
   await key(".sg-qs input", "Enter"); await sleep(400);
   t = await text();
-  check("Enter advances to question 2 of 2", /2 of 2/i.test(t) && /Where do you want to work\?/.test(t), t.slice(0, 200));
+  check("Enter advances to question 2 of 2", /2 of 2/i.test(t) && /Where do you live\?/.test(t), t.slice(0, 200));
   await key(".sg-qs input", "Escape"); await sleep(400);
   t = await text();
   check("Esc goes back to question 1, with the pick kept", /1 of 2/i.test(t) && (await ev("[..." + F + ".querySelectorAll('.sg-chip')].find(b=>b.textContent==='Barista').getAttribute('aria-pressed')")) === "true");

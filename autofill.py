@@ -238,6 +238,18 @@ def _employed(ext):
     return "no" if _month(ext.get("job_end")) else "yes"
 
 
+def _salary_hour(ext):
+    """Expected pay per hour ("18" or "18.5"), from the profile's per-hour figure or its yearly one (a year is 2080 hours); None when blank."""
+    try:
+        h = float(ext.get("salaryHour") or 0) or float(ext.get("salary") or 0) / 2080
+    except (TypeError, ValueError):
+        return None
+    if not h > 0:
+        return None
+    h = round(h, 2)
+    return str(int(h)) if h == int(h) else ("%.2f" % h)
+
+
 def _salary(ext):
     """Expected yearly pay as plain digits ("85000"), or None when the person left it blank (then a form that requires it asks them)."""
     try:
@@ -247,6 +259,9 @@ def _salary(ext):
     return str(n) if n > 0 else None
 
 
+# a pay question per hour: "desired hourly rate", "expected hourly pay", "hourly wage expectation", "pay rate per hour"
+_SALARY_HOUR = (r"(expected|desired|target|minimum)[^?]{0,20}hourly (rate|pay|wage)|hourly (rate|pay|wage) (expectation|requirement)|"
+                r"(pay|wage) rate per hour|(expected|desired) (pay|rate) per hour")
 # a question that really asks for an amount (a yes/no question that only mentions pay, or a pay notice, is not one)
 _SALARY = (r"(salary|compensation|pay) (expectation|requirement)|(expected|desired|target) (annual |yearly |base )?(salary|compensation|pay)|"
            r"(salary|compensation|pay) (are you|do you|would you) (expect|seek|look|want)|what (salary|compensation|pay)")
@@ -285,6 +300,7 @@ def _rules(cand, ext, job):
         (r"\b(18|eighteen)\b.*(age|old)|of legal age|at least 18", lambda: "yes"),     # confirmed in UAply's first-application agreement
         # expected pay: early, so "your desired salary for this location" is not taken for a location question. Only an amount the person
         # entered, and only to a form that asks for one; any other question about pay is left for the person
+        (_SALARY_HOUR, lambda: _salary_hour(ext)),    # a form that asks per hour gets the hourly figure
         (_SALARY, lambda: _salary(ext)),
         (r"salary|compensation|pay expectation", lambda: None),
         (r"^(if so, )?(are|were) you (eligible|currently)[^?]*\b(opt|optional practical training)\b|\bopt extension|stem (opt )?extension", lambda: opt),
@@ -464,7 +480,7 @@ def _answer(label, key, kind, values, answers, rules, ext, req=True):
             want = None
             for rx, fn in rules:
                 if rx.search(label):
-                    want, pay = fn(), rx.pattern == _SALARY
+                    want, pay = fn(), rx.pattern in (_SALARY, _SALARY_HOUR)   # pay, per year or per hour, only where the form requires it
                     break
             if pay and not req:
                 want = None
@@ -543,7 +559,7 @@ def plan_questions(questions, cand, job, note="", resume_meta=None, answers=None
         elif role == "cover":
             val = note or _fill_template(ext.get("why"), job) or ext.get("summary") or None
             if val:
-                shown = "Your message to the hiring manager" if note else "Your 'why you want to work there' text" if ext.get("why") else "Your About you text"
+                shown = "Your message to the employer" if note else "Your 'why you want to work there' text" if ext.get("why") else "Your Summary"
         elif kind not in ("file", "other"):                   # a file other than the resume, or a type UAply cannot fill, is left to the person
             got = _answer(label, key, kind, opts, answers, rules, ext, req)
             if got is not None:
@@ -628,13 +644,13 @@ def plan_greenhouse(form, cand, job, note="", resume_meta=None, resume_bytes=Non
                 if not resume_bytes:
                     t = ext.get("summary") or ext.get("headline")
                     if put(name, t):
-                        ok = True; shown = "Your About you text"
+                        ok = True; shown = "Your Summary"
                 else:
                     ok = True
             elif name == "cover_letter_text":
                 t = note or _fill_template(ext.get("why"), job) or ext.get("summary")
                 if put(name, t):
-                    ok = True; shown = "Your message to the hiring manager" if note else "Your 'why you want to work there' text" if ext.get("why") else "Your About you text"
+                    ok = True; shown = "Your message to the employer" if note else "Your 'why you want to work there' text" if ext.get("why") else "Your Summary"
                 else:
                     ok = ok or not req
             elif ftype == "input_hidden":

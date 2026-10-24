@@ -368,7 +368,8 @@ def public_user(row):
     return {"id": row["id"], "email": row["email"], "hasPassword": bool(row["has_password"]), "emailVerified": bool(row["email_verified"]),
             "plan": (row["plan"] if "plan" in keys and row["plan"] in ("free", "plus", "pro") else "free"),
             "first": (row["first_name"] if "first_name" in keys else "") or "", "last": (row["last_name"] if "last_name" in keys else "") or "",
-            "sendForMe": bool(row["send_for_me"]) if "send_for_me" in keys else True}
+            "sendForMe": bool(row["send_for_me"]) if "send_for_me" in keys else True,
+            "termsAt": int(row["terms_at"] or 0) if "terms_at" in keys else 0}     # when this account ticked the Terms (Data and privacy says so)
 
 
 def clean_name(v):
@@ -575,7 +576,7 @@ def user_by_id(user_id):
     except (TypeError, ValueError):
         return None
     with _lock, _db() as c:
-        row = c.execute("SELECT id, email, has_password, email_verified, plan, first_name, last_name, send_for_me FROM users WHERE id=?", (uid,)).fetchone()
+        row = c.execute("SELECT id, email, has_password, email_verified, plan, first_name, last_name, send_for_me, terms_at FROM users WHERE id=?", (uid,)).fetchone()
     return public_user(row) if row else None
 
 
@@ -583,7 +584,7 @@ def user_for(token):
     if not isinstance(token, str) or not (20 <= len(token) <= 100):
         return None
     with _lock, _db() as c:
-        row = c.execute("SELECT u.id, u.email, u.has_password, u.email_verified, u.plan, u.first_name, u.last_name, u.send_for_me FROM sessions s JOIN users u ON u.id=s.user_id "
+        row = c.execute("SELECT u.id, u.email, u.has_password, u.email_verified, u.plan, u.first_name, u.last_name, u.send_for_me, u.terms_at FROM sessions s JOIN users u ON u.id=s.user_id "
                         "WHERE s.token_hash=? AND s.expires_at>?",
                         (hashlib.sha256(token.encode()).hexdigest(), int(time.time()))).fetchone()
     return public_user(row) if row else None
