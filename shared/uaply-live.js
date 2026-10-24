@@ -529,7 +529,7 @@ function kitApply(w,host){
     var LINKS=[[1,"How matching works","ai-and-employment.html"],[CONSENT_TEXT.length-1,"Terms","terms.html"],[CONSENT_TEXT.length-1,"Privacy Policy","privacy.html"]];
     function para(t,i){var h=esc(t);LINKS.forEach(function(l){if(l[0]===i)h=h.replace(l[1],'<a href="'+b+l[2]+'" target="_blank" rel="noopener noreferrer">'+l[1]+'</a>')});
       return (i>=3&&i<=5?(i===3?'<ul style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px">':'')+'<li>'+h+'</li>'+(i===5?'</ul>':''):'<p style="margin:0">'+(i===0?'<b>'+h+'</b>':h)+'</p>')+
-        (i===AUTO_AT-1?'<label for="kcAuto" style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:12px;cursor:pointer"><input type="checkbox" id="kcAuto" style="margin-top:3px;min-width:20px;min-height:20px"><span id="kcAutoT">'+esc(autoText())+'</span></label>':'')}
+        (i===AUTO_AT-1?'<p style="margin:0" id="kcAutoT">'+esc(autoText())+'</p>':'')}   /* said, not ticked: tick 1 ("through any channel") covers it (Saif, October 24); Account has the switch to turn it off */
     o.innerHTML='<div role="dialog" aria-modal="true" aria-labelledby="kcH" style="background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:20px;max-width:460px;width:100%;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:10px;font-size:14px">'+
       '<h2 id="kcH" style="margin:0;font:800 20px var(--display)">'+(consentFirst?"Before you start swiping":"Before your first application")+'</h2>'+
       CONSENT_TEXT.map(para).join("")+
@@ -541,8 +541,9 @@ function kitApply(w,host){
     yes.disabled=!ticked();o.querySelectorAll(".kcTick").forEach(function(c){c.addEventListener("change",function(){yes.disabled=!ticked()})});   /* both ticks, or no Agree */
     d.getElementById("kcT0").focus();
     function answer(ok){o.remove();var waiting=consentWait.splice(0);(ok?go:cancel)();waiting.forEach(function(p){(ok?p[0]:p[1])()})}
-    /* the tick is the person's own choice, off unless they tick it; the agreement is kept on this device and on the account */
-    d.getElementById("kcYes").onclick=function(){if(!ticked())return;var auto=!!d.getElementById("kcAuto").checked;try{w.localStorage.setItem(consentKey(),JSON.stringify({v:CONSENT_V,at:Date.now(),agent:true,auto:auto,authorize:true,accurate:true}))}catch(e){}recordConsent(auto,d.getElementById("kcAutoT").textContent);answer(true)};
+    /* two ticks (consent v6); Automatic submit is part of what tick 1 authorizes, so it is recorded with the words shown, and the person can
+       turn it off in Account (Press Submit for me on the employer's site). The agreement is kept on this device and on the account */
+    d.getElementById("kcYes").onclick=function(){if(!ticked())return;var auto=true;try{w.localStorage.setItem(consentKey(),JSON.stringify({v:CONSENT_V,at:Date.now(),agent:true,auto:auto,authorize:true,accurate:true}))}catch(e){}recordConsent(auto,d.getElementById("kcAutoT").textContent);answer(true)};
     d.getElementById("kcNo").onclick=function(){answer(false)};
     o.addEventListener("keydown",function(e){if(e.key==="Escape")answer(false)});
   }

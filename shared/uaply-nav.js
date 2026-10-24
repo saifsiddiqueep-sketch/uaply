@@ -56,7 +56,7 @@ function patch(s){
   s=once(s,'salary:100000,loc:"New York",','salary:100000,loc:"New York",email:"jordan.lee@example.com",');
   s=once(s,'loc:typeof p.loc==="string"?p.loc:"",','loc:typeof p.loc==="string"?p.loc:"",email:typeof p.email==="string"?p.email.slice(0,200):"",');
   s=once(s,'salary:num($("pSalary").value,0,10000000),loc:$("pLoc").value.trim(),','salary:num($("pSalary").value,0,10000000),loc:$("pLoc").value.trim(),email:($("pEmail")?$("pEmail").value.trim():""),');
-  s=once(s,'$("pSalary").value=p.salary;$("pLoc").value=p.loc;','$("pSalary").value=p.salary;$("pLoc").value=p.loc;if($("pEmail"))$("pEmail").value=X?"":(p.email||"");if(X){$("pSkills").value="";$("pSalary").value="";$("pLoc").value=""}');
+  s=once(s,'$("pSalary").value=p.salary>0?p.salary:"";$("pLoc").value=p.loc;','$("pSalary").value=p.salary>0?p.salary:"";$("pLoc").value=p.loc;if($("pEmail"))$("pEmail").value=X?"":(p.email||"");if(X){$("pSkills").value="";$("pSalary").value="";$("pLoc").value=""}');
   s=once(s,'title:S.profile.title||""};','title:S.profile.title||"",st:"applied"};');
   s=once(s,"<span>'+cap(j.mode)+'</span>","<span>'+cap(j.mode)+'</span>'+(j.jobType?'<span>'+({\"full-time\":\"Full-time\",\"part-time\":\"Part-time\",internship:\"Internship\",\"co-op\":\"Co-op\",contract:\"Contract\",temporary:\"Temporary\"}[j.jobType]||\"\")+'</span>':(j.type&&j.type!==\"job\"?'<span>'+({internship:\"Internship\",coop:\"Co-op\",parttime:\"Part-time\"}[j.type]||\"Job\")+'</span>':''))+(j.live?'<span class=\"'+(window.__uaplyRouteWord(j)===\"Applies instantly\"?\"inst\":\"ext\")+'\">'+window.__uaplyRouteWord(j)+'</span>':'')+(j.live&&j.via?'<span class=\"via\">via '+esc(j.via)+'</span>':'')+'");
   /* target titles count toward the match score: Title 15 points, Skills 30, Experience 15 (the total stays 100) */
@@ -664,7 +664,7 @@ function apply(w,host){
   w.__uaplyAssistShape=assistShape;w.__uaplyAssistOnly=assistOnly;w.__uaplyAssistHosts=assistHosts;   /* for the browser tests */
   /* Automatic submit needs the person's own tick, on record at the server for the current agreement (consent_api.py): the answer of the
      agreement just given on this device (__uaplyConsentRec), else what /api/auth/me said. Without it the app never presses Submit */
-  function autoConsent(){if(SRV.user&&SRV.user.sendForMe===false)return false;var c=("__uaplyConsentRec" in w)?w.__uaplyConsentRec:(SRV.user&&SRV.user.consent);return !!(c&&c.v===w.__uaplyConsentV&&c.auto===true)}
+  function autoConsent(){if(SRV.user&&SRV.user.sendForMe===false)return false;if(acct.noPress===true)return false;   /* Account: Press Submit for me is off */var c=("__uaplyConsentRec" in w)?w.__uaplyConsentRec:(SRV.user&&SRV.user.consent);return !!(c&&c.v===w.__uaplyConsentV&&c.auto===true)}
   w.__uaplyAutoConsent=autoConsent;   /* for the browser test */
   var assistBusy=false;
   function assistedApply(j,AP){
@@ -839,7 +839,7 @@ function apply(w,host){
     if(!(MILES.indexOf(String(a.fMiles))>-1||(NEAR&&/^(0|[1-9]\d?|100)$/.test(String(a.fMiles))&&+a.fMiles%5===0)))a.fMiles="any";a.fMiles=String(a.fMiles);
     if(POSTED.indexOf(a.fPosted)<0)a.fPosted="any";
     if(JT_KEYS.indexOf(a.fJt)<0)a.fJt="all";
-    a.fApp=!!a.fApp;a.fInstant=!!a.fInstant;a.fStrict=!!a.fStrict;a.fAuto=!!a.fAuto;a.fTitleOnly=!!a.fTitleOnly;a.fNoComm=!!a.fNoComm;a.fEdu=!!a.fEdu;a.fWs=a.fWs!==false;
+    a.fApp=!!a.fApp;a.fInstant=!!a.fInstant;a.fStrict=!!a.fStrict;a.fAuto=!!a.fAuto;a.noPress=a.noPress===true;a.fTitleOnly=!!a.fTitleOnly;a.fNoComm=!!a.fNoComm;a.fEdu=!!a.fEdu;a.fWs=a.fWs!==false;
     var seen={};
     a.titles=(Array.isArray(a.titles)?a.titles:[]).filter(function(t){return typeof t==="string"}).map(function(t){return t.trim().replace(/\s+/g," ").slice(0,60)}).filter(function(t){var k=t.toLowerCase();if(!t||seen[k])return false;seen[k]=1;return true}).slice(0,4);
     a.fLevels=(Array.isArray(a.fLevels)?a.fLevels:[]).filter(function(k){return LEVEL_KEYS.indexOf(k)>-1});
@@ -2164,6 +2164,7 @@ function apply(w,host){
           :(r.j&&r.j.error)||"Could not change it. Try again.");
       });
       return}
+    if(t.id==="aPressSubmit"){acct.noPress=!t.checked;saveA();renderAcct("account");msg(t.checked?"Press Submit for me is on.":"Press Submit for me is off: you press Submit on the employer's form yourself.");return}
     if(t.id==="aEnf"){acct.enforce=t.checked;saveA();msg(acct.enforce?"Limits are now enforced.":"Limits are off.")}
     else if(t.id==="aImp"&&t.files[0]){
       var g=t.files[0];if(g.size>3145728){msg("That file is too large.");return}
@@ -2492,7 +2493,12 @@ function apply(w,host){
     return '<div class="field" id="aSendWrap" style="margin:4px 0"><label for="aSendForMe" style="display:flex;gap:10px;align-items:center;min-height:44px;cursor:pointer">'+
       '<input type="checkbox" id="aSendForMe" role="switch" aria-describedby="aSendNote"'+(on?' checked':'')+' style="min-width:22px;min-height:22px;margin:0"><b>Send applications for me</b></label>'+
       '<small id="aSendNote">'+(on?'On: a swipe right sends your application wherever UAply can (see the Terms, section 3). Turn it off and swipes right only save the job to Job Tracker.'
-        :'Off: swipes right only save the job to Job Tracker. Nothing is sent to any employer for you until you turn it on again.')+'</small></div>';
+        :'Off: swipes right only save the job to Job Tracker. Nothing is sent to any employer for you until you turn it on again.')+'</small></div>'+
+      /* Automatic submit (part of the agreement's first tick): on unless the person turns it off here; kept on this device */
+      (on?'<div class="field" id="aPressWrap" style="margin:4px 0"><label for="aPressSubmit" style="display:flex;gap:10px;align-items:center;min-height:44px;cursor:pointer">'+
+      '<input type="checkbox" id="aPressSubmit" role="switch" aria-describedby="aPressNote"'+(acct.noPress===true?'':' checked')+' style="min-width:22px;min-height:22px;margin:0"><b>Press Submit for me on the employer’s site</b></label>'+
+      '<small id="aPressNote">'+(acct.noPress===true?'Off: where the employer’s form opens filled in, you check it and press Submit yourself.'
+        :'On: where it is allowed, the phone app fills the employer’s form and presses Submit for you. It never answers voluntary questions or completes a security check.')+'</small></div>':'');
   }
   w.__uaplySendOff=function(){return !!(SRV.user&&SRV.user.sendForMe===false)};
   function deleteHTML(){

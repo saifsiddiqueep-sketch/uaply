@@ -16,7 +16,7 @@ function once(src,a,b){if(src.indexOf(a)<0)throw new Error("patch target not fou
 function patch(s){
   s=once(s,'loc:typeof p.loc==="string"?p.loc:"",','loc:typeof p.loc==="string"?p.loc:"",ext:(p.ext&&typeof p.ext==="object")?p.ext:{},');
   s=once(s,'salary:num($("pSalary").value,0,10000000),loc:$("pLoc").value.trim(),','salary:num($("pSalary").value,0,10000000),loc:$("pLoc").value.trim(),ext:(window.__uaplyExtRead?window.__uaplyExtRead():{}),');
-  s=once(s,'$("pSalary").value=p.salary;$("pLoc").value=p.loc;','$("pSalary").value=p.salary;$("pLoc").value=p.loc;if(window.__uaplyExtFill)window.__uaplyExtFill(p.ext||{});');
+  s=once(s,'$("pSalary").value=p.salary>0?p.salary:"";$("pLoc").value=p.loc;','$("pSalary").value=p.salary>0?p.salary:"";$("pLoc").value=p.loc;if(window.__uaplyExtFill)window.__uaplyExtFill(p.ext||{});');
   return s;
 }
 
