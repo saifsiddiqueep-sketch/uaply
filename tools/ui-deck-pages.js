@@ -32,11 +32,12 @@ module.exports = async ({ ev, sleep, nav, send, on, logs }) => {
       skills: ["Patient care", "Customer service"], blurb: "A test posting.", url: "https://example.com/jobs/nurse", source: "UAply Test Clinic's careers page", apply: "link", contact: "", live: true, posted: Date.now() },
     { id: 4250102, co: "UAply Test Cafe", role: "Barista", loc: "Philadelphia, PA", mode: "onsite", type: "job", jobType: "full-time", sal: [0, 0], yrs: 0, edu: "High school",
       skills: ["Customer service", "Cash handling"], blurb: "A test posting.", url: "https://example.com/jobs/barista", source: "UAply Test Cafe's careers page", apply: "link", contact: "", live: true, posted: Date.now() }];
-  let block = 0;                                   // > 0: that many whole-list requests fail first (a deploy), Infinity: all of them
+  let block = 0, hang = false;                                   // > 0: that many whole-list requests fail first (a deploy), Infinity: all of them
   await send("Fetch.enable", { patterns: [{ urlPattern: "*/api/jobs", requestStage: "Response" }] });
   on("Fetch.requestPaused", async (q) => {
     try {
       if (!/\/api\/jobs$/.test(q.request.url)) return send("Fetch.continueRequest", { requestId: q.requestId });
+      if (hang) return;                              // a server that never answers: the request is left hanging (the app gives up after 20 s)
       if (block > 0) { block--; return send("Fetch.failRequest", { requestId: q.requestId, errorReason: "Failed" }); }
       const r = await send("Fetch.getResponseBody", { requestId: q.requestId }), b = r.result || {};
       const j = JSON.parse(b.base64Encoded ? Buffer.from(b.body, "base64").toString("utf8") : b.body);
@@ -51,6 +52,10 @@ module.exports = async ({ ev, sleep, nav, send, on, logs }) => {
   await send("Page.navigate", { url: base + "/" });
   for (let i = 0; i < 80 && !(await ev("!!(" + F + "&&" + FW + ".__uaply&&" + F + ".getElementById('bnav'))").catch(() => false)); i++) await sleep(250);
   await ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b)b.click()})()"); await sleep(300);
+  // let this first visit's whole list finish (it saves a copy of the list on the device) before that copy is cleared below: cleared
+  // while it was still coming, the copy came back and the next visit drew its first card from it (600 jobs, not the first page alone)
+  for (let i = 0; i < 120 && !(await ev("(()=>{try{const w=" + FW + ";return !w.document.documentElement.classList.contains('uaRank')&&w.__uaply.JOBS.filter(j=>j.live).length>260}catch(e){return false}})()")); i++) await sleep(250);
+  await sleep(500);
   await ev("(()=>{const A=" + FW + ".__uaply;Object.assign(A.S.profile,{name:'Nia Nurse',title:" + JSON.stringify(T1.title) + ",custom:true,skills:['Patient care','Customer service'],years:2,salary:0,modes:{remote:true,hybrid:true,onsite:true}});A.save();" +
     "Object.keys(localStorage).filter(k=>/.live$|jobs|cache/i.test(k)).forEach(k=>localStorage.removeItem(k));return 1})()");
   await send("Page.navigate", { url: base + "/" });
@@ -91,6 +96,22 @@ module.exports = async ({ ev, sleep, nav, send, on, logs }) => {
   for (let i = 0; i < 80 && R1.n < Math.min(total.total, 1000); i++) { await sleep(250); R1 = await live(); }
   check("the whole list fails once: the deck keeps its first page (" + R0.n + " jobs) and shows no \"none matched\" note meanwhile", R0.n <= 260 && !noteR, JSON.stringify({ R0, noteR }));
   check("...and asks for it again about 10 s on: then the deck holds the whole list (" + R1.n + " jobs), none twice", R1.n >= Math.min(total.total, 1000) && R1.dup === 0, JSON.stringify(R1));
+
+  // ---- 3a2. the whole list hangs (no answer at all): after 20 s the app counts it as failed, and near the end of the stack the next page comes ----
+  hang = true;
+  await ev("(()=>{const A=" + FW + ".__uaply;A.S.decisions={};A.save();Object.keys(localStorage).filter(k=>/\\.live$|jobs|cache/i.test(k)).forEach(k=>localStorage.removeItem(k));return 1})()");
+  await send("Page.navigate", { url: base + "/" });
+  await firstCard();
+  const H0 = await live(), t0h = Date.now();
+  await sleep(22000);                               // the app's own 20 s limit for the whole list, and a little more
+  await ev("(()=>{const w=" + FW + ",A=w.__uaply,t=A.getType();const mine=A.JOBS.filter(j=>j.live&&!j.stub&&(j.type||'job')===t&&!A.S.decisions[j.id]);" +
+    "mine.slice(15).forEach(j=>{A.S.decisions[j.id]={s:'passed',at:Date.now(),pct:50}});A.save();A.renderAll();return mine.length})()");
+  let H1 = H0;
+  for (let i = 0; i < 40 && H1.n <= H0.n; i++) { await sleep(250); H1 = await live(); }
+  const hp = (await asked()).map((x) => x[0]).filter((u) => /^\/api\/jobs\?.*type=/.test(u));
+  check("the whole list hangs: after its 20 s it counts as failed, and near the end of the stack the next page comes (" + H0.n + " -> " + H1.n + " jobs, " + Math.round((Date.now() - t0h) / 1000) + " s)",
+    H0.n <= 260 && H1.n > H0.n && hp.length > 0 && H1.dup === 0, JSON.stringify({ H0, H1, hp: hp.slice(-2) }));
+  hang = false;
 
   // ---- 3b. the whole list refused for good (a slow link, an error): the deck carries on a page at a time ----
   block = Infinity;
