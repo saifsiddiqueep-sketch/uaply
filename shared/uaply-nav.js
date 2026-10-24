@@ -290,7 +290,9 @@ input[type=range]{accent-color:var(--accent);min-height:44px}
 #locAsk.phone p{font-size:14px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 #locAsk.phone .acts{flex-wrap:nowrap}
 #locAsk.phone .acts .btn{flex:1}
-@media (max-height:740px){.swipecol{gap:8px}.tips{padding:6px 10px!important;font-size:14px!important;line-height:1.35}.banner{padding:4px 10px!important;font-size:14px!important;line-height:1.3}.banner button{padding:4px 0!important;min-height:32px}#locAsk{padding:8px 12px;gap:4px;border-radius:12px}#locAsk b{font-size:14px}#locAsk p{font-size:14px;line-height:1.35}#locAsk .acts .btn{min-height:34px;padding:5px 14px;font-size:14px}.filters button{padding:4px 2px!important;min-height:32px}}
+/* short screens (Galaxy walk, October 24): the filter chips are 44 px tall targets like every other control (they were 32 px, 38 px
+   reachable); the 12 px they gained come out of the gaps around them and the location box's padding, so the card shows as much as before */
+@media (max-height:740px){.swipecol{gap:4px}.tips{padding:6px 10px!important;font-size:14px!important;line-height:1.35}.banner{padding:4px 10px!important;font-size:14px!important;line-height:1.3}.banner button{padding:4px 0!important;min-height:32px}#locAsk{padding:6px 12px;gap:4px;border-radius:12px}#locAsk b{font-size:14px}#locAsk p{font-size:14px;line-height:1.35}#locAsk .acts .btn{min-height:34px;padding:5px 14px;font-size:14px}.filters button{padding:11px 2px!important;min-height:44px}}
 #fMilesWrap.nearbox{display:flex;flex-direction:column;gap:6px;margin-top:8px}
 #fMilesWrap .rngrow{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
 #fMilesWrap .rngrow b{font-size:15px}
