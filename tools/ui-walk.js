@@ -74,13 +74,14 @@ module.exports = async ({ ev, sleep, nav, send, logs, on }) => {
   await tap(byText("/^Not now$/"));
   await tap("d.getElementById('tipsClose')");
 
-  // 0. (October 21) a swipe right with an empty profile never applies: it opens "Finish your profile first", and the card stays on top
+  // 0. (Saif, October 24) a swipe right with an empty profile is never blocked: the job is saved to Job Tracker and nothing is sent
   const top0 = await q("return +d.querySelector('.card.top').getAttribute('data-id')");
   await swipe(240);
-  const fin = await waitFor("const b=d.getElementById('rdyBox');return b?b.innerText.replace(/\\s+/g,' '):''", 4000);
-  check("0. a swipe right with an empty profile opens Finish your profile first (nothing is sent)", /^Finish your profile first/.test(fin || ""), fin);
-  check("0. ...and the card stays on top", (await q("return +d.querySelector('.card.top').getAttribute('data-id')")) === top0 && (await q("return !w.__uaply.S.decisions[" + top0 + "]")) === true, "");
-  await tap("d.getElementById('rdyNo')");
+  await sleep(600);
+  check("0. a swipe right with an empty profile saves the job (nothing is sent) and the deck moves on",
+    (await q("const x=w.__uaply.S.decisions[" + top0 + "];return !!x&&!(x.sent&&(x.sent.status==='sent'||x.sent.status==='delivered_test'))")) === true &&
+    (await q("const c=d.querySelector('.card.top');return c?+c.getAttribute('data-id'):0")) !== top0, "");
+  check("0. ...with no Finish your profile box over the deck", (await q("return !d.getElementById('rdyBox')")) === true, "");
   // 1. the message after a swipe (here "Passed on ..."): as wide as the phone allows, not a column half the screen wide over the card
   await swipe(-240);
   const t1 = await waitFor("const t=[...d.querySelectorAll('.toast')].find(x=>x.getClientRects().length&&x.innerText.length>10);return t?JSON.stringify({w:Math.round(t.getBoundingClientRect().width),h:Math.round(t.getBoundingClientRect().height),vw:w.innerWidth,t:t.innerText.slice(0,70)}):''", 6000);

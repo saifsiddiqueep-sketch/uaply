@@ -42,10 +42,15 @@ function patch(s){
      above the deck keeps only the person's own "N applied" */
   s=once(s,`innerHTML='<span>'+q.length+' job'+(q.length===1?'':'s')+' left</span>`,`innerHTML='<span></span>`);
   s=once(s,'.sort(function(a,b){return b.m.pct-a.m.pct});','.sort(window.__uaplyDeckSort?window.__uaplyDeckSort(TYPE):function(a,b){return b.m.pct-a.m.pct});');   /* the Internship and Co-op stacks: see __uaplyDeckSort */
-  s=once(s,'&&(F==="all"||j.mode===F)}).map(function(j){return {j:j,m:evaluate(j,S.profile)}}).sort(',
-           '&&(j.type||"job")===TYPE&&!(window.__uaplyHide&&window.__uaplyHide(j))&&(F==="all"||j.mode===F)}).map(function(j){return {j:j,m:evaluate(j,S.profile)}}).filter(function(x){return x.m.pct>=MINPCT}).sort(');
+  /* always jobs (Saif, October 24): the person's filters (stack, work style, minimum match, the rest) rank first; when they leave fewer than
+     20 cards the deck goes on with the jobs outside them, each marked "Outside your filters: ...", nearest first (__uaplyDeckFill) */
+  s=once(s,'return JOBS.filter(function(j){return !S.decisions[j.id]&&(F==="all"||j.mode===F)}).map(function(j){return {j:j,m:evaluate(j,S.profile)}}).sort(',
+           'return (window.__uaplyDeckFill||function(a,T,F0,M,ev,srt){return a.filter(function(j){return (j.type||"job")===T&&!(window.__uaplyHide&&window.__uaplyHide(j))&&(F0==="all"||j.mode===F0)}).map(ev).filter(function(x){return x.m.pct>=M}).sort(srt)})'+
+           '(JOBS.filter(function(j){return !S.decisions[j.id]&&true}),TYPE,F,MINPCT,function(j){return {j:j,m:evaluate(j,S.profile)}},');
+  s=once(s,`'<ul class="crit incard" aria-label="Why this score">'`,`(q.out?'<p class="outside">Outside your filters: '+esc(q.out)+'</p>':"")+'<ul class="crit incard" aria-label="Why this score">'`);
+  s=once(s,'</style>','.outside{margin:0;font-size:14px;line-height:1.4;font-weight:700;color:var(--muted)}.npDot{display:inline-block;min-width:8px;height:8px;border-radius:4px;background:var(--accent);margin-left:6px;vertical-align:middle}</style>');
   s=once(s,'<h2>You have seen every job</h2><p>Jobs you passed on can come back, and your applications are in the Applied tab.</p>',
-    `<h2>'+(window.__uaplyLoadingJobs?"Finding jobs for you…":window.__uaplyJobsFailed?"Could not load jobs":MINPCT>0?"No jobs at "+MINPCT+"% match or higher":(window.__uaplyEmpty||function(){return ["You have seen every one of these"]})(JOBS,S,TYPE)[0])+'</h2><p>'+(window.__uaplyLoadingJobs?"Looking for current postings. This takes a few seconds.":window.__uaplyJobsFailed?"Check your internet connection, then close and reopen UAply.":MINPCT>0?"Lower the minimum match in Profile, then Filters.":(window.__uaplyEmpty||function(){return ["","Jobs you passed on can come back, and your applications are in the Job Tracker."]})(JOBS,S,TYPE)[1])+'</p>`);
+    `<h2>'+(window.__uaplyLoadingJobs?"Finding jobs for you…":window.__uaplyJobsFailed?"Could not load jobs":window.__uaplyLimitHit===new Date().toDateString()?"You reached today's limit":(window.__uaplyEmpty||function(){return ["You have seen every one of these"]})(JOBS,S,TYPE)[0])+'</h2><p>'+(window.__uaplyLoadingJobs?"Looking for current postings. This takes a few seconds.":window.__uaplyJobsFailed?"Check your internet connection, then close and reopen UAply.":window.__uaplyLimitHit===new Date().toDateString()?"UAply can send more tomorrow. The jobs you saved are in Job Tracker.":(window.__uaplyEmpty||function(){return ["","Jobs you passed on can come back, and your applications are in the Job Tracker."]})(JOBS,S,TYPE)[1])+'</p>`);
   s=once(s,'title:String(x.title||"")};','title:String(x.title||""),st:(x.st==="interview"||x.st==="accepted"||x.st==="rejected")?x.st:"applied",sent:(x.sent&&typeof x.sent==="object")?{at:+x.sent.at||0,to:String(x.sent.to||"").slice(0,120),status:String(x.sent.status||"").slice(0,20),prev:String(x.sent.prev||"").slice(0,20),once:x.sent.once===true}:undefined};');
   /* profile gets an email so a recruiter can reply */
   s=once(s,'salary:100000,loc:"New York",','salary:100000,loc:"New York",email:"jordan.lee@example.com",');
@@ -559,6 +564,8 @@ function apply(w,host){
       if(x.status==="pending")return '<small class="sent todo">Waiting to send: UAply sends it as soon as the connection is back.</small>';
       /* nothing reached the employer: say so, with a way to try again (the same as swiping right on it again) */
       var again='<button type="button" class="linkbtn" data-act="resend" data-id="'+o.j.id+'">';
+      if(x.status==="needs_profile")return (w.__uaplyReadiness&&w.__uaplyReadiness().min)?'<small class="sent todo">Saved. Your profile is complete now. '+again+'Send now</button></small>':
+        '<small class="sent todo">Needs profile: complete your profile to send it. <button type="button" class="linkbtn" data-act="complete-profile" data-id="'+o.j.id+'">Complete profile</button></small>';
       if(x.status==="failed")return '<small class="sent todo">Not sent: UAply could not deliver it to '+e(o.j.co)+'. '+again+'Try again</button></small>';
       if(x.status==="needs_answers")return '<small class="sent todo">Not sent yet: '+e(o.j.co)+'\'s form asks something only you can answer. '+again+'Answer now</button></small>';
       return "";
@@ -573,7 +580,7 @@ function apply(w,host){
       var st=o.x.st,x=o.x.sent,k,t;
       if(st==="interview"){k="interview";t="Interview"}else if(st==="accepted"){k="accepted";t="Accepted"}else if(st==="rejected"){k="rejected";t="Rejected"}
       else if(x&&x.status==="sent"){k="sent";t="Sent"}else if(x&&x.status==="self"){k="sent";t="Sent (by you)"}else if(x&&x.status==="delivered_test"){k="sent";t="Sent (test)"}
-      else if(x&&x.status==="pending"){k="wait";t="Waiting to send"}else if(x&&x.status==="failed"){k="wait";t="Not sent"}
+      else if(x&&x.status==="pending"){k="wait";t="Waiting to send"}else if(x&&x.status==="needs_profile"){k="wait";t="Needs profile"}else if(x&&x.status==="failed"){k="wait";t="Not sent"}
       else if(x&&x.status==="needs_answers"){k="wait";t="Not sent yet"}else{k="finish";t="Finish on their site"}
       return '<span class="stchip st-'+k+'">'+t+'</span>';
     }
@@ -723,6 +730,7 @@ function apply(w,host){
     if(act==="ics"){exportIcs(id);return}
     if(act==="share"){var sj=A.JOBS.filter(function(j){return j.id===id})[0];if(sj)shareJob(sj);return}
     if(act==="resend"){if(w.__uaplyResend)w.__uaplyResend(id);return}
+    if(act==="complete-profile"){if(w.__uaplyCompleteProfile)w.__uaplyCompleteProfile();return}
     /* a hand-off finished on the employer's own site: the person marks it, so it no longer says "Finish on their site" (October 22).
        Undo puts back what it said before, once; a second mark after an undo stays */
     if(act==="markapplied"){var was=x.sent||null;x.sent={at:Date.now(),to:"",status:"self",prev:was?String(was.status||""):"",once:!!(was&&was.once)};A.save();renderTrack();
@@ -867,6 +875,36 @@ function apply(w,host){
     var co=String(j.co).toLowerCase(),hay=(String(j.role)+" "+(j.skills||[]).join(" ")).toLowerCase();
     if(list(acct.fCo).some(function(x){return co.indexOf(x)>-1})||list(acct.fKw).some(function(x){return hay.indexOf(x)>-1}))return true;
     return hideByMeta(j);
+  };
+  w.__uaplyHideWhy=function(j){
+    if(w.__uaplyHideMore&&w.__uaplyHideMore(j))return "!";
+    var p=A.S.profile,co=String(j.co).toLowerCase(),hay=(String(j.role)+" "+(j.skills||[]).join(" ")).toLowerCase();
+    if(list(acct.fCo).some(function(x){return co.indexOf(x)>-1})||list(acct.fKw).some(function(x){return hay.indexOf(x)>-1}))return "!";
+    if(acct.fSal&&p.salary&&j.sal&&j.sal.length>1&&j.sal[1]>0&&(j.salUnit==="hour"?j.sal[1]*2080:j.sal[1])<(p.payUnit==="hour"?p.salary*2080:p.salary))return "pay below your minimum";   /* the same scale as __uaplyHide (pay-unit) */
+    if(acct.fYrs!=="any"&&j.yrs>(+p.years||0)+(+acct.fYrs))return "more experience than you set";
+    return hideByMeta(j)?"your other filters":"";
+  };
+  w.__uaplyDeckFill=function(jobs,T,F0,M,ev,srt){
+    if(w.__uaplyLimitHit===new Date().toDateString())return [];
+    var MW={remote:"remote",hybrid:"hybrid",onsite:"on-site"},TW={job:"full-time",parttime:"part-time",internship:"internship",coop:"co-op"},inn=[],low=[],rest=[];
+    jobs.forEach(function(j){
+      var why=w.__uaplyHide(j)?(w.__uaplyHideWhy(j)||"!"):"";if(why==="!")return;   /* "!" also when another part of the page hides it (a test, Hiring mode) */
+      var ty=j.type||"job";
+      if(ty===T&&(F0==="all"||j.mode===F0)&&!why){var x=ev(j);if(x.m.pct>=M)inn.push(x);else low.push(x)}else rest.push([j,why]);
+    });
+    inn.sort(srt);
+    if(inn.length>=20)return inn;
+    var out=low.map(function(x){return {x:x,r:["below "+M+"% match"],far:1}});
+    rest.forEach(function(o){
+      var j=o[0],r=[],far=0,ty=j.type||"job",x=ev(j);
+      if(ty!==T){r.push(TW[ty]||"another kind of job");far+=4}
+      if(F0!=="all"&&j.mode!==F0){r.push(MW[j.mode]||"another work style");far+=2}
+      if(o[1]){r.push(o[1]);far+=1}
+      if(x.m.pct<M){r.push("below "+M+"% match");far+=1}
+      out.push({x:x,r:r,far:far});
+    });
+    out.sort(function(a,b){return a.far-b.far||srt(a.x,b.x)});
+    return inn.concat(out.map(function(o){o.x.out=o.r.join(", ");return o.x}));
   };
 
   /* posted date, applicant count, benefits and distance. Missing data is "unknown": shown unless "hide listings that don't say" is on. */
@@ -1066,7 +1104,8 @@ function apply(w,host){
   w.__uaplyEmpty=function(jobs,S,type){
     /* no numbers: the app never says how many jobs a section holds (the owner's rule), only what to do next */
     var all=jobs.filter(function(j){return (j.type||"job")===type&&(j.live||!w.__uaplyHideSamples)}),
-        seen=all.filter(function(j){return S&&S.decisions&&S.decisions[j.id]}).length,hid=all.length-seen,
+        seen=all.filter(function(j){return S&&S.decisions&&S.decisions[j.id]}).length,
+        hid=all.filter(function(j){return !(S&&S.decisions&&S.decisions[j.id])&&!(w.__uaplyHide&&w.__uaplyHide(j)&&(!w.__uaplyHideWhy||(w.__uaplyHideWhy(j)||"!")==="!"))}).length,   /* the deck fills from outside the filters, so only hard rules can leave one unseen */
         what={job:"full-time jobs",parttime:"part-time jobs",internship:"internships",coop:"co-ops"}[type]||"jobs";
     if(!all.length)return ["Nothing listed here right now","New postings appear as employers publish them. Try another section or check back soon."];
     if(hid)return [(seen?"No more ":"No ")+what+" match your filters yet",'Widen them in <button type="button" class="linkbtn" data-open-filters="1">Filters</button>, or pick another kind of job in the Jobs menu.'+(seen?" Jobs you passed on can come back.":"")];
@@ -1261,6 +1300,16 @@ function apply(w,host){
     setTimeout(focusIt,60);setTimeout(focusIt,400);   /* again once the screen has settled */
   }
   w.__uaplyFixReady=fixReady;
+  /* "Complete profile" (the saved line, Job Tracker): Profile setup at the first missing step */
+  w.__uaplyCompleteProfile=function(){var r=readiness(),it=r.items.filter(function(i){return i.needed&&!i.done})[0]||r.items.filter(function(i){return !i.done})[0];if(it)fixReady(it.k)};
+  /* the small badge on Job Tracker: saved jobs waiting for the profile */
+  w.__uaplyBadge=function(){
+    var b=d.getElementById("nb-dash");if(!b)return;var n=0,ds=A.S.decisions||{};Object.keys(ds).forEach(function(k){if(ds[k].sent&&ds[k].sent.status==="needs_profile")n++});
+    var dot=b.querySelector(".npDot");if(!n){if(dot)dot.remove();return}
+    if(!dot){dot=d.createElement("span");dot.className="npDot";dot.setAttribute("role","img");b.querySelector("span").appendChild(dot)}
+    dot.setAttribute("aria-label",n+" saved job"+(n===1?"":"s")+" need your profile");
+  };
+  setTimeout(w.__uaplyBadge,0);
   d.addEventListener("click",function(e){var b=e.target.closest&&e.target.closest("[data-ready]");if(b){e.preventDefault();fixReady(b.getAttribute("data-ready"))}});
   /* a swipe right below READY_MIN (uaply-live.js, __uaplyReadyGate): nothing is sent, the card stays, and this says exactly what is missing */
   w.__uaplyFinishProfile=function(job){

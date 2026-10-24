@@ -162,13 +162,12 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
 
   // swiping right on a real job: consent once, then the hand-off to the employer's own page, and it appears under Applied
   await pick("nb-svc", "Internships"); await sleep(800);
-  // first with the example profile: the release build never applies with it; "Finish your profile first" says what is missing, the card stays
+  // first with the example profile (Saif, October 24): the swipe is never blocked; the job is saved as "Needs profile" and nothing is sent
   const top0 = await ev("(()=>{const c=" + F + ".querySelector('.card.top');return c?+c.getAttribute('data-id'):0})()");
   await ev(F + ".getElementById('btnYes').click()"); await sleep(1200);
-  const fin = await ev("(()=>{const b=" + F + ".getElementById('rdyBox');return b?b.innerText.split(/\\s+/).join(' '):''})()");
-  check("a swipe right with the example profile opens Finish your profile first, and the card stays", /^Finish your profile first/.test(fin) &&
-    (await ev("(()=>{const c=" + F + ".querySelector('.card.top');return c?+c.getAttribute('data-id'):0})()")) === top0, fin.slice(0, 120));
-  await ev("(()=>{const b=" + F + ".getElementById('rdyNo');if(b)b.click()})()"); await sleep(300);
+  check("a swipe right with the example profile saves it as Needs profile, nothing is sent, and the deck moves on",
+    (await ev("(()=>{const x=document.querySelector('iframe').contentWindow.__uaply.S.decisions[" + top0 + "];return x&&x.sent?x.sent.status:''})()")) === "needs_profile" &&
+    (await ev("(()=>{const c=" + F + ".querySelector('.card.top');return c?+c.getAttribute('data-id'):0})()")) !== top0 && !(await ev("!!" + F + ".getElementById('rdyBox')")), "");
   // then with the least a swipe needs: a name, an email and a phone number
   await ev("(()=>{const A=document.querySelector('iframe').contentWindow.__uaply;Object.assign(A.S.profile,{name:'Release Tester',email:'release.tester@example.com',custom:true});A.S.profile.ext=Object.assign({},A.S.profile.ext,{phone:'+1 215 555 0100'});A.save();A.renderAll()})()");
   await sleep(600);

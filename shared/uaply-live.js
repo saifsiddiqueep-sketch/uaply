@@ -78,7 +78,7 @@ function patch(s){
   /* Undo brings back exactly the card just swiped, on top: the deck is ranked over the whole list, and the card held on top while it
      arrived (__uaplyHoldTop) may not be the best-ranked one, so without this Undo put a different card on top (ui-swipes, October 23) */
   s=once(s,"var id=S.history.pop();if(!id)return;","var id=S.history.pop();if(!id)return;if(window.__uaplyHoldJob)window.__uaplyHoldJob(id);");
-  s=once(s,'var q=queue(),deck=$("deck");','var q=queue(),deck=$("deck");if(window.__uaplyHoldTop)q=window.__uaplyHoldTop(q,JOB_BY_ID,S,evaluate);if(window.__uaplyNearEnd)window.__uaplyNearEnd(q.length);');
+  s=once(s,'var q=queue(),deck=$("deck");','var q=queue(),deck=$("deck");if(window.__uaplyHoldTop)q=window.__uaplyHoldTop(q,JOB_BY_ID,S,evaluate);if(window.__uaplyNearEnd)window.__uaplyNearEnd(q.filter(function(x){return !x.out}).length);');
   var cached=readCache();
   var extra=cached.length?","+JSON.stringify(cached).slice(1,-1).replace(/<\//g,"<\\/"):"";
   s=once(s,'regional cookbooks."}','regional cookbooks."}'+extra);
@@ -859,7 +859,14 @@ function kitApply(w,host){
     function savedToast(opened){toast(opened?"Saved to Job Tracker. One tap to finish on their site.":"Saved "+job.co+" to Job Tracker.","Undo",undoThis,9000)}
     function mark(status,to){var dec=S&&S.decisions&&S.decisions[job.id];if(dec){dec.sent={at:Date.now(),to:to||"",status:status};if(save)save();if(w.__uaplyTrack)w.__uaplyTrack()}}   /* the Applied list, if it is open, shows the new state at once */
     var rdy=w.__uaplyReadiness?w.__uaplyReadiness():null;
-    if(rdy&&!rdy.min&&!retry){revert();if(w.__uaplyFinishProfile)w.__uaplyFinishProfile(job);return}
+    /* an incomplete profile: saved to Job Tracker as "Needs profile" (sent from there once the profile is complete); the line says so once a session */
+    if(rdy&&!rdy.min){
+      mark("needs_profile");if(w.__uaplyBadge)w.__uaplyBadge();
+      var told=false;try{told=w.sessionStorage.getItem("uaply.np")==="1"}catch(e){told=!!w.__uaplyNPTold}
+      if(!told){try{w.sessionStorage.setItem("uaply.np","1")}catch(e){}w.__uaplyNPTold=true;
+        toast("Saved to your Job Tracker. Complete your profile, then send them from Job Tracker.","Complete profile",function(){if(w.__uaplyCompleteProfile)w.__uaplyCompleteProfile()},9000)}
+      else savedToast(false);
+      return}
     if(!(p.name&&EMAIL.test(p.email||"")&&(!live||p.custom))){
       revert();toast("Add your name and email in Profile setup, under About you, so employers can reply. "+job.co+" is back in your deck.","Open Profile",function(){openProfile("about")},9000);return;
     }
@@ -886,6 +893,7 @@ function kitApply(w,host){
           /* nothing was sent (a limit, a missing detail, an unverified email): the job goes back to the deck rather than sitting in Applied.
              A waiting application sent again later stays in Applied, marked not sent, with Try again. */
           if(retry){if(j.code!=="server")mark("failed");return}          /* a server hiccup keeps it waiting for the next try */
+          if(j.code==="limit")w.__uaplyLimitHit=new Date().toDateString();   /* the deck says today's limit is reached */
           revert();
           var act=j.code==="limit"?["See plans",function(){var b=d.getElementById("nb-prof");if(b){b.click();var it=d.querySelector('.nwrap[data-k=prof] .nitem[data-v=plan]');if(it)it.click()}}]
                   :j.code==="slow_down"||j.code==="server"||j.code==="preview"?["",null]:(j.code==="signin"||j.code==="verify")?["Open Account",openAccount]
@@ -955,7 +963,7 @@ function kitApply(w,host){
      A job whose employer connected its hiring system: the posting's own form is read ahead (POST /api/apply/plan: the same reading a swipe
      right does, nothing recorded or sent), kept per posting until the profile or a saved answer changes, and the card says "Ready to apply"
      or "N answers needed". An employer who takes email, and every hand-off: "Ready" once the profile has READY_MIN. Below it, every card
-     says "Finish your profile", and a swipe right opens "Finish your profile first" instead of applying (__uaplyReadyGate). */
+     shows nothing, and a swipe right saves it to Job Tracker as "Needs profile" (quietApply). */
   var RDY={},RDYQ={};
   function rdyApplies(job){return !!(job&&w.__uaplySubmitOn&&w.__uaplyMode&&!(w.__uaplyPreview&&w.__uaplyPreview())&&(job.live||w.__uaplyMode==="test"))}
   function rdyConnected(job){return !!(job.live&&job.instant&&!job.contact&&!job.webhook)}
@@ -982,7 +990,7 @@ function kitApply(w,host){
   /* the card's state now (null: nothing to show yet); a connected employer's form is read once per posting and profile */
   function rdyState(job,then){
     var r=w.__uaplyReadiness?w.__uaplyReadiness():{min:true};
-    if(!r.min)return {k:"need",t:"Finish your profile"};
+    if(!r.min)return null;          /* no per-card nagging (Saif, October 24): the saved line and the Job Tracker badge say it */
     if(!rdyReadsForm(job))return {k:"ok",t:"Ready"};
     var pl=rdyPayload(job),sig=rdySig(pl),c=RDY[job.id];
     if(c&&c.sig===sig)return c.st;
@@ -1014,6 +1022,7 @@ function kitApply(w,host){
   /* a swipe right below READY_MIN, wherever it comes from (a finger, Apply, the arrow key): nothing happens to the card, and the box says
      what is missing (called by prod's decide(), patched in kitPatch, before the card moves) */
   w.__uaplyReadyGate=function(job){
+    if(job)return false;          /* Saif, October 24: an incomplete profile never blocks a swipe; quietApply saves it as "Needs profile" */
     if(!job||!rdyApplies(job))return false;
     var r=w.__uaplyReadiness?w.__uaplyReadiness():null;
     if(!r||r.min)return false;
