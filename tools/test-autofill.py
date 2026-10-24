@@ -479,6 +479,7 @@ t("a yearly figure, asked per hour: a year is 2080 hours (62400 -> 30)", (autofi
 cand_0 = dict(CAND, ext=dict(CAND["ext"], salary="", salaryHour=""))
 r0 = [(re.compile(p, re.I), f) for p, f in autofill._rules(cand_0, cand_0["ext"], {"co": "Acme", "role": "Analyst"})]
 t("no pay given: the hourly question is left for the person (asked each time)", autofill._answer("What is your desired hourly rate?", "q4", "text", [], {}, r0, cand_0["ext"]), None)
+t("an optional hourly pay question is not answered (pay goes only where a form requires it), per hour as per year", (autofill._answer("What is your desired hourly rate?", "q5", "text", [], {}, rh, cand_h["ext"], req=False), autofill._answer("What are your salary expectations?", "q6", "text", [], {}, rh, cand_h["ext"], req=False)), (None, None))
 
 print("\n%d / %d" % (ok, ok + bad))
 sys.exit(1 if bad else 0)

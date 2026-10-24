@@ -480,7 +480,7 @@ def _answer(label, key, kind, values, answers, rules, ext, req=True):
             want = None
             for rx, fn in rules:
                 if rx.search(label):
-                    want, pay = fn(), rx.pattern == _SALARY
+                    want, pay = fn(), rx.pattern in (_SALARY, _SALARY_HOUR)   # pay, per year or per hour, only where the form requires it
                     break
             if pay and not req:
                 want = None
