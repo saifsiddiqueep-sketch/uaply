@@ -15,11 +15,14 @@ const net = require("net");
 const os = require("os");
 const path = require("path");
 const ROOT = path.join(__dirname, "..");
-const OUT = path.join(ROOT, "mobile", "store", "play");
+// STORE=ios: the App Store's iPhone 6.9-inch screenshots instead (mobile/store/ios/screenshots/6.9/, 1320 x 2868: a 440 x 956 screen at 3x),
+// the same six screens; the icon and feature graphic are Play's only
+const IOS = process.env.STORE === "ios";
+const OUT = path.join(ROOT, "mobile", "store", IOS ? "ios" : "play");
 const PY = process.env.PYTHON || (process.platform === "win32" ? "python" : "python3");
 const freePort = () => new Promise((r) => { const s = net.createServer(); s.listen(0, "127.0.0.1", () => { const p = s.address().port; s.close(() => r(p)); }); });
 
-const DEVICES = [
+const DEVICES = IOS ? [{ dir: "6.9", width: 440, height: 956, scale: 3 }] : [
   { dir: "phone", width: 432, height: 768, scale: 2.5 },        // 1080 x 1920
   { dir: "tablet", width: 675, height: 1200, scale: 1.6 },      // 1080 x 1920, a seven-inch tablet's width
 ];
@@ -65,14 +68,14 @@ function pngToRGB(buf) {
 }
 
 module.exports = async ({ ev, sleep, nav, send }) => {
-  fs.mkdirSync(path.join(OUT, "screenshots", "phone"), { recursive: true });
-  fs.mkdirSync(path.join(OUT, "screenshots", "tablet"), { recursive: true });
+  for (const dev of DEVICES) fs.mkdirSync(path.join(OUT, "screenshots", dev.dir), { recursive: true });
   const save = async (file) => {                                  // the screen as Chrome draws it, written as a 24-bit PNG
     const r = await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
     fs.writeFileSync(file, pngToRGB(Buffer.from(r.result.data, "base64")));
   };
 
-  // ---------- the icon and the feature graphic, drawn on a blank page ----------
+  // ---------- the icon and the feature graphic, drawn on a blank page (Play only) ----------
+  if (!IOS) {
   await nav("about:blank");
   const logo = "data:image/png;base64," + fs.readFileSync(path.join(ROOT, "mobile", "assets", "icon-only.png")).toString("base64");
   const art = JSON.parse(await ev(`(async () => {
@@ -104,6 +107,7 @@ module.exports = async ({ ev, sleep, nav, send }) => {
   fs.writeFileSync(path.join(OUT, "icon-512.png"), Buffer.from(art.icon, "base64"));
   fs.writeFileSync(path.join(OUT, "feature-graphic.png"), pngToRGB(Buffer.from(art.graphic, "base64")));
   console.log("wrote icon-512.png and feature-graphic.png");
+  }
 
   // ---------- the screenshots, from a sandbox server of its own ----------
   const port = await freePort(), base = "http://127.0.0.1:" + port;
@@ -138,6 +142,9 @@ module.exports = async ({ ev, sleep, nav, send }) => {
       await q("d.scrollingElement.scrollTop=0;[...d.querySelectorAll('section,main,.screen')].forEach(s=>{s.scrollTop=0})");
       await sleep(250);
     };
+    // the iPhone listing pictures the iPhone app: the page sees the app shell's platform ("ios", no native plugins), so it hides what the
+    // iPhone app hides (Continue with Google, guideline 4.8; buy buttons, 3.1.1) and the pictures match what a reviewer sees
+    if (IOS) await send("Page.addScriptToEvaluateOnNewDocument", { source: "window.Capacitor={getPlatform:function(){return 'ios'},isNativePlatform:function(){return false},Plugins:{}};" });
     for (const dev of DEVICES) {
       await send("Emulation.setDeviceMetricsOverride", { width: dev.width, height: dev.height, deviceScaleFactor: dev.scale, mobile: true });
       await send("Emulation.setTouchEmulationEnabled", { enabled: true });

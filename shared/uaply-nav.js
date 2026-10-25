@@ -1218,6 +1218,11 @@ function apply(w,host){
   function paywall(why){
     if(d.getElementById("paywall"))return;
     var o=d.createElement("div");o.id="paywall";
+    if(iosApp()){   /* the iPhone app: the limit is said, with no way to buy from here (guideline 3.1.1) */
+      o.innerHTML='<div role="dialog" aria-modal="true" aria-label="Weekly limit reached"><h2 style="margin:0 0 6px;font:800 20px var(--display)">Weekly limit reached</h2><p style="margin:0 0 16px;color:var(--muted)">'+E(why)+' Passing on jobs and your Job Tracker still work. '+IOS_PLANS+'</p><div style="display:flex;gap:10px;justify-content:flex-end"><button class="btn" id="pwNo" type="button">OK</button></div></div>';
+      d.body.appendChild(o);d.getElementById("pwNo").focus();d.getElementById("pwNo").onclick=function(){o.remove()};
+      o.addEventListener("keydown",function(e){if(e.key==="Escape")o.remove()});return;
+    }
     o.innerHTML='<div role="dialog" aria-modal="true" aria-label="Plan required"><h2 style="margin:0 0 6px;font:800 20px var(--display)">Choose a plan to keep applying</h2><p style="margin:0 0 16px;color:var(--muted)">'+E(why)+' Passing on jobs and your Job Tracker still work.</p><div style="display:flex;gap:10px;justify-content:flex-end"><button class="btn ghost" id="pwNo" type="button">Not now</button><button class="btn" id="pwYes" type="button">See plans</button></div></div>';
     d.body.appendChild(o);
     var yes=d.getElementById("pwYes");yes.focus();
@@ -1907,8 +1912,13 @@ function apply(w,host){
   function earlyAccess(){return BILL.early===true}   /* the server says so: a public server with no Stripe keys (billing_api.buttons). No prices to choose, no checkout, no payment links */
   var LINKOF={plus:"starter",pro:"pro"};   /* the Payment Links fallback (OPTS.stripeLinks), used when the server has no Stripe keys but offers the buttons (the owner's own computer) */
   function testMode(){return !!BILL.test||(!BILL.enabled&&!!BILL.buttons&&!!(PAYLINK.starter||PAYLINK.pro))}
+  /* inside the iPhone app (App Store guideline 3.1.1): no button that buys, switches or manages a plan, and no link out to pay; the plan
+     screen says where plans are managed, as plain text. The website and the Android app are unchanged */
+  function iosApp(){try{var c=w.top.Capacitor;return !!(c&&c.getPlatform&&c.getPlatform()==="ios")}catch(e){return false}}
+  w.__uaplyIosApp=iosApp;
+  var IOS_PLANS="Plans are managed on uaply.net.";
   function billingHTML(){
-    var who=SRV.user?SRV.user.id:0;
+    var who=SRV.user?SRV.user.id:0,IOS=iosApp();
     if(HELP&&BILL._failed){
       if(!BILL._loading&&!BILL._retried){BILL._retried=true;setTimeout(loadBilling,0)}   /* one automatic retry per failure, when the screen opens */
       return '<div class="plan" id="billFail" role="alert" style="display:flex;flex-direction:column;gap:8px"><b>Plans could not load just now</b>'+
@@ -1930,7 +1940,7 @@ function apply(w,host){
       '</div><div class="plans">';
     keys.forEach(function(k){
       var p=PLANS[k==="free"?"trial":k==="plus"?"starter":"pro"],isCur=cur===k;
-      var btn=k==="free"?(isCur?'<small>Your current plan</small>':''):
+      var btn=IOS?(isCur?'<small>Your current plan</small>':''):k==="free"?(isCur?'<small>Your current plan</small>':''):
         (isCur?'<button type="button" class="btn ghost" data-bill="portal">Manage billing</button>':
           (!BILL.enabled&&BILL.buttons&&PAYLINK[LINKOF[k]]?'<button type="button" class="btn" data-bill="'+k+'">Choose '+p.name+'</button>':
           !BILL.enabled?'<small>Payments are not switched on yet.'+(SRV.testInbox?' Connect Stripe in <a href="/setup#billing" target="_blank" rel="noopener noreferrer">setup</a>.':'')+'</small>':
@@ -1939,6 +1949,7 @@ function apply(w,host){
       h+='<div class="plan" data-cur="'+isCur+'"><b>'+p.name+'</b><span class="pr">'+(p.price?"$"+p.price.toFixed(2)+'<small>/month</small>':"$0")+'</span><ul>'+p.perks.map(function(x){return '<li>'+E(x)+'</li>'}).join("")+'</ul>'+btn+'</div>';
     });
     /* hidden: a past subscriber (a Stripe customer now on Free) keeps Manage billing for invoices; a paid plan's own card already has it */
+    if(IOS)return h.replace(/<div class="acts"><button type="button" class="btn( ghost)?" data-bill="portal">Update card<[/]button><[/]div>/g,"")+'</div><p class="note" id="iosPlans">'+IOS_PLANS+'</p>';
     if(BILL.hidden)return h+'</div><p class="note" id="plansSoon"><b>Plus and Pro are coming soon.</b> You will see their prices here before anything can be bought.'+(cur==="free"&&!BILL.hasCustomer?' Nothing is charged and no card is asked for.':'')+'</p>'+
       (cur==="free"&&BILL.hasCustomer?'<div class="acts"><button type="button" class="btn ghost" data-bill="portal">Manage billing</button></div>':'');
     return h+'</div><p class="note">Payments are handled by Stripe on its own secure page. UAply never sees or stores your card number. Cancel any time in Manage billing; the plan stays until the end of the paid month.</p>';
