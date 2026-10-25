@@ -1,16 +1,35 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>UAply</title>
+<title>UAply</title><meta name="theme-color" content="#FDF0F2">
 <!-- The phone app's "can't connect" screen. capacitor.config.json (server.errorPath) shows it whenever uaply.net does not load:
-     no internet, or the site is down or restarting. "Try again" goes back to the site (keep SITE equal to server.url), and the
-     page also tries again by itself the moment the phone reconnects. -->
-<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#FDF0F2;color:#2A1218;font:16px/1.5 system-ui,sans-serif;text-align:center;padding:24px;box-sizing:border-box}
-@media (prefers-color-scheme: dark){body{background:#190B10;color:#FBE9EE}}button{min-height:48px;padding:0 24px;border:0;border-radius:999px;background:#C92A55;color:#fff;font:inherit;font-weight:700}
+     no internet (airplane mode: "You are offline"), or the site down or restarting. It looks like one of the app's own screens (the
+     icon, a card, one button), as App Review expects (guideline 4.2). Retry goes back to the site (keep SITE equal to server.url), and
+     the page also tries again by itself the moment the phone reconnects. The icon is a copy of prod/favicon-192.png, kept in the app. -->
+<style>
+:root{--bg:#FDF0F2;--surface:#FFFFFF;--ink:#2A1218;--muted:#7B5560;--line:#F3DADF;--accent:#C92A55;--accent2:#F0663B;--accent-ink:#FFFFFF}
+@media (prefers-color-scheme: dark){:root{--bg:#190B10;--surface:#26131A;--ink:#FBE9EE;--muted:#C79BA6;--line:#40222B;--accent:#FF7A98;--accent2:#FFA86B;--accent-ink:#1A0A0F}}
+*{box-sizing:border-box}
+html,body{min-height:100%;margin:0}
+body{min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:max(24px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom));background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif;text-align:center}
+main{max-width:420px;width:100%;background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:28px 24px}
+img{width:72px;height:72px;border-radius:18px;display:block;margin:0 auto 14px}
+h1{margin:0 0 8px;font-size:22px}p{margin:0 0 20px;color:var(--muted)}
+button{min-height:48px;min-width:140px;padding:0 26px;border:0;border-radius:999px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);font:inherit;font-weight:700;cursor:pointer}
+small{display:block;margin-top:14px;color:var(--muted);font-size:14px;min-height:1.5em}
 html{-webkit-tap-highlight-color:transparent}a,button,input,select,textarea,summary,label,[role=button],[tabindex]{-webkit-tap-highlight-color:transparent}:focus:not(:focus-visible){outline:none}:focus-visible{outline:3px solid var(--accent,#C92A55);outline-offset:2px}button:not(:disabled):active,.btn:active{transform:translateY(1px);filter:brightness(.95)}</style>
-</head><body><main><h1>UAply</h1><p id="m">Can't reach UAply right now. Check that you're connected to the internet, then try again.</p><button type="button" id="b">Try again</button></main>
+</head><body><main>
+<img src="uaply-icon.png" alt="">
+<h1 id="t">You are offline</h1>
+<p id="m">UAply needs the internet to show jobs and send applications. Connect to Wi-Fi or mobile data, then tap Retry.</p>
+<button type="button" id="b">Retry</button>
+<small id="s" role="status" aria-live="polite"></small>
+</main>
 <script>
 var SITE="https://uaply.net/";
-function go(){document.getElementById("m").textContent="Connecting…";location.href=SITE}
+/* online but the site did not load (down or restarting): say that instead of "offline" */
+if(navigator.onLine!==false){document.getElementById("t").textContent="UAply can't be reached";document.getElementById("m").textContent="UAply's server did not answer. It is usually back within a minute. Tap Retry, or wait: this screen tries again by itself."}
+function go(){document.getElementById("s").textContent="Connecting…";location.href=SITE}
 document.getElementById("b").onclick=go;
 window.addEventListener("online",go);
+if(navigator.onLine!==false)setTimeout(go,30000);
 </script></body></html>
