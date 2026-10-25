@@ -65,6 +65,20 @@ var EMAIL=/^[^@\s]{1,64}@[^@\s]+\.[A-Za-z]{2,}$/;
 
 function apply(w,host){
   var d=w.document,A=w.__uaply||null;
+  /* inside the iPhone app (App Store guideline 3.1.1): an answer never gives a plan's price or how to pay. Those sentences are left out
+     and "Plans are managed on uaply.net." is said instead; the website and the Android app show the answer as it is */
+  var IOS_PAY=/\$\d|\bStripe\b|card number|Manage billing|Choose (Plus|Pro)\b|\ba month\b|\bpaid plans?\b|\bpayments?\b|\bcancel\b|\bbuy\b|\bbought\b/i;
+  function iosApp(){try{if(w.__uaplyIosApp)return !!w.__uaplyIosApp();var c=w.top.Capacitor;return !!(c&&c.getPlatform&&c.getPlatform()==="ios")}catch(e){return false}}
+  function iosAnswer(t){
+    t=String(t||"");if(!iosApp()||!IOS_PAY.test(t))return t;
+    var out=[];t.split(/\n/).forEach(function(line){
+      var ss=line.match(/[^.!?]+[.!?]+["')]*\s*|[^.!?]+$/g)||[line];   /* sentences, without a lookbehind (iPhones before iOS 16.4 cannot parse one) */
+      var keep=ss.filter(function(s){return !IOS_PAY.test(s)}).join("").trim();
+      if(keep||!line.trim())out.push(keep);
+    });
+    return (out.join("\n").replace(/\n{3,}/g,"\n\n").trim()+" Plans are managed on uaply.net.").trim();
+  }
+  w.__uaplyIosAnswer=iosAnswer;   /* for the tests */
   /* the Support page sits in legal/ next to the app (one folder up on the hosted /dev/ and /sandbox/ copies) */
   var lp=(host&&host.defaultView&&host.defaultView.location.pathname)||"/",SUPPORT=(/\/(sandbox|dev)\/(index\.html)?$/.test(lp)?"../legal/":"legal/")+"support.html";
   if(!d.body)return;
@@ -184,6 +198,7 @@ function apply(w,host){
       var j=r.j||{};
       if(j.ai!==undefined&&!!j.ai!==CFG.ai){CFG.ai=!!j.ai;paintMode()}
       var src=(j.sources||[]).map(function(s){return s.title}).join(", ");
+      j.answer=iosAnswer(j.answer||"");
       botSay(j.answer||"",src?'<span class="src">From help: '+esc(src)+'</span>':'');
       hist.push({role:"assistant",content:j.answer||""});
       var acts=[],ids=(j.sources||[]).map(function(s){return s.id});
