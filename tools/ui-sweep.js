@@ -11,9 +11,10 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
   const clickText = (txt, scope = "button,a,[role=tab]") => ev("(()=>{const e=[...(" + F + ").querySelectorAll('" + scope + "')].find(b=>b.innerText.split(/\\s+/).join(' ').trim().startsWith(" + JSON.stringify(txt) + "));if(!e)return false;e.click();return true})()");
   const visibleText = () => ev("(" + F + ").body.innerText.split(/\\s+/).join(' ')");
 
-  await gateSignup({ ev, sleep, nav }, "http://127.0.0.1:" + PORT, "sweep");
+  const who = await gateSignup({ ev, sleep, nav }, "http://127.0.0.1:" + PORT, "sweep");
   await nav("http://127.0.0.1:" + PORT + "/");
   await sleep(1500);
+  for (let i = 0; i < 30 && !((await ev(F + ".querySelectorAll('.card').length")) >= 1); i++) await sleep(500);   // a busy machine: the job list can take a few seconds
   check("page loads with job cards", (await ev(F + ".querySelectorAll('.card').length")) >= 1);
 
   // services
@@ -41,7 +42,7 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
   await sleep(400);
   const setVal = (id, v) => ev("(()=>{const e=" + F + ".getElementById('" + id + "');if(!e)return false;e.value=" + JSON.stringify(v) + ";e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));return true})()");
   check("profile name field", await setVal("pName", "Test User"));
-  check("profile email field", await setVal("pEmail", "sweep.tester@example.com"));
+  check("profile email field", await setVal("pEmail", who.email));   // this run's own account: a run after another is never the same application again
   // a phone number too: a swipe right needs a name, an email and a phone number or a resume before it can apply (October 21)
   check("profile phone field", await setVal((await ev("!!" + F + ".getElementById('px-phone')")) ? "px-phone" : "pPhone", "+1 215 555 0100"));
   await setVal("pSkills", "Python, SQL, Git");
@@ -52,7 +53,7 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
   check("Apply button exists", !!(await ev("!!" + F + ".getElementById('btnYes')")));
   await ev(F + ".getElementById('btnYes').click()");
   await sleep(1500);
-  console.log("  consent dialog:", await ev("(()=>{const m=" + F + ".getElementById('kcYes');if(!m)return 'none (already agreed)';m.click();return 'agreed'})()"));
+  console.log("  consent dialog:", await ev("(()=>{const m=" + F + ".getElementById('kcYes');if(!m)return 'none (already agreed)';m.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});m.disabled=false;m.click();return 'agreed'})()"));
   await sleep(2500);
   // the sandbox fills in the employer's real form; if it has questions only the person can answer, it asks them once: answer and send
   const asked = await ev("(()=>{const o=" + F + ".getElementById('kitAsk');if(!o)return 0;let n=0;o.querySelectorAll('[data-k]').forEach(el=>{n++;if(el.tagName==='SELECT')el.value=el.options[1]?el.options[1].text:'';else el.value=el.tagName==='TEXTAREA'?'Because I build things.':'Sam'});const b=" + F + ".getElementById('kaYes');if(b&&!/Profile/.test(b.innerText))b.click();return n})()");

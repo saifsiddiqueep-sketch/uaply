@@ -231,7 +231,7 @@ module.exports = async ({ ev, sleep, send }) => {
   if (src) {
     const assistMode = new Function(src[0] + ";return assistMode")();
     const one = (s) => ({ systems: { ashby: s } });
-    check("mode rule: the shipped file gives assisted", assistMode(cfg, "ashby") === "assisted" && assistMode(cfg, "greenhouse") === "assisted");
+    check("mode rule (October 24 review): the shipped file gives automatic only where approved with no human check measured (Ashby); Greenhouse (reCAPTCHA measured) and SmartRecruiters (terms) stay assisted", assistMode(cfg, "ashby") === "automatic" && assistMode(cfg, "greenhouse") === "assisted" && assistMode(cfg, "smartrecruiters") === "assisted");
     check("mode rule: automatic without counsel's approval stays assisted", assistMode(one({ mode: "automatic", counsel_approved: false, human_check_share: 0 }), "ashby") === "assisted");
     check("mode rule: automatic on a system with human checks stays assisted", assistMode(one({ mode: "automatic", counsel_approved: true, human_check_share: 0.05 }), "ashby") === "assisted");
     check("mode rule: automatic with approval and no human check is automatic", assistMode(one({ mode: "automatic", counsel_approved: true, human_check_share: 0 }), "ashby") === "automatic");

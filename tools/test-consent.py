@@ -77,8 +77,8 @@ t("the box (version 5) says the authorization, the match line, the three ways pl
 t("two ticks only (consent v6): Automatic submit is said, not ticked (tick 1 covers it; Account has Press Submit for me to turn it off)", ('id="kcAuto"' in LIVE, 'id="kcAutoT"' in LIVE, 'id="aPressSubmit"' in open(os.path.join(ROOT, "shared", "uaply-nav.js"), encoding="utf-8").read()), (False, True, True))
 TERMS = open(os.path.join(ROOT, "legal", "terms.html"), encoding="utf-8").read()
 sub = [li for li in re.findall(r"<li>(.*?)</li>", TERMS, re.S) if "presses its Submit button for you" in li]
-t("Terms section 3 matches the box: UAply presses Submit for you only with the person's Automatic submit setting turned on",
-  (len(sub), bool(sub) and "only if you have turned on Automatic submit" in sub[0]), (1, True))
+t("Terms section 3 matches the box: UAply presses Submit for you by the agreement, only where no security check shows and terms allow it, unless turned off in Account",
+  (len(sub), bool(sub) and "only on a hiring system that shows no security check" in sub[0] and "turned off" in sub[0] and "Press Submit for me" in sub[0] and "in Account" in sub[0]), (1, True))
 
 # ---------- in this process: the record on the account ----------
 auth_api.init("consent")
