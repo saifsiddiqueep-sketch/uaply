@@ -1356,7 +1356,8 @@ function apply(w,host){
         stamp();
         var s=st(),other=s.owner!==u.id,at=s.at||{},f=j.fields,keys=Object.keys(f),took=0;
         if(keys.length){
-          if(!(A.S.profile&&A.S.profile.custom))A.S.profile=Object.assign({},A.S.profile,{custom:true});
+          /* the example profile (Jordan Lee) is never the person's: the account's fields go onto an empty profile, never onto the example */
+          if(!(A.S.profile&&A.S.profile.custom))A.S.profile={name:"",title:"",years:0,edu:"",skills:[],salary:0,payUnit:"year",loc:"",modes:{remote:false,hybrid:false,onsite:false},reloc:false,email:"",custom:true};
           keys.forEach(function(k){var x=f[k];if(!x||typeof x!=="object")return;if(other||(+x.at||0)>(+at[k]||0)){setField(k,x.v);at[k]=+x.at||0;took++}});
         }
         if(took){try{A.save()}catch(e){}saveA();try{A.renderAll()}catch(e){}try{if(w.__uaplySyncPrefs)w.__uaplySyncPrefs()}catch(e){}}
@@ -1371,7 +1372,9 @@ function apply(w,host){
     function now(){if(user()&&!pulling){stamp();push(true)}}
     d.addEventListener("visibilitychange",function(){if(d.visibilityState==="hidden")now()});
     w.addEventListener("pagehide",now);
-    w.__uaplyProfileSync={push:function(){stamp();push(true)},state:st};
+    /* Delete all my data: the account's copy goes too, or the next sign-in would bring everything back */
+    function clear(){try{w.localStorage.removeItem(SK)}catch(e){}if(!user())return;try{w.fetch("/api/profile/data",{method:"POST",credentials:"same-origin",keepalive:true,headers:{"Content-Type":"application/json"},body:JSON.stringify({clear:true})}).catch(function(){})}catch(e){}}
+    w.__uaplyProfileSync={push:function(){stamp();push(true)},state:st,clear:clear};
   })();
   d.addEventListener("click",function(e){var b=e.target.closest&&e.target.closest("[data-ready]");if(b){e.preventDefault();fixReady(b.getAttribute("data-ready"))}});
   /* a swipe right below READY_MIN (uaply-live.js, __uaplyReadyGate): nothing is sent, the card stays, and this says exactly what is missing */
@@ -2247,6 +2250,7 @@ function apply(w,host){
     }
     else if(a==="wipe"){
       if(b.getAttribute("data-sure")!=="1"){b.setAttribute("data-sure","1");b.textContent="Click again to delete everything";return}
+      if(w.__uaplyProfileSync)w.__uaplyProfileSync.clear();
       [w.__uaplyKey,AK,NK,LK].forEach(function(k){try{w.localStorage.removeItem(k)}catch(x){}});
       /* in the phone apps the export files stay in the app's cache folder after the share sheet (the backup holds the whole profile),
          so they go too: uaply-backup.json, uaply-applications.csv and every interview-*.ics. A delete that fails (a file never made) is

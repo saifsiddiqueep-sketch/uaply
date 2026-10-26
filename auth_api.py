@@ -575,6 +575,14 @@ def profile_get(user_id):
         return {}
 
 
+def profile_clear(user_id):
+    """Forget the account's kept profile (Delete all my data, on a signed-in device): the next sign-in starts from nothing."""
+    with _lock, _db() as c:
+        c.execute(PROFILES_TABLE)
+        c.execute("DELETE FROM profiles WHERE user_id=?", (int(user_id),))
+    return True
+
+
 def profile_merge(user_id, fields):
     """Merge a device's fields into the account's kept profile, the newer of each field winning. Returns (ok, merged or reason)."""
     if not isinstance(fields, dict):
