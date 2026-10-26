@@ -1394,6 +1394,9 @@ class H(http.server.SimpleHTTPRequestHandler):
                 me = auth_api.user_for(self._token())
                 if not me:
                     code, out = 401, SIGNIN_FIRST
+                elif payload.get("clear") is True:                      # Delete all my data: the account's copy goes too
+                    auth_api.profile_clear(me["id"])
+                    code, out = 200, {"fields": {}}
                 else:
                     ok, got = auth_api.profile_merge(me["id"], payload.get("fields"))
                     code, out = (200, {"fields": got}) if ok else (400, {"error": "Could not keep the profile (%s)." % got})

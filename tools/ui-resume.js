@@ -97,7 +97,11 @@ module.exports = async ({ ev, sleep, nav, shot, logs }) => {
   check("a new resume chosen in the box replaces the one sent with applications, and says so", /"name":"maya-patel-2026.txt"/.test(kept2) && /now send maya-patel-2026.txt instead of student.txt/.test(keep2), keep2 + " " + String(kept2).slice(0, 60));
 
   // a business student, fresh browser: the latest job is part-time (Barista), so it fills the job fields, not the target title
+  // (a fresh start for the same account: off the app first, then this device's copy and the account's kept copy of the profile go,
+  // as Delete all my data does; otherwise the account would bring Maya's profile back)
+  await nav("http://127.0.0.1:" + PORT + "/legal/privacy.html"); await sleep(600);
   await ev("localStorage.clear()");
+  await ev("fetch('/api/profile/data',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({clear:true})}).then(r=>r.status)");
   await nav("http://127.0.0.1:" + PORT + "/?app=1"); await sleep(3500);
   await ev("(()=>{const b=" + F + ".getElementById('kcYes');if(b){b.ownerDocument.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});b.disabled=false;b.click()}})()"); await sleep(300);
   await ev("(()=>{" + W + ".__uaplyOpenProf('back')})()"); await sleep(800);

@@ -39,7 +39,11 @@ module.exports = async function gateSignup({ ev, sleep, nav }, base, tag, opts) 
     }
     // the card wrote a profile for the new person (name, work, place): the device goes back to how the test found it, as after the
     // API sign-up below, so a test built on the example profile still has it. The session cookie stays: that is the account.
+    // First off the app (a page of the same site without it), so the app cannot send its copy of the profile again while it is cleared
+    await nav(base + "/legal/privacy.html"); await sleep(600);
     await ev("(()=>{try{localStorage.clear();sessionStorage.clear()}catch(e){}return 1})()");
+    // ...and the copy of that profile the account keeps (the profile kept on the account, October 24), as Delete all my data does
+    await ev("fetch('/api/profile/data',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({clear:true})}).then(r=>r.status).catch(()=>0)");
   } else {
     const st = await ev("fetch('/api/auth/signup',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:" + JSON.stringify(email) + ",password:" + JSON.stringify(PW) + ",first:'Test',last:'Person',agree:true,passwordless:false})}).then(r=>r.status)");
     let u = await me();
