@@ -7,7 +7,9 @@ sees or stores a card number. The plan of each account is stored on the server a
   POST /api/billing/webhook    Stripe's events, checked against the Stripe-Signature header
 
 Settings (uaply-config.json "stripe" block, or STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET / STRIPE_PRICE_PLUS / STRIPE_PRICE_PRO in the environment):
-secret_key (sk_test_... or sk_live_...), webhook_secret (whsec_...), price_plus and price_pro (price_... ids of monthly prices made in Stripe).
+secret_key (sk_test_... or sk_live_...), webhook_secret (whsec_...), price_plus and price_pro (price_... ids of monthly prices made in Stripe),
+and price_plus_year and price_pro_year (STRIPE_PRICE_PLUS_YEAR / STRIPE_PRICE_PRO_YEAR: the yearly prices, $99.90 and $199.90, two months free;
+Yearly shows on the plan screen only when both are set).
 
 Why nobody can get a plan without a real, successful payment:
   * Coming back to /?billing=success changes nothing. Only a webhook signed with our endpoint's secret (HMAC-SHA256, at most 5 minutes old,
@@ -36,7 +38,8 @@ import urllib.request
 import auth_api
 import uaply_api
 
-PLANS = {"free": {"name": "Free", "price": 0, "cap": 50}, "plus": {"name": "Plus", "price": 9.99, "cap": 250}, "pro": {"name": "Pro", "price": 19.99, "cap": 0}}
+PLANS = {"free": {"name": "Free", "price": 0, "year": 0, "cap": 50}, "plus": {"name": "Plus", "price": 9.99, "year": 99.90, "cap": 250},
+         "pro": {"name": "Pro", "price": 19.99, "year": 199.90, "cap": 0}}
 ACTIVE = ("active", "trialing", "past_due")          # past_due keeps the plan while Stripe retries the card (but see MAX_FAILED)
 MAX_FAILED = 3                                       # after this many failed tries of one renewal the plan is paused until a payment succeeds
 API_VERSION = "2026-09-30.endive"                    # every call names the Stripe API version this code was written against, so a change
@@ -53,16 +56,92 @@ def _base():
 
 def settings():
     s = dict(uaply_api.config().get("stripe") or {}) if isinstance(uaply_api.config().get("stripe"), dict) else {}
-    for k, env in (("secret_key", "STRIPE_SECRET_KEY"), ("webhook_secret", "STRIPE_WEBHOOK_SECRET"), ("price_plus", "STRIPE_PRICE_PLUS"), ("price_pro", "STRIPE_PRICE_PRO")):
+    for k, env in (("secret_key", "STRIPE_SECRET_KEY"), ("webhook_secret", "STRIPE_WEBHOOK_SECRET"), ("price_plus", "STRIPE_PRICE_PLUS"), ("price_pro", "STRIPE_PRICE_PRO"),
+                   ("price_plus_year", "STRIPE_PRICE_PLUS_YEAR"), ("price_pro_year", "STRIPE_PRICE_PRO_YEAR")):
         if os.environ.get(env):
             s[k] = os.environ[env].strip()
     key = s.get("secret_key") if isinstance(s.get("secret_key"), str) else ""
     s["on"] = bool(re.match(r"^sk_(test|live)_[A-Za-z0-9]{8,}$", key) and str(s.get("price_plus", "")).startswith("price_") and str(s.get("price_pro", "")).startswith("price_"))
     s["test"] = key.startswith("sk_test_")
+    made = _made_prices()
+    for k in ("price_plus_year", "price_pro_year"):          # the yearly prices this server made itself (ensure_yearly), when none is set
+        if not str(s.get(k, "")).startswith("price_") and str(made.get(k, "")).startswith("price_"):
+            s[k] = made[k]
+    s["yearly"] = s["on"] and all(str(s.get(k, "")).startswith("price_") for k in ("price_plus_year", "price_pro_year"))
     return s
 
 
 PUBLIC = False           # serve.py sets this on a hosted (public) server
+YEAR_CENTS = {"plus": 9990, "pro": 19990}     # $99.90 and $199.90 a year: two months free
+
+
+def _prices_file():
+    return os.path.join(uaply_api.DATA, "billing-prices.json")
+
+
+def _made_prices():
+    try:
+        with open(_prices_file(), encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+_YEARLY_TRIED = [0.0]
+
+
+def ensure_yearly(force=False):
+    """When STRIPE_PRICE_PLUS_YEAR / STRIPE_PRICE_PRO_YEAR are not set, make the two yearly prices in Stripe on the products behind the monthly
+    prices (9990 and 19990 cents, USD, nickname "yearly"), reusing one that already exists there (same interval and amount), and keep their ids
+    in billing-prices.json in the records folder. Only this server holds the secret key, so nobody has to make them by hand. Tried at most
+    once every 10 minutes; returns the ids it has."""
+    s = settings()
+    if not s["on"] or s["yearly"] or (not force and time.time() - _YEARLY_TRIED[0] < 600):
+        return {k: s.get(k, "") for k in ("price_plus_year", "price_pro_year")}
+    _YEARLY_TRIED[0] = time.time()
+    made = _made_prices()
+    for plan in ("plus", "pro"):
+        k = "price_%s_year" % plan
+        if str(s.get(k, "")).startswith("price_"):
+            continue
+        code, mon = _stripe("GET", "/v1/prices/" + urllib.parse.quote(s["price_" + plan], safe=""))
+        prod = mon.get("product") if code == 200 else ""
+        prod = prod.get("id") if isinstance(prod, dict) else prod
+        if not prod:
+            continue
+        code, lst = _stripe("GET", "/v1/prices?" + urllib.parse.urlencode({"product": prod, "active": "true", "limit": "100", "recurring[interval]": "year"}))
+        hit = [p for p in (lst.get("data") or []) if code == 200 and p.get("unit_amount") == YEAR_CENTS[plan] and p.get("currency") == "usd"
+               and (p.get("recurring") or {}).get("interval") == "year"]
+        if hit:
+            pid = hit[0]["id"]
+        else:
+            code, new = _stripe("POST", "/v1/prices", {"product": prod, "unit_amount": str(YEAR_CENTS[plan]), "currency": "usd",
+                                                       "recurring[interval]": "year", "nickname": "yearly"})
+            pid = new.get("id") if code == 200 else ""
+        if str(pid).startswith("price_"):
+            made[k] = pid
+    if made.get("price_plus_year") and made.get("price_pro_year") and not made.get("at"):
+        made["at"] = int(time.time())
+        sys.stderr.write("[uaply] yearly prices ready in Stripe: Plus %s, Pro %s (billing-prices.json)\n" % (made["price_plus_year"], made["price_pro_year"]))
+    try:
+        os.makedirs(uaply_api.DATA, exist_ok=True)
+        tmp = _prices_file() + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(made, f, indent=1)
+        os.replace(tmp, _prices_file())
+    except OSError:
+        pass
+    return {k: made.get(k, "") for k in ("price_plus_year", "price_pro_year")}
+
+
+def prices_line():
+    """The four price ids for the owner's /setup page, and where the yearly ones came from."""
+    s, made = settings(), _made_prices()
+    yr = ("yearly: created by the server on %s" % time.strftime("%Y-%m-%d", time.gmtime(made["at"]))) if made.get("at") and s.get("price_plus_year") == made.get("price_plus_year") \
+        else ("yearly: set in the settings" if s["yearly"] else "yearly: not made yet (the server makes them on the first plan screen)")
+    return "Prices: Plus %s, Pro %s, Plus yearly %s, Pro yearly %s; %s." % (s.get("price_plus") or "-", s.get("price_pro") or "-", s.get("price_plus_year") or "-",
+                                                                           s.get("price_pro_year") or "-", yr)
 
 
 def summary():
@@ -122,7 +201,8 @@ def _stripe(method, path, params=None):
 def _week_used(user_id):
     since = time.time() - 7 * 86400
     with uaply_api._lock:
-        return sum(1 for a in uaply_api.APPS if a.get("user") == user_id and a["at"] >= since and a["status"] not in ("failed", "duplicate", "handoff"))   # a hand-off sent nothing, so it is not an application
+        # every application the person sends or saves to send counts, hand-offs included (Saif, October 25); a failed send and a repeat do not
+        return sum(1 for a in uaply_api.APPS if a.get("user") == user_id and a["at"] >= since and a["status"] not in ("failed", "duplicate"))
 
 
 def _plan_from_row(r):
@@ -147,10 +227,19 @@ def limit_reached(user):
         return None
     p = PLANS[plan_of(user)]
     if p["cap"] and _week_used(user["id"]) >= p["cap"]:
+        day = time.strftime("%A", time.gmtime(_next_free(user["id"])))
         if hidden():                                   # no bigger plan can be chosen yet: say when applying works again instead
-            return "You've used your %d applications this week on %s. The limit counts the last 7 days, so you can apply again as older applications drop off. Plus and Pro are coming soon." % (p["cap"], p["name"])
-        return "You've used your %d applications this week on %s. Choose a bigger plan in Profile, Plan and billing to keep applying." % (p["cap"], p["name"])
+            return "You've used your %d applications this week on %s. More open up on %s, as the oldest ones pass 7 days. Plus and Pro are coming soon." % (p["cap"], p["name"], day)
+        return "You've used your %d applications this week on %s. More open up on %s, or choose a bigger plan in Profile, Plan and billing to keep applying." % (p["cap"], p["name"], day)
     return None
+
+
+def _next_free(user_id):
+    """When the oldest application of the last 7 days passes 7 days (the moment one more opens up)."""
+    since = time.time() - 7 * 86400
+    with uaply_api._lock:
+        ats = [a["at"] for a in uaply_api.APPS if a.get("user") == user_id and a["at"] >= since and a["status"] not in ("failed", "duplicate")]
+    return (min(ats) if ats else time.time()) + 7 * 86400
 
 
 def _problem(r):
@@ -164,20 +253,22 @@ def _problem(r):
 
 
 def status(user):
+    ensure_yearly()
     s = settings()
-    out = {"enabled": s["on"], "test": s["test"], "buttons": buttons(s) and not hidden(), "early": not buttons(s), "hidden": hidden(), "plans": {k: {"name": v["name"], "price": v["price"], "cap": v["cap"]} for k, v in PLANS.items()}}
+    out = {"enabled": s["on"], "test": s["test"], "buttons": buttons(s) and not hidden(), "early": not buttons(s), "hidden": hidden(), "yearly": s["yearly"],
+           "plans": {k: {"name": v["name"], "price": v["price"], "year": v["year"], "cap": v["cap"]} for k, v in PLANS.items()}}
     if user:
         r = auth_api.billing_row(user["id"]) or {}
         plan = plan_of(user)
         out.update(signedIn=True, plan=plan, used=_week_used(user["id"]), cap=PLANS[plan]["cap"], renews=r.get("plan_renews") or 0,
                    canceling=bool(r.get("plan_cancel")), status=r.get("plan_status") or "", hasCustomer=bool(r.get("stripe_customer")),
-                   problem=_problem(r) if s["on"] else "")
+                   problem=_problem(r) if s["on"] else "", interval=r.get("plan_interval") or "month")
     else:
         out.update(signedIn=False, plan="free")
     return out
 
 
-def checkout(user, plan, site):
+def checkout(user, plan, site, interval="month"):
     if hidden():
         return 403, {"error": "Plus and Pro are not open yet. They are coming soon; nothing was charged.", "code": "plans_hidden"}
     s = settings()
@@ -189,19 +280,25 @@ def checkout(user, plan, site):
         return 403, {"error": "Verify your email first (Profile, Account).", "code": "verify"}
     if plan not in ("plus", "pro"):
         return 400, {"error": "Choose Plus or Pro."}
+    if interval not in ("month", "year") or (interval == "year" and not s["yearly"]):
+        return 400, {"error": "Choose Monthly or Yearly."}
     r = auth_api.billing_row(user["id"]) or {}
     if r.get("stripe_sub") and (plan_of(user) != "free" or _problem(r)):
         return 409, {"error": "You already have a plan. Use Manage billing to switch, cancel or update your card.", "code": "has_plan"}
     # Card checks are Stripe's: Checkout refuses numbers that are not real (wrong length or check digit), asks the card's bank to approve the
     # first charge (CVC and postal code included), runs Radar, and asks for 3D Secure whenever the bank or Radar wants it (Stripe's
     # recommended automatic setting, so it is not forced on every card). The plan only starts when that charge succeeded (see webhook).
-    params = {"mode": "subscription", "line_items[0][price]": s["price_" + plan], "line_items[0][quantity]": "1",
+    price = s["price_" + plan + ("_year" if interval == "year" else "")]
+    params = {"mode": "subscription", "line_items[0][price]": price, "line_items[0][quantity]": "1",
               "success_url": site + "/?billing=success", "cancel_url": site + "/?billing=cancel",
               "client_reference_id": str(user["id"]), "metadata[uaply_user]": str(user["id"]), "metadata[plan]": plan,
               "subscription_data[metadata][uaply_user]": str(user["id"]), "subscription_data[metadata][plan]": plan,
               # the account number alone is not enough to find the account again: if the accounts file were ever lost (a host with no
               # disk) numbers start again at 1 and would name someone else, so the address goes along and must match (_uid)
               "metadata[uaply_email]": user["email"], "subscription_data[metadata][uaply_email]": user["email"],
+              "metadata[interval]": interval, "subscription_data[metadata][interval]": interval,
+              # the payment methods switched on in Stripe's dashboard (no payment_method_types: so Link, Apple Pay and Google Pay appear
+              # once enabled there), and no address beyond what Stripe itself needs for the card
               "allow_promotion_codes": "true", "billing_address_collection": "auto",
               "payment_method_options[card][request_three_d_secure]": "automatic"}
     if r.get("stripe_customer"):
@@ -278,7 +375,14 @@ def _plan_for_price(price):
     """Plus or Pro for one of our two exact prices; otherwise "" (an unknown price never unlocks a plan)."""
     s = settings()
     pid = price.get("id") if isinstance(price, dict) else price
-    return "plus" if pid and pid == s.get("price_plus") else "pro" if pid and pid == s.get("price_pro") else ""
+    return ("plus" if pid and pid in (s.get("price_plus"), s.get("price_plus_year")) else
+            "pro" if pid and pid in (s.get("price_pro"), s.get("price_pro_year")) else "")
+
+
+def _interval_for_price(price):
+    s = settings()
+    pid = price.get("id") if isinstance(price, dict) else price
+    return "year" if pid and pid in (s.get("price_plus_year"), s.get("price_pro_year")) else "month"
 
 
 def _ref_uid(ref, meta):
@@ -326,7 +430,8 @@ def _apply_subscription(sub, user_id=None, failed=None):
     renews = int(sub.get("current_period_end") or (items[0].get("current_period_end") if items else 0) or 0)     # on the item since API 2025-03-31
     fields = dict(plan=plan if (plan and st in ACTIVE) else "free", plan_status=st, plan_renews=renews,
                   plan_cancel=1 if (sub.get("cancel_at_period_end") or sub.get("cancel_at")) and st != "canceled" else 0,
-                  stripe_customer=sub.get("customer") or "", stripe_sub=sub.get("id") or "")
+                  stripe_customer=sub.get("customer") or "", stripe_sub=sub.get("id") or "",
+                  plan_interval=_interval_for_price(items[0].get("price") or {}) if items else "month")
     if st in ("active", "trialing"):
         fields["plan_failed"] = 0                        # a payment went through: nothing is owed
     elif failed is not None:

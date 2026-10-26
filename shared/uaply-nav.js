@@ -544,6 +544,14 @@ function apply(w,host){
     interview:"Nothing here yet. Tap Interview on an application when a company invites you."
   };
   var TYPE_LABEL={job:"Full-time",parttime:"Part-time",internship:"Internship",coop:"Co-op"};
+  /* the upgrade line in Job Tracker (October 25): only on Free, with payments on and plans shown, once 10 applications went out */
+  function upsellHTML(by){
+    if(!(typeof BILL==="object"&&BILL.enabled&&BILL.buttons&&!BILL.hidden&&BILL.signedIn&&(BILL.plan||"free")==="free"))return "";
+    var n=by.applied.filter(function(o){var s=o.x.sent&&o.x.sent.status;return s==="sent"||s==="delivered_test"}).length;
+    if(n<10)return "";
+    return '<p class="note" id="trackUpsell">Applying a lot? Free has 50 applications a week; Plus has 250. <button type="button" class="linkbtn" data-go-plan="1">See plans</button></p>';
+  }
+  d.addEventListener("click",function(e){var b=e.target.closest&&e.target.closest("[data-go-plan]");if(!b)return;var nb=d.getElementById("nb-prof");if(nb){nb.click();var it=d.querySelector('.nwrap[data-k=prof] .nitem[data-v=plan]');if(it)it.click()}});
   function renderTrack(){
     if(w.__uaplyGateUp){tp.innerHTML="";return}   /* the sign-in gate: no Job Tracker rows while nobody is signed in */
     var by={applied:[],accepted:[],rejected:[],interview:[],passed:[]};
@@ -603,7 +611,7 @@ function apply(w,host){
         '<div class="acts">'+extraActs(o,acts,view).map(function(a,i){return '<button type="button" class="btn'+(i?' ghost':'')+'" data-act="'+a[0]+'" data-id="'+o.j.id+'" aria-label="'+a[1]+': '+e(o.j.role)+' at '+e(o.j.co)+'">'+a[1]+'</button>'}).join("")+'</div>'+(OPEN[o.j.id]&&view!=="passed"?detForm(o,view):"")+'</div>';
     }
     var v=sub.dash;
-    if(v==="overview"){tp.innerHTML=overviewHTML(by);return}
+    if(v==="overview"){tp.innerHTML=overviewHTML(by)+upsellHTML(by);return}
     var h='<div class="stats big">'+[["applied","Applied"],["accepted","Accepted"],["rejected","Rejected"],["interview","Interviews"]].map(function(p){return '<div class="stat"><b>'+by[p[0]].length+'</b><small>'+p[1]+'</small></div>'}).join("")+'</div>';
     h+='<h3>'+label("dash",v)+' ('+by[v].length+')</h3>';
     if(!by[v].length)h+='<p class="note">'+EMPTY[v]+'</p>';
@@ -1895,6 +1903,7 @@ function apply(w,host){
   })();
 
   /* ---------- real plans: the server keeps the plan, Stripe takes the payment ---------- */
+  var BINT="month";        /* the plan screen's Monthly / Yearly choice */
   var BILL={enabled:false,plan:"free",signedIn:false,plans:{free:{name:"Free",price:0,cap:50},plus:{name:"Plus",price:9.99,cap:250},pro:{name:"Pro",price:19.99,cap:0}}};
   /* OPTS.shieldsHelp: a failed read (a blocker, a deploy's 502, a dropped connection) is remembered, so the Plan screen says so and offers
      Try again instead of looking like "Payments are not switched on yet" with nothing to press; opening the screen again retries by itself */
@@ -1950,7 +1959,11 @@ function apply(w,host){
       /* a renewal failed (billing_api._problem): Stripe retries the card; after the third failed try the plan is paused until a payment works */
       (BILL.problem==="retrying"?'<small role="alert"><b>Your last payment did not go through.</b> Stripe will try your card again. To keep your plan, update your card in Manage billing.</small><div class="acts"><button type="button" class="btn ghost" data-bill="portal">Update card</button></div>':
        BILL.problem==="paused"?'<small role="alert"><b>Your plan is paused because your card was declined.</b> Update your card in Manage billing and it comes back as soon as the payment goes through. Nothing extra is charged.</small><div class="acts"><button type="button" class="btn" data-bill="portal">Update card</button></div>':'')+
-      '</div><div class="plans">';
+      '</div>'+(BILL.yearly&&BILL.enabled&&!BILL.hidden&&!IOS?'<div class="acts" role="group" aria-label="Billing period" id="bInt">'+
+        '<button type="button" class="btn'+(BINT==="month"?'':' ghost')+'" data-bint="month" aria-pressed="'+(BINT==="month")+'">Monthly</button>'+
+        '<button type="button" class="btn'+(BINT==="year"?'':' ghost')+'" data-bint="year" aria-pressed="'+(BINT==="year")+'">Yearly <small>2 months free</small></button></div>':'')+
+      '<div class="plans">';
+    var YR=BILL.yearly&&BINT==="year";
     keys.forEach(function(k){
       var p=PLANS[k==="free"?"trial":k==="plus"?"starter":"pro"],isCur=cur===k;
       var btn=IOS?(isCur?'<small>Your current plan</small>':''):k==="free"?(isCur?'<small>Your current plan</small>':''):
@@ -1959,13 +1972,14 @@ function apply(w,host){
           !BILL.enabled?'<small>Payments are not switched on yet.'+(SRV.testInbox?' Connect Stripe in <a href="/setup#billing" target="_blank" rel="noopener noreferrer">setup</a>.':'')+'</small>':
           (!BILL.signedIn?'<button type="button" class="btn" data-bill="signin">Sign in to choose '+p.name+'</button>':
           (cur!=="free"||BILL.problem?'<button type="button" class="btn ghost" data-bill="portal">Switch in Manage billing</button>':'<button type="button" class="btn" data-bill="'+k+'">Choose '+p.name+'</button>'))));
-      h+='<div class="plan" data-cur="'+isCur+'"><b>'+p.name+'</b><span class="pr">'+(p.price?"$"+p.price.toFixed(2)+'<small>/month</small>':"$0")+'</span><ul>'+p.perks.map(function(x){return '<li>'+E(x)+'</li>'}).join("")+'</ul>'+btn+'</div>';
+      var yp=YR&&P[k]&&P[k].year?P[k].year:0;
+      h+='<div class="plan" data-cur="'+isCur+'"><b>'+p.name+'</b><span class="pr">'+(yp?"$"+yp.toFixed(2)+'<small>/year</small>':p.price?"$"+p.price.toFixed(2)+'<small>/month</small>':"$0")+'</span>'+(yp?'<small class="save">2 months free</small>':'')+'<ul>'+p.perks.map(function(x){return '<li>'+E(x)+'</li>'}).join("")+'</ul>'+btn+'</div>';
     });
     /* hidden: a past subscriber (a Stripe customer now on Free) keeps Manage billing for invoices; a paid plan's own card already has it */
     if(IOS)return h.replace(/<div class="acts"><button type="button" class="btn( ghost)?" data-bill="portal">Update card<[/]button><[/]div>/g,"")+'</div><p class="note" id="iosPlans">'+IOS_PLANS+'</p>';
     if(BILL.hidden)return h+'</div><p class="note" id="plansSoon"><b>Plus and Pro are coming soon.</b> You will see their prices here before anything can be bought.'+(cur==="free"&&!BILL.hasCustomer?' Nothing is charged and no card is asked for.':'')+'</p>'+
       (cur==="free"&&BILL.hasCustomer?'<div class="acts"><button type="button" class="btn ghost" data-bill="portal">Manage billing</button></div>':'');
-    return h+'</div><p class="note">Payments are handled by Stripe on its own secure page. UAply never sees or stores your card number. Cancel any time in Manage billing; the plan stays until the end of the paid month.</p>';
+    return h+'</div><p class="note" id="refundLine">Your first payment can be refunded in full within 7 days: email uaplytechnologies@gmail.com.</p><p class="note">Payments are handled by Stripe on its own secure page. UAply never sees or stores your card number. Cancel any time in Manage billing; the plan stays until the end of the paid period.</p>';
   }
   /* Data and privacy: "You agreed to the Terms and Privacy Policy on <date>" (the date this browser said yes) */
   function agreedLine(){
@@ -1986,7 +2000,7 @@ function apply(w,host){
       msg("Opening Stripe's secure checkout (test mode)…");try{w.top.location.href=u}catch(x){w.location.href=u}return;
     }
     btn.disabled=true;msg(k==="portal"?"Opening billing…":"Opening secure checkout…");
-    apiPost(k==="portal"?"/api/billing/portal":"/api/billing/checkout",k==="portal"?{}:{plan:k}).then(function(r){
+    apiPost(k==="portal"?"/api/billing/portal":"/api/billing/checkout",k==="portal"?{}:{plan:k,interval:BILL.yearly&&BINT==="year"?"year":"month"}).then(function(r){
       btn.disabled=false;
       if(r.ok&&r.j&&r.j.url){try{w.top.location.href=r.j.url}catch(e){w.location.href=r.j.url}return}
       msg((r.j&&r.j.error)||"Could not open the payment page. Try again.");
@@ -2204,6 +2218,8 @@ function apply(w,host){
     nt.hidden=!(at>0&&v.slice(0,at).indexOf("+")>=0);
   });
   acctSec.addEventListener("click",function(e){
+    var bi=e.target.closest("[data-bint]");
+    if(bi){BINT=bi.getAttribute("data-bint")==="year"?"year":"month";renderAcct("plan");var nb2=d.querySelector('#bInt [data-bint="'+BINT+'"]');if(nb2)nb2.focus();return}
     var bb=e.target.closest("[data-bill]");
     if(bb){billingAction(bb.getAttribute("data-bill"),bb);return}
     var pb=e.target.closest("[data-plan]"),b=e.target.closest("[data-a]");

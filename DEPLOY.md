@@ -338,6 +338,14 @@ messages, so Stripe's test card 4242 4242 4242 4242 cannot unlock anything on th
 it and the person is told to update the card; after the third failed try the plan pauses, and it comes back by itself when a payment
 works. Cancel in the portal: the plan stays until the paid month ends. Deleting the account cancels the subscription at Stripe at once, before the account is removed (no refund of the current month unless you give one); if Stripe cannot be reached, the account is kept and the person is told to cancel in Manage billing first.
 
+**Yearly prices (October 25):** `STRIPE_PRICE_PLUS_YEAR` and `STRIPE_PRICE_PRO_YEAR` ($99.90 and $199.90 a year, two months free). You
+do not have to make them: when they are not set, the server makes one yearly price on each of the Plus and Pro products itself (it finds
+an existing one first, so it never makes two), keeps the ids in `billing-prices.json` in the records folder and logs one line; `/setup`
+shows the four price ids and "yearly: created by the server on <date>". Set the two settings only to use prices you made yourself. Stripe's
+receipts and its failed-payment email come from Stripe: in Settings, Emails (and Invoice template, footer) add the line "To cancel or
+change your card: uaply.net, Profile, Plan and billing, Manage billing." In Settings, Payment methods, switch on Link, Apple Pay and
+Google Pay: Checkout shows whatever is switched on there.
+
 **First try it all in test mode (sandbox):** toggle **Test mode** in Stripe, do steps 2 to 6 below with test-mode values on
 `uaply-sandbox` (webhook URL `https://uaply-sandbox.onrender.com/api/billing/webhook`), then buy a plan with Stripe's test cards
 (any future date, any CVC, any ZIP):

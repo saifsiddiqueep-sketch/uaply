@@ -58,10 +58,30 @@ try:
     user = auth_api.user_for(tok)
     t("payments are on with a test key and both prices", (billing_api.settings()["on"], billing_api.settings()["test"]), (True, True))
     t("a new account is on Free with 50 a week", (billing_api.status(user)["plan"], billing_api.status(user)["cap"]), ("free", 50))
+    # the yearly prices (October 25): not set, so the server makes them in Stripe on the monthly prices' products, once, and keeps the ids
+    made = json.loads(urllib.request.urlopen("http://127.0.0.1:%d/__prices" % PORT).read())
+    yp = billing_api.settings()
+    t("yearly prices made by the server: $99.90 and $199.90 a year, USD, on the Plus and Pro products, nickname yearly",
+      sorted((made["prices"][p]["product"], made["prices"][p]["unit_amount"], made["prices"][p]["currency"], made["prices"][p]["recurring"]["interval"], made["prices"][p]["nickname"]) for p in made["made"]),
+      [("prod_plus", 9990, "usd", "year", "yearly"), ("prod_pro", 19990, "usd", "year", "yearly")])
+    t("...kept in billing-prices.json and used as the yearly prices (Yearly shows)", (yp["yearly"], yp["price_plus_year"] in made["made"], os.path.exists(os.path.join(TMP, "billing", "billing-prices.json")) or os.path.exists(os.path.join(TMP, "billing-prices.json"))), (True, True, True))
+    for f_ in (os.path.join(TMP, "billing", "billing-prices.json"), os.path.join(TMP, "billing-prices.json")):
+        if os.path.exists(f_):
+            os.remove(f_)
+    billing_api.ensure_yearly(force=True)
+    again = json.loads(urllib.request.urlopen("http://127.0.0.1:%d/__prices" % PORT).read())
+    t("...idempotent: with the file gone, the server finds the same prices in Stripe and makes none", (len(again["made"]), billing_api.settings()["price_plus_year"]), (2, yp["price_plus_year"]))
+    t("the owner's setup line names the four prices and that the yearly ones were made by the server", ("Plus yearly " + yp["price_plus_year"] in billing_api.prices_line(), "yearly: created by the server on" in billing_api.prices_line()), (True, True))
+    t("status reports the yearly prices", (billing_api.status(user)["yearly"], billing_api.status(user)["plans"]["plus"]["year"], billing_api.status(user)["plans"]["pro"]["year"]), (True, 99.90, 199.90))
     t("checkout needs a verified email", billing_api.checkout(user, "plus", "http://x")[0], 403)
     auth_api.verify_code(tok, auth_api.issue_code_for_token(tok)[2], "10.0.0.1")
     user = auth_api.user_for(tok)
     t("a made-up plan is refused", billing_api.checkout(user, "gold", "http://x")[0], 400)
+    t("a made-up interval is refused", billing_api.checkout(user, "plus", "http://x", "week")[0], 400)
+    code, out = billing_api.checkout(user, "pro", "http://localhost:8767", "year")
+    ys = json.loads(urllib.request.urlopen("http://127.0.0.1:%d/__sessions" % PORT).read())[-1]
+    t("Yearly checkout uses the yearly price, with the payment methods switched on in Stripe (no payment_method_types)",
+      (code, ys["line_items[0][price]"], ys.get("metadata[interval]"), "payment_method_types[0]" in ys), (200, billing_api.settings()["price_pro_year"], "year", False))
     t("checkout without an account is refused", billing_api.checkout(None, "plus", "http://x")[0], 401)
     code, out = billing_api.checkout(user, "plus", "http://localhost:8767")
     sess = json.loads(urllib.request.urlopen("http://127.0.0.1:%d/__sessions" % PORT).read())[-1]
@@ -231,9 +251,10 @@ try:
     cfg["stripe"] = saved
 
     # weekly limits, enforced by the server
-    for i in range(50):
-        uaply_api.APPS.append({"user": uid, "at": time.time(), "status": "delivered_test", "job": {"id": i}, "candidate": {"email": "payer@example.com"}, "mode": "test"})
-    t("on Free the 51st application in a week is stopped with a plain reason", "50 applications this week" in (billing_api.limit_reached(user) or ""), True)
+    for i in range(50):              # half sent, half hand-offs: every application sent or saved to send counts (October 25)
+        uaply_api.APPS.append({"user": uid, "at": time.time(), "status": "delivered_test" if i % 2 else "handoff", "job": {"id": i}, "candidate": {"email": "payer@example.com"}, "mode": "test"})
+    t("on Free the 51st application in a week is stopped with a plain reason (hand-offs count)", "50 applications this week" in (billing_api.limit_reached(user) or ""), True)
+    t("...naming the plan and the day more open up", ("on Free" in billing_api.limit_reached(user), any(d in billing_api.limit_reached(user) for d in ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"))), (True, True))
     sub = add_sub("sub_2", "cus_1", "price_plus1")
     billing_api.webhook(*signed({"id": "evt_5", "type": "customer.subscription.updated", "data": {"object": sub}}))
     t("on Plus the same account can keep applying", billing_api.limit_reached(user), None)

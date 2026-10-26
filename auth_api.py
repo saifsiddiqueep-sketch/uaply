@@ -135,7 +135,7 @@ def init(instance):
                     "first_name TEXT NOT NULL DEFAULT ''", "last_name TEXT NOT NULL DEFAULT ''",
                     "plan TEXT NOT NULL DEFAULT 'free'", "plan_status TEXT NOT NULL DEFAULT ''", "plan_renews INTEGER NOT NULL DEFAULT 0",
                     "plan_cancel INTEGER NOT NULL DEFAULT 0", "stripe_customer TEXT NOT NULL DEFAULT ''", "stripe_sub TEXT NOT NULL DEFAULT ''",
-                    "plan_failed INTEGER NOT NULL DEFAULT 0",
+                    "plan_failed INTEGER NOT NULL DEFAULT 0", "plan_interval TEXT NOT NULL DEFAULT 'month'",   # month or year (billing_api)
                     # Send applications for me (Profile, Account; Terms section 3): on unless the person turns it off; off, every swipe right
                     # only saves the job to Job Tracker (uaply_api.submit). send_for_me_at: when it was last changed
                     "send_for_me INTEGER NOT NULL DEFAULT 1", "send_for_me_at INTEGER NOT NULL DEFAULT 0"):      # databases made before these columns existed
@@ -384,7 +384,7 @@ def clean_name(v):
 def billing_row(user_id):
     """The stored subscription of one account, or None."""
     with _db() as c:
-        r = c.execute("SELECT id, email, plan, plan_status, plan_renews, plan_cancel, plan_failed, stripe_customer, stripe_sub FROM users WHERE id=?", (user_id,)).fetchone()
+        r = c.execute("SELECT id, email, plan, plan_status, plan_renews, plan_cancel, plan_failed, plan_interval, stripe_customer, stripe_sub FROM users WHERE id=?", (user_id,)).fetchone()
     return dict(r) if r else None
 
 
@@ -414,7 +414,7 @@ def find_billing(customer="", sub=""):
 
 def set_billing(user_id, **fields):
     """Update the subscription fields of one account (only the known columns)."""
-    allowed = ("plan", "plan_status", "plan_renews", "plan_cancel", "plan_failed", "stripe_customer", "stripe_sub")
+    allowed = ("plan", "plan_status", "plan_renews", "plan_cancel", "plan_failed", "plan_interval", "stripe_customer", "stripe_sub")
     pairs = [(k, v) for k, v in fields.items() if k in allowed]
     if not pairs:
         return

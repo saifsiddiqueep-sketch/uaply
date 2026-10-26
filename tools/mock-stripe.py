@@ -30,6 +30,9 @@ import http.server
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8798
 KEY = "sk_test_mockkey123456"
 SESSIONS, SUBS, VERSIONS = [], {}, []
+PRICES = {"price_plus1": {"id": "price_plus1", "product": "prod_plus", "unit_amount": 999, "currency": "usd", "recurring": {"interval": "month"}},
+          "price_pro1": {"id": "price_pro1", "product": "prod_pro", "unit_amount": 1999, "currency": "usd", "recurring": {"interval": "month"}}}
+MADE = []               # prices made through POST /v1/prices
 DECLINES = {"4000000000000002": "card_declined", "4000000000009995": "insufficient_funds", "4000000000000127": "incorrect_cvc",
             "4000000000000101": "incorrect_cvc", "4100000000000019": "highest_risk_level"}
 N = [0]
@@ -91,8 +94,19 @@ class H(http.server.BaseHTTPRequestHandler):
             b = body.encode()
             self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8"); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
             return
+        if u.path == "/__prices":
+            return self._json(200, {"prices": PRICES, "made": MADE})
         if not self._auth():
             return self._json(401, {"error": {"message": "Invalid API key"}})
+        if u.path.startswith("/v1/prices"):
+            if not self._auth():
+                return self._json(401, {"error": {"message": "Invalid API key"}})
+            q = dict(urllib.parse.parse_qsl(u.query))
+            if u.path.startswith("/v1/prices/"):
+                p = PRICES.get(u.path.rsplit("/", 1)[1])
+                return self._json(200, p) if p else self._json(404, {"error": {"message": "No such price"}})
+            rows = [p for p in PRICES.values() if p["product"] == q.get("product") and (not q.get("recurring[interval]") or p["recurring"]["interval"] == q["recurring[interval]"])]
+            return self._json(200, {"object": "list", "data": rows})
         if u.path.startswith("/v1/subscriptions/"):
             sid = u.path.rsplit("/", 1)[1]
             return self._json(200, SUBS[sid]) if sid in SUBS else self._json(404, {"error": {"message": "No such subscription"}})
@@ -169,6 +183,13 @@ class H(http.server.BaseHTTPRequestHandler):
             return self._json(200, {"events": [event("customer.subscription.deleted", sub)]}) if sub else self._json(404, {})
         if not self._auth():
             return self._json(401, {"error": {"message": "Invalid API key"}})
+        if u.path == "/v1/prices":
+            pid = "price_made%d" % (len(MADE) + 1)
+            p = {"id": pid, "product": params.get("product"), "unit_amount": int(params.get("unit_amount") or 0), "currency": params.get("currency"),
+                 "recurring": {"interval": params.get("recurring[interval]")}, "nickname": params.get("nickname")}
+            PRICES[pid] = p
+            MADE.append(pid)
+            return self._json(200, p)
         if u.path == "/v1/checkout/sessions":
             sid = "cs_test_%d" % (len(SESSIONS) + 1)
             SESSIONS.append(dict(params, id=sid, status="open"))
