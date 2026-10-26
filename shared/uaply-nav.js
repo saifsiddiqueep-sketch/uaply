@@ -1218,7 +1218,7 @@ function apply(w,host){
   function paywall(why){
     if(d.getElementById("paywall"))return;
     var o=d.createElement("div");o.id="paywall";
-    if(iosApp()){   /* the iPhone app: the limit is said, with no way to buy from here (guideline 3.1.1) */
+    if(iosApp()){   /* a store app: the limit is said, with no way to buy from here */
       o.innerHTML='<div role="dialog" aria-modal="true" aria-label="Weekly limit reached"><h2 style="margin:0 0 6px;font:800 20px var(--display)">Weekly limit reached</h2><p style="margin:0 0 16px;color:var(--muted)">'+E(why)+' Passing on jobs and your Job Tracker still work. '+IOS_PLANS+'</p><div style="display:flex;gap:10px;justify-content:flex-end"><button class="btn" id="pwNo" type="button">OK</button></div></div>';
       d.body.appendChild(o);d.getElementById("pwNo").focus();d.getElementById("pwNo").onclick=function(){o.remove()};
       o.addEventListener("keydown",function(e){if(e.key==="Escape")o.remove()});return;
@@ -1912,11 +1912,24 @@ function apply(w,host){
   function earlyAccess(){return BILL.early===true}   /* the server says so: a public server with no Stripe keys (billing_api.buttons). No prices to choose, no checkout, no payment links */
   var LINKOF={plus:"starter",pro:"pro"};   /* the Payment Links fallback (OPTS.stripeLinks), used when the server has no Stripe keys but offers the buttons (the owner's own computer) */
   function testMode(){return !!BILL.test||(!BILL.enabled&&!!BILL.buttons&&!!(PAYLINK.starter||PAYLINK.pro))}
-  /* inside the iPhone app (App Store guideline 3.1.1): no button that buys, switches or manages a plan, and no link out to pay; the plan
-     screen says where plans are managed, as plain text. The website and the Android app are unchanged */
-  function iosApp(){try{var c=w.top.Capacitor;return !!(c&&c.getPlatform&&c.getPlatform()==="ios")}catch(e){return false}}
-  w.__uaplyIosApp=iosApp;
+  /* inside a store app (the iPhone app, App Store guideline 3.1.1; the Android app and the Play wrapper, Play's payments policy): no
+     button that buys, switches or manages a plan, and no link out to pay; the plan screen says where plans are managed, as plain text.
+     The website is unchanged. The Play wrapper (Trusted Web Activity, mobile/twa) opens uaply.net with the referrer android-app://com.uaply.app
+     (and ?src=play from the next build's start address); that is remembered for this tab only, so Chrome on the same phone stays the website */
+  function storeApp(){
+    try{var c=w.top.Capacitor;if(c&&c.getPlatform&&(c.getPlatform()==="ios"||c.getPlatform()==="android"))return true}catch(e){}
+    try{var t=w.top,ss=t.sessionStorage;if(ss.getItem("uaply.playApp")==="1")return true;
+      if(/^android-app:[/][/]com[.]uaply[.]app/.test(t.document.referrer||"")||/[?&]src=play(&|$)/.test(t.location.search||"")){ss.setItem("uaply.playApp","1");return true}}catch(e){}
+    return false;
+  }
+  function iosApp(){return storeApp()}   /* the name the earlier iPhone-only code uses */
+  w.__uaplyIosApp=storeApp;w.__uaplyStoreApp=storeApp;
   var IOS_PLANS="Plans are managed on uaply.net.";
+  /* the website, a paid plan: what it costs, who bills it and when it renews (or ends), above Manage billing */
+  function billLine(p){
+    var dt=BILL.renews?new Date(BILL.renews*1000).toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"}):"";
+    return '<small class="billLine">'+E(p.name)+', $'+p.price.toFixed(2)+' a month, billed by Stripe on uaply.net.'+(dt?(BILL.canceling?' Ends ':' Renews ')+dt+'.':'')+'</small>';
+  }
   function billingHTML(){
     var who=SRV.user?SRV.user.id:0,IOS=iosApp();
     if(HELP&&BILL._failed){
@@ -1941,7 +1954,7 @@ function apply(w,host){
     keys.forEach(function(k){
       var p=PLANS[k==="free"?"trial":k==="plus"?"starter":"pro"],isCur=cur===k;
       var btn=IOS?(isCur?'<small>Your current plan</small>':''):k==="free"?(isCur?'<small>Your current plan</small>':''):
-        (isCur?'<button type="button" class="btn ghost" data-bill="portal">Manage billing</button>':
+        (isCur?billLine(p)+'<button type="button" class="btn ghost" data-bill="portal">Manage billing</button>':
           (!BILL.enabled&&BILL.buttons&&PAYLINK[LINKOF[k]]?'<button type="button" class="btn" data-bill="'+k+'">Choose '+p.name+'</button>':
           !BILL.enabled?'<small>Payments are not switched on yet.'+(SRV.testInbox?' Connect Stripe in <a href="/setup#billing" target="_blank" rel="noopener noreferrer">setup</a>.':'')+'</small>':
           (!BILL.signedIn?'<button type="button" class="btn" data-bill="signin">Sign in to choose '+p.name+'</button>':

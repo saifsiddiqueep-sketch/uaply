@@ -65,10 +65,10 @@ var EMAIL=/^[^@\s]{1,64}@[^@\s]+\.[A-Za-z]{2,}$/;
 
 function apply(w,host){
   var d=w.document,A=w.__uaply||null;
-  /* inside the iPhone app (App Store guideline 3.1.1): an answer never gives a plan's price or how to pay. Those sentences are left out
-     and "Plans are managed on uaply.net." is said instead; the website and the Android app show the answer as it is */
+  /* inside a store app (the iPhone app, App Store guideline 3.1.1; the Android app and the Play wrapper): an answer never gives a plan's
+     price or how to pay. Those sentences are left out and "Plans are managed on uaply.net." is said instead; the website shows it as it is */
   var IOS_PAY=/\$\d|\bStripe\b|card number|Manage billing|Choose (Plus|Pro)\b|\ba month\b|\bpaid plans?\b|\bpayments?\b|\bcancel\b|\bbuy\b|\bbought\b/i;
-  function iosApp(){try{if(w.__uaplyIosApp)return !!w.__uaplyIosApp();var c=w.top.Capacitor;return !!(c&&c.getPlatform&&c.getPlatform()==="ios")}catch(e){return false}}
+  function iosApp(){try{if(w.__uaplyStoreApp)return !!w.__uaplyStoreApp();var c=w.top.Capacitor;return !!(c&&c.getPlatform&&/^(ios|android)$/.test(c.getPlatform()))}catch(e){return false}}
   function iosAnswer(t){
     t=String(t||"");if(!iosApp()||!IOS_PAY.test(t))return t;
     var out=[];t.split(/\n/).forEach(function(line){

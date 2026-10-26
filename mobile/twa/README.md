@@ -73,5 +73,5 @@ this folder). Without both you cannot upload updates (Google can reset a lost up
 - `fallbackType: "customtabs"`: on a phone without a TWA-capable browser the app opens in another browser's Custom Tab. Never set
   it to `"webview"`: Google refuses sign-in inside a web view (`disallowed_useragent`).
 - `enableNotifications: false`: UAply sends no web push notifications, so the app asks for no notification permission.
-- `host` / `startUrl`: the app opens `https://uaply.net/`. A page on another site (Google sign-in, Stripe Checkout, an employer's
+- `host` / `startUrl`: the app opens `https://uaply.net/?src=play` (`?src=play` tells the page it runs in the Play app, so it shows no buy or billing buttons; the launch referrer `android-app://com.uaply.app` does the same for builds made before this was added). A page on another site (Google sign-in, Stripe Checkout, an employer's
   application page) shows inside the app with a small address bar at the top, which goes away again when it comes back to uaply.net.
