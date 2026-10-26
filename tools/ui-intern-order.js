@@ -19,7 +19,7 @@ module.exports = async ({ ev, sleep, nav }) => {
   await ev("(()=>{const e=" + F + ".getElementById('fTitleOnly');if(!e)return false;e.checked=false;e.dispatchEvent(new Event('change',{bubbles:true}));return true})()");
   await sleep(400);
   const order = (useNew) => ev("(()=>{const w=" + W + ",keep=w.__uaplyDeckSort;if(!" + useNew + ")w.__uaplyDeckSort=null;let q;try{q=w.__uaplyQueue()}finally{w.__uaplyDeckSort=keep}" +
-    "return JSON.stringify(q.slice(0,20).map(x=>({role:x.j.role,loc:x.j.loc,mode:x.j.mode,grad:!!x.j.gradOnly,desc:(x.j.desc||'')+' '+(x.j.blurb||'')})))})()");
+    "return JSON.stringify(q.filter(x=>!x.out).slice(0,20).map(x=>({role:x.j.role,loc:x.j.loc,mode:x.j.mode,grad:!!x.j.gradOnly,desc:(x.j.desc||'')+' '+(x.j.blurb||'')})))})()");
   if (process.env.MEASURE) {
     for (const [label, useNew] of [["old order (match only)", false], ["new order", true]]) {
       const top = JSON.parse(await order(useNew));
