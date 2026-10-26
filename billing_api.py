@@ -30,6 +30,7 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -63,7 +64,7 @@ def settings():
     key = s.get("secret_key") if isinstance(s.get("secret_key"), str) else ""
     s["on"] = bool(re.match(r"^sk_(test|live)_[A-Za-z0-9]{8,}$", key) and str(s.get("price_plus", "")).startswith("price_") and str(s.get("price_pro", "")).startswith("price_"))
     s["test"] = key.startswith("sk_test_")
-    made = _made_prices()
+    made = _made_prices(key)
     for k in ("price_plus_year", "price_pro_year"):          # the yearly prices this server made itself (ensure_yearly), when none is set
         if not str(s.get(k, "")).startswith("price_") and str(made.get(k, "")).startswith("price_"):
             s[k] = made[k]
@@ -79,7 +80,12 @@ def _prices_file():
     return os.path.join(uaply_api.DATA, "billing-prices.json")
 
 
-def _made_prices():
+def _bucket(key):
+    """The key's mode and account: yearly ids made with a test key are never used with a live one, nor with another account's key."""
+    return ("test-" if key.startswith("sk_test_") else "live-") + hashlib.sha256(key.encode("utf-8")).hexdigest()[:12]
+
+
+def _all_made():
     try:
         with open(_prices_file(), encoding="utf-8") as f:
             d = json.load(f)
@@ -88,51 +94,82 @@ def _made_prices():
         return {}
 
 
-_YEARLY_TRIED = [0.0]
+def _made_prices(key=None):
+    """This key's yearly ids, but only once ensure_yearly confirmed them in Stripe (in this run of the server)."""
+    if key is None:
+        s = dict(uaply_api.config().get("stripe") or {}) if isinstance(uaply_api.config().get("stripe"), dict) else {}
+        key = os.environ.get("STRIPE_SECRET_KEY", "").strip() or str(s.get("secret_key") or "")
+    m = _all_made().get(_bucket(key)) if key else None
+    if not isinstance(m, dict):
+        return {}
+    return {k: v for k, v in m.items() if k == "at" or (k in ("price_plus_year", "price_pro_year") and v in _CONFIRMED)}
+
+
+_YEARLY_TRIED = [0.0, ""]
+_YEARLY_LOCK = threading.Lock()
+_CONFIRMED = set()           # yearly ids this server checked in Stripe: they exist, are active, yearly, USD, at the right amount
+
+
+def _price_ok(pid, cents):
+    code, p = _stripe("GET", "/v1/prices/" + urllib.parse.quote(str(pid), safe=""))
+    return (code == 200 and p.get("id") == pid and p.get("active") is not False and p.get("unit_amount") == cents and p.get("currency") == "usd"
+            and (p.get("recurring") or {}).get("interval") == "year")
 
 
 def ensure_yearly(force=False):
     """When STRIPE_PRICE_PLUS_YEAR / STRIPE_PRICE_PRO_YEAR are not set, make the two yearly prices in Stripe on the products behind the monthly
     prices (9990 and 19990 cents, USD, nickname "yearly"), reusing one that already exists there (same interval and amount), and keep their ids
-    in billing-prices.json in the records folder. Only this server holds the secret key, so nobody has to make them by hand. Tried at most
-    once every 10 minutes; returns the ids it has."""
-    s = settings()
-    if not s["on"] or s["yearly"] or (not force and time.time() - _YEARLY_TRIED[0] < 600):
-        return {k: s.get(k, "") for k in ("price_plus_year", "price_pro_year")}
-    _YEARLY_TRIED[0] = time.time()
-    made = _made_prices()
-    for plan in ("plus", "pro"):
-        k = "price_%s_year" % plan
-        if str(s.get(k, "")).startswith("price_"):
-            continue
-        code, mon = _stripe("GET", "/v1/prices/" + urllib.parse.quote(s["price_" + plan], safe=""))
-        prod = mon.get("product") if code == 200 else ""
-        prod = prod.get("id") if isinstance(prod, dict) else prod
-        if not prod:
-            continue
-        code, lst = _stripe("GET", "/v1/prices?" + urllib.parse.urlencode({"product": prod, "active": "true", "limit": "100", "recurring[interval]": "year"}))
-        hit = [p for p in (lst.get("data") or []) if code == 200 and p.get("unit_amount") == YEAR_CENTS[plan] and p.get("currency") == "usd"
-               and (p.get("recurring") or {}).get("interval") == "year"]
-        if hit:
-            pid = hit[0]["id"]
-        else:
-            code, new = _stripe("POST", "/v1/prices", {"product": prod, "unit_amount": str(YEAR_CENTS[plan]), "currency": "usd",
-                                                       "recurring[interval]": "year", "nickname": "yearly"})
-            pid = new.get("id") if code == 200 else ""
-        if str(pid).startswith("price_"):
-            made[k] = pid
-    if made.get("price_plus_year") and made.get("price_pro_year") and not made.get("at"):
-        made["at"] = int(time.time())
-        sys.stderr.write("[uaply] yearly prices ready in Stripe: Plus %s, Pro %s (billing-prices.json)\n" % (made["price_plus_year"], made["price_pro_year"]))
-    try:
-        os.makedirs(uaply_api.DATA, exist_ok=True)
-        tmp = _prices_file() + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(made, f, indent=1)
-        os.replace(tmp, _prices_file())
-    except OSError:
-        pass
-    return {k: made.get(k, "") for k in ("price_plus_year", "price_pro_year")}
+    in billing-prices.json under the key's mode and account. A kept id is used only after Stripe confirms it (exists, active, yearly, right
+    amount); a live key on a disk that holds test ids makes live ones. One call at a time (a lock), and the create carries a fixed
+    Idempotency-Key, so two servers or two requests at once never make two. Tried at most once every 10 minutes per key; returns the ids."""
+    with _YEARLY_LOCK:
+        s = settings()
+        if not s["on"] or s["yearly"] or (not force and time.time() - _YEARLY_TRIED[0] < 600 and _YEARLY_TRIED[1] == s["secret_key"]):
+            return {k: s.get(k, "") for k in ("price_plus_year", "price_pro_year")}
+        _YEARLY_TRIED[0], _YEARLY_TRIED[1] = time.time(), s["secret_key"]
+        bucket = _bucket(s["secret_key"])
+        everything = _all_made()
+        made = everything.get(bucket) if isinstance(everything.get(bucket), dict) else {}
+        for plan in ("plus", "pro"):
+            k = "price_%s_year" % plan
+            if str(s.get(k, "")).startswith("price_"):
+                continue
+            if made.get(k) and _price_ok(made[k], YEAR_CENTS[plan]):
+                _CONFIRMED.add(made[k])
+                continue
+            made.pop(k, None)
+            code, mon = _stripe("GET", "/v1/prices/" + urllib.parse.quote(s["price_" + plan], safe=""))
+            prod = mon.get("product") if code == 200 else ""
+            prod = prod.get("id") if isinstance(prod, dict) else prod
+            if not prod:
+                continue
+            code, lst = _stripe("GET", "/v1/prices?" + urllib.parse.urlencode({"product": prod, "active": "true", "limit": "100", "recurring[interval]": "year"}))
+            hit = [p for p in (lst.get("data") or []) if code == 200 and p.get("unit_amount") == YEAR_CENTS[plan] and p.get("currency") == "usd"
+                   and (p.get("recurring") or {}).get("interval") == "year" and p.get("active") is not False]
+            if hit:
+                pid = hit[0]["id"]
+            else:
+                code, new = _stripe("POST", "/v1/prices", {"product": prod, "unit_amount": str(YEAR_CENTS[plan]), "currency": "usd",
+                                                           "recurring[interval]": "year", "nickname": "yearly"},
+                                    idem="uaply-yearly-%s-%d" % (prod, YEAR_CENTS[plan]))
+                pid = new.get("id") if code == 200 else ""
+            if str(pid).startswith("price_"):
+                made[k] = pid
+                _CONFIRMED.add(pid)
+        if made.get("price_plus_year") and made.get("price_pro_year") and not made.get("at"):
+            made["at"] = int(time.time())
+            sys.stderr.write("[uaply] yearly prices ready in Stripe (%s mode): Plus %s, Pro %s (billing-prices.json)\n" % (
+                "TEST" if s["test"] else "LIVE", made["price_plus_year"], made["price_pro_year"]))
+        everything[bucket] = made
+        try:
+            os.makedirs(uaply_api.DATA, exist_ok=True)
+            tmp = _prices_file() + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(everything, f, indent=1)
+            os.replace(tmp, _prices_file())
+        except OSError:
+            pass
+        return {k: made.get(k, "") for k in ("price_plus_year", "price_pro_year")}
 
 
 def prices_line():
@@ -176,12 +213,12 @@ def buttons(s=None):
     return bool(s["on"] or not PUBLIC)
 
 
-def _stripe(method, path, params=None):
+def _stripe(method, path, params=None, idem=""):
     s = settings()
     data = urllib.parse.urlencode(params or {}).encode() if method == "POST" else None
     req = urllib.request.Request(_base() + path + ("" if method == "POST" or not params else "?" + urllib.parse.urlencode(params)), data=data, method=method,
                                  headers={"Authorization": "Bearer " + s["secret_key"], "Content-Type": "application/x-www-form-urlencoded",
-                                          "Stripe-Version": API_VERSION})
+                                          "Stripe-Version": API_VERSION, **({"Idempotency-Key": idem} if idem else {})})
     try:
         with urllib.request.urlopen(req, timeout=20) as r:
             return r.status, json.loads(r.read(500000))
@@ -202,7 +239,7 @@ def _week_used(user_id):
     since = time.time() - 7 * 86400
     with uaply_api._lock:
         # every application the person sends or saves to send counts, hand-offs included (Saif, October 25); a failed send and a repeat do not
-        return sum(1 for a in uaply_api.APPS if a.get("user") == user_id and a["at"] >= since and a["status"] not in ("failed", "duplicate"))
+        return sum(1 for a in uaply_api.APPS if a.get("user") == user_id and a["at"] >= since and a["status"] not in ("failed", "duplicate") and a.get("why") != "send_off")
 
 
 def _plan_from_row(r):
@@ -227,18 +264,23 @@ def limit_reached(user):
         return None
     p = PLANS[plan_of(user)]
     if p["cap"] and _week_used(user["id"]) >= p["cap"]:
-        day = time.strftime("%A", time.gmtime(_next_free(user["id"])))
+        day = "{day}"                                   # the page puts the person's own weekday here, from resetAt (reset_at)
         if hidden():                                   # no bigger plan can be chosen yet: say when applying works again instead
             return "You've used your %d applications this week on %s. More open up on %s, as the oldest ones pass 7 days. Plus and Pro are coming soon." % (p["cap"], p["name"], day)
         return "You've used your %d applications this week on %s. More open up on %s, or choose a bigger plan in Profile, Plan and billing to keep applying." % (p["cap"], p["name"], day)
     return None
 
 
+def reset_at(user):
+    """When one more application opens up for this account (seconds), for the limit message's day."""
+    return int(_next_free(user["id"])) if user else 0
+
+
 def _next_free(user_id):
     """When the oldest application of the last 7 days passes 7 days (the moment one more opens up)."""
     since = time.time() - 7 * 86400
     with uaply_api._lock:
-        ats = [a["at"] for a in uaply_api.APPS if a.get("user") == user_id and a["at"] >= since and a["status"] not in ("failed", "duplicate")]
+        ats = [a["at"] for a in uaply_api.APPS if a.get("user") == user_id and a["at"] >= since and a["status"] not in ("failed", "duplicate") and a.get("why") != "send_off"]
     return (min(ats) if ats else time.time()) + 7 * 86400
 
 

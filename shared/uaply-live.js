@@ -905,7 +905,9 @@ function kitApply(w,host){
           var act=j.code==="limit"?["See plans",function(){var b=d.getElementById("nb-prof");if(b){b.click();var it=d.querySelector('.nwrap[data-k=prof] .nitem[data-v=plan]');if(it)it.click()}}]
                   :j.code==="slow_down"||j.code==="server"||j.code==="preview"?["",null]:(j.code==="signin"||j.code==="verify")?["Open Account",openAccount]
                   :j.code==="consent"?["Review",function(){if(w.__uaplyConsentAgain)w.__uaplyConsentAgain(function(){})}]:["Open Profile",openProfile];
-          toast((j.error||"Could not send your application.")+" "+job.co+" is back in your deck.",act[0],act[1],9000);return;
+          var em=String(j.error||"Could not send your application.");
+          if(em.indexOf("{day}")>-1){var rd=j.resetAt?new Date(j.resetAt*1000):null;em=em.replace("{day}",rd?rd.toLocaleDateString(undefined,{weekday:"long"}):"a few days")}   /* the person's own weekday */
+          toast(em+" "+job.co+" is back in your deck.",act[0],act[1],9000);return;
         }
         if(j.status==="needs_answers"){
           var qs=Array.isArray(j.questions)?j.questions:[];

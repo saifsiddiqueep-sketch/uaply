@@ -1423,7 +1423,7 @@ class H(http.server.SimpleHTTPRequestHandler):
             elif p == "/api/apply":
                 u = auth_api.user_for(self._token())
                 over = billing_api.limit_reached(u)
-                code, out = (402, {"error": over, "code": "limit"}) if over else uaply_api.submit(payload, u, self._site_base())
+                code, out = (402, {"error": over, "code": "limit", "resetAt": billing_api.reset_at(u)}) if over else uaply_api.submit(payload, u, self._site_base())
             elif p == "/api/billing/checkout":
                 code, out = billing_api.checkout(auth_api.user_for(self._token()), payload.get("plan"), self._site_base(), payload.get("interval") or "month")
             elif p == "/api/billing/portal":

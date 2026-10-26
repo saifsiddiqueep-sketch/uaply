@@ -72,6 +72,32 @@ try:
     again = json.loads(urllib.request.urlopen("http://127.0.0.1:%d/__prices" % PORT).read())
     t("...idempotent: with the file gone, the server finds the same prices in Stripe and makes none", (len(again["made"]), billing_api.settings()["price_plus_year"]), (2, yp["price_plus_year"]))
     t("the owner's setup line names the four prices and that the yearly ones were made by the server", ("Plus yearly " + yp["price_plus_year"] in billing_api.prices_line(), "yearly: created by the server on" in billing_api.prices_line()), (True, True))
+    # the key's mode and account: a live key on a disk that holds test ids makes live ones (and confirms them in Stripe first)
+    test_ids = (yp["price_plus_year"], yp["price_pro_year"])
+    keep_key = cfg["stripe"]["secret_key"]
+    cfg["stripe"]["secret_key"] = "sk_live_mockkey123456"
+    live = billing_api.ensure_yearly(force=True)
+    allp = json.loads(urllib.request.urlopen("http://127.0.0.1:%d/__prices" % PORT).read())
+    buckets = json.load(open([f_ for f_ in (os.path.join(TMP, "billing", "billing-prices.json"), os.path.join(TMP, "billing-prices.json")) if os.path.exists(f_)][0], encoding="utf-8"))
+    t("a live key with test ids on disk: new live yearly prices, kept apart from the test ones", (len(allp["made"]), live["price_plus_year"] not in test_ids,
+      allp["prices"][live["price_plus_year"]]["livemode"], sorted(k.split("-")[0] for k in buckets)), (4, True, True, ["live", "test"]))
+    cfg["stripe"]["secret_key"] = keep_key
+    billing_api.ensure_yearly(force=True)
+    t("...and back on the test key, the test ids again (confirmed in Stripe)", (billing_api.settings()["price_plus_year"], billing_api.settings()["price_pro_year"]), test_ids)
+    # two calls at once: one lock, and the create carries a fixed Idempotency-Key, so never two prices
+    import threading as _th
+    for f_ in (os.path.join(TMP, "billing", "billing-prices.json"), os.path.join(TMP, "billing-prices.json")):
+        if os.path.exists(f_):
+            os.remove(f_)
+    billing_api._CONFIRMED.clear()
+    urllib.request.urlopen(urllib.request.Request("http://127.0.0.1:%d/__hide_search" % PORT, data=b"on=1", headers={"Authorization": "Bearer sk_test_mockkey123456", "Stripe-Version": billing_api.API_VERSION}))
+    outs2 = []
+    th = [_th.Thread(target=lambda: outs2.append(billing_api.ensure_yearly(force=True))) for _ in range(2)]
+    [x.start() for x in th]
+    [x.join() for x in th]
+    urllib.request.urlopen(urllib.request.Request("http://127.0.0.1:%d/__hide_search" % PORT, data=b"on=0", headers={"Authorization": "Bearer sk_test_mockkey123456", "Stripe-Version": billing_api.API_VERSION}))
+    after2 = json.loads(urllib.request.urlopen("http://127.0.0.1:%d/__prices" % PORT).read())
+    t("two calls at once (the search finding nothing): the same two prices, none made twice", (len(after2["made"]), outs2[0] == outs2[1], outs2[0]["price_plus_year"]), (4, True, test_ids[0]))
     t("status reports the yearly prices", (billing_api.status(user)["yearly"], billing_api.status(user)["plans"]["plus"]["year"], billing_api.status(user)["plans"]["pro"]["year"]), (True, 99.90, 199.90))
     t("checkout needs a verified email", billing_api.checkout(user, "plus", "http://x")[0], 403)
     auth_api.verify_code(tok, auth_api.issue_code_for_token(tok)[2], "10.0.0.1")
@@ -254,7 +280,13 @@ try:
     for i in range(50):              # half sent, half hand-offs: every application sent or saved to send counts (October 25)
         uaply_api.APPS.append({"user": uid, "at": time.time(), "status": "delivered_test" if i % 2 else "handoff", "job": {"id": i}, "candidate": {"email": "payer@example.com"}, "mode": "test"})
     t("on Free the 51st application in a week is stopped with a plain reason (hand-offs count)", "50 applications this week" in (billing_api.limit_reached(user) or ""), True)
-    t("...naming the plan and the day more open up", ("on Free" in billing_api.limit_reached(user), any(d in billing_api.limit_reached(user) for d in ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"))), (True, True))
+    t("...naming the plan, and the day more open up for the page to put in the person's own weekday", ("on Free" in billing_api.limit_reached(user), "{day}" in billing_api.limit_reached(user),
+      time.time() < billing_api.reset_at(user) <= time.time() + 7 * 86400), (True, True, True))
+    for k_ in range(5):           # saved with Send applications for me off: not counted
+        uaply_api.APPS[-1 - k_]["why"] = "send_off"
+    t("saves with Send applications for me off do not count toward the week", billing_api._week_used(uid), 45)
+    for k_ in range(5):
+        uaply_api.APPS[-1 - k_].pop("why", None)
     sub = add_sub("sub_2", "cus_1", "price_plus1")
     billing_api.webhook(*signed({"id": "evt_5", "type": "customer.subscription.updated", "data": {"object": sub}}))
     t("on Plus the same account can keep applying", billing_api.limit_reached(user), None)

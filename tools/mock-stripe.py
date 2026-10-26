@@ -30,9 +30,11 @@ import http.server
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8798
 KEY = "sk_test_mockkey123456"
 SESSIONS, SUBS, VERSIONS = [], {}, []
-PRICES = {"price_plus1": {"id": "price_plus1", "product": "prod_plus", "unit_amount": 999, "currency": "usd", "recurring": {"interval": "month"}},
-          "price_pro1": {"id": "price_pro1", "product": "prod_pro", "unit_amount": 1999, "currency": "usd", "recurring": {"interval": "month"}}}
+PRICES = {"price_plus1": {"id": "price_plus1", "product": "prod_plus", "unit_amount": 999, "currency": "usd", "recurring": {"interval": "month"}, "active": True, "livemode": None},
+          "price_pro1": {"id": "price_pro1", "product": "prod_pro", "unit_amount": 1999, "currency": "usd", "recurring": {"interval": "month"}, "active": True, "livemode": None}}
 MADE = []               # prices made through POST /v1/prices
+IDEM = {}               # Idempotency-Key -> the price it made (a repeat answers the same price, as Stripe does)
+HIDE_SEARCH = [False]   # the price search answers nothing (to test two creates at once)
 DECLINES = {"4000000000000002": "card_declined", "4000000000009995": "insufficient_funds", "4000000000000127": "incorrect_cvc",
             "4000000000000101": "incorrect_cvc", "4100000000000019": "highest_risk_level"}
 N = [0]
@@ -75,7 +77,11 @@ class H(http.server.BaseHTTPRequestHandler):
 
     def _auth(self):
         VERSIONS.append(self.headers.get("Stripe-Version") or "")
-        return self.headers.get("Authorization") == "Bearer " + KEY
+        a = self.headers.get("Authorization") or ""
+        return a == "Bearer " + KEY or a == "Bearer " + KEY.replace("sk_test_", "sk_live_")      # a live key too: its prices are its own
+
+    def _live(self):
+        return (self.headers.get("Authorization") or "").startswith("Bearer sk_live_")
 
     def do_GET(self):
         u = urllib.parse.urlparse(self.path)
@@ -102,10 +108,11 @@ class H(http.server.BaseHTTPRequestHandler):
             if not self._auth():
                 return self._json(401, {"error": {"message": "Invalid API key"}})
             q = dict(urllib.parse.parse_qsl(u.query))
+            mine = lambda p: p.get("livemode") is None or p.get("livemode") == self._live()        # test and live prices never mix
             if u.path.startswith("/v1/prices/"):
                 p = PRICES.get(u.path.rsplit("/", 1)[1])
-                return self._json(200, p) if p else self._json(404, {"error": {"message": "No such price"}})
-            rows = [p for p in PRICES.values() if p["product"] == q.get("product") and (not q.get("recurring[interval]") or p["recurring"]["interval"] == q["recurring[interval]"])]
+                return self._json(200, p) if p and mine(p) else self._json(404, {"error": {"message": "No such price"}})
+            rows = [] if HIDE_SEARCH[0] else [p for p in PRICES.values() if mine(p) and p["product"] == q.get("product") and (not q.get("recurring[interval]") or p["recurring"]["interval"] == q["recurring[interval]"])]
             return self._json(200, {"object": "list", "data": rows})
         if u.path.startswith("/v1/subscriptions/"):
             sid = u.path.rsplit("/", 1)[1]
@@ -183,10 +190,19 @@ class H(http.server.BaseHTTPRequestHandler):
             return self._json(200, {"events": [event("customer.subscription.deleted", sub)]}) if sub else self._json(404, {})
         if not self._auth():
             return self._json(401, {"error": {"message": "Invalid API key"}})
+        if u.path == "/__hide_search":
+            HIDE_SEARCH[0] = params.get("on") == "1"
+            return self._json(200, {"ok": True})
+        ik = (self.headers.get("Idempotency-Key") or "") + ("-live" if self._live() else "")
+        if u.path == "/v1/prices" and self.headers.get("Idempotency-Key") and ik in IDEM:
+            return self._json(200, PRICES[IDEM[ik]])
         if u.path == "/v1/prices":
+            time.sleep(0.3)                                       # slow enough that two creates at once would overlap
             pid = "price_made%d" % (len(MADE) + 1)
             p = {"id": pid, "product": params.get("product"), "unit_amount": int(params.get("unit_amount") or 0), "currency": params.get("currency"),
-                 "recurring": {"interval": params.get("recurring[interval]")}, "nickname": params.get("nickname")}
+                 "recurring": {"interval": params.get("recurring[interval]")}, "nickname": params.get("nickname"), "active": True, "livemode": self._live()}
+            if self.headers.get("Idempotency-Key"):
+                IDEM[ik] = pid
             PRICES[pid] = p
             MADE.append(pid)
             return self._json(200, p)
