@@ -13,7 +13,7 @@
   "navigationDividerColorDark": "#00000000",
   "backgroundColor": "#FDF0F2",
   "enableNotifications": false,
-  "startUrl": "/",
+  "startUrl": "/?src=play",
   "iconUrl": "https://uaply.net/uaply-icon-512.png",
   "maskableIconUrl": "https://uaply.net/uaply-icon-maskable-512.png",
   "splashScreenFadeOutDuration": 300,
