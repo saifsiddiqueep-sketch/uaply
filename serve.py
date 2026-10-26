@@ -145,6 +145,11 @@ if api:
         alias.setdefault(url, os.path.join(HERE, rel))
     import jobs_api, uaply_api, auth_api, chat_api, google_auth, setup_api, billing_api, employers_api, resume_parse, consent_api
     uaply_api.init(os.path.basename(root))
+    try:
+        import billing_api as _b
+        threading.Thread(target=_b.ensure_yearly, daemon=True).start()     # the yearly prices, made in Stripe once when they are not set
+    except Exception:
+        pass
     employers_api.init(os.path.basename(root))                    # Hiring mode: on for the sandbox only
     auth_api.init(os.path.basename(root))
     # Sign-in (Saif, October 22): sign up with email, first and last name and a password; the emailed code verifies the address after
@@ -1418,9 +1423,9 @@ class H(http.server.SimpleHTTPRequestHandler):
             elif p == "/api/apply":
                 u = auth_api.user_for(self._token())
                 over = billing_api.limit_reached(u)
-                code, out = (402, {"error": over, "code": "limit"}) if over else uaply_api.submit(payload, u, self._site_base())
+                code, out = (402, {"error": over, "code": "limit", "resetAt": billing_api.reset_at(u)}) if over else uaply_api.submit(payload, u, self._site_base())
             elif p == "/api/billing/checkout":
-                code, out = billing_api.checkout(auth_api.user_for(self._token()), payload.get("plan"), self._site_base())
+                code, out = billing_api.checkout(auth_api.user_for(self._token()), payload.get("plan"), self._site_base(), payload.get("interval") or "month")
             elif p == "/api/billing/portal":
                 code, out = billing_api.portal(auth_api.user_for(self._token()), self._site_base())
             elif p == "/api/employer/company":

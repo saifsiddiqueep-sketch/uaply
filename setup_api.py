@@ -104,7 +104,7 @@ def checks(host, proto):
                   "Paste it in the Connect an employer's hiring system box below, with the board name from their job-board address.",
                   "Set delivery to live in the settings (UAPLY_CONFIG_JSON on a host) so applications are really sent."] if not connections() else []},
         {"name": "Payments for Plus and Pro (Stripe)", "ok": billing_api.settings()["on"] and bool(billing_api.settings().get("webhook_secret")),
-         "detail": ("On, in %s mode." % ("TEST" if billing_api.settings()["test"] else "LIVE")) if billing_api.settings()["on"] else "Off. Plans show, but Choose says payments are not switched on yet.",
+         "detail": ("On, in %s mode. %s" % ("TEST" if billing_api.settings()["test"] else "LIVE", billing_api.prices_line())) if billing_api.settings()["on"] else "Off. Plans show, but Choose says payments are not switched on yet.",
          "todo": ["Create a Stripe account at https://dashboard.stripe.com/register (start in test mode).",
                   "Product catalog: add a product Plus with a monthly price of 9.99 USD and a product Pro at 19.99 USD. Copy both price ids (price_...).",
                   "Developers, API keys: copy the secret key (sk_test_...).",
