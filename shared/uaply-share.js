@@ -132,7 +132,7 @@ function apply(w){
     return "https://uaply.net/";
   }
   function real(j){return !!(j&&j.live&&+j.id>=100000)}
-  function viaUAply(j){return !!(w.__uaplyRouteWord&&w.__uaplyRouteWord(j)==="Applies instantly")}
+  function viaUAply(j){return !!(w.__uaplyRouteWord&&w.__uaplyRouteWord(j)==="Instant apply")}
   function msg(j){
     var base=site(),role=String(j.role||""),co=String(j.co||"");
     if(!real(j))return {title:role+" at "+co,text:role+" at "+co+" on UAply (an example listing, not a real opening)",url:base};

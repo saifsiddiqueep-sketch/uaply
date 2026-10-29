@@ -14,9 +14,9 @@ const TAG = "[" + (process.env.W || 1100) + "] ";
 
 // [route field, instant, the wording]
 const CASES = [
-  ["connected", true, "Applies instantly"], ["email", true, "Applies instantly"], ["one-tap", false, "Ready, one tap on their site"],
+  ["connected", true, "Instant apply"], ["email", true, "Instant apply"], ["one-tap", false, "Ready, one tap on their site"],
   ["assisted", false, "Ready"], ["ready", false, "Ready"], ["Ready", false, "Ready"], ["Ready, one tap", false, "Ready, one tap on their site"],
-  [undefined, true, "Applies instantly"], [undefined, false, "Ready"]];
+  [undefined, true, "Instant apply"], [undefined, false, "Ready"]];
 
 module.exports = async ({ ev, sleep, nav }) => {
   let pass = 0, fail = 0;

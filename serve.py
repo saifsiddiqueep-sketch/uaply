@@ -1186,7 +1186,7 @@ class H(http.server.SimpleHTTPRequestHandler):
                                 "/api/auth/delete", "/api/auth/forgot", "/api/auth/reset", "/api/auth/change-password", "/api/auth/send-for-me",
                                 "/api/setup/test-mail", "/api/setup/save-mail", "/api/setup/save-google", "/api/setup/save-ats", "/api/setup/remove-ats", "/api/setup/test-ats", "/api/setup/save-stripe", "/api/setup/save-feed-keys", "/api/auth/google/token", "/api/auth/verify", "/api/auth/resend", "/api/chat", "/api/feedback", "/api/billing/checkout", "/api/billing/portal",
                                 "/api/employer/company", "/api/employer/job", "/api/employer/job/status", "/api/employer/applicant",
-                                "/api/employer/import", "/api/profile/resume", "/api/profile/data", "/api/consent", "/api/employer/stop",
+                                "/api/employer/import", "/api/profile/resume", "/api/profile/data", "/api/consent", "/api/apply/confirm", "/api/setup/never-send", "/api/employer/stop",
                                 "/api/employer/connect/test", "/api/employer/connect/save", "/api/setup/connect-invite") + (CODE_PATHS if CODE_SIGNIN else ()):
             return self._refuse(404, {"error": "not found"})
         # Only accept requests made by this site's own pages (blocks cross-site forms and scripts).
@@ -1402,7 +1402,17 @@ class H(http.server.SimpleHTTPRequestHandler):
                     code, out = (200, {"fields": got}) if ok else (400, {"error": "Could not keep the profile (%s)." % got})
             elif p == "/api/consent":
                 # the first-swipe agreement, kept on the account with the time, this visitor's address and the words' SHA-256 (consent_api.py)
-                code, out = consent_api.post(auth_api.user_for(self._token()), payload, ip, auth_api.record_consent)
+                code, out = consent_api.post(auth_api.user_for(self._token()), payload, ip, auth_api.record_consent, self._token())
+            elif p == "/api/apply/confirm":
+                # the person confirmed their first application of this session in the box: a one-time token for that send
+                code, out = uaply_api.confirm_token(self._token() if auth_api.user_for(self._token()) else "")
+            elif p == "/api/setup/never-send":
+                # the owner's per-account switch: this account's applications are recorded, never sent (a test account)
+                if not self._owner_ok():
+                    code, out = 403, {"error": "owner only"}
+                else:
+                    ok = auth_api.set_never_send(payload.get("email"), payload.get("on") is True)
+                    code, out = (200, {"ok": True}) if ok else (404, {"error": "No account with that email."})
             elif p == "/api/employer/stop":
                 # the link at the end of an application emailed to a posting's address: its owner asks UAply to stop (uaply_api.employer_stop)
                 code, out = uaply_api.employer_stop(payload.get("a"), payload.get("s"))
@@ -1426,7 +1436,7 @@ class H(http.server.SimpleHTTPRequestHandler):
             elif p == "/api/apply":
                 u = auth_api.user_for(self._token())
                 over = billing_api.limit_reached(u)
-                code, out = (402, {"error": over, "code": "limit", "resetAt": billing_api.reset_at(u)}) if over else uaply_api.submit(payload, u, self._site_base())
+                code, out = (402, {"error": over, "code": "limit", "resetAt": billing_api.reset_at(u)}) if over else uaply_api.submit(payload, u, self._site_base(), self._token() or "")
             elif p == "/api/billing/checkout":
                 code, out = billing_api.checkout(auth_api.user_for(self._token()), payload.get("plan"), self._site_base(), payload.get("interval") or "month")
             elif p == "/api/billing/portal":

@@ -104,7 +104,7 @@ def auto_ok(rec):
     return current(rec) and rec.get("auto") is True
 
 
-def post(user, payload, ip, record):
+def post(user, payload, ip, record, session=""):
     """POST /api/consent {version, text, auto} (or {withdraw: true}) for the signed-in, verified account `user`. `record` is
     auth_api.record_consent. Returns (status, body)."""
     if not user:
@@ -127,4 +127,6 @@ def post(user, payload, ip, record):
     if digest(p.get("text")) != want:
         return 409, {"error": "This page is out of date. Reload UAply and agree to the current terms.", "code": "consent_text"}
     rec = record(user["id"], VERSION, ip, want, auto, True, True)
+    import uaply_api                           # here: uaply_api imports this module
+    uaply_api.session_confirmed(session)       # the person agreed in the box in this session: that is the confirmation of the first send
     return 200, {"ok": True, "consent": rec}

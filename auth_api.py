@@ -136,6 +136,7 @@ def init(instance):
                     "plan TEXT NOT NULL DEFAULT 'free'", "plan_status TEXT NOT NULL DEFAULT ''", "plan_renews INTEGER NOT NULL DEFAULT 0",
                     "plan_cancel INTEGER NOT NULL DEFAULT 0", "stripe_customer TEXT NOT NULL DEFAULT ''", "stripe_sub TEXT NOT NULL DEFAULT ''",
                     "plan_failed INTEGER NOT NULL DEFAULT 0", "plan_interval TEXT NOT NULL DEFAULT 'month'",   # month or year (billing_api)
+                    "never_send INTEGER NOT NULL DEFAULT 0",   # a test account (uaply_api.never_send)
                     # Send applications for me (Profile, Account; Terms section 3): on unless the person turns it off; off, every swipe right
                     # only saves the job to Job Tracker (uaply_api.submit). send_for_me_at: when it was last changed
                     "send_for_me INTEGER NOT NULL DEFAULT 1", "send_for_me_at INTEGER NOT NULL DEFAULT 0"):      # databases made before these columns existed
@@ -379,6 +380,23 @@ def clean_name(v):
     v = unicodedata.normalize("NFKC", v)
     v = "".join(ch for ch in v if not unicodedata.category(ch).startswith("C"))
     return " ".join(v.split())[:60].strip()
+
+
+def never_send_flag(user_id):
+    """The owner's per-account switch (/setup): this account never sends to employers."""
+    try:
+        with _lock, _db() as c:
+            r = c.execute("SELECT never_send FROM users WHERE id=?", (int(user_id),)).fetchone()
+        return bool(r and r["never_send"])
+    except Exception:
+        return False
+
+
+def set_never_send(email, on):
+    """Set the switch by email; True when such an account exists."""
+    with _lock, _db() as c:
+        n = c.execute("UPDATE users SET never_send=? WHERE email=?", (1 if on else 0, str(email or "").strip().lower())).rowcount
+    return n > 0
 
 
 def billing_row(user_id):

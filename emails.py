@@ -370,11 +370,15 @@ def support_ack(rec):
 def owner_copy(ctx):
     """The owner's copy of an application. ctx keys: status, cand, job, at, match, to, rows, note, base_url. Returns (subject, text, html)."""
     status, job, cand = ctx["status"], ctx["job"], ctx["cand"]
+    via_ats = any(str(c).startswith("hiring system") for c in ctx.get("channels") or [])
     where = {"delivered_test": "the simulated test inbox (nothing was sent to %s)" % job.get("co", "the employer"),
-             "sent": ("%s's own hiring system" % job.get("co", "the employer")) if any(str(c).startswith("hiring system") for c in ctx.get("channels") or []) and not ctx.get("to") else "%s, by email" % (ctx.get("to") or "the employer"),
+             "sent": (("submitted through %s" % ctx["system"]) if ctx.get("system") else "%s's own hiring system" % job.get("co", "the employer")) if via_ats
+                     else "%s, by email" % (ctx.get("to") or "the employer"),
+             "test_not_sent": "no one: a test account (UAPLY_TEST_EMAILS or the owner's switch). It would have gone %s; nothing reached %s" % (
+                 ("through " + ctx["system"]) if ctx.get("system") and ctx.get("system") != "email" else "by email", job.get("co", "the employer")),
              "handoff": "no one: %s takes applications on its own site, so the applicant was pointed there" % job.get("co", "the employer")}.get(status, status)
     subject = "%s[UAply copy] %s at %s: %s" % ("[TEST] " if ctx.get("test") else "", job.get("role", ""), job.get("co", ""),
-                                               {"delivered_test": "test application", "sent": "sent", "handoff": "applicant sent to the employer's site"}.get(status, status))
+                                               {"delivered_test": "test application", "sent": "sent", "handoff": "applicant sent to the employer's site", "test_not_sent": "test: not sent"}.get(status, status))
     posting = _https(job.get("url"))
     summary = [("Match", v) if k == "Your match" else (k, v) for k, v in _summary_rows(job, ctx.get("match") or 0)]     # this copy is read by the owner, not the applicant
     rows = [("Name", cand.get("name")), ("Email", cand.get("email"))] + [r for r in _resume_rows(ctx.get("rows") or [], status, job.get("co") or "the employer", owner=True)

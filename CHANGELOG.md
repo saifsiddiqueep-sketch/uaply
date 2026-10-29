@@ -20,8 +20,8 @@ production page and only changes when the owner decides.
 ### A swipe right that submits, phase B (Saif, October 23)
 - **Recruitee.** A posting on a Recruitee careers site is Ready: a swipe right sends the name, email, phone and resume through the site's
   own public apply endpoint (`POST https://{company}.recruitee.com/api/offers/{slug}/candidates`, no employer key), with the consent record,
-  Send applications for me, the receipt and Job Tracker as for any hiring system. The owner's switch `recruitee_submit` is off by default
-  (turned on after one real-offer test); a card is Ready only when its offer slug passes `recruitee_url`. `tools/test-recruitee.py` against a stand-in Recruitee.
+  Send applications for me, the receipt and Job Tracker as for any hiring system. The owner's switch `recruitee_submit` is on by default
+  since October 24 (rc.17; set it to false in the config to stop it); a card says Instant apply only when its offer slug passes `recruitee_url`. `tools/test-recruitee.py` against a stand-in Recruitee.
 - **Employer connect page.** The owner makes a signed 30-day link per employer (`POST /api/setup/connect-invite`, owner only) for the outreach
   email; `/employers/connect` names the system, where the key is made and with which rights, and takes the key with Test and Connect.
   Each link connects once. A key that can only be checked by a send (Greenhouse, Lever, SmartRecruiters with no posting) is kept as

@@ -607,7 +607,7 @@ def _mail_ctx(cfg, rec, note, user_email="", site=""):
     return {"test": test, "status": rec["status"], "cand": rec["candidate"], "job": rec["job"], "at": rec["at"],
             "match": rec.get("match", 0), "to": rec.get("to", ""), "rows": _detail_rows(rec["candidate"], note), "note": note,
             "channels": rec.get("channels") or [], "why": rec.get("why") or "", "user_email": user_email, "base_url": _site_base(cfg, site), "support_email": _s(cfg.get("support_email"), 120),
-            "preview": rec.get("preview") is True}
+            "preview": rec.get("preview") is True, "system": rec.get("system") or ""}
 
 
 def _copy_message(cfg, rec):
@@ -1058,7 +1058,73 @@ def assist_systems(cfg=None):
     return c
 
 
-def submit(p, user=None, site=""):
+# ---- test accounts (Saif, October 29): an account whose email matches UAPLY_TEST_EMAILS (or that the owner marked on /setup) never sends ----
+TEST_EMAILS_DEFAULT = "uaplytechnologies+*@gmail.com,mrhphiladelphia+*@gmail.com"
+
+
+def test_patterns(cfg=None):
+    v = os.environ.get("UAPLY_TEST_EMAILS")
+    if v is None:
+        v = (cfg or config()).get("test_emails", TEST_EMAILS_DEFAULT)
+    return [x.strip().lower() for x in str(v or "").split(",") if x.strip()]
+
+
+def never_send(user, cfg=None):
+    """True for a test account: its applications are recorded as "test: not sent" and never reach an employer."""
+    if not user:
+        return False
+    if auth_api.never_send_flag(user["id"]):
+        return True
+    import fnmatch
+    em = str(user.get("email") or "").lower()
+    return any(fnmatch.fnmatchcase(em, pat) for pat in test_patterns(cfg))
+
+
+# ---- the first live send of each session needs a one-time confirmation from the server (Saif, October 29) ----
+_CONFIRM = {}             # one-time token -> (session hash, expiry)
+_CONFIRMED = {}           # session hash -> time it was confirmed
+CONFIRM_SECONDS = 600
+
+
+def _sess(token):
+    return hashlib.sha256(("uaply-session:" + str(token or "")).encode("utf-8")).hexdigest()[:32] if token else ""
+
+
+def confirm_token(session_token):
+    """POST /api/apply/confirm: a one-time token for the person's own confirmation (the box's Send). Returns (status, body)."""
+    if not session_token:
+        return 401, {"error": "Sign in first.", "code": "signin"}
+    tok = uuid.uuid4().hex
+    now = time.time()
+    with _lock:
+        for k in [k for k, v in _CONFIRM.items() if v[1] < now]:
+            _CONFIRM.pop(k, None)
+        _CONFIRM[tok] = (_sess(session_token), now + CONFIRM_SECONDS)
+    return 200, {"token": tok}
+
+
+def session_confirmed(session_token):
+    """The person agreed in the box during this session (consent_api records it): their next live send needs no extra token."""
+    if session_token:
+        with _lock:
+            _CONFIRMED[_sess(session_token)] = time.time()
+
+
+def _confirm_ok(session_token, tok):
+    s = _sess(session_token)
+    if not s:
+        return False
+    with _lock:
+        if s in _CONFIRMED:
+            return True
+        hit = _CONFIRM.pop(str(tok or ""), None)
+        if hit and hit[0] == s and hit[1] >= time.time():
+            _CONFIRMED[s] = time.time()
+            return True
+    return False
+
+
+def submit(p, user=None, site="", session=None):
     """Returns (http_status, dict). `user` is the signed-in account ({id, email}) or None. `site` is the address the person is using
     (for the link in their receipt)."""
     # plan_only (POST /api/apply/plan): read the posting's own form the way a swipe right does and say what it would ask, without recording
@@ -1172,6 +1238,11 @@ def submit(p, user=None, site=""):
         # version, kept on the account with the time, their address and the words' SHA-256. The page agrees again and retries once.
         if not plan_only and not consent_api.current(auth_api.consent_for(user["id"])):
             return 403, {"error": "Agree to how UAply applies for you first (the box before your first swipe), then swipe again.", "code": "consent"}
+        # confirm_real is the page's word; the server's own check: the first live send of each session carries a one-time token the
+        # server issued when the person confirmed (POST /api/apply/confirm), or the session agreed in the box (consent). No token, no send.
+        # (session None: a call from inside this server or its tests, never from a request; serve.py always passes the cookie, "" when none)
+        if not plan_only and session is not None and not _confirm_ok(session, p.get("confirm_token")):
+            return 403, {"error": "Confirm your first application this session, then it is sent.", "code": "confirm"}
 
     # Autofill: read the job's real application form (Greenhouse publishes it) and answer it from the profile and saved answers.
     #   - an employer that connected its Greenhouse: anything the form requires that the profile cannot answer is asked first, then it all goes in
@@ -1236,6 +1307,13 @@ def submit(p, user=None, site=""):
             rec["channels"] = ["hiring system (simulated)"]
             APPS.append(rec)
             _append("applications.jsonl", rec)
+        elif mode == "live" and policy in ("direct", "email", "recruitee") and never_send(user, cfg):
+            # a test account: everything is recorded as it would be sent (the owner's copy has the whole application), nothing reaches
+            # the employer by any channel
+            rec["status"], rec["why"], rec["to"] = "test_not_sent", "test account", ""
+            rec["system"] = "Recruitee" if policy == "recruitee" else (ats_api.NAMES.get((ats or {}).get("kind"), "") if ats else ("email" if policy == "email" else ""))
+            APPS.append(rec)
+            _append("applications.jsonl", rec)
         elif policy == "link" or (policy == "unknown" and mode == "live") or send_off:
             # a third-party listing, or an example in live mode: UAply never sends an application to anyone here.
             # The person is pointed to the employer's own application page instead. (Send applications for me off: the same, for every job.)
@@ -1245,7 +1323,7 @@ def submit(p, user=None, site=""):
             APPS.append(rec)
             _append("applications.jsonl", rec)
         elif policy == "recruitee":
-            rec["route"] = "recruitee"
+            rec["route"], rec["system"] = "recruitee", "Recruitee"
             if mode == "test":                             # what the live app would do; nothing reaches Recruitee
                 rec.update(to="%s on Recruitee (simulated)" % job["co"], simulated=True, status="delivered_test", channels=["hiring system (simulated)"])
                 APPS.append(rec)
@@ -1285,6 +1363,8 @@ def submit(p, user=None, site=""):
                 if sent_today >= int(cfg.get("daily_limit", 20)):
                     return 429, {"error": "Daily sending limit reached."}
                 rec["to"], rec["status"] = target, "sending"      # reserved now, so a double tap cannot send twice
+                if ats:
+                    rec["system"] = ats_api.NAMES.get(ats.get("kind"), "")
                 APPS.append(rec)
                 send_args = (cfg, target if _smtp_ready(cfg) else "", dict(cand, answers=answers, job={"co": job["co"], "role": job["role"]}) if ats else cand,
                              job, note, contact,
@@ -1346,6 +1426,8 @@ def submit(p, user=None, site=""):
             out["error"] = ("UAply has sent as many emails as it can today, so your application to %s was not sent yet. Nothing is lost: "
                             "try again tomorrow (after midnight UTC)." % job["co"])
             out["code"] = "mail_quota"
+    if rec["status"] == "test_not_sent":
+        out["channel"] = "Test account: not sent"
     if user and rec["status"] in ("delivered_test", "sent", "handoff"):
         # A real confirmation goes only to an address the person has proven is theirs (otherwise anyone could make UAply email a stranger).
         # With no real email connected nothing leaves this server: the confirmation is only saved in the test inbox, so it is made for any account.
@@ -1353,7 +1435,7 @@ def submit(p, user=None, site=""):
                           else {"to": user["email"], "status": "unverified"})
     # the owner's copy: skipped when the person who swiped already got their own confirmation at that same address (one swipe, one email)
     already = out.get("receipt", {}).get("status") == "sent" and user and user["email"].lower() == _owner_copy(cfg).lower()
-    if rec["status"] != "failed" and not already:
+    if rec["status"] != "failed" and not already:          # a test account's application too: the owner sees the whole thing
         out["copied"] = _send_owner_copy(cfg, rec)
     return 200, out
 

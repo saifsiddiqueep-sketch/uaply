@@ -194,6 +194,25 @@ try:
     s, ob, _ = req(PORT, "GET", "/api/outbox")
     rec = [x for x in ob.get("applications", []) if x.get("job", {}).get("id") == P1["id"]]
     t("the record says where it went (the hiring system channel)", (rec[0].get("status"), rec[0].get("channels")) if rec else None, ("sent", ["hiring system"]))
+    # the server's own confirmation (October 29): a new session (signed in again) with the agreement on record is refused without a token
+    s, _, ck2 = req(PORT, "POST", "/api/auth/login", {"email": "rae@example.org", "password": "pass for rae@example.org"})
+    b2 = ck2[0] if ck2 else ""
+    n0 = len(GOT)
+    s, out = apply(PORT, b2, P4, "rae@example.org")
+    t("a new session's first live send without the server's token is refused (403 confirm), nothing sent", (s, out.get("code"), len(GOT)), (403, "confirm", n0))
+    s, out = req(PORT, "POST", "/api/apply", {"consent": True, "confirm_real": True, "confirm_token": "made-up", "match": 70, "job": {"id": P4["id"], "co": P4["co"], "role": P4["role"], "url": P4["url"]},
+                                             "profile": {"name": "Rae Cruz", "email": "rae@example.org", "ext": {"phone": "215-555-0177"}}, "resume": RESUME}, b2)[:2]
+    t("...and so is one with a made-up token", (s, out.get("code")), (403, "confirm"))
+    tok = req(PORT, "POST", "/api/apply/confirm", {}, b2)[1].get("token")
+    s, out = req(PORT, "POST", "/api/apply", {"consent": True, "confirm_real": True, "confirm_token": tok, "match": 70, "job": {"id": P4["id"], "co": P4["co"], "role": P4["role"], "url": P4["url"]},
+                                             "profile": {"name": "Rae Cruz", "email": "rae@example.org", "ext": {"phone": "215-555-0177"}}, "resume": RESUME}, b2)[:2]
+    t("with the token from the person's confirmation it is sent", (s, out.get("status"), len(GOT)), (200, "sent", n0 + 1))
+    # a test account (UAPLY_TEST_EMAILS default): recorded as test: not sent, nothing reaches Recruitee
+    tc = person(PORT, "uaplytechnologies+t1@gmail.com")
+    n1 = len(GOT)
+    s, out = apply(PORT, tc, P1, "uaplytechnologies+t1@gmail.com")
+    t("a test account's swipe right: recorded as test_not_sent, Job Tracker says Test account: not sent, nothing reaches Recruitee",
+      (s, out.get("status"), out.get("channel"), len(GOT)), (200, "test_not_sent", "Test account: not sent", n1))
     for p in PROCS:
         p.terminate()
         p.wait(10)
@@ -204,7 +223,7 @@ try:
     b = person(PORT2, "bea@example.org")
     by = {j["id"]: j for j in req(PORT2, "GET", "/api/jobs", cookie=b)[1]["jobs"]}
     s, out = apply(PORT2, b, P4, "bea@example.org")
-    t("recruitee_submit false (on by default): the card is a hand-off and a swipe sends nothing", ((by.get(P4["id"]) or {}).get("instant", False), out.get("status"), len(GOT)), (False, "handoff", 2))
+    t("recruitee_submit false (on by default): the card is a hand-off and a swipe sends nothing", ((by.get(P4["id"]) or {}).get("instant", False), out.get("status"), len(GOT)), (False, "handoff", 3))
     for p in PROCS:
         p.terminate()
         p.wait(10)
@@ -213,7 +232,7 @@ try:
     start(PORT2, "test", dict(live, delivery="test"))
     c = person(PORT2, "cam@example.org")
     s, out = apply(PORT2, c, P4, "cam@example.org")
-    t("test delivery: simulated, nothing reaches Recruitee", (out.get("status"), out.get("to"), len(GOT)), ("delivered_test", "%s on Recruitee (simulated)" % P4["co"], 2))
+    t("test delivery: simulated, nothing reaches Recruitee", (out.get("status"), out.get("to"), len(GOT)), ("delivered_test", "%s on Recruitee (simulated)" % P4["co"], 3))
 finally:
     for p in PROCS:
         try:

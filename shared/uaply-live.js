@@ -371,10 +371,12 @@ function kitApply(w,host){
     function close(){clearInterval(tm);o.remove()}
     function setStatus(t,bad){statusEl.textContent=t;statusEl.style.color=bad?"var(--no)":"var(--yes)"}
     function send(){
+      /* the person pressed Send in the review box: that is the confirmation the server asks for (one-time token) */
+      if(live&&!send.tok){send.tok=1;post("/api/apply/confirm",{}).then(function(c){if(c.ok&&c.j&&c.j.token)w.__uaplyConfirmTok=c.j.token;send()},function(){send()});return}
       clearInterval(tm);
       var sendBtn=d.getElementById("kitSend");if(sendBtn)sendBtn.disabled=true;
       setStatus("Sending…");
-      post("/api/apply",{consent:true,confirm_real:live,match:m.pct,note:ta.value,
+      post("/api/apply",{consent:true,confirm_real:live,confirm_token:w.__uaplyConfirmTok||"",match:m.pct,note:ta.value,
         job:{id:job.id,co:job.co,role:job.role,url:job.url,source:job.source,loc:job.loc,contact:contact,mode:job.mode,type:job.type||"job",sal:job.sal,salUnit:job.salUnit==="hour"?"hour":undefined,blurb:job.blurb},
         profile:{name:p.name,email:p.email,title:p.title,years:p.years,skills:p.skills,loc:p.loc,edu:p.edu,ext:(w.__uaplyApplyExt?w.__uaplyApplyExt():(p.ext||{}))},
         resume:(w.__uaplyResume?w.__uaplyResume():null)
@@ -889,13 +891,19 @@ function kitApply(w,host){
          turned on the opt-in "Message to the employer" preference (Plus and Pro; off by default) */
       var msgOn=!!(w.__uaplyAutoMsg&&w.__uaplyAutoMsg()&&w.__uaplyMessage);
       if(!(S&&S.decisions&&S.decisions[job.id]))return;   /* undone or withdrawn in the meantime (also while it waited for a connection): send nothing */
-      post("/api/apply",{consent:true,confirm_real:live,match:m.pct,note:msgOn?w.__uaplyMessage(job,m,p):"",
+      post("/api/apply",{consent:true,confirm_real:live,confirm_token:w.__uaplyConfirmTok||"",match:m.pct,note:msgOn?w.__uaplyMessage(job,m,p):"",
         job:{id:job.id,co:job.co,role:job.role,url:job.url||"https://example.com/example-listing",source:job.source,loc:job.loc,contact:job.contact||"",mode:job.mode,type:job.type||"job",sal:job.sal,salUnit:job.salUnit==="hour"?"hour":undefined,blurb:job.blurb},
         profile:{name:p.name,email:p.email,title:p.title,years:p.years,skills:p.skills,loc:p.loc,edu:p.edu,ext:(w.__uaplyApplyExt?w.__uaplyApplyExt():(p.ext||{}))},
         resume:(w.__uaplyResume?w.__uaplyResume():null),
         answers:answersFor(job.co)
       }).then(function(r){
         var j=r.j||{};
+        /* the first live send of this session: the server asks the person to confirm it (one tap), then it goes with a one-time token */
+        if(!r.ok&&j.code==="confirm"&&!retry){
+          toast("Send your application to "+job.co+"? Confirm once this session.","Send",function(){
+            post("/api/apply/confirm",{}).then(function(c){if(c.ok&&c.j&&c.j.token){w.__uaplyConfirmTok=c.j.token;deliver()}})},15000);
+          return;
+        }
         if(!r.ok){
           /* nothing was sent (a limit, a missing detail, an unverified email): the job goes back to the deck rather than sitting in Applied.
              A waiting application sent again later stays in Applied, marked not sent, with Try again. */

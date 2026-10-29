@@ -440,6 +440,10 @@ code{background:var(--bg);padding:1px 5px;border-radius:5px}
 <p><input id="sw" type="password" placeholder="Webhook signing secret whsec_..." autocomplete="off" style="width:280px;max-width:90vw;padding:8px;border:1px solid var(--line);border-radius:8px"></p>
 <p><input id="sp1" type="text" placeholder="Plus price id price_..." style="width:200px;padding:8px;border:1px solid var(--line);border-radius:8px"> <input id="sp2" type="text" placeholder="Pro price id price_..." style="width:200px;padding:8px;border:1px solid var(--line);border-radius:8px"></p>
 <p><button id="sb" type="button">Save Stripe</button> <span id="sbr" class="m" role="status"></span></p></article>
+<article><h2>Test accounts</h2><p class="m">An account marked here (or whose email matches UAPLY_TEST_EMAILS, by default uaplytechnologies+*@gmail.com and mrhphiladelphia+*@gmail.com) never sends: each application is recorded as "test: not sent" and its whole content comes to you in the owner's copy.</p>
+<p><label>Account email <input id="tnEmail" type="email" autocomplete="off"></label> <button id="tnOn" type="button">Never send</button> <button id="tnOff" type="button">Allow sending</button> <span id="tnr" class="m" role="status"></span></p>
+<script>(function(){function go(on){var r=document.getElementById('tnr');fetch('/api/setup/never-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:document.getElementById('tnEmail').value,on:on})}).then(function(x){return x.json()}).then(function(j){r.textContent=j.ok?(on?'This account never sends now.':'This account sends again.'):(j.error||'Could not change it.')}).catch(function(){r.textContent='Could not reach the server.'})}
+document.getElementById('tnOn').onclick=function(){go(true)};document.getElementById('tnOff').onclick=function(){go(false)}})();</script></article>
 <article id="feeds"><b>Job feed keys</b><p class="m">@@FEEDHELP@@</p>
 @@FEEDS@@
 <p><input id="fu" type="password" placeholder="USAJOBS API key" autocomplete="off" style="width:280px;max-width:90vw;padding:8px;border:1px solid var(--line);border-radius:8px"></p>

@@ -63,7 +63,10 @@ In plain words; the detail, with what was checked, is the CHANGELOG section "The
 9b76822". The deck draws its first card from one page of 200 jobs and ranks the whole list once it has it, in the background. Swipe
 phase A: the first-swipe agreement (box version 4, so everyone agrees once more) kept on the account and required for every send;
 apply by email where a posting asks for it; one tap in the phone app; the outreach queue (a tool); Send applications for me.
-Automatic submit is built and off for every system, Ashby included. Also: Recruitee careers sites as a new job source (off until
+Automatic submit (rc.17): on by the agreement only where a system is approved and no human check was measured (Ashby);
+Greenhouse, Lever and Workable are approved but stay assisted while their forms carry a check; SmartRecruiters (terms) and other stay assisted.
+Recruitee's public apply endpoint is on by default. Test accounts (UAPLY_TEST_EMAILS, or /setup) never send, and the first live send of each
+session needs the server's own confirmation. Also: Recruitee careers sites as a new job source (off until
 `recruitee` is in `UAPLY_FEEDS`), text at 14 px or more everywhere, pay as the posting gives it, and the phase A test fixes. For the
 team: the handbook as a reference, the joint CLAUDE.md, this file, and the no-attribution repository setting. Rolling back to
 `9b76822` keeps every account: this release only adds to the accounts database (the `consents` table, the `send_for_me` columns).
