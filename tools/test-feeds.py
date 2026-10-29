@@ -102,7 +102,7 @@ jobs, status = J._fetch_source(USA_PHL)
 url, hdr = CALLS[0]
 t("with a key: one search, answered", (len(CALLS), status), (1, "3 jobs"))
 t("the search is Philadelphia, 50 miles, 500 a page, full fields",
-  url, "https://data.usajobs.gov/api/search?LocationName=Philadelphia,%20Pennsylvania&Radius=50&ResultsPerPage=500&Fields=Full")
+  url, "https://data.usajobs.gov/api/search?LocationName=Philadelphia,%20Pennsylvania&Radius=50&ResultsPerPage=500&Fields=Full&Page=1")
 t("the headers are the ones USAJOBS documents (Host, User-Agent = email, Authorization-Key)",
   (hdr.get("Host"), hdr.get("User-Agent"), hdr.get("Authorization-Key")), ("data.usajobs.gov", "uaplytechnologies@gmail.com", KEY))
 by = {j["role"]: j for j in jobs}
@@ -134,7 +134,21 @@ t("a remote federal job is kept as remote", (rm.get("mode"), rm.get("loc")), ("r
 
 CALLS.clear()
 jobs, status = J._fetch_source(USA_STU)
-t("the student search adds HiringPath=student;graduates", CALLS[0][0].endswith("&HiringPath=student;graduates"), True)
+t("the student search adds HiringPath=student;graduates", CALLS[0][0].endswith("&HiringPath=student;graduates&Page=1"), True)
+
+one_page = len(J._usajobs("philadelphia"))
+def two_pages(url, headers=None):
+    CALLS.append((url, dict(headers or {})))
+    d = json.loads(json.dumps(USA["philadelphia"]))
+    d["SearchResult"]["UserArea"] = {"NumberOfPages": "2"}               # the API sends the page count as text
+    return d
+CALLS.clear()
+J._get = two_pages
+both = len(J._usajobs("philadelphia"))
+J._get = fake_get
+t("a search with more than one page reads every page (Page=1, Page=2) and keeps the jobs of both",
+  ([c[0].rsplit("&", 1)[1] for c in CALLS], both), (["Page=1", "Page=2"], 2 * one_page))
+t("USAJOBS keeps every job a search lists, not 120", J.KEEP["usajobs"] >= J.USAJOBS_MAX_PAGES * 500, True)
 types = {j["role"]: j["type"] for j in jobs}
 t("'Student Trainee' on the Students hiring path is an internship", types.get("Student Trainee (Information Technology)"), "internship")
 t("a 'Pathways Intern' title is an internship", types.get("Pathways Intern - Engineering"), "internship")

@@ -13,8 +13,8 @@ Rules for every source: postings older than 60 days are hidden (USAJOBS and part
 an employer's board or careers site, which stay open for months), the same job from two feeds is shown once (the employer's own board
 wins), every job carries `jobType` (full-time, part-time, internship, co-op, contract or temporary) and `postedDays`, and each employer
 board keeps 14 roles (internships, co-ops and part-time roles first, up to 10 of them) plus up to 10 more in Pennsylvania, New Jersey
-or Delaware. A public list is kept whole up to a limit instead: the City of Philadelphia, USAJOBS and the Simplify lists 120 each,
-CareerOneStop 100 per search.
+or Delaware. A public list is kept whole up to a limit instead: the City of Philadelphia and the Simplify lists 120 each,
+CareerOneStop 100 per search. USAJOBS keeps every job each search lists (every page, 500 a page, up to 10,000 per search).
 
 ## Coverage
 

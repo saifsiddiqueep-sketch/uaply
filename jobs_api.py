@@ -80,7 +80,7 @@ STUDENT_PER_SOURCE = 10          # internships, co-ops and part-time roles are k
 OTHER_PER_SOURCE = 6
 # A public body's own list (the City, the federal government) is local and is kept whole up to this many postings, student roles first,
 # instead of the 14 an employer board gets. SmartRecruiters is also read no further than this (so at most this many description reads).
-KEEP = {"usajobs": 120, "smartrecruiters": 120, "simplify": 120, "careeronestop": 100}   # CareerOneStop: one page of 100 per search, kept whole
+KEEP = {"usajobs": 10000, "smartrecruiters": 120, "simplify": 120, "careeronestop": 100}   # CareerOneStop: one page of 100 per search, kept whole
 SR_DESC_TTL = 24 * 3600          # a SmartRecruiters posting's description is read once, then again only after a day or when the posting is re-released
 # UAply launches in the Philadelphia region: a board may keep this many Pennsylvania, New Jersey or Delaware roles on top of its 14, so a
 # national employer's tri-state openings are not cut just because they come after its first 14 postings. Matched on the posting's own
@@ -455,6 +455,7 @@ HIMALAYAS_TYPES = {"intern": "Intern", "parttime": "Part Time"}       # the empl
 USAJOBS_AREAS = {"philadelphia": ("Philadelphia, Pennsylvania", "50"), "wilmington": ("Wilmington, Delaware", "40"),
                  "trenton": ("Trenton, New Jersey", "40"), "newark": ("Newark, New Jersey", "40"), "camden": ("Camden, New Jersey", "25")}
 USAJOBS_QUERIES = {}
+USAJOBS_MAX_PAGES = 20                   # 500 a page: up to 10,000 postings a search, every job USAJOBS lists for these areas (KEEP["usajobs"] matches)
 for _area, (_place_name, _radius) in USAJOBS_AREAS.items():
     _base = {"LocationName": _place_name, "Radius": _radius, "ResultsPerPage": "500", "Fields": "Full"}
     USAJOBS_QUERIES[_area] = dict(_base)
@@ -1520,9 +1521,24 @@ def _usajobs(token):
     keys = feed_keys()
     q = USAJOBS_QUERIES.get(token) or USAJOBS_QUERIES["philadelphia"]
     url = "https://data.usajobs.gov/api/search?" + "&".join("%s=%s" % (k, urllib.parse.quote(v, safe=",;")) for k, v in q.items())
-    data = _get(url, {"Host": "data.usajobs.gov", "User-Agent": keys["usajobs_email"], "Authorization-Key": keys.get("usajobs", "")})
+    def _pages():
+        # every page of the search (500 a page), up to USAJOBS_MAX_PAGES, so no listed job is left out; one raw page in memory at a time
+        page, pages = 1, 1
+        while page <= min(pages, USAJOBS_MAX_PAGES):
+            res = ((_get(url + "&Page=%d" % page, {"Host": "data.usajobs.gov", "User-Agent": keys["usajobs_email"],
+                                                    "Authorization-Key": keys.get("usajobs", "")}) or {}).get("SearchResult") or {})
+            batch = res.get("SearchResultItems") or []
+            if not batch:
+                return
+            try:
+                pages = int((res.get("UserArea") or {}).get("NumberOfPages") or 1)
+            except (TypeError, ValueError):
+                pages = 1
+            res = None
+            yield from batch
+            page += 1
     out = []
-    for item in ((data or {}).get("SearchResult") or {}).get("SearchResultItems") or []:
+    for item in _pages():
         d = item.get("MatchedObjectDescriptor") or {}
         det = (d.get("UserArea") or {}).get("Details") or {}
         title = d.get("PositionTitle") or ""
@@ -2881,7 +2897,7 @@ def _fetch_source(src):
                 # only the first STUDENT_PER_SOURCE student roles and PER_SOURCE others can be kept below, so a posting past those is not worked
                 # through at all (a big board lists hundreds; reading every one cost about 35 CPU seconds, a minute or more on a small host)
                 bucket, cap = (other, PER_SOURCE) if _type(raw) == "job" else (student, STUDENT_PER_SOURCE)
-                if keep:                                             # the City and USAJOBS keep up to 120 (student roles first), so read them all
+                if keep:                                             # the City keeps up to 120, USAJOBS every job (student roles first), so read them all
                     cap = keep
                 if len(bucket) >= cap:
                     # past the caps only a Pennsylvania, New Jersey or Delaware role is still worked through, up to LOCAL_PER_SOURCE of them
