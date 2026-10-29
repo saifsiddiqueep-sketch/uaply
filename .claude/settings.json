@@ -2,5 +2,103 @@
   "attribution": {
     "commit": "",
     "pr": ""
+  },
+  "ultracode": false,
+  "workflowSizeGuideline": "small",
+  "autoCompactWindow": 150000,
+  "effortLevel": "medium",
+  "maxEffortLevel": "xhigh",
+  "cleanupPeriodDays": 3650,
+  "env": {
+    "CLAUDE_CODE_SUBAGENT_MODEL": "sonnet",
+    "CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS": "6",
+    "CLAUDE_CODE_WORKFLOW_MAX_CONCURRENT_AGENTS": "6",
+    "BASH_MAX_OUTPUT_LENGTH": "20000",
+    "MAX_MCP_OUTPUT_TOKENS": "15000"
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bash \"$CLAUDE_PROJECT_DIR/tools/lite/run.sh\" statusline.py"
+  },
+  "permissions": {
+    "deny": [
+      "Bash(git push*origin dev*)",
+      "Bash(git push*origin HEAD:dev*)",
+      "Bash(git push*:dev)",
+      "Bash(git push*:dev *)",
+      "Bash(git push*:refs/heads/dev*)",
+      "Bash(git push* --force*)",
+      "Bash(git push* -f *)",
+      "Bash(git push* -f)",
+      "Bash(git push*--force-with-lease*:dev*)",
+      "Bash(git checkout dev && git merge*)",
+      "Bash(git switch dev && git merge*)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./tools/data/**)",
+      "Read(./human-checks.json)",
+      "Read(./marketing/**/*.pdf)",
+      "Read(./**/node_modules/**)",
+      "Read(./**/jobs-cache.json)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/tools/lite/run.sh\" hook_start.py",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/tools/lite/run.sh\" hook_prompt.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/tools/lite/run.sh\" jobs.py start",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/tools/lite/run.sh\" jobs.py stop",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/tools/lite/run.sh\" hook_check.py",
+            "asyncRewake": true
+          }
+        ]
+      }
+    ]
   }
 }

@@ -23,3 +23,12 @@ node_modules/
 
 # screenshots of tools/phone-walk.js runs
 phone-walk/
+# Workflow Lite (append to .gitignore)
+HANDOFF-*.md
+PROGRESS.md
+CLAUDE.local.md
+.claude/settings.local.json
+.env
+.env.*
+.lite-area
+__pycache__/
