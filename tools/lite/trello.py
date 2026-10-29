@@ -7,7 +7,7 @@
   python tools/lite/trello.py gh-event                                   # used by the GitHub Action
 
 Branch naming that makes auto-sync work: c<card#>-<slug>, e.g. c34-swipe-trace.
-Board defaults to UAply Team (85o0niWK); override with TRELLO_BOARD.
+Board defaults to UAply Team (TUiuK5fz); override with TRELLO_BOARD.
 """
 import argparse
 import json

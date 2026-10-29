@@ -27,7 +27,7 @@ HOME = Path.home()
 LITE_DIR = HOME / ".uaply"              # private, per-founder, never committed
 ENV_FILE = LITE_DIR / "lite.env"        # FOUNDER, TRELLO_KEY, TRELLO_TOKEN ...
 STATE_DIR = LITE_DIR / "state"          # global.json + one sess-<id>.json per chat
-DEFAULT_BOARD = "85o0niWK"              # UAply Team board short link
+DEFAULT_BOARD = "TUiuK5fz"              # UAply Team board short link
 
 
 # ---- fix 8: tolerant env file ----------------------------------------------------------------
