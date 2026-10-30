@@ -164,6 +164,14 @@ body{padding-bottom:calc(12px + var(--safe-b))}
 #pane-track .overview{display:flex;flex-direction:column;gap:14px}
 #paywall{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.45)}
 #paywall>div{background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:22px;max-width:400px;width:100%;box-shadow:var(--shadow)}
+/* Report this job: a quiet link at the end of the job card, and its box (the same look as the plan box above) */
+.urep{position:absolute;top:8px;right:52px;z-index:1;margin:0}.urep .linkbtn{width:44px;height:44px;padding:0;border-radius:50%;display:grid;place-items:center;border:4px solid transparent;background:color-mix(in srgb,var(--surface) 80%,transparent) padding-box;box-shadow:inset 0 0 0 1px var(--line);color:var(--ink)}.card:has(.urep) .chead{padding-right:96px}
+#urepBox{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.45)}
+#urepBox>div{background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:22px;max-width:420px;width:100%;max-height:calc(100% - 32px);overflow:auto;box-shadow:var(--shadow)}
+#urepBox fieldset{border:0;margin:0 0 12px;padding:0;display:grid;gap:4px}#urepBox legend{padding:0;margin:0 0 6px;font-weight:700}
+#urepBox label{display:flex;gap:10px;align-items:center;min-height:44px;cursor:pointer}#urepBox input[type=radio]{width:20px;height:20px;margin:0;flex:none}
+#urepBox textarea{width:100%;min-height:64px;font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink)}
+#urepBox .err{color:#B3261E;margin:8px 0 0}#urepBox .row{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px}
 #form[hidden],#acctSec[hidden]{display:none!important}
 .hdrbtn{margin-left:auto;display:flex;align-items:center;gap:8px;min-height:44px;min-width:44px;justify-content:center;max-width:60vw;padding:5px 14px 5px 5px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--ink);font-weight:600;font-size:14px}
 .hdrbtn:not(:has(.av)){padding:5px 16px}
@@ -466,6 +474,69 @@ function apply(w,host){
   legalbar.innerHTML=[["terms.html","Terms"],["privacy.html","Privacy"],["ai-and-employment.html","AI and matching"],["copyright.html","Copyright"],["support.html","Support"]]
     .map(function(l){return '<a href="'+LB+l[0]+'" target="_blank" rel="noopener noreferrer">'+l[1]+'</a>'}).join(" · ");
   nav.after(legalbar);
+
+  /* Report this job (card 036): a button on the top card opens a short box: why (scam, fake, offensive, closed, something else),
+     an optional note, and a link to the job-scam safety page. Send posts {job_id, reason, note} to /api/jobs/report, then passes on
+     the job so it leaves this person's deck. Nothing is promised beyond that: the box never says the job is removed for anyone else.
+     Example jobs (ids under 100000) are made up, so their box says there is nothing to report.
+     REPORT_JOB stays false until the server's report endpoint is live (spec on card 036). ?flag=report_job (on this page or the page around it) turns it
+     on for a preview. The button is a flag icon beside Share at the card's top right (design B, approved by Mohammed). */
+  var REPORT_JOB=false,qs=w.location.search;
+  try{qs+=w.top.location.search}catch(x){}
+  if(/[?&]flag=report_job(&|$)/.test(qs))REPORT_JOB=true;
+  var REP_WHY=[["scam","Looks like a scam, or asks me for money or bank details"],["fake","Fake job or the company is not real"],
+    ["offensive","Offensive or discriminatory"],["closed","The job is closed or its link is broken"],["other","Something else"]];
+  function repAdd(){
+    var c=deckEl&&deckEl.querySelector(".card.top");
+    if(!c||c.querySelector(".urep"))return;
+    var p=d.createElement("p");p.className="urep";
+    p.innerHTML='<button type="button" class="linkbtn" data-report="1" aria-label="Report this job" title="Report this job"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 21V4h11l-2 4 2 4H5"/></svg></button>';
+    c.appendChild(p);
+  }
+  if(REPORT_JOB&&deckEl){new w.MutationObserver(repAdd).observe(deckEl,{childList:true});repAdd()}
+  d.addEventListener("click",function(e){
+    var b=e.target.closest&&e.target.closest("[data-report]");if(!b)return;
+    var c=b.closest(".card"),id=c&&c.getAttribute("data-id"),j=null;
+    A.JOBS.forEach(function(x){if(String(x.id)===id)j=x});
+    if(j){e.preventDefault();e.stopPropagation();repOpen(j,b)}
+  },true);
+  function repOpen(j,from){
+    if(d.getElementById("urepBox"))return;
+    var e=A.esc,o=d.createElement("div"),example=+j.id<100000;
+    o.id="urepBox";
+    o.innerHTML='<div role="dialog" aria-modal="true" aria-labelledby="urepH"><h2 id="urepH" style="margin:0 0 4px;font:800 20px var(--display)">Report this job</h2>'+
+      '<p style="margin:0 0 14px;color:var(--muted)">'+e(j.role)+' at '+e(j.co)+'</p>'+
+      (example?'<p style="margin:0">This is an example job, made up to show how UAply works, so there is nothing to report.</p><div class="row"><button class="btn" type="button" data-x>Close</button></div>':
+      '<fieldset><legend>What is wrong?</legend>'+REP_WHY.map(function(r,i){return '<label><input type="radio" name="urepWhy" value="'+r[0]+'"'+(i?'':' checked')+'>'+r[1]+'</label>'}).join("")+'</fieldset>'+
+      '<label for="urepNote" style="display:block;font-weight:700;margin-bottom:6px">Anything to add? (optional)</label><textarea id="urepNote" maxlength="500"></textarea>'+
+      '<p style="margin:10px 0 0;font-size:13px;color:var(--muted)">Never pay to apply, and never send bank details to get a job. <a href="'+LB+'job-safety.html" target="_blank" rel="noopener noreferrer">How to spot a job scam</a></p>'+
+      '<p class="err" role="alert" hidden></p><div class="row"><button class="btn ghost" type="button" data-x>Cancel</button><button class="btn" type="button" data-send>Send report and skip this job</button></div>')+'</div>';
+    d.body.appendChild(o);
+    var sent=false;
+    function close(){o.remove();if(sent){var no=d.getElementById("btnNo");if(no&&!no.disabled)no.click()}else if(from&&from.isConnected)from.focus()}
+    /* every key stays in the box: the deck's own keys (arrows apply or pass, Z undoes) must not act behind it */
+    o.addEventListener("keydown",function(ev){if(ev.key==="Escape")close();ev.stopPropagation()});
+    o.addEventListener("click",function(ev){if(ev.target===o)close()});
+    [].forEach.call(o.querySelectorAll("[data-x]"),function(x){x.onclick=close});
+    var send=o.querySelector("[data-send]");
+    (o.querySelector("input[checked]")||o.querySelector("[data-x]")).focus();
+    if(!send)return;
+    send.onclick=function(){
+      var why=o.querySelector("input[name=urepWhy]:checked"),note=d.getElementById("urepNote").value.trim(),err=o.querySelector(".err");
+      send.disabled=true;err.hidden=true;
+      w.fetch("/api/jobs/report",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({job_id:j.id,reason:why?why.value:"other",note:note})})
+        .then(function(r){return r.json().catch(function(){return {}}).then(function(b){if(!r.ok||!b.ok)throw {said:b.error};return b})})
+        .then(function(){
+          sent=true;
+          o.firstChild.innerHTML='<h2 id="urepH" tabindex="-1" style="margin:0 0 8px;font:800 20px var(--display)">Thanks for the report</h2>'+
+            '<p style="margin:0">The UAply team reads every report. This job is skipped for you now.</p><div class="row"><button class="btn" type="button" data-x>Close</button></div>';
+          o.querySelector("[data-x]").onclick=close;
+          o.querySelector("[data-x]").focus();
+        })
+        .catch(function(x){send.disabled=false;err.textContent=(x&&x.said)||"The report did not send. Check your connection and try again.";err.hidden=false});
+    };
+  }
 
   function count(k,v){
     var n=0;
