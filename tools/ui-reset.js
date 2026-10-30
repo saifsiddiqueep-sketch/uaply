@@ -69,7 +69,7 @@ module.exports = async ({ ev, sleep, nav, send, shot }) => {
   await clickSel(".sg-si [type=submit]"); await sleep(2000);
   const u = await me();
   check("sign in with the new password", !!u && u.email === email, JSON.stringify(u));
-  for (let i = 0; i < 4 && (await ev(F + ".body.classList.contains('sgGated')")); i++) { await clickSel(".sg-next"); await sleep(700); }   // any questions left
+  for (let i = 0; i < 6 && (await ev(F + ".body.classList.contains('sgGated')")); i++) { await clickSel(".sg-next"); await sleep(700); }   // any questions left (resume skipped, work, where, phone, the last screen)
   await shot(require("path").join(require("os").tmpdir(), "ui-signed-in.png"));
 
   // change password, on the Account screen
