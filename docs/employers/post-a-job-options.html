@@ -1,0 +1,56 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex"><title>Post a job on UAply — options</title><style>
+:root{--bg:#FDF0F2;--surface:#FFFFFF;--ink:#2A1218;--muted:#7B5560;--line:#F3DADF;--accent:#C92A55;--on-accent:#FFFFFF;--soft:#FBE3E9}
+@media (prefers-color-scheme: dark){:root{--bg:#190B10;--surface:#26131A;--ink:#FBE9EE;--muted:#C79BA6;--line:#40222B;--accent:#FF7A98;--on-accent:#190B10;--soft:#33171F}}
+*{box-sizing:border-box}body{margin:0;padding:16px;background:var(--bg);color:var(--ink);font:16px/1.5 'DM Sans','Segoe UI',system-ui,sans-serif}
+.grid{display:grid;gap:16px;grid-template-columns:1fr;max-width:1280px;margin:0 auto}@media (min-width:1000px){.grid{grid-template-columns:repeat(3,1fr)}}
+.tag{font-weight:800;font-size:13px;letter-spacing:.06em;color:var(--accent);margin:0 0 6px}
+main{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:12px}
+h1{margin:0;font-size:22px;line-height:1.25}p{margin:0}.lead{color:var(--muted)}.small{font-size:14px;color:var(--muted)}
+.btn{font:inherit;font-weight:700;padding:12px 16px;border-radius:12px;border:0;background:var(--accent);color:var(--on-accent);min-height:44px;width:100%;cursor:pointer}
+.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}a{color:var(--accent);font-weight:700}
+.door{border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px}.door b{font-size:17px}
+.pill{display:inline-block;font-size:12px;font-weight:700;background:var(--soft);color:var(--accent);border-radius:999px;padding:2px 10px;width:max-content}
+textarea,input{font:inherit;width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--ink)}textarea{min-height:96px;resize:vertical}
+label{font-weight:700;font-size:15px}.or{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px}.or::before,.or::after{content:"";flex:1;border-top:1px solid var(--line)}
+.steps{display:flex;gap:6px}.steps span{flex:1;height:6px;border-radius:3px;background:var(--line)}.steps span.on{background:var(--accent)}
+.card{border:1px solid var(--line);border-radius:16px;padding:14px;background:var(--bg);display:flex;flex-direction:column;gap:6px}
+.card .co{display:flex;gap:10px;align-items:center}.logo{width:36px;height:36px;border-radius:10px;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;font-weight:800}
+.chips{display:flex;flex-wrap:wrap;gap:6px}.chips span{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:2px 8px}
+.ats{display:flex;flex-wrap:wrap;gap:6px}.ats span{font-size:13px;font-weight:700;border:1px solid var(--line);border-radius:10px;padding:4px 10px}
+</style></head><body><div class="grid">
+
+<section><p class="tag">OPTION A · TWO DOORS</p><main>
+  <h1>Hire on UAply</h1>
+  <p class="lead">Job seekers swipe right to apply. Pick how your jobs get here.</p>
+  <div class="door"><span class="pill">Free · 5 minutes</span><b>Post a job</b><p class="small">Paste a link or fill one page. It shows in the swipe deck right away.</p><button class="btn">Post a job</button></div>
+  <div class="door"><span class="pill">Uses your ATS</span><b>Connect your ATS</b><p class="small">Applications land in the system you already use.</p>
+    <div class="ats"><span>Greenhouse</span><span>Lever</span><span>Ashby</span><span>Workable</span></div><button class="btn ghost">Connect</button>
+    <p class="small">Not the admin? <a href="#">Send this to your ATS admin</a></p></div>
+</main></section>
+
+<section><p class="tag">OPTION B · POST FIRST</p><main>
+  <h1>Post a job on UAply</h1>
+  <p class="lead">Free. Applicants arrive with a match score against your must-haves.</p>
+  <label for="b1">Paste your job link or description</label>
+  <textarea id="b1" placeholder="https://… or paste the job text"></textarea>
+  <button class="btn">Post a job</button>
+  <p class="small">We fill in the form for you. You check it before it goes live.</p>
+  <div class="or">already use an ATS?</div>
+  <p class="small"><a href="#">Connect Greenhouse, Lever, Ashby or Workable</a> so applications land there.</p>
+</main></section>
+
+<section><p class="tag">OPTION C · GUIDED + LIVE CARD</p><main>
+  <div class="steps" aria-label="Step 2 of 3"><span class="on"></span><span class="on"></span><span></span></div>
+  <p class="small">Step 2 of 3 · The job</p>
+  <h1>Post a job on UAply</h1>
+  <label for="c1">Job title</label><input id="c1" value="Line Cook">
+  <label for="c2">Where</label><input id="c2" value="Philadelphia, PA · On site">
+  <p class="small"><b>What job seekers will swipe:</b></p>
+  <div class="card"><div class="co"><div class="logo">R</div><div><b>Line Cook</b><p class="small">Rittenhouse Kitchen · Philadelphia, PA</p></div></div>
+    <div class="chips"><span>$19–22/hr</span><span>Full time</span><span>On site</span></div></div>
+  <button class="btn">Next: applicants</button>
+  <p class="small">Use an ATS? <a href="#">Connect it instead</a></p>
+</main></section>
+
+</div></body></html>
