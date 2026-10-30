@@ -18,7 +18,7 @@ CareerOneStop 100 per search. USAJOBS keeps every job each search lists (every p
 
 ## Coverage
 
-* **Anywhere in the US:** 4,486 employer sources: 2,255 Greenhouse, 1,409 Ashby, 230 Lever, 184 SmartRecruiters and 98 Workable boards
+* **Anywhere in the US:** 4,485 employer sources: 2,254 Greenhouse, 1,409 Ashby, 230 Lever, 184 SmartRecruiters and 98 Workable boards
   (80 of them hand-picked in `SOURCES`, the rest from `job-boards.json`) and 310 employers' own careers sites (298 on Workday, 12 on
   iCIMS); remote jobs from Jobicy (15 industries), Himalayas (all, internships, part-time) and Remote OK; internships and co-ops from
   the Simplify / Pitt CSC lists. A remote job open to the US is shown to everyone; the distance filter never hides it (except "remote
@@ -77,9 +77,9 @@ Training), 10 staffing or recruiting firms and talent pools, 4 internal or refer
 2,015 further qualifying boards wait for stage 2.
 
 Round 2, stage 2 (October 30, 2026): the 2,015 qualifying boards left after stage 1 were checked against the live titles of every
-listed board. Stage 2 adds 1,928 of them: 1,084 Greenhouse and 844 Ashby boards (20,155 US jobs, 453 in PA, NJ or DE), so the
-employer sources went from 2,558 to 4,486. Left out: 38 boards that share more than a quarter of their titles with a board already
-listed (Harry's brands such as Lume Deodorant and Flamingo, Artefact, The Orchard), 17 employers that post one role at many sites
+listed board. Stage 2 adds 1,927 of them: 1,083 Greenhouse and 844 Ashby boards (20,150 US jobs, 453 in PA, NJ or DE), so the
+employer sources went from 2,558 to 4,485. Left out: 39 boards that share more than a quarter of their titles with a board already
+listed (Harry's brands such as Lume Deodorant and Flamingo, Artefact, The Orchard, Cleo's India board), 17 employers that post one role at many sites
 (A Place for Mom, Interview Engineering, Brooklyn Health), 12 venture fund or accelerator boards (Broadway Ventures, Forum
 Ventures, Montauk Capital), 5 internal or referral-only boards (Misfits Market, Sprout, Thoughtworks), 3 recruiting boards and
 talent pools (Birgo, a dev talent network, an internship pool), 11 names already listed (SingleStore, Coursera, Charlie Health)

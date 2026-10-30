@@ -25693,7 +25693,7 @@
   {
    "kind": "greenhouse",
    "token": "connectwise",
-   "name": "\u200eConnectWise",
+   "name": "ConnectWise",
    "total": 42,
    "us": 17,
    "tri": 0,
@@ -38682,15 +38682,6 @@
    "token": "ciazumano",
    "name": "CI Azumano",
    "total": 5,
-   "us": 5,
-   "tri": 0,
-   "checked": "2026-10-30"
-  },
-  {
-   "kind": "greenhouse",
-   "token": "cleoindia",
-   "name": "Cleo (India)",
-   "total": 15,
    "us": 5,
    "tri": 0,
    "checked": "2026-10-30"
