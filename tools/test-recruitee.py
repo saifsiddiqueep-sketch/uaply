@@ -60,13 +60,48 @@ t("the apply address is the careers site's own endpoint", ats_api.recruitee_url(
   if os.environ.get("UAPLY_ATS_BASE_RECRUITEE") else "https://curotec.recruitee.com/api/offers/data-analyst/candidates")
 t("...and nothing for a company or slug that is not a plain name", (ats_api.recruitee_url("cu/rotec", "x"), ats_api.recruitee_url("curotec", "../x")), ("", ""))
 
+# ---------- hundreds of Recruitee boards: every {company}.recruitee.com is one service, read at a steady pace ----------
+t("every company's Recruitee subdomain counts as one service: 2 places, 1 second between request starts",
+  (jobs_api._host_key("curotec.recruitee.com"), jobs_api._host_key("acme.recruitee.com")), (("recruitee.com", 2, 1.0), ("recruitee.com", 2, 1.0)))
+t("...other systems keep their own per-host places, unspaced", jobs_api._host_key("boards-api.greenhouse.io"), ("boards-api.greenhouse.io", 10, 0))
+jobs_api.HOST_FAMILY["family.test"] = (2, 0.1)          # the same rule, faster, for a family only this test uses
+_busy, _peak, _starts, _blk = [0], [0], [], threading.Lock()
+
+
+def _one(i):
+    with jobs_api._host_slot("https://co%d.family.test/api/offers/" % i):
+        with _blk:
+            _busy[0] += 1
+            _peak[0] = max(_peak[0], _busy[0])
+            _starts.append(time.time())
+        time.sleep(0.4)                                  # longer than the spacing, so the 2-place limit is what holds the third back
+        with _blk:
+            _busy[0] -= 1
+
+
+_ths = [threading.Thread(target=_one, args=(i,)) for i in range(6)]
+for _th in _ths:
+    _th.start()
+for _th in _ths:
+    _th.join()
+_starts.sort()
+t("six boards of one family at once: at most 2 requests in flight, starts at least the spacing apart",
+  (_peak[0], all(b - a >= 0.07 for a, b in zip(_starts, _starts[1:]))), (2, True))
+
 # ---------- a stand-in Recruitee careers site ----------
 GOT = []
+
+
+TUNNELS = []      # hosts a test server tried to reach through this stand-in as its HTTPS proxy (the real-site trap below)
 
 
 class Fake(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
+
+    def do_CONNECT(self):
+        TUNNELS.append(self.path.split(":")[0])
+        self.send_response(403); self.end_headers()
 
     def do_POST(self):
         n = int(self.headers.get("Content-Length") or 0)
@@ -130,11 +165,13 @@ def req(port, method, path, body=None, cookie=""):
         return r.status, raw.decode("utf-8", "replace"), ck
 
 
-def start(port, name, cfg):
+def start(port, name, cfg, stand_in=True):
     data = os.path.join(TMP, name)
     seed(data)
     env = dict(os.environ, UAPLY_DATA_DIR=data, UAPLY_CONFIG_JSON=json.dumps(cfg), UAPLY_SIGNUP_TEST="1", UAPLY_REQUEST_LOG="off",
                UAPLY_ATS_BASE_RECRUITEE="http://127.0.0.1:%d" % FAKE)
+    if not stand_in:                     # the real careers site's address
+        env.pop("UAPLY_ATS_BASE_RECRUITEE")
     env.pop("RENDER", None)
     p = subprocess.Popen([sys.executable, os.path.join(ROOT, "serve.py"), str(port), "dev", "--api"], cwd=ROOT, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     PROCS.append(p)
@@ -214,6 +251,18 @@ try:
     c = person(PORT2, "cam@example.org")
     s, out = apply(PORT2, c, P4, "cam@example.org")
     t("test delivery: simulated, nothing reaches Recruitee", (out.get("status"), out.get("to"), len(GOT)), ("delivered_test", "%s on Recruitee (simulated)" % P4["co"], 2))
+    for p in PROCS:
+        p.terminate()
+        p.wait(10)
+    PROCS.clear()
+    # sign-up test mode with delivery "live" and the real careers site's address (no stand-in): simulated, never posted. Any https request is
+    # trapped by pointing the server's HTTPS proxy at the stand-in, so a broken guard shows up as a tunnel to recruitee.com, not a real send
+    os.environ.update(HTTPS_PROXY="http://127.0.0.1:%d" % FAKE, https_proxy="http://127.0.0.1:%d" % FAKE, NO_PROXY="127.0.0.1,localhost")
+    start(PORT2, "trap", live, stand_in=False)
+    d = person(PORT2, "dee@example.org")
+    s, out = apply(PORT2, d, P4, "dee@example.org")
+    t("sign-up test mode, delivery live, the real Recruitee address: simulated, nothing posted, no connection to recruitee.com",
+      (out.get("status"), out.get("simulated"), len(GOT), [h for h in TUNNELS if h.endswith("recruitee.com")]), ("delivered_test", True, 2, []))
 finally:
     for p in PROCS:
         try:

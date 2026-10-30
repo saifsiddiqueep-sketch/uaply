@@ -188,14 +188,29 @@ unknown user id, a rate limit) and `tools/check-careeronestop.py` to check the k
 
 - Kind `recruitee` (jobs_api `_recruitee_raw`): each company's careers site answers `GET https://{company}.recruitee.com/api/offers/`
   with no key (its robots.txt disallows only `/v/`). One request per board, every 2 hours like the other boards in job-boards.json.
+- Pacing: every `*.recruitee.com` subdomain is treated as one service (jobs_api `HOST_FAMILY`): at most 2 requests at once over all
+  its boards, request starts 1 second apart. Recruitee boards are read by 2 reader threads of their own (`_rc_readers`, `_rc_slots`),
+  not the 8 shared board places, so the other boards never wait behind them on a fresh start.
 - A job keeps Recruitee's offer number as its id (`_jid("recruitee", id)`, stable), `ats = {"kind": "recruitee", "board": company,
   "id": slug}`, `url` (the posting) and `applyUrl` (its form, `/o/{slug}/c/new`; left out of the list form, in `GET /api/jobs/<id>`).
-  An application goes to `POST https://{company}.recruitee.com/api/offers/{slug}/candidates` (no employer key): the apply side builds
-  that, nothing here sends. Until then a Recruitee job is a hand-off like every feed job.
+  An application goes to `POST https://{company}.recruitee.com/api/offers/{slug}/candidates` (no employer key, `ats_api.recruitee_submit`):
+  while the owner's switch `"recruitee_submit"` is on (the default; `uaply_api.recruitee_on`) a Recruitee job is an instant apply (the
+  card says Ready); with it set to false the job is a hand-off like every other feed job.
+- Sign-up test mode (`UAPLY_SIGNUP_TEST=1`, mail off) never posts to a real employer: a Recruitee application is recorded as simulated
+  unless it goes to a stand-in on this computer (`UAPLY_ATS_BASE_RECRUITEE` at 127.0.0.1 or localhost); delivery mode "test"
+  simulates every one.
 - Offers outside the US are left out (one open in several places is placed in its first US one); pay is shown only in US dollars
   (hourly or yearly ranges); drafts and offers with an unsafe slug are skipped.
-- 33 boards with at least 5 US jobs are in job-boards.json (found with a web search limited to recruitee.com, checked with
-  `tools/find-recruitee.py`): 500 jobs within 60 days on October 23, 42 of them in PA, NJ or DE. Recruitee is mostly European, and its
-  US health care, dental, legal and hospitality sites are small (most have under 5 openings), so few of those passed the 5-job rule.
+- 55 boards with at least 5 US jobs are in job-boards.json (found with a web search limited to recruitee.com and a Common Crawl
+  sweep, checked with `tools/find-recruitee.py`): 1,182 US jobs when last checked (October 23 and 30), 62 of them in PA, NJ or DE.
+  Recruitee is mostly European, and its US health care, dental, legal and hospitality sites are small (most have under 5 openings),
+  so few of those passed the 5-job rule. Four boards found earlier were dropped for having under 5 US jobs: dillinggroup,
+  anywhereworks, goodwall and hostaway.
+- Recruitee US ceiling (measured October 30, 2026): 859 Recruitee sites found in Common Crawl, 787 of them live, with about 10,000
+  offers, 582 of them in the US (about 5.7%). The sweep only covered sites that were not yet in this file, so that 582 splits into
+  359 US jobs on the 17 boards added below (now part of the 1,182 above) and 128 on boards too small to list. The sweep found 19 sites
+  with 5+ US jobs; two of them (chg, gainpro) redirect to boards already listed or kept (chgcareers, gain), so 17 distinct new boards
+  were added (vertigis came from a follow-up probe).
+  Another 59 boards with 1 to 4 US jobs (128 jobs) are left out by the 5-US rule. Recruitee alone cannot reach 50k US jobs.
 - Switched on with the others: `"feeds"` must list `"recruitee"` (uaply-config.json or UAPLY_CONFIG_JSON / UAPLY_FEEDS).
 

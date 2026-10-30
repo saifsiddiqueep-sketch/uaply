@@ -1246,7 +1246,10 @@ def submit(p, user=None, site=""):
             _append("applications.jsonl", rec)
         elif policy == "recruitee":
             rec["route"] = "recruitee"
-            if mode == "test":                             # what the live app would do; nothing reaches Recruitee
+            # sign-up test mode (NO_MAIL, never public) with delivery "live" (a laptop with real settings): filler accounts must never reach a
+            # real Recruitee careers site, so it is simulated too; only a stand-in on this computer (UAPLY_ATS_BASE_RECRUITEE) is posted to
+            local_rc = ats_api.recruitee_url(rref["board"], rref["id"]).startswith(("http://127.0.0.1", "http://localhost"))
+            if mode == "test" or (NO_MAIL and not local_rc):   # what the live app would do; nothing reaches Recruitee
                 rec.update(to="%s on Recruitee (simulated)" % job["co"], simulated=True, status="delivered_test", channels=["hiring system (simulated)"])
                 APPS.append(rec)
                 _append("applications.jsonl", rec)
