@@ -1,7 +1,7 @@
-"""Fill from your resume (resume_parse.py and POST /api/profile/resume): the parser on seven made-up resumes, the layouts and date styles
+"""Fill from your resume (resume_parse.py and POST /api/profile/resume): the parser on thirteen made-up resumes, the layouts and date styles
 resumes use, every file it must refuse with a plain sentence, and the endpoint on a real server.
   python tools/test-resume.py [PORT]
-The seven resumes are in tools/fixtures/resumes/ (written by tools/make-resume-fixtures.py) with the right answers in expected.json.
+The thirteen resumes are in tools/fixtures/resumes/ (written by tools/make-resume-fixtures.py) with the right answers in expected.json.
 PDF cases need pypdf (pip install pypdf); without it they are skipped with a message and the rest still runs."""
 import base64
 import io
@@ -16,7 +16,12 @@ import urllib.error
 import urllib.request
 import zipfile
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+try:                                                                   # resume names can be any language; a Windows pipe is cp1252
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except (AttributeError, ValueError):
+    pass
+
+HERE =os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8798                # another port can be given, so two test runs never collide
 FIX = os.path.join(HERE, "fixtures", "resumes")
@@ -58,13 +63,42 @@ def val(f, k):
 
 
 # ---------------------------------------------------------------------------------------------------------------------------------
-print("== The seven made-up resumes")
+print("== The thirteen made-up resumes")
 EXPECTED = json.load(open(os.path.join(FIX, "expected.json"), encoding="utf-8"))
 ACCURACY = []
 
 
 def same(a, b):
     return re.sub(r"\s+", " ", str(a)).strip().lower() == re.sub(r"\s+", " ", str(b)).strip().lower()
+
+
+WRONG, GOOD, TABLE = [], {}, []        # answers that are not right, which expected answers were right, each resume for the table
+
+
+def squash(s):
+    """Lower case letters and digits only (accents kept): 'PRIYA RAMAN' and 'Priya Raman' read the same."""
+    return re.sub(r"[\W_]+", "", str(s).lower())
+
+
+def traceable(k, field, text):
+    """True when the answer is written in the resume: the same words, or the same digits for a phone, or a date written there."""
+    v, flat, digits = field.get("value"), squash(text), re.sub(r"\D", "", text)
+    if k == "phone":
+        return re.sub(r"\D", "", v) in digits
+    if k in ("job_start", "job_end", "grad"):
+        if v == "present":
+            return bool(re.search(rp._NOW, text, re.I))
+        written = {rp._fmt(d) for d in (rp._ym(m.group(0)) for m in re.finditer(rp._ONE, text, re.I)) if d and d != "present"}
+        return v in written
+    if k == "location":
+        return (squash(field.get("city", "")) in flat and (not field.get("zip") or field["zip"] in digits) and
+                (not field.get("state") or re.search(r"\b%s\b" % re.escape(field["state"]), text) is not None or
+                 squash(next((n for n, c in rp._STATE_BY_NAME.items() if c == field["state"]), "")) in flat))
+    if k == "skills":
+        return all(squash(s) in flat for s in v)
+    if k in ("linkedin", "portfolio"):
+        return squash(re.sub(r"^https?://(www\.)?", "", v)) in flat
+    return squash(v) in flat
 
 
 for fname, want in EXPECTED.items():
@@ -96,17 +130,35 @@ for fname, want in EXPECTED.items():
             t("%s: %s = %s" % (fname, k, g and g["value"]), g["value"] if good else (g and g["value"]), g["value"] if good else options)
         if g:
             t("%s: %s says how sure it is and which line it came from" % (fname, k), (g.get("confidence") in ("high", "medium", "low"), bool(g.get("line"))), (True, True))
+        if g and not good:
+            WRONG.append((fname, k, g.get("confidence")))
         hits += 1 if good else 0
+        GOOD[(fname, k)] = good
     extra = sorted(k for k in got if k not in want)
     t("%s: nothing found that is not in the resume" % fname, extra, [])
+    WRONG.extend((fname, k, got[k].get("confidence")) for k in extra)
     ACCURACY.append((fname, hits, len(want), extra))
+    # only what is on the resume (card 181): every answer can be found in the resume's own text, as written or trivially reformatted
+    untraced = [(k, got[k]["value"]) for k in got if not traceable(k, got[k], res["text"])]
+    t("%s: every answer is in the resume's own words (nothing guessed, inferred or padded)" % fname, untraced, [])
+    t("%s: no answer is confidently wrong (a wrong one must be marked low)" % fname, [(k, c) for f_, k, c in WRONG if f_ == fname and c != "low"], [])
+    TABLE.append((fname, want, got))
+
+NZ = open(os.path.join(FIX, "nunez.txt"), encoding="utf-8").read()
+t("the own-words check itself catches a made-up month, a guessed city, a skill from a title and a padded phone",
+  [traceable(k, f_, NZ) for k, f_ in (("grad", {"value": "2019-05"}), ("location", {"city": "Hialeah", "state": "FL", "zip": "33130"}),
+                                        ("skills", {"value": ["Food Safety", "Grilling"]}), ("phone", {"value": "+1 (305) 555-0199"}),
+                                        ("grad", {"value": "2019"}), ("phone", {"value": "305-555-0119"}))],
+  [False, False, False, False, True, True])
+t("sparse.txt (a name and an email only): everything else comes back empty",
+  sorted(rp.parse(open(os.path.join(FIX, "sparse.txt"), "rb").read(), "sparse.txt")["fields"]), ["email", "name"])
 
 # ---------------------------------------------------------------------------------------------------------------------------------
 print("\n== Layouts, headings and dates")
 f = fields_of("Pat Lee\npat@example.com\n\nE X P E R I E N C E\nBarista   January 2023 to Current\nRiver Cafe\n\nE D U C A T I O N\nCity College\nB.A. in History, 2022")
 t("letter-spaced headings and 'January 2023 to Current'", (val(f, "job_title"), val(f, "employer"), val(f, "job_start"), val(f, "job_end"), val(f, "school")),
   ("Barista", "River Cafe", "2023-01", "present", "City College"))
-for txt, start, end in (("01/2024 - 05/2025", "2024-01", "2025-05"), ("2024-01 – 2025-03", "2024-01", "2025-03"), ("Summer 2024 - Fall 2024", "2024-08", "2024-12"),
+for txt, start, end in (("01/2024 - 05/2025", "2024-01", "2025-05"), ("2024-01 – 2025-03", "2024-01", "2025-03"), ("Summer 2024 - Fall 2024", "2024", "2024"),
                         ("2023–2025", "2023", "2025"), ("Jan '24 – Present", "2024-01", "present"), ("Sept. 2021 — Now", "2021-09", "present"),
                         ("Mar 2020 until Jun 2021", "2020-03", "2021-06")):
     f = fields_of("Kim Diaz\nkim@example.com\n\nWork Experience\nSales Associate, Target Corporation   %s\n- helped customers" % txt)
@@ -164,6 +216,7 @@ t("Word: a text box gives its own line", [x.strip() for x in rp.parse(docx_bytes
 print("\n== Files it refuses, each with a plain sentence")
 t("over 5 MB", err_code(b"a" * (5 * 1024 * 1024 + 1), "cv.txt"), "too_big")
 t("empty", err_code(b"   \n ", "cv.txt"), "empty")
+t("an empty file (0 bytes) named .pdf", err_code(b"", "cv.pdf"), "empty")
 t("a photo of a resume (PNG)", err_code(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100, "cv.png"), "image")
 t("a photo named .pdf (JPEG inside)", err_code(b"\xff\xd8\xff\xe0" + b"\x00" * 100, "cv.pdf"), "image")
 t("an old Word file (.doc)", err_code(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 100, "cv.doc"), "old_doc")
@@ -195,6 +248,26 @@ if HAS_PDF:
         out += b"xref\n0 5\n0000000000 65535 f \n" + b"".join(b"%010d 00000 n \n" % o for o in offs) + b"trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % x
         return bytes(out)
     t("a scanned PDF (pages with no text)", err_code(blank_pdf(), "scan.pdf"), "scanned")
+
+    def image_pdf():
+        """A scanned resume as most scanners write it: one page that is only a picture (an image XObject), no text at all."""
+        px = b"\xff\x00\x00" * 4
+        objs = [b"<< /Type /Catalog /Pages 2 0 R >>", b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+                b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /XObject << /Im1 5 0 R >> >> /Contents 4 0 R >>"]
+        draw = b"q 612 0 0 792 0 0 cm /Im1 Do Q"
+        objs.append(b"<< /Length %d >>\nstream\n" % len(draw) + draw + b"\nendstream")
+        objs.append(b"<< /Type /XObject /Subtype /Image /Width 2 /Height 2 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Length %d >>\nstream\n" % len(px)
+                    + px + b"\nendstream")
+        out = bytearray(b"%PDF-1.4\n")
+        offs = []
+        for n, o in enumerate(objs, 1):
+            offs.append(len(out))
+            out += b"%d 0 obj\n" % n + o + b"\nendobj\n"
+        x = len(out)
+        out += (b"xref\n0 6\n0000000000 65535 f \n" + b"".join(b"%010d 00000 n \n" % o for o in offs) +
+                b"trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % x)
+        return bytes(out)
+    t("a scanned PDF that is only a picture (an image, no text)", err_code(image_pdf(), "scan.pdf"), "scanned")
     t("a broken PDF", err_code(b"%PDF-1.4\n" + b"garbage " * 50, "cv.pdf"), "unreadable")
     import pypdf
     w = pypdf.PdfWriter()
@@ -202,7 +275,8 @@ if HAS_PDF:
     w.encrypt("secret")
     b = io.BytesIO()
     w.write(b)
-    t("a password-protected PDF", err_code(b.getvalue(), "locked.pdf"), "encrypted")
+    LOCKED = b.getvalue()
+    t("a password-protected PDF", err_code(LOCKED, "locked.pdf"), "encrypted")
     biz = rp.read_text(open(os.path.join(FIX, "business.pdf"), "rb").read(), "business.pdf")[1]
     t("a PDF's bullets and accents arrive whole, whatever the computer's code page (no replacement characters)",
       ("�" in biz, "Jordan Álvarez" in biz, "• Ran weekly" in biz), (False, True, True))
@@ -292,6 +366,17 @@ try:
     big = b"a" * (5 * 1024 * 1024 + 10)
     code, out = call(json.dumps({"resume": {"name": "big.txt", "data": "data:text/plain;base64," + base64.b64encode(big).decode()}}).encode())
     t("a file over 5 MB: 413 'over 5 MB'", (code, out.get("code")), (413, "too_big"))
+    # the bad files of card 181: each is refused kindly (a sentence for the person), never a server error
+    bad_files = [("an empty file", "cv.pdf", "application/pdf", b""),
+                 ("a .jpg renamed .pdf", "cv.pdf", "application/pdf", b"\xff\xd8\xff\xe0" + b"\x00" * 200),
+                 ("a file over 5 MB", "cv.pdf", "application/pdf", b"%PDF-1.4\n" + b"a" * (5 * 1024 * 1024 + 10))]
+    if HAS_PDF:
+        bad_files += [("a scanned PDF that is only a picture", "scan.pdf", "application/pdf", image_pdf()),
+                      ("a password-protected PDF", "locked.pdf", "application/pdf", LOCKED)]
+    for label, name, ct, data in bad_files:
+        code, out = call(json.dumps({"resume": {"name": name, "data": "data:%s;base64,%s" % (ct, base64.b64encode(data).decode())}}).encode())
+        t("%s: refused kindly (%s), with a sentence, no server error" % (label, code),
+          (code in (400, 413, 422), bool(out.get("error")) and len(out["error"]) < 200 and "Traceback" not in out["error"], bool(out.get("ok"))), (True, True, False))
     code, out = call(js, origin=False)
     t("a request from another site is refused", code, 403)
     code, out = call(b"", "application/json")
@@ -340,5 +425,25 @@ for fname, hits, total, extra in ACCURACY:
     print("  %-18s %2d / %2d%s" % (fname, hits, total, ("   extra: " + ", ".join(extra)) if extra else ""))
 if not HAS_PDF:
     print("  (the two PDF resumes were skipped: pip install pypdf)")
+# the six answers Profile setup asks about first, per resume: right, blank (in the resume but not found), wrong (found, not right),
+# n/a (not in that resume and correctly left empty)
+print("\n== Per field: right / blank / wrong (n/a = not in that resume, left empty)")
+COLS = [("name", "name"), ("phone", "phone"), ("email", "email"), ("city/ZIP", "location"), ("latest title", "job_title"), ("skills", "skills")]
+print("  %-18s" % "resume" + "".join("%-14s" % c for c, _k in COLS))
+totals = {"right": 0, "blank": 0, "wrong": 0, "n/a": 0}
+for fname, want, got in TABLE:
+    row = []
+    for _c, k in COLS:
+        if k not in want:
+            r = "wrong" if k in got else "n/a"
+        elif k not in got:
+            r = "blank"
+        else:
+            r = "right" if GOOD.get((fname, k)) else "wrong"
+        totals[r] += 1
+        row.append(r)
+    print("  %-18s" % fname + "".join("%-14s" % r for r in row))
+print("  right %d, blank %d, wrong %d, n/a %d" % (totals["right"], totals["blank"], totals["wrong"], totals["n/a"]))
+t("the six answers: none wrong on any resume", totals["wrong"], 0)
 print("\n%d / %d" % (ok, ok + bad))
 sys.exit(1 if bad else 0)
