@@ -82,6 +82,17 @@ def main():
         check("Trello credentials work (optional)", bool(me.get("username")))
     except Exception as e:
         print(f"SKIP  Trello credentials (optional): {str(e)[:90]}")
+    # /handoff posts to the '📍 Areas' cards; if that list is missing, handoffs can't be shared.
+    import trello as tr  # noqa: E402 — same folder
+    if tr.missing_keys():
+        print(f"WARN  /handoff can't post to Trello yet → {tr._keys_msg(tr.missing_keys())}")
+    else:
+        try:
+            cards = tr.area_cards()
+            check(f"'{tr.AREAS_LIST}' list has 12 area cards (found {len(cards)})", len(cards) == 12,
+                  "restore/unarchive the area cards in Trello so each area has exactly one card")
+        except Exception as e:
+            check(f"'{tr.AREAS_LIST}' list reachable for /handoff", False, tr._explain(e))
     check("node available (for ccusage + check.js)", bool(shutil.which("node")), "install Node.js LTS from nodejs.org")
     r = git("ls-remote", "origin", "refs/heads/lock/*", check=False, timeout=15)
     check("GitHub reachable for the merge lock", r is not None, "check your internet / GitHub login")
