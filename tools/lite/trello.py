@@ -2,6 +2,7 @@
 """Trello sync for Workflow Lite. Cards are addressed by their board number (the #34 in the card URL).
 
   python tools/lite/trello.py show 34
+  python tools/lite/trello.py show 191 --handoff                         # the latest handoff note too (skips other comments)
   python tools/lite/trello.py update 34 --list "Review" --comment "PR #12 open. Tests: node check.js exit 0"
   python tools/lite/trello.py update 34 --check "Root cause written"     # ticks a checklist item by text
   python tools/lite/trello.py gh-event                                   # used by the GitHub Action
@@ -44,6 +45,17 @@ def list_id(name):
     die(f"No list named '{name}' on board {board()}")
 
 
+def sign(text, limit=16000):
+    """Team rule: every Trello comment ends with '— <FOUNDER> via Claude' (added once, kept inside the limit)."""
+    who = (_common.founder() or "").strip()
+    # no founder name (e.g. the GitHub Actions gh-event run) → say it was automatic, not "unknown"
+    tag = f"— {who} via Claude" if who and who.lower() != "unknown" else "— GitHub (automatic)"
+    text = text.rstrip()
+    if text.endswith(tag):
+        return text[:limit]
+    return f"{text[:limit - len(tag) - 1]}\n{tag}"
+
+
 def update(num, to_list=None, comment=None, check=None):
     c = card(num)
     done = [f"#{num} {c['name'][:60]}"]
@@ -51,7 +63,7 @@ def update(num, to_list=None, comment=None, check=None):
         trello("PUT", f"/cards/{c['id']}", {"idList": list_id(to_list)})
         done.append(f"→ {to_list}")
     if comment:
-        trello("POST", f"/cards/{c['id']}/actions/comments", {"text": comment[:16000]})
+        trello("POST", f"/cards/{c['id']}/actions/comments", {"text": sign(comment)})
         done.append("+comment")
     if check:
         hit = False
@@ -200,7 +212,7 @@ def handoff(query, note_file):
     try:
         cards = area_cards()
         c = match_area(query, cards)
-        posted = trello("POST", f"/cards/{c['id']}/actions/comments", {"text": text}) or {}
+        posted = trello("POST", f"/cards/{c['id']}/actions/comments", {"text": sign(text, MAX_COMMENT)}) or {}
         new_id = posted.get("id")
         if not new_id:
             raise HandoffError(f"Trello accepted the request but returned no comment id for '{c['name']}' — "
@@ -232,7 +244,7 @@ def areas_cmd():
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("show"); s.add_argument("num")
+    s = sub.add_parser("show"); s.add_argument("num"); s.add_argument("--handoff", "--last-comment", dest="handoff", action="store_true")
     u = sub.add_parser("update"); u.add_argument("num")
     u.add_argument("--list"); u.add_argument("--comment"); u.add_argument("--check")
     sub.add_parser("gh-event")
@@ -257,6 +269,11 @@ def main():
     try:
         if a.cmd == "show":
             c = card(a.num); print(f"#{a.num} {c['name']}  {c['shortUrl']}")
+            if a.handoff:
+                # newest comment in the /handoff format (starts "AREA:"), so later notes don't hide it
+                acts = trello("GET", f"/cards/{c['id']}/actions", {"filter": "commentCard", "limit": "50"}) or []
+                notes = [x["data"]["text"] for x in acts if x["data"]["text"].lstrip().startswith("AREA:")]
+                print(notes[0] if notes else "(no handoff yet)")
         elif a.cmd == "update":
             update(a.num, a.list, a.comment, a.check)
         else:

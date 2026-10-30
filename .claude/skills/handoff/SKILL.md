@@ -17,6 +17,7 @@ NEXT: next 3 steps, in order
 OPEN DECISIONS: who decides
 FILES THAT MATTER: paths only
 LOCKS HELD: (queue.py status) — release before leaving unless mid-merge
+— <FOUNDER> via Claude
 ```
 2. Post it — try A, then B:
    - **A. Trello connector.** If tools are deferred, `ToolSearch` for "trello". Use the read tools to find the
