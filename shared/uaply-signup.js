@@ -964,7 +964,7 @@ function apply(w,host){
     var p=A.S.profile||{},pe=p.custom?String(p.email||"").toLowerCase():"",oe=String(ownGet().email||"").toLowerCase();
     if(!(pe&&pe!==email)&&!(!pe&&oe&&oe!==email)){if(p.custom&&!p.email){p.email=email.slice(0,200);commit()}return false}
     A.S.profile={name:"",title:"",years:0,edu:"",skills:[],salary:0,loc:"",modes:{remote:false,hybrid:false,onsite:false},reloc:false,email:email.slice(0,200),custom:true};
-    B.acct(function(a){a.phone=a.linkedin=a.portfolio=a.summary=a.auth=a.notice=a.cover=a.resumeName=a.resumeData=a.resumeUrl="";a.resumeSize=0;a.titles=[];
+    B.acct(function(a){a.phone=a.linkedin=a.portfolio=a.summary=a.auth=a.notice=a.cover=a.resumeName=a.resumeData=a.resumeUrl=a.resumeWas="";a.resumeSize=0;a.titles=[];
       a.eeo={auth:"",sponsor:"",veteran:"",hisp:"",race:[],disability:"",gender:""};a.addr={street:"",unit:"",state:"",zip:""}});
     var k=w.__uaplyKey||"uaply";[".answers",".answersAsked",".consent"].forEach(function(x){try{w.localStorage.removeItem(k+x)}catch(e){}});
     ownSet({first:"",last:"",email:email});commit();V.cleared=true;

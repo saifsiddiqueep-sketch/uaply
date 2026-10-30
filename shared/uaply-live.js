@@ -853,6 +853,10 @@ function kitApply(w,host){
   };
 
   var askedSend={};
+  /* card 181: the add-resume-or-phone sheet is asked once a session, not on every swipe. Dismissed (Not now, Esc, the backdrop), or
+     closed with the minimum still not met, later swipes right go straight to "Needs profile" until the next session */
+  function sendAskDone(){try{return w.sessionStorage.getItem("uaply.askSend")==="1"}catch(e){return !!w.__uaplyAskSendDone}}
+  function sendAskStop(){try{w.sessionStorage.setItem("uaply.askSend","1")}catch(e){}w.__uaplyAskSendDone=true}
   function quietApply(job,m,p,undo,S,save,retry){
     var live=w.__uaplyMode==="live",auto=w.__uaplyAuto!==false;
     var target=(live&&w.__uaplyRedirect)||job.contact||(job.instant?"hiring system":"");
@@ -874,10 +878,13 @@ function kitApply(w,host){
     /* an incomplete profile: saved to Job Tracker as "Needs profile" (sent from there once the profile is complete); the line says so once a session */
     if(rdy&&!rdy.min){
       /* October 30, never send nothing: the sheet asks for a resume or a phone number first; done, THIS application goes out the normal
-         way; dismissed, it is kept as "Needs profile" as before. Once per job, so an answer that is still not enough never loops */
-      if(!retry&&w.__uaplyAddToSend&&!askedSend[job.id]){
+         way; dismissed, it is kept as "Needs profile" as before. Once per job, so an answer that is still not enough never loops; once a
+         session (card 181), so "Not now" is never asked again on the next swipe */
+      if(!retry&&w.__uaplyAddToSend&&!askedSend[job.id]&&!sendAskDone()){
         askedSend[job.id]=true;
-        w.__uaplyAddToSend(job,function(sent){if(sent)quietApply(job,m,(w.__uaply&&w.__uaply.S.profile)||p,undo,S,save,retry);else quietApply(job,m,p,undo,S,save,retry)});
+        w.__uaplyAddToSend(job,function(sent,busy){
+          if(!busy){var r2=w.__uaplyReadiness?w.__uaplyReadiness():null;if(!(r2&&r2.min))sendAskStop()}
+          if(sent)quietApply(job,m,(w.__uaply&&w.__uaply.S.profile)||p,undo,S,save,retry);else quietApply(job,m,p,undo,S,save,retry)});
         return}
       mark("needs_profile");if(w.__uaplyBadge)w.__uaplyBadge();
       var told=false;try{told=w.sessionStorage.getItem("uaply.np")==="1"}catch(e){told=!!w.__uaplyNPTold}
