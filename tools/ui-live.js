@@ -186,8 +186,8 @@ async function main(api) {
         await typeIn(".sg-su [data-email] input", who); await typeIn(".sg-su .sg-fn input", "Uilive"); await typeIn(".sg-su .sg-ln input", "Tester");
         await typeIn(".sg-su .sg-pw input", pw); await click(".sg-su .sg-ag"); await click(".sg-su [type=submit]");
         const q1 = await waitFor(() => has(".sg-next"), 15000);
-        check(tag + "test-mode server: Create my account on the card (made-up details) reaches the two questions", !!q1, (await secText("#acctSec")).slice(0, 160));
-        for (let i = 0; i < 4 && (await has(".sg-next")); i++) { await click(".sg-next"); await sleep(600); }
+        check(tag + "test-mode server: Create my account on the card (made-up details) reaches the questions (resume first)", !!q1, (await secText("#acctSec")).slice(0, 160));
+        for (let i = 0; i < 6 && (await has(".sg-next")); i++) { await click(".sg-next"); await sleep(600); }   // resume (skipped), work, where, phone, the last screen
       } else if (EMAIL && PASSWORD) {
         await click(".sg-to-in"); await waitFor(() => has(".sg-si"), 8000);
         await typeIn(".sg-si [data-email] input", EMAIL); await typeIn(".sg-si .sg-pw input", PASSWORD); await click(".sg-si [type=submit]");
@@ -355,10 +355,10 @@ async function main(api) {
       check(label + "the code verifies the email", !!ok, (await secText("#acctSec")).slice(0, 120));
       if (!ok) { authOpen = false; return false; }
     }
-    for (let i = 0; i < 4 && (await waitFor(() => has(".sg-next"), 3000)); i++) { await click(".sg-next"); await sleep(700); }
+    for (let i = 0; i < 6 && (await waitFor(() => has(".sg-next"), 3000)); i++) { await click(".sg-next"); await sleep(700); }   // resume (skipped), work, where, phone, the last screen
     const lifted = await waitFor(() => ev("!" + F + ".body.classList.contains('sgGated')"), 20000);
     authOpen = false;
-    if (!check(label + "after the two questions the gate lifts: the app is on screen", !!lifted, (await secText("#acctSec")).slice(0, 160))) return false;
+    if (!check(label + "after the questions (resume skipped) the gate lifts: the app is on screen", !!lifted, (await secText("#acctSec")).slice(0, 160))) return false;
     await sleep(800); await agree();
     return true;
   }
