@@ -381,7 +381,12 @@ def _real_degree(p, d):
         before = p[:d.start()].rstrip()
         if re.search(r"\b[A-Z][A-Za-z]+$", before):        # a capitalized word right before it: a title ("Sales Associate")
             return False
-        return bool(re.match(r"\s*(?:'?s\b)?\s*(?:in|degree|of)\b", p[d.end():], re.I)) or not before
+        after = p[d.end():]
+        if re.match(r"\s*(?:'?s\b)?\s*(?:in|degree|of)\b", after, re.I):
+            return True
+        # alone at the line's start only before punctuation or the end ("Associate, 2020"); a word after it makes a job title
+        # ("Associate Professor of Biology")
+        return not before and bool(re.match(r"\s*(?:[,:;(|\-–—]|$)", after))
     if "." not in g and " " not in g and g.lower() not in _DOTLESS_OK:
         # "AS", "BA", "MS", "BS": capitals ("as", "ma" are words), and then "in", "of", a comma or the line's end ("MS Office" is software)
         return g.isupper() and bool(re.match(r"\s*(?:(?:in|of)\b|,|$)", p[d.end():], re.I))
