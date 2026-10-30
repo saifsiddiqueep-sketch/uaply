@@ -174,7 +174,9 @@ def _docx(data):
         _fail("unreadable")
     if "word/document.xml" not in names:
         _fail("wrong_type")                                         # a zip, or an Excel or PowerPoint file
-    parts = sorted(n for n in names if re.match(r"^word/header\d*\.xml$", n)) + ["word/document.xml"]
+    # the page header and footer first: many templates keep the name, phone, email and city there
+    parts = (sorted(n for n in names if re.match(r"^word/header\d*\.xml$", n)) + sorted(n for n in names if re.match(r"^word/footer\d*\.xml$", n))
+             + ["word/document.xml"])
     text = []
     for n in parts:
         info = z.getinfo(n)
@@ -256,6 +258,18 @@ def _pdf(data):
     return text
 
 
+def _demark(s):
+    """A Markdown resume as plain lines: '# Name' -> 'Name', **bold** and *italic* -> the words, [text](url) -> 'text url',
+    `Python` `SQL` -> 'Python, SQL'. Bullets ('- ', '* ') stay bullets."""
+    s = re.sub(r"(?m)^[ \t]*#{1,6}[ \t]*", "", s)
+    s = re.sub(r"\*\*(.+?)\*\*|__(.+?)__", lambda m: m.group(1) or m.group(2), s)
+    s = re.sub(r"(?<![\w*])\*(?![\s*])([^*\n]+?)(?<!\s)\*(?![\w*])", r"\1", s)
+    s = re.sub(r"\[([^\]\n]+)\]\(([^)\s]+)\)", lambda m: m.group(1) if re.sub(r"^https?://(www\.)?", "", m.group(2)).rstrip("/") in m.group(1)
+               else "%s %s" % (m.group(1), m.group(2)), s)
+    s = re.sub(r"`[ \t]+`", "`, `", s)
+    return s.replace("`", "")
+
+
 def read_text(data, name="", ctype=""):
     """(kind, plain text) of a resume file. Raises ResumeError with a sentence for the person when it cannot be read."""
     if not isinstance(data, (bytes, bytearray)):
@@ -266,6 +280,8 @@ def read_text(data, name="", ctype=""):
         _fail("empty")
     kind = _kind(bytes(data), name or "", ctype or "")
     raw = _pdf(data) if kind == "pdf" else _docx(data) if kind == "docx" else _txt(data)
+    if kind == "txt" and ((name or "").lower().endswith((".md", ".markdown")) or len(re.findall(r"(?m)^#{1,3}[ \t]+\S", raw)) >= 2):
+        raw = _demark(raw)
     text = clean_text(raw)
     if len(re.sub(r"\W", "", text)) < 20:
         _fail("scanned" if kind == "pdf" else "unreadable")
@@ -279,17 +295,20 @@ def read_text(data, name="", ctype=""):
 SECTIONS = {
     "summary": ["summary", "professional summary", "career summary", "profile", "professional profile", "personal profile", "objective",
                 "career objective", "professional objective", "about me", "about", "personal statement", "summary of qualifications",
-                "career profile", "introduction", "overview"],
+                "career profile", "introduction", "overview", "executive summary", "executive profile"],
     "experience": ["experience", "work experience", "professional experience", "relevant experience", "employment", "employment history",
                    "work history", "career history", "professional background", "internships", "internship experience", "work",
-                   "experience and internships", "industry experience", "professional employment", "positions held", "job history"],
+                   "experience and internships", "industry experience", "professional employment", "positions held", "job history",
+                   "military experience", "military service", "civilian experience"],
     "education": ["education", "academic background", "academics", "education and training", "education & training", "academic history",
-                  "education and certifications", "education & certifications", "academic qualifications", "qualifications", "studies"],
+                  "education and certifications", "education & certifications", "academic qualifications", "qualifications", "studies",
+                  "educational qualifications", "educational qualification", "educational background", "academic details",
+                  "education details"],
     "skills": ["skills", "technical skills", "core skills", "key skills", "skills & tools", "skills and tools", "core competencies",
                "competencies", "technologies", "tools", "technical proficiencies", "skills and interests", "skills & interests",
                "skills & abilities", "skills and abilities", "areas of expertise", "expertise", "tech stack", "toolbox", "software",
                "technical expertise", "programming languages", "languages and tools", "skill set", "skillset", "strengths",
-               "skills & languages", "skills and languages"],
+               "skills & languages", "skills and languages", "top skills"],
     "projects": ["projects", "selected projects", "academic projects", "personal projects", "key projects", "project experience",
                  "side projects", "portfolio"],
     # a "Contact" box (often a sidebar or a table cell): the home city in it is where the person lives
@@ -302,7 +321,9 @@ SECTIONS = {
               "conferences", "presentations", "additional information", "additional", "personal details", "details",
               # a student's clubs and offices: "Vice President, Marketing Club 2024 - Present" is not their most recent job
               "leadership and activities", "activities and leadership", "leadership and involvement", "campus involvement",
-              "involvement", "leadership and service"],
+              "involvement", "leadership and service",
+              # the end of an Indian resume, a veteran's clearance, a European CV's personal block: never skills or a job
+              "declaration", "security clearance", "clearance", "personal information", "personal data"],
 }
 _HEAD = {}
 for _sec, _names in SECTIONS.items():
@@ -314,7 +335,7 @@ MONTHS = {"jan": 1, "january": 1, "feb": 2, "february": 2, "mar": 3, "march": 3,
           "november": 11, "dec": 12, "december": 12, "spring": 5, "summer": 8, "fall": 12, "autumn": 12, "winter": 12}
 _MON = r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|spring|summer|fall|autumn|winter)"
 _YEAR = r"(?:19[5-9]\d|20[0-4]\d)"
-_ONE = r"(?:%s\.?,?\s*'?%s|%s\.?\s*'\d\d|(?:0?[1-9]|1[0-2])\s*[/.]\s*%s|%s\s*[-/.]\s*(?:0[1-9]|1[0-2])(?!\d)|%s)" % (_MON, _YEAR, _MON, _YEAR, _YEAR, _YEAR)
+_ONE = r"(?:%s\.?,?\s*['’]?%s|%s\.?\s*['’]\d\d|(?:0?[1-9]|1[0-2])\s*[/.]\s*%s|%s\s*[-/.]\s*(?:0[1-9]|1[0-2])(?!\d)|%s)" % (_MON, _YEAR, _MON, _YEAR, _YEAR, _YEAR)
 _NOW = r"(?:present|current(?:ly)?|now|today|ongoing|till date|to date)"
 _SEP = r"\s*(?:-|–|—|―|−|~|to|until|thru|through)\s*"
 DATE_RANGE = re.compile(r"(?<![\w/])(%s)%s(%s|%s)(?![\w/])" % (_ONE, _SEP, _ONE, _NOW), re.I)
@@ -365,7 +386,7 @@ SCHOOL_WORDS = re.compile(r"\b(university|universit[éeàa]|universidad|college|
                           r"conservatory|seminary|community college|high school|iit|mit|ucla|nyu|usc|cuny|suny)\b", re.I)
 _DW = r"(?: of (?!in\b)[a-z]+(?: (?!in\b|and\b)[a-z]+)?)?"
 DEGREE = re.compile(r"\b(bachelor(?:'?s)?" + _DW + r"|master(?:'?s)?" + _DW + r"|associate(?:'?s)?" + _DW + r"|"
-                    r"doctor(?:ate)?(?: of [a-z]+)?|ph\.?\s?d\.?|m\.?b\.?a\.?|b\.?\s?s\.?c?\.?|b\.?\s?a\.?|m\.?\s?s\.?c?\.?|m\.?\s?a\.?|b\.?\s?eng\.?|m\.?\s?eng\.?|"
+                    r"doctor(?:ate)?(?: of [a-z]+)?|ph\.?\s?d\.?|m\.?b\.?a\.?|[mb]\.\s?ed\.|b\.?\s?s\.?c?\.?|b\.?\s?a\.?|m\.?\s?s\.?c?\.?|m\.?\s?a\.?|b\.?\s?eng\.?|m\.?\s?eng\.?|"
                     r"b\.?\s?tech\.?|m\.?\s?tech\.?|b\.?\s?b\.?\s?a\.?|b\.?\s?f\.?\s?a\.?|a\.?\s?a\.?s?\.?|a\.?\s?s\.?|bsc|msc|beng|meng|btech|mtech|bba|bfa|"
                     r"high school diploma|diploma|certificate|ged)(?![a-z])", re.I)
 
@@ -454,9 +475,22 @@ def _unspace(s):
     return s
 
 
+def _is_symbol(ch):
+    """An icon character: an emoji, a check box, a small square (Unicode 'other symbol'), or the invisible emoji joiners after one."""
+    return unicodedata.category(ch) == "So" or ch in "️︎‍"
+
+
+def _unsymbol(s):
+    """'💼 EXPERIENCE' -> 'EXPERIENCE': the icons some templates put before a heading."""
+    i = 0
+    while i < len(s) and (_is_symbol(s[i]) or s[i].isspace()):
+        i += 1
+    return s[i:]
+
+
 def heading(line):
     """(section, rest of the line) when the line is a section heading, else None. 'Skills: Python, SQL' gives ('skills', 'Python, SQL')."""
-    s = _unspace(_plain(line).strip(" :|#=_*"))
+    s = _unspace(_unsymbol(_plain(line)).strip(" :|#=_*"))
     if not s:
         return None
     key = re.sub(r"\s+", " ", s.lower().replace("&", " & ")).strip()
@@ -499,7 +533,7 @@ def _ym(text):
     t = text.strip().lower().rstrip(".")
     if re.fullmatch(_NOW, t, re.I):
         return "present"
-    m = re.match(r"^(%s)\.?,?\s*'?(\d{2,4})$" % _MON, t, re.I)
+    m = re.match(r"^(%s)\.?,?\s*['’]?(\d{2,4})$" % _MON, t, re.I)
     if m:
         y = int(m.group(2))
         y = y + 2000 if y < 50 else y + 1900 if y < 100 else y
@@ -553,14 +587,22 @@ _NOT_NAME = {"resume", "curriculum", "vitae", "cv", "contact", "page", "profile"
              "education", "experience", "skills", "the", "and", "of", "for", "at", "in", "university", "college", "street", "avenue"}
 
 
+_NAME_PARTICLES = {"de", "la", "del", "della", "der", "den", "van", "von", "da", "das", "do", "dos", "du", "di", "le", "bin", "binti", "al", "el", "y", "ter"}
+# a company's or a school's word is never part of a person's name ("Statistics Example Biotech LLC" read across two columns)
+_NOT_NAME_ORG = {"inc", "llc", "ltd", "corp", "corporation", "gmbh", "plc", "technologies", "solutions", "systems", "holdings", "industries",
+                 "enterprises", "institute", "hospital", "school", "academy", "department"}
+
+
 def _name_like(s):
     s = re.sub(r"\s+", " ", s).strip(" ,|·•")
     if not 3 <= len(s) <= 60 or any(ch.isdigit() for ch in s) or "@" in s or "/" in s or ":" in s:
         return ""
     words = s.split(" ")
-    if not 2 <= len(words) <= 4:
+    # "Ana Lucía de la Cruz", "Ludwig van der Berg": up to four words besides the small linking words
+    core = [w for w in words if w not in _NAME_PARTICLES]
+    if not 2 <= len(words) <= 6 or not 2 <= len(core) <= 4 or words[0] in _NAME_PARTICLES or words[-1] in _NAME_PARTICLES:
         return ""
-    if any(w.lower().strip(".,") in _NOT_NAME for w in words):
+    if any(w.lower().strip(".,") in _NOT_NAME or w.lower().strip(".,") in _NOT_NAME_ORG for w in words):
         return ""
     if any(w.lower().strip(".,") in TITLE_WORDS for w in words):
         return ""
@@ -568,6 +610,46 @@ def _name_like(s):
     if all(_NAME_WORD.match(w) for w in cased.split(" ")) and not heading(s):
         return cased
     return ""
+
+
+def _name_from_email(lines, order, local):
+    """A name the person wrote whose letters spell the email's user part exactly: "CONTACT JORDAN PIKE" with jordan.pike@...,
+    "SARAH" over "CONNOLLY" with sarah.connolly@..., or a one-word name on the first line that starts the address ("Arjun", arjun.dev@)."""
+    if len(local) < 4:
+        return None
+    letters = lambda ws: re.sub(r"[^a-z]", "", "".join(ws).lower())
+    word = re.compile(r"^[A-Za-zÀ-ɏḀ-ỿ][A-Za-zÀ-ɏḀ-ỿ'’\-]*$")
+    seen = [i for i in order[:40] if lines[i].strip()]
+    for k, i in enumerate(seen):
+        ws = _plain(lines[i]).split()
+        for a in range(len(ws)):
+            for b in range(a + 2, min(len(ws), a + 4) + 1):
+                part = ws[a:b]
+                if all(word.match(w) for w in part) and (letters(part) == local or letters(part[::-1]) == local):
+                    name = _smart_case(" ".join(part))
+                    if not heading(name) and not any(w.lower() in _NOT_NAME or w.lower() in TITLE_WORDS for w in part):
+                        return name, lines[i]
+        # a name set in large capitals one word per line
+        if k + 1 < len(seen) and len(ws) == 1 and len(_plain(lines[seen[k + 1]]).split()) == 1:
+            part = [ws[0], _plain(lines[seen[k + 1]])]
+            if all(word.match(w) for w in part) and letters(part) == local:
+                return _smart_case(" ".join(part)), lines[i]
+    if seen:
+        ws = _plain(lines[seen[0]]).split()
+        if len(ws) == 1 and word.match(ws[0]) and ws[0][:1].isupper() and len(ws[0]) >= 4 and local.startswith(ws[0].lower()) \
+                and ws[0].lower() not in _NOT_NAME and ws[0].lower() not in TITLE_WORDS and not heading(ws[0]):
+            return _smart_case(ws[0]), lines[seen[0]]
+    return None
+
+
+def _just_place(s):
+    """'Manchester, United Kingdom' or 'Toronto, Canada' or 'Denver, Colorado, United States': a place, not a job title."""
+    s = s.strip(" |,")
+    for rx in (LOC_US, LOC_US_NAME, LOC_INTL):
+        m = rx.match(s)
+        if m and (not s[m.end():].strip(" ,.") or s[m.end():].strip(" ,.") in COUNTRIES + ["United States", "USA", "US"]):
+            return True
+    return False
 
 
 def _contact_line(s):
@@ -585,6 +667,8 @@ def _strip_dates(s):
     s = DATE_RANGE.sub(" ", s)
     s = re.sub(r"\(?\s*(?:expected|anticipated|exp\.?|graduat(?:ed|ing|ion)|class of)\s*:?\s*%s\s*\)?" % _ONE, " ", s, flags=re.I)
     s = DATE_ONE.sub(" ", s)
+    # LinkedIn's "(2 years 8 months)" after the dates
+    s = re.sub(r"\(?\s*\d{1,2}\s+(?:years?|yrs?|months?|mos?)(?:\s+\d{1,2}\s+(?:months?|mos?))?\s*\)?", " ", s, flags=re.I)
     return _trim(s)
 
 
@@ -630,15 +714,35 @@ def _skills(lines, secs, inline):
         found.append((name, conf, line))
 
     idx = secs.get("skills", [])
+    sep = r"\s*(?:,|;|\||•|·|/(?!\w*\b(?:IP|CD)\b)|\s{2,}|\t| and )\s*"
+    bodies = {}
     for i in idx:
         ln = inline.get(i, lines[i])
-        body = _plain(ln)
+        # the spaces between skills set in columns ("Opera PMS   Customer Service") are kept; an icon or a small square between
+        # skills ("☑ Zendesk ☑ Salesforce", "SolidWorks ▪ MATLAB") separates them like a comma
+        body = _BULLET.sub("", "".join(" | " if _is_symbol(ch) else ch for ch in ln)).strip(" |")
         if re.match(r"^[A-Za-z][A-Za-z &/]{1,30}:\s", body):              # "Languages: Python, Java" -> the list after the label
             body = body.split(":", 1)[1]
         # "Microsoft Excel (pivot tables, VLOOKUP), SQL (basic)": the note in brackets is about the skill before it, and its commas
         # must not split it into "Microsoft Excel (pivot tables" and "VLOOKUP"
-        body = re.sub(r"\s*\([^()]*\)", "", body)
-        for part in re.split(r"\s*(?:,|;|\||•|·|/(?!\w*\b(?:IP|CD)\b)|\s{2,}|\t| and )\s*", body):
+        body = re.sub(r"\s*\([^()]*\)", "", body).strip()
+        if re.match(r"^references?\b", body, re.I) or (not re.search(sep, body) and len(body.split()) >= 3 and re.search(r"[.!?]$", body)):
+            continue                                                    # "References available on request." is a sentence, not a skill
+        bodies[i] = body
+    # a grid of skills drawn in columns of a PDF comes out as lines of words with single spaces ("Gait Training Therapeutic Exercise
+    # Patient Education"): where the skills are cannot be told, so such lines give only the skills of the known list found in them
+    grid = [i for i, b in bodies.items() if not re.search(sep, b) and len(b.split()) >= 3]
+    if len(grid) < 2:
+        grid = []
+    for i in grid:
+        for s in SKILLS:
+            if re.search(r"(?<![\w+#.])" + re.escape(s) + r"(?![\w+#])", bodies[i], re.I if len(s) > 3 else 0):
+                add(s, "medium", lines[i])
+    for i in idx:
+        if i not in bodies or i in grid:
+            continue
+        body = bodies[i]
+        for part in re.split(sep, body):
             part = part.strip(" .()[]-–")
             if not part or len(part) > 40 or len(part.split()) > 4 or re.search(r"\d{4}", part):
                 continue
@@ -707,10 +811,21 @@ def _education(lines, secs, inline):
         else:
             d = next((x for x in DEGREE.finditer(p) if _real_degree(p, x)), None)
             if d:
-                tail = p[d.end():]
-                m = re.match(r"^\.?\s*(?:,|in|of|:|-|–)?\s*(?:in\s+)?([A-Z][A-Za-z&' -]{2,60}?)(?=\s*(?:,|\||;|\(|·|•|\s[-–—]\s|\s{2,}|minor|gpa|$|%s|%s))" % (_MON, _YEAR), tail)
+                tail = re.sub(r"^\s*[-–]\s*[A-Z][A-Za-z.]{1,6}(?=\s*,)", "", p[d.end():])    # LinkedIn: "Bachelor of Arts - BA, Psychology"
+                look = r"(?=\s*(?:,|\||;|\(|·|•|\s[-–—]\s|\s{2,}|minor|gpa|$|%s|%s))" % (_MON, _YEAR)
+                # "in" and "of" in any case: "BACHELOR OF SCIENCE IN NURSING"
+                m = re.match(r"^\.?\s*(?:,|(?i:in|of)\b|:|-|–)?\s*(?:(?i:in)\s+)?([A-Z][A-Za-z&' -]{2,60}?)" + look, tail)
                 if m and not SCHOOL_WORDS.search(m.group(1)) and not re.fullmatch(_MON, m.group(1).strip(), re.I):   # "May" of "May 2011" is not a major
                     major = m.group(1)
+                    if re.fullmatch(r"(?:applied |fine )?(?:arts|sciences?)", major.strip(), re.I):
+                        # "Associate in Applied Science, Logistics Management": the kind of degree, then the field; "Associate in Arts, 2014"
+                        # names no field
+                        rest = tail[m.end(1):]
+                        m2 = re.match(r"^\s*(?:,|(?i:in)\b)\s*(?:(?i:in)\s+)?([A-Z][A-Za-z&' -]{2,60}?)" + look, rest)
+                        f2 = m2.group(1).strip() if m2 else ""
+                        major = f2 if (f2 and not SCHOOL_WORDS.search(f2) and not re.fullmatch(_MON, f2, re.I)
+                                       and not re.search(r"\b(?:laude|honou?rs?|distinction|class|minor)\b", f2, re.I)
+                                       and not (LOC_US.match(rest.lstrip(" ,")) or LOC_US_NAME.match(rest.lstrip(" ,")) or LOC_INTL.match(rest.lstrip(" ,")))) else ""
                 elif d.group(0).lower().startswith(("bachelor of", "master of", "associate of", "doctor of")):
                     sub = re.sub(r"^(bachelor|master|associate|doctor)(?:'?s)? of ", "", d.group(0), flags=re.I)
                     # "Master of Business Administration" names its field (Business Administration, as written); "of Science" alone does not
@@ -761,6 +876,15 @@ def _split_header(s):
     return [p.strip(" ,.;:") for p in re.split(r"\s+[|•·@]\s+|\s{2,}|\s[-–—]\s|,\s+|\s+at\s+|\t", s) if p.strip(" ,.;:")]
 
 
+def _sentence_end(s):
+    """A line ending a sentence, not a name ending in an abbreviation: "Example Transit Data Inc." or "Example Co." is a header."""
+    return bool(re.search(r"[.!?]$", s)) and not re.search(r"(?i)\b(?:inc|ltd|co|corp|llc|l\.l\.c|jr|sr|st|plc|pvt)\.$", s)
+
+
+_BREAK = re.compile(r"\b(?:career break|sabbatical|caregiv\w*|parental leave|maternity leave|paternity leave|family leave|personal leave|"
+                    r"medical leave|gap year|employment gap)\b", re.I)
+
+
 def _experience(lines, secs, inline):
     idx = secs.get("experience", [])
     if not idx:
@@ -783,13 +907,13 @@ def _experience(lines, secs, inline):
         below = [j for j in idx[pos + 1:pos + 3]]
         for j in reversed(above):
             t = lines[j]
-            if not t.strip() or _is_bullet(t) or DATE_RANGE.search(t) or len(_plain(t)) > 90 or re.search(r"[.!?]$", _plain(t)):
+            if not t.strip() or _is_bullet(t) or DATE_RANGE.search(t) or len(_plain(t)) > 90 or _sentence_end(_plain(t)):
                 break
             header.insert(0, (_strip_location(_plain(t)), t))
         if len(header) < 2:
             for j in below:
                 t = lines[j]
-                if not t.strip() or _is_bullet(t) or DATE_RANGE.search(t) or len(_plain(t)) > 90 or re.search(r"[.!?]$", _plain(t)):
+                if not t.strip() or _is_bullet(t) or DATE_RANGE.search(t) or len(_plain(t)) > 90 or _sentence_end(_plain(t)):
                     break
                 header.append((_strip_location(_plain(t)), t))
                 if len(header) >= 2:
@@ -797,7 +921,9 @@ def _experience(lines, secs, inline):
         entries.append({"start": start, "end": end, "header": [h for h in header if h[0]], "date_line": lines[i]})
     if not entries:
         return {}
-    best = max(enumerate(entries), key=lambda e: (_sortkey(e[1]["end"]), _sortkey(e[1]["start"]), -e[0]))[1]
+    # a gap written as an entry ("Career Break", "Sabbatical", "Full-time caregiver") is not a job: the newest real job is the one before it
+    jobs = [e for e in entries if not any(_BREAK.search(h[0]) for h in e["header"])] or entries
+    best = max(enumerate(jobs), key=lambda e: (_sortkey(e[1]["end"]), _sortkey(e[1]["start"]), -e[0]))[1]
     out = {"job_start": _field(_fmt(best["start"]), "high", best["date_line"]),
            "job_end": _field(_fmt(best["end"]), "high", best["date_line"])}
     pieces = []
@@ -819,7 +945,9 @@ def _experience(lines, secs, inline):
     if title and is_title(title[0]) <= 0:
         title = None
     others = [x for x in pieces if title is None or x[0] != title[0]]
-    employer = max(others, key=lambda x: is_org(x[0]), default=None)
+    # equal company words: the part on a line of its own beats the rest of the title's line ("Registered Nurse, Emergency Department"
+    # over the line "Queen City Example Hospital")
+    employer = max(others, key=lambda x: (is_org(x[0]), bool(title) and x[1] != title[1]), default=None)
     sure = bool(title and employer and is_org(employer[0]) > 0)
     if employer and is_org(employer[0]) <= 0:
         employer = others[0]                                        # no company word: the first other part of the header
@@ -866,6 +994,13 @@ def extract(text):
     nonblank = [i for i, ln in enumerate(lines) if ln.strip()]
     top = [i for i in nonblank if i in set(secs.get("top", []))] or nonblank[:12]
     contact_order = top + [i for i in nonblank if i not in set(top)]
+    # a cover letter in front of the resume: the date, the company's address and "Dear ..." are not the person's headline or home
+    cut = None
+    dear = next((i for i in top if re.match(r"^dear\b", _plain(lines[i]), re.I)), None)
+    if dear is not None:
+        cut = next((i for i in top if i <= dear and (i == dear or re.match(r"^(?:%s)\.?\s+\d{1,2},?\s+\d{4}$" % _MON, _plain(lines[i]), re.I)
+                                                     or re.match(r"^(?:hiring manager|hiring team|human resources|attn\b|attention\b|re:|to whom)",
+                                                                 _plain(lines[i]), re.I))), dear)
     f = {}
 
     m = None
@@ -898,6 +1033,8 @@ def extract(text):
                     continue
                 if EMAIL.search(ln) and ("@" + host.split("/")[0]) in ln:
                     continue
+                if DEGREE.fullmatch(host) or host in ("asp.net", "vb.net", "ado.net", "socket.io", "chart.io", "next.js"):   # "B.Tech", "ASP.NET"
+                    continue
                 f["portfolio"] = _field("https://" + m.group(1).rstrip("/.)"), "medium", ln)
                 break
             if "portfolio" in f:
@@ -924,7 +1061,10 @@ def extract(text):
                 agree = bool(local) and sum(1 for p in parts if len(p) > 2 and p in local) >= 1
                 cands.append((rank, i, cand, agree))
         pick = next((c for c in cands if c[3]), cands[0] if cands else None)
-        if pick:
+        spelled = _name_from_email(lines, contact_order, local) if not (pick and pick[3]) else None
+        if spelled:
+            f["name"] = _field(spelled[0], "medium", spelled[1])
+        elif pick:
             rank, i, cand, agree = pick
             f["name"] = _field(cand, "high" if rank == 0 or agree else "medium" if rank < 8 else "low", lines[i])
 
@@ -935,12 +1075,12 @@ def extract(text):
         top_set = set(secs.get("top", []))
         for i in cands:
             ln = _plain(lines[i])
-            if top_set and i not in top_set:                         # a job line under Experience is not a headline
+            if top_set and i not in top_set or cut is not None and i >= cut:   # a job line under Experience, or a letter, is not a headline
                 break
             if not ln or heading(ln) or len(ln) > 120 or DATE_RANGE.search(ln):
                 continue
             first = re.split(r"\s+[|•·]\s+", ln)[0] if _contact_line(ln) else ln
-            if _contact_line(first) or LOC_US.fullmatch(first.strip()) or re.search(r"[.!?]$", first):
+            if _contact_line(first) or LOC_US.fullmatch(first.strip()) or re.search(r"[.!?]$", first) or _just_place(first):
                 continue
             if _has_word(first, TITLE_WORDS) or "|" in ln:
                 f["headline"] = _field(first.strip(" |"), "medium", lines[i])
@@ -963,6 +1103,8 @@ def extract(text):
             f["summary"] = _field(txt, "high", sm[0])
     else:
         for i in secs.get("top", []):
+            if cut is not None and i >= cut:
+                break
             ln = _plain(lines[i])
             if len(ln) >= 100 and len(ln.split()) >= 15 and not _contact_line(ln):
                 f["summary"] = _field(ln[:600], "low", lines[i])
@@ -975,11 +1117,17 @@ def extract(text):
         conf = "high" if any(c == "high" for _, c, _l in sk) else "medium"
         f["skills"] = _field([s for s, _c, _l in sk], conf, sk[0][2])
         f["skills"]["lines"] = list(dict.fromkeys(re.sub(r"\s+", " ", l).strip()[:200] for _s, _c, l in sk))[:6]
-    top_set = set(secs.get("top", []))
+    top_set = {i for i in secs.get("top", []) if cut is None or i < cut}
     contact_all = secs.get("contact", [])
     # a Contact section counts only near the top (a "Contact / References" block at the end lists other people), and never a reference's line
     contact_set = {i for i in contact_all if i < 40}
     near = [i for i in contact_order if i in top_set or i in contact_set] if (top_set or contact_all) else contact_order[:25]
+    # the lines just under the name (a LinkedIn PDF prints the sidebar first, then the name, headline and city)
+    if "name" in f:
+        body = set().union(*(set(secs.get(k, [])) for k in ("experience", "education", "skills", "projects", "summary")))
+        at = next((k for k, i in enumerate(contact_order) if lines[i] == f["name"]["line"]), None)
+        if at is not None:
+            near += [i for i in contact_order[at + 1:at + 4] if i not in body and i not in near and (cut is None or i < cut)]
     loc = _location(lines, [i for i in near if "reference" not in _plain(lines[i]).lower()])   # where the person lives, not a job's city
     if loc:
         f["location"] = loc

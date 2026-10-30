@@ -1,0 +1,15 @@
+PRIYANKA DESAI-ROSS
+Austin, TX 78704 | 512.555.0193 | priyanka.dr@example.com | linkedin.com/in/pdesaiross-example • github.com/pdr-example
+
+PROFESSIONAL EXPERIENCE
+Frontend Developer | Example Health Tech Inc. | Austin, TX | 08/2022 – Present
+* Rebuilt the patient portal in React and TypeScript
+* Cut page load time by 40%
+Web Developer | Lonestar Example Media | Remote | 01/2020 – 07/2022
+* Built WordPress sites for 30 clients
+
+EDUCATION
+B.S. Computer Science | University of Texas at Austin | 2019
+
+SKILLS
+JavaScript, TypeScript, React, Node.js, CSS, Accessibility, Jest
