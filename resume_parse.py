@@ -513,7 +513,8 @@ def _smart_case(s):
     return s
 
 
-_NAME_WORD = re.compile(r"^[A-ZÀ-ɏ][A-Za-zÀ-ɏ'’.\-]*$|^[a-zß-ɏ][a-zß-ɏ'’\-]+$")
+# Latin letters with accents, including Vietnamese ones (Nguyễn Thị Lan: U+1E00-U+1EFF)
+_NAME_WORD = re.compile(r"^[A-ZÀ-ɏḀ-ỿ][A-Za-zÀ-ɏḀ-ỿ'’.\-]*$|^[a-zß-ɏḀ-ỿ][a-zß-ɏḀ-ỿ'’\-]+$")
 _NOT_NAME = {"resume", "curriculum", "vitae", "cv", "contact", "page", "profile", "summary", "objective", "email", "phone", "address",
              "education", "experience", "skills", "the", "and", "of", "for", "at", "in", "university", "college", "street", "avenue"}
 
@@ -654,6 +655,10 @@ def _education(lines, secs, inline):
                 school_i = i
                 break
     near = [i for i in pool if school_i is None or abs(i - school_i) <= 4] if pool else []
+    if school_i is not None:   # the next school's lines belong to that school: its major and dates are not this one's
+        nxt = next((i for i in near if i > school_i and SCHOOL_WORDS.search(_plain(lines[i])) and not DEGREE.match(_plain(lines[i]))), None)
+        if nxt is not None:
+            near = [i for i in near if i < nxt]
     for i in near or pool:
         p = at(i)
         major = ""
@@ -665,7 +670,7 @@ def _education(lines, secs, inline):
             if d:
                 tail = p[d.end():]
                 m = re.match(r"^\.?\s*(?:,|in|of|:|-|–)?\s*(?:in\s+)?([A-Z][A-Za-z&' -]{2,60}?)(?=\s*(?:,|\||;|\(|·|•|\s[-–—]\s|\s{2,}|minor|gpa|$|%s|%s))" % (_MON, _YEAR), tail)
-                if m and not SCHOOL_WORDS.search(m.group(1)):
+                if m and not SCHOOL_WORDS.search(m.group(1)) and not re.fullmatch(_MON, m.group(1).strip(), re.I):   # "May" of "May 2011" is not a major
                     major = m.group(1)
                 elif d.group(0).lower().startswith(("bachelor of", "master of", "associate of", "doctor of")):
                     sub = re.sub(r"^(bachelor|master|associate|doctor)(?:'?s)? of ", "", d.group(0), flags=re.I)
@@ -696,7 +701,7 @@ def _education(lines, secs, inline):
             grad = (_ym(m.group(1)), "medium", lines[i])
     if grad and grad[0] and grad[0] != "present":
         y, mo = grad[0]
-        out["grad"] = _field("%04d-%02d" % (y, mo or 5), grad[1] if mo else "low", grad[2])    # a year alone: May of that year, to be checked
+        out["grad"] = _field("%04d-%02d" % (y, mo) if mo else "%04d" % y, grad[1] if mo else "low", grad[2])   # a year alone stays a year: no month is made up
     for i in (pool if idx else range(len(lines))):
         m = GPA.search(lines[i])
         if m:
@@ -869,7 +874,10 @@ def extract(text):
         # the first likely line wins, unless a later one matches the email address (a two-column PDF often puts the sidebar first)
         local = re.sub(r"[^a-z]", "", f["email"]["value"].split("@")[0].lower()) if "email" in f else ""
         cands = []
+        skill_lines = set(secs.get("skills", []))
         for rank, i in enumerate(contact_order[:40]):
+            if i in skill_lines:                                         # "Customer Service" under SKILLS is not a name
+                continue
             cand = _name_like(re.split(r"\s+[|•·]\s+|\s{3,}", _plain(lines[i]))[0])
             if cand:
                 parts = [re.sub(r"[^a-z]", "", p.lower()) for p in re.split(r"[ \-]", cand)]
