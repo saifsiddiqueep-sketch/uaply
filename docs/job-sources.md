@@ -18,7 +18,7 @@ CareerOneStop 100 per search. USAJOBS keeps every job each search lists (every p
 
 ## Coverage
 
-* **Anywhere in the US:** 1,926 employer sources: 692 Greenhouse, 419 Ashby, 223 Lever, 184 SmartRecruiters and 98 Workable boards
+* **Anywhere in the US:** 2,076 employer sources: 840 Greenhouse, 419 Ashby, 225 Lever, 184 SmartRecruiters and 98 Workable boards
   (80 of them hand-picked in `SOURCES`, the rest from `job-boards.json`) and 310 employers' own careers sites (298 on Workday, 12 on
   iCIMS); remote jobs from Jobicy (15 industries), Himalayas (all, internships, part-time) and Remote OK; internships and co-ops from
   the Simplify / Pitt CSC lists. A remote job open to the US is shown to everyone; the distance filter never hides it (except "remote
@@ -56,6 +56,15 @@ names its sitemap (`https://<tenant>.wd5.myworkdayjobs.com/<Site>/siteMap.xml`);
 human check. Workday's JobPosting names a building as the place and marks every posting TELECOMMUTE, so the place is read from the
 page's own address (`/job/Newark-DE/...`) or the first "City, ST" of the description, and a job is remote only when it says so. A
 stopped run picks up where it was (`--resume`, saved every 300 probes).
+
+Greenhouse / Lever / Ashby sweep (October 30, 2026): board tokens taken from Common Crawl (2026 crawls 39, 34 and 30; 2026-43 and
+part of 2026-39 failed with 502/503/504) and the Wayback Machine (Ashby only; its Lever and Greenhouse queries timed out), minus the
+boards already listed: 5,574 Greenhouse, 27 Lever and 6,223 Ashby tokens found. 1,278 Greenhouse and 20 Lever boards were probed live
+(counted with the app's US rule, `jobs_api._us_ok`) before the sweep stopped at 400+ qualifying boards; the Ashby tokens are not probed
+yet. 460 boards had 5+ US jobs; the top 150 by US jobs were added (148 Greenhouse, 2 Lever: 11,506 US jobs, 1,814 in PA, NJ or DE),
+so the employer sources went from 1,926 to 2,076. Left out: repeated-ad boards (one title posted per place many times, such as
+BoxLunch, BlueSky Telepsych, EquipmentShare, Curaleaf, Apartment Life, Luna Physical Therapy), staffing (Axiom Talent Platform, Aya
+Healthcare) and names already listed under another token.
 
 ## Where a job is
 
