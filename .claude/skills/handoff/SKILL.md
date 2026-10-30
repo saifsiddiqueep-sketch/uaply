@@ -23,7 +23,7 @@ LOCKS HELD: (queue.py status) — release before leaving unless mid-merge
    (`python tools/lite/trello.py update <card#> --comment "<note>"`, or the Trello connector if you have it).
    If Trello isn't set up, also save it as `HANDOFF-<area>.md` in the repo root (gitignored, never committed — the
    repo is public) and tell the user to paste it to the other founder.
-3. Tell the user: "Next time in this area (either laptop): /clear, then: Read the latest comment on the <area> card
-   and nothing else. Confirm the next step in one line."
+3. Tell the user: "Next time in this area (either laptop): /clear, then /pickup <area word>" (e.g. /pickup feeds;
+   the words are in `.claude/skills/pickup/SKILL.md`).
 
 Never write secrets or user data into a handoff.
