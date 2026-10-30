@@ -16,7 +16,12 @@ import urllib.error
 import urllib.request
 import zipfile
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+try:                                                                   # resume names can be any language; a Windows pipe is cp1252
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except (AttributeError, ValueError):
+    pass
+
+HERE =os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8798                # another port can be given, so two test runs never collide
 FIX = os.path.join(HERE, "fixtures", "resumes")
