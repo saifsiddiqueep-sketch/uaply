@@ -174,7 +174,7 @@ body{padding-bottom:calc(12px + var(--safe-b))}
 #pane-track .ovsoon{display:flex;flex-direction:column;gap:6px;border:1px dashed var(--line);border-radius:12px;padding:10px 12px}#pane-track .ovsoon .btn{align-self:flex-start}
 #pane-track .ovempty{text-align:center;padding:24px 8px;display:flex;flex-direction:column;align-items:center;gap:10px}#pane-track .ovempty p{margin:0;color:var(--muted)}
 #pane-track .ovpassed{margin:0}
-#pane-track .stsel{display:flex;align-items:center;gap:6px;font-weight:600}#pane-track .stsel select{min-height:40px}
+#pane-track .stsel{display:flex;align-items:center;gap:6px;font-weight:600}#pane-track .stsel select{min-height:40px;-webkit-appearance:none;appearance:none;background-color:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:8px 34px 8px 14px;font:inherit;font-weight:600;cursor:pointer;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 19px) 50%,calc(100% - 14px) 50%;background-size:5px 5px;background-repeat:no-repeat}#pane-track .stsel select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}#pane-track .stsel option{background:var(--surface);color:var(--ink)}
 #paywall{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.45)}
 #paywall>div{background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:22px;max-width:400px;width:100%;box-shadow:var(--shadow)}
 /* Report this job: a quiet link at the end of the job card, and its box (the same look as the plan box above) */
