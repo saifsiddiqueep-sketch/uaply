@@ -831,12 +831,12 @@ class _host_slot:
         return False
 
 
-def _get(url, headers=None, as_text=False, opener=None):
+def _get(url, headers=None, as_text=False, opener=None, timeout=None):
     """One feed answer, parsed as JSON (or the plain text with as_text=True), refused past MAX_FEED_BYTES. opener: _cp_open for a careers
-    site (every hop a public https address), else urllib's own."""
+    site (every hop a public https address), else urllib's own. timeout: seconds one read may wait (FEED_TIMEOUT unless given)."""
     req = urllib.request.Request(url, headers=dict({"User-Agent": UA, "Accept": "text/plain" if as_text else "application/json"}, **(headers or {})))
     started, parts, size = time.time(), [], 0
-    with _host_slot(url), (opener or urllib.request.urlopen)(req, timeout=FEED_TIMEOUT) as r:
+    with _host_slot(url), (opener or urllib.request.urlopen)(req, timeout=timeout or FEED_TIMEOUT) as r:
         while True:                                     # in parts, so a feed that trickles is stopped at FEED_DEADLINE
             part = r.read(STREAM_CHUNK)
             if not part:
@@ -2478,7 +2478,7 @@ _links = {}                      # source -> {"at", "ok", "dead", "unknown", "de
 _link_thread = []
 
 
-def _link_alive(url):
+def _link_alive(url, timeout=15):
     """True: the page answers (a person can open it); False: it is gone (404/410, or the board's own "no longer open" page), or it is not
     a public page (an internal or metadata address, or a redirect to one: never opened or followed, _link_open); None: cannot tell
     (blocked by a bot check, rate-limited, a time-out): never counted against a source."""
@@ -2486,7 +2486,7 @@ def _link_alive(url):
         return False
     try:
         req = urllib.request.Request(url, headers={"User-Agent": LINK_UA, "Accept": "text/html,*/*"})
-        with _link_open(req, timeout=15) as r:
+        with _link_open(req, timeout=timeout) as r:
             final = r.geturl() or url
             body = r.read(20000).decode("utf-8", "replace").lower()
         if re.search(r"[?&]error=true\b", final) or "job not found" in body or "no longer accepting applications" in body or \
@@ -2508,16 +2508,28 @@ ATS_POSTING = {"greenhouse": "https://boards-api.greenhouse.io/v1/boards/%s/jobs
                "recruitee": "https://%s.recruitee.com/api/offers/%s"}       # (Recruitee: the careers site's one offer, by its slug)
 
 
-def job_alive(j):
+def _posting_url(kind, board, pid):
+    """Where job_alive asks about one posting (ATS_POSTING). Tests may point it at this computer with the same settings the application
+    senders use (UAPLY_ATS_BASE_GREENHOUSE, _LEVER, _SMARTRECRUITERS, _RECRUITEE; tools/mock-ats.py answers them): the same path on that
+    address (Recruitee: {base}/{company}/api/offers/{slug}, as ats_api.recruitee_url). Anything else in those settings is ignored."""
+    b, p = urllib.parse.quote(board, safe=""), urllib.parse.quote(pid, safe="")
+    url = ATS_POSTING[kind] % (b, p)
+    v = os.environ.get("UAPLY_ATS_BASE_" + kind.upper(), "")
+    if re.match(r"^http://(127\.0\.0\.1|localhost)(:\d+)?$", v):
+        return v + ("/" + b if kind == "recruitee" else "") + urllib.parse.urlsplit(url).path
+    return url
+
+
+def job_alive(j, timeout=None):
     """Whether a job's apply page is still there. A posting on Greenhouse, Lever or SmartRecruiters is asked of the hiring system's own
     public API (its job pages turn away anything that is not a browser, with a 403): found = alive, 404/410 = gone. Ashby and Workable
     have no single-posting address: a posting on their boards is alive while the board lists it (it was read at most a few hours ago).
-    Any other page is opened (_link_alive)."""
+    Any other page is opened (_link_alive). timeout: seconds one read may wait (a swipe right waits only a few: still_open)."""
     a = j.get("ats") if isinstance(j.get("ats"), dict) else None
     if a and a.get("kind") in ATS_POSTING and BOARD_TOKEN_RE.match(str(a.get("board") or "")):
         pid = str(a["id"]) if a.get("kind") != "smartrecruiters" else str(j.get("url", "")).rstrip("/").rsplit("/", 1)[-1]
         try:
-            _get(ATS_POSTING[a["kind"]] % (urllib.parse.quote(a["board"], safe=""), urllib.parse.quote(pid, safe="")))
+            _get(_posting_url(a["kind"], a["board"], pid), timeout=timeout)
             return True
         except urllib.error.HTTPError as e:
             return False if e.code in (404, 410) else None
@@ -2525,7 +2537,56 @@ def job_alive(j):
             return None
     if a and a.get("kind") in ("ashby", "workable"):
         return True
-    return _link_alive(str(j.get("url") or ""))
+    return _link_alive(str(j.get("url") or ""), timeout) if timeout else _link_alive(str(j.get("url") or ""))
+
+
+OPEN_CHECK_WAIT = 3              # seconds a swipe right waits to learn whether a feed job is still open (past it: carried on as "cannot tell")
+OPEN_CHECK_KEEP = 600            # seconds one answer about a job is reused (another swipe on it, by anyone, asks nothing)
+OPEN_CHECK_KINDS = BOARD_KINDS + ("careerpage",)    # the employers' own boards and careers sites (the other feeds are lists of lists)
+open_check_on = False            # serve.py turns it on for a hosted server, like the background link check (UAPLY_OPEN_CHECK=0 keeps it off)
+_open_seen = {}                  # job id -> (when, True / False / None): the last answers of still_open
+_open_pool = ThreadPoolExecutor(max_workers=4)
+
+
+def still_open(job_id):
+    """Asked when someone swipes right on a feed job (uaply_api.submit, before anything is sent or handed off): whether the employer's
+    posting is still open, by job_alive, waiting at most OPEN_CHECK_WAIT seconds. False: the posting is gone (closed or deleted), and the
+    job is hidden from everyone's job list at once, the way the background check hides a dead link (its source's dead_ids, check_links).
+    True or None (cannot tell: a bot check, a time-out; and always for a partner employer's job, one whose employer connected its hiring
+    system, a job from any other feed, or with the check switched off): the swipe carries on as before. Each answer is kept for
+    OPEN_CHECK_KEEP seconds, so repeated swipes on one job do not ask the employer's system again."""
+    if not open_check_on or os.environ.get("UAPLY_OPEN_CHECK", "") == "0":
+        return None
+    now = time.time()
+    with _lock:
+        seen = _open_seen.get(job_id)
+        if seen and now - seen[0] < OPEN_CHECK_KEEP:
+            return seen[1]
+        entries = list(_cache.items())
+    if any(p["id"] == job_id for p in partner_jobs()):
+        return None
+    src = j = None
+    for s_, c in entries:
+        if isinstance(s_, tuple) and s_[0] in OPEN_CHECK_KINDS and _has(c, job_id):
+            src, j = s_, next((x for x in c["jobs"] if x.get("id") == job_id), None)
+            break
+    if not j or _connected(j, ats_connections()):
+        return None
+    try:
+        alive = _open_pool.submit(job_alive, j, OPEN_CHECK_WAIT).result(timeout=OPEN_CHECK_WAIT + 1)
+    except Exception:                              # (a time-out waiting for it included: the read itself ends soon after on its own)
+        alive = None
+    with _lock:
+        if len(_open_seen) > 20000:
+            _open_seen.clear()
+        _open_seen[job_id] = (time.time(), alive)
+        if alive is False:
+            rec = _links.setdefault(src, {"at": 0, "ok": 0, "dead": 0, "unknown": 0, "dead_ids": set(), "checked_ids": set(), "off": False})
+            rec["dead_ids"].add(job_id)
+            _version[0] += 1
+    if alive is False:
+        sys.stderr.write("[uaply] a swiped job had closed: %s job %s hidden\n" % ("/".join(src[:2]), job_id))
+    return alive
 
 
 def check_links(src, sample=LINK_SAMPLE):

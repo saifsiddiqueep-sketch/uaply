@@ -84,6 +84,7 @@ run "applications go straight into an employer's Ashby" python tools/test-ats-as
 run "applications go straight into an employer's SmartRecruiters" python tools/test-ats-smartrecruiters.py
 run "applications go straight into an employer's Workable" python tools/test-ats-workable.py
 run "swipe right to apply instantly, end to end" python tools/test-ats-flow.py
+run "a swipe right on a job the employer closed sends nothing and takes it off the list; cannot tell goes on as before" python tools/test-still-open.py
 run "paid plans: Stripe checkout, signed webhook, limits" python tools/test-billing.py
 run "the public address (UAPLY_PUBLIC_URL): 301 to uaply.net for pages only, never /api/ or /healthz, canonical links, sitemap, plans hidden" python tools/test-public-url.py 18820
 run "Stripe Checkout form filler of ui-live.js: card fields inside another site's iframe, Save my info, a decline, test cards only" node tools/cdp.js tools/ui-stripe-form.js

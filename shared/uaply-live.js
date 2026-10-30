@@ -83,7 +83,7 @@ function patch(s){
   var extra=cached.length?","+JSON.stringify(cached).slice(1,-1).replace(/<\//g,"<\\/"):"";
   s=once(s,'regional cookbooks."}','regional cookbooks."}'+extra);
   s=once(s,"var JOB_BY_ID={};JOBS.forEach(function(j){JOB_BY_ID[j.id]=j});",
-    "var JOB_BY_ID={};JOBS.forEach(function(j){JOB_BY_ID[j.id]=j});\nwindow.__uaplyJobs={add:function(list){var n=0;list.forEach(function(j){if(!JOB_BY_ID[j.id]){JOBS.push(j);JOB_BY_ID[j.id]=j;n++}else{var o=JOB_BY_ID[j.id];if(o.stub){for(var f in j)o[f]=j[f];delete o.stub;return}if(j.posted)o.posted=j.posted;if(j.perks)o.perks=j.perks;if(j.type)o.type=j.type;if(j.jobType)o.jobType=j.jobType;o.comm=!!j.comm}});renderAll();return n}};\n"+
+    "var JOB_BY_ID={};JOBS.forEach(function(j){JOB_BY_ID[j.id]=j});\nwindow.__uaplyJobs={add:function(list){var n=0;list.forEach(function(j){if(!JOB_BY_ID[j.id]){JOBS.push(j);JOB_BY_ID[j.id]=j;n++}else{var o=JOB_BY_ID[j.id];if(o.stub){for(var f in j)o[f]=j[f];delete o.stub;return}if(j.posted)o.posted=j.posted;if(j.perks)o.perks=j.perks;if(j.type)o.type=j.type;if(j.jobType)o.jobType=j.jobType;o.comm=!!j.comm}});renderAll();return n},drop:function(id){for(var i=JOBS.length-1;i>=0;i--)if(JOBS[i].id===id)JOBS.splice(i,1);delete JOB_BY_ID[id];renderAll()}};\n"+
     /* Links open as real anchor clicks (a user gesture), which popup blockers accept; window.open can be refused silently. */
     "window.__uaplyOpen=function(u){if(!/^https:\\/\\//.test(u||\"\"))return;var a=document.createElement(\"a\");a.href=u;a.target=\"_blank\";a.rel=\"noopener noreferrer\";document.body.appendChild(a);a.click();a.remove()};");
   /* a swipe on a real posting is kept when the page starts, even before the job list arrives (or after the job left the feed): the start-up
@@ -900,6 +900,8 @@ function kitApply(w,host){
           /* nothing was sent (a limit, a missing detail, an unverified email): the job goes back to the deck rather than sitting in Applied.
              A waiting application sent again later stays in Applied, marked not sent, with Try again. */
           if(retry){if(j.code!=="server")mark("failed");return}          /* a server hiccup keeps it waiting for the next try */
+          /* the employer closed the posting since the list was read (card 95): nothing was sent, and the job leaves the deck for good */
+          if(j.code==="closed"){revert();if(w.__uaplyJobs&&w.__uaplyJobs.drop)w.__uaplyJobs.drop(job.id);toast(String(j.error||"This job has closed, so nothing was sent."),"","",9000);return}
           if(j.code==="limit")w.__uaplyLimitHit=new Date().toDateString();   /* the deck says today's limit is reached */
           revert();
           var act=j.code==="limit"?["See plans",function(){var b=d.getElementById("nb-prof");if(b){b.click();var it=d.querySelector('.nwrap[data-k=prof] .nitem[data-v=plan]');if(it)it.click()}}]

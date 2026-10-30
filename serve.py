@@ -167,6 +167,8 @@ if api:
     billing_api.PUBLIC = PUBLIC                                     # Plan and billing: buy buttons on a public server only when Stripe keys are set
     uaply_api.hide_errors = jobs_api.hide_errors = PUBLIC       # a hosted server never shows visitors raw error text; the owner's own computer still does
     jobs_api.link_check_on = PUBLIC          # a hosted server checks every source's apply links in the background (UAPLY_LINK_CHECK=0: off)
+    # ...and asks whether a feed job is still open when someone swipes right on it (jobs_api.still_open; UAPLY_OPEN_CHECK=0: off, =1: on here too)
+    jobs_api.open_check_on = PUBLIC or os.environ.get("UAPLY_OPEN_CHECK", "") == "1"
     uaply_api.PUBLIC = PUBLIC                                   # the live site never labels a real hand-off email [TEST]
     jobs_api.RECRUITEE_SUBMIT[0] = uaply_api.recruitee_on()     # Recruitee postings say Ready while the owner's switch is on
     import connect_api

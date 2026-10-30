@@ -1117,6 +1117,11 @@ def submit(p, user=None, site=""):
 
     if known.get("emp") and known.get("closed"):
         return 410, {"error": "%s is not taking applications for this job right now." % known.get("co", "This employer")}
+    # a feed job whose posting the employer has closed or deleted since the list was read (card 95): asked of the employer's own system
+    # at the swipe (jobs_api.still_open, a few seconds at most, on a hosted server). Nothing is sent, handed off or recorded, and the job
+    # is taken off everyone's list. Cannot tell (a bot check, a time-out): the swipe goes on as before. A plan is not a swipe: not asked
+    if not plan_only and not known.get("emp") and jobs_api.still_open(job["id"]) is False:
+        return 410, {"code": "closed", "error": "This job has closed, so nothing was sent. We've taken it off your list."}
     # Never email an address the browser sends: only the recruiter address this server found in the job feed itself.
     claimed = job["contact"] if EMAIL_RE.match(job["contact"] or "") else ""
     contact = claimed if claimed and claimed.lower() == jobs_api.known_contact(job["id"]).lower() else ""
