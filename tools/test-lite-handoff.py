@@ -99,6 +99,13 @@ w, u = handoff_wip.one(work, "Feeds")
 check(w is None and u and "over 5 MB" in u, "oversized file: blocked")
 os.remove(os.path.join(work, "big.txt"))
 check(handoff_wip.check_text("img/logo.png", b"\x89PNG\0\0") is None, "image binary: allowed")
+# job-boards.json: a public board slug under "token" is fine; a real-looking key there is still caught
+slug = b'[\n  {\n    "ats": "workday",\n    "token": "geisinger-geisingerexternal",\n    "name": "Geisinger"\n  }\n]\n'
+check(handoff_wip.check_text("job-boards.json", slug) is None, "board slug in job-boards.json: allowed")
+check(handoff_wip.check_text("other.json", slug) is not None, "same slug line in another file: still blocked")
+for bad in (b'  "API_KEY": "' + b"q7" * 10 + b'",\n', b'  "token": "abc+def/ghijkl0123",\n',
+            b'  "token": "sk-proj-' + b"A1" * 12 + b'",\n'):
+    check(handoff_wip.check_text("job-boards.json", bad) is not None, "real key in job-boards.json: blocked")
 
 # a key committed then deleted in a later local commit → still blocked (the push would publish the old version)
 write(os.path.join(work, "k.py"), "K = 'sk_live_" + "Z9y8X7w6V5u4" + "'\n")

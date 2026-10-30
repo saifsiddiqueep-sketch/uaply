@@ -43,6 +43,9 @@ SECRETS = [(re.compile(r"\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}"), "an AI provid
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+\.)+[A-Za-z]{2,}")
 OK_MAIL = re.compile(r"@(example\.(com|org|net)|uaply\.(net|com)|test|localhost|users\.noreply\.github\.com)$", re.I)
 AUDIT_SECRET = ("looks like it contains", "holds private settings")
+# job-boards.json lists public careers-board slugs under a lowercase "token" key; only those exact lines skip the
+# KEY=value check (every other pattern still sees them, and any other key or a value with +/= is still caught)
+BOARD_SLUG = re.compile(r'(?m)^\s*"token":\s*"[A-Za-z0-9._-]+",?\s*$')
 
 
 def run(args, cwd, timeout=120, env=None, binary=False):
@@ -70,7 +73,7 @@ def check_text(path, data):
         return None if BINARY_OK.search(path) else f"{path} (binary file — can't check it for keys or user data)"
     text = data.decode("utf-8", "replace")
     for rx, what in SECRETS:
-        if rx.search(text):
+        if rx.search(BOARD_SLUG.sub("", text) if path == "job-boards.json" and what == "a KEY=value secret line" else text):
             return f"{path} (looks like {what})"
     mails = {m.group(0).lower() for m in EMAIL.finditer(text) if not OK_MAIL.search(m.group(0))}
     if len(mails) >= 5:
