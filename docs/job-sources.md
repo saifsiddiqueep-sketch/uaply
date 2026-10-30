@@ -18,7 +18,7 @@ CareerOneStop 100 per search. USAJOBS keeps every job each search lists (every p
 
 ## Coverage
 
-* **Anywhere in the US:** 2,573 employer sources: 1,181 Greenhouse, 570 Ashby, 230 Lever, 184 SmartRecruiters and 98 Workable boards
+* **Anywhere in the US:** 2,558 employer sources: 1,171 Greenhouse, 565 Ashby, 230 Lever, 184 SmartRecruiters and 98 Workable boards
   (80 of them hand-picked in `SOURCES`, the rest from `job-boards.json`) and 310 employers' own careers sites (298 on Workday, 12 on
   iCIMS); remote jobs from Jobicy (15 industries), Himalayas (all, internships, part-time) and Remote OK; internships and co-ops from
   the Simplify / Pitt CSC lists. A remote job open to the US is shown to everyone; the distance filter never hides it (except "remote
@@ -68,10 +68,12 @@ Healthcare) and names already listed under another token.
 
 Round 2 (October 30, 2026), stage 1: the 5,866 Ashby tokens and the 3,676 Greenhouse tokens left over were probed live, and the
 round-1 boards not yet added were checked again, all with the same US rule. 2,516 boards qualified (5+ US jobs, not already
-listed). Stage 1 adds the top 500 by US jobs: 344 Greenhouse, 151 Ashby and 5 Lever boards (30,589 US jobs, 1,472 in PA, NJ or
-DE), so the employer sources went from 2,073 to 2,573. Left out: 53 employers that post one role at many sites (BoxLunch,
-EquipmentShare, Centria Autism, Datavant, Cortica), 29 repeated-ad boards (such as Svetness Personal Training), 6 staffing
-agencies, 38 names already listed or too generic to tell apart, 38 Ashby tokens with spaces, and Bjak (a global remote board).
+listed). Stage 1 adds 485 of the top 500 by US jobs: 334 Greenhouse, 146 Ashby and 5 Lever boards (29,547 US jobs, 1,441 in PA, NJ
+or DE), so the employer sources went from 2,073 to 2,558. Left out: 54 employers that post one role at many sites (BoxLunch,
+EquipmentShare, Centria Autism, Datavant, Cortica, Horace Mann agents), 29 repeated-ad boards (such as Svetness Personal
+Training), 10 staffing or recruiting firms and talent pools, 4 internal or referral-only boards (Elastic, Coupang, SanMar, Lush),
+3 boards that repeat an employer already listed (PFM, Pediatrics Plus, YipitData), a venture fund's portfolio board (Pear VC),
+38 names already listed or too generic to tell apart, 38 Ashby tokens with spaces, and Bjak (a global remote board).
 2,015 further qualifying boards wait for stage 2.
 
 ## Where a job is
