@@ -23,9 +23,11 @@ description: Start an area chat from its latest handoff, after /clear or in a ne
 | feeds, jobs, usajobs | 191 Job Feeds |
 | employers, connect | 192 Employers & Connect |
 
-2. Run `python tools/lite/trello.py show <card#> --handoff` and read nothing else (no files, no git log).
+2. Trello connector first (`ToolSearch` "trello" if deferred): read only the latest comment on that card in the
+   "📍 Areas" list of board TUiuK5fz. Only if the connector fails: `python tools/lite/trello.py show <card#> --handoff`.
+   Read nothing else (no files, no git log).
 3. Reply in at most 3 lines: the area, the date of the handoff, and the next step in one line. Then wait for the user.
-   If it prints "(no handoff yet)", say so and ask what to work on.
+   If there is no handoff comment (script: "(no handoff yet)"), say so and ask what to work on.
 
 4. When the user starts work on a card: move it to "<FOUNDER> is working on" (max 2 there per founder — if full, ask
    which one goes back to "Next / queued — retain progress") and comment `started — <FOUNDER> via Claude`.
