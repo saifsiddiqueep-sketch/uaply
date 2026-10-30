@@ -182,6 +182,8 @@ f = fields_of("Ana Silva\nana@example.com\n\nEducation\nTemple University\nCours
 t("'MS Office' under Education is not an M.S. degree: no major", val(f, "major"), None)
 f = fields_of("Ana Silva\nana@example.com\n\nEducation\nTemple University\nAssociate Professor of Biology assistant 2020")
 t("a job title under Education ('Associate Professor of ...') is not an Associate degree: no major", val(f, "major"), None)
+f = fields_of("Ana Silva\nana@example.com\n\nExperience\nCashier, Corner Store   2023 - Present\n\nContact\nReferences: Bob Lee, Dallas, TX 75201")
+t("a reference's city under Contact is not where the person lives", f.get("location"), None)
 f = fields_of("Ravi Kumar\nravi@example.com\nGPA: 8.9/10")
 t("a GPA on a 10-point scale is not offered as a 4-point GPA", val(f, "gpa"), None)
 f = fields_of("SUMMARY\nI build things.\n\nJane Q Public\njane@example.com")

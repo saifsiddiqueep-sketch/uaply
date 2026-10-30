@@ -970,8 +970,11 @@ def extract(text):
         f["skills"] = _field([s for s, _c, _l in sk], conf, sk[0][2])
         f["skills"]["lines"] = list(dict.fromkeys(re.sub(r"\s+", " ", l).strip()[:200] for _s, _c, l in sk))[:6]
     top_set = set(secs.get("top", []))
-    contact_set = set(secs.get("contact", []))
-    loc = _location(lines, [i for i in contact_order if i in top_set or i in contact_set] if (top_set or contact_set) else contact_order[:25])   # where the person lives, not a job's city
+    contact_all = secs.get("contact", [])
+    # a Contact section counts only near the top (a "Contact / References" block at the end lists other people), and never a reference's line
+    contact_set = {i for i in contact_all if i < 40}
+    near = [i for i in contact_order if i in top_set or i in contact_set] if (top_set or contact_all) else contact_order[:25]
+    loc = _location(lines, [i for i in near if "reference" not in _plain(lines[i]).lower()])   # where the person lives, not a job's city
     if loc:
         f["location"] = loc
     return f
