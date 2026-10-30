@@ -194,8 +194,13 @@ unknown user id, a rate limit) and `tools/check-careeronestop.py` to check the k
   that, nothing here sends. Until then a Recruitee job is a hand-off like every feed job.
 - Offers outside the US are left out (one open in several places is placed in its first US one); pay is shown only in US dollars
   (hourly or yearly ranges); drafts and offers with an unsafe slug are skipped.
-- 33 boards with at least 5 US jobs are in job-boards.json (found with a web search limited to recruitee.com, checked with
-  `tools/find-recruitee.py`): 500 jobs within 60 days on October 23, 42 of them in PA, NJ or DE. Recruitee is mostly European, and its
-  US health care, dental, legal and hospitality sites are small (most have under 5 openings), so few of those passed the 5-job rule.
+- 55 boards with at least 5 US jobs are in job-boards.json (found with a web search limited to recruitee.com and a Common Crawl
+  sweep, checked with `tools/find-recruitee.py`): 1,182 US jobs when last checked (October 23 and 30), 62 of them in PA, NJ or DE.
+  Recruitee is mostly European, and its US health care, dental, legal and hospitality sites are small (most have under 5 openings),
+  so few of those passed the 5-job rule.
+- Recruitee US ceiling (measured October 30, 2026): 859 Recruitee sites found in Common Crawl, 701 of them live, with 9,842 offers,
+  565 of them in the US (5.7%). The sweep found 18 sites with 5+ US jobs; two of them (chg, gainpro) redirect to boards already
+  listed or kept (chgcareers, gain), so 17 distinct new boards were added (359 US jobs; vertigis came from a follow-up probe).
+  Another 59 boards with 1 to 4 US jobs (128 jobs) are left out by the 5-US rule. Recruitee alone cannot reach 50k US jobs.
 - Switched on with the others: `"feeds"` must list `"recruitee"` (uaply-config.json or UAPLY_CONFIG_JSON / UAPLY_FEEDS).
 

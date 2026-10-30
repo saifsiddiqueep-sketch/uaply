@@ -17265,6 +17265,159 @@
    "us": 7,
    "tri": 0,
    "checked": "2026-10-29"
+  },
+  {
+   "kind": "recruitee",
+   "token": "decircletalentpartner",
+   "name": "deCircle",
+   "total": 252,
+   "us": 186,
+   "tri": 3,
+   "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "hardrockdigital",
+   "name": "Hard Rock Digital",
+   "total": 61,
+   "us": 50,
+   "tri": 5,
+   "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "boggimilano1",
+   "name": "Boggi Milano",
+   "total": 78,
+   "us": 19,
+   "tri": 0,
+   "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "aidigital",
+   "name": "AI Digital",
+   "total": 37,
+   "us": 14,
+   "tri": 0,
+   "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "shalestone",
+   "name": "Shalestone",
+   "total": 12,
+   "us": 12,
+   "tri": 0,
+   "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "cainwattersassociates",
+   "name": "Cain Watters & Associates",
+   "total": 9,
+   "us": 9,
+   "tri": 0,
+   "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "natuvion",
+   "name": "Natuvion",
+   "total": 60,
+   "us": 9,
+   "tri": 2,
+   "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "tradinorganic",
+   "name": "Tradin Organic",
+   "total": 10,
+   "us": 8,
+   "tri": 0,
+   "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "protectdemocracy",
+   "name": "Protect Democracy",
+   "total": 7,
+   "us": 7,
+   "tri": 0,
+   "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "texaspolicy",
+   "name": "Texas Public Policy Foundation",
+   "total": 7,
+   "us": 7,
+   "tri": 0,
+   "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "thirdway",
+   "name": "Third Way",
+   "total": 7,
+   "us": 7,
+   "tri": 0,
+   "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "bestlogisticsgroup",
+   "name": "BEST Logistics Group",
+   "total": 6,
+   "us": 6,
+   "tri": 0,
+   "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "dreamhost",
+   "name": "DreamHost",
+   "total": 5,
+   "us": 5,
+   "tri": 0,
+   "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "gain",
+   "name": "Gain",
+   "total": 17,
+   "us": 5,
+   "tri": 0,
+   "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "nucsai",
+   "name": "Nucs AI",
+   "total": 8,
+   "us": 5,
+   "tri": 0,
+   "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "priestley",
+   "name": "Priestley Management Company",
+   "total": 5,
+   "us": 5,
+   "tri": 0,
+   "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "vertigis",
+   "name": "VertiGIS",
+   "total": 19,
+   "us": 5,
+   "tri": 0,
+   "checked": "2026-10-30"
   }
  ],
  "note": "Employer boards found and checked live with tools/find-boards.py (Recruitee: tools/find-recruitee.py) (counts on the day checked). Read by jobs_api.py after the hand-picked boards in SOURCES. Remove a row to stop reading a board."
