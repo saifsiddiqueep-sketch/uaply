@@ -18831,6 +18831,33 @@
    "us": 21,
    "tri": 0,
    "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "aetherflux",
+   "name": "Aetherflux",
+   "total": 6,
+   "us": 6,
+   "tri": 0,
+   "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "certus",
+   "name": "Certus",
+   "total": 5,
+   "us": 5,
+   "tri": 0,
+   "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "miaplaza",
+   "name": "Miaplaza",
+   "total": 6,
+   "us": 5,
+   "tri": 0,
+   "checked": "2026-10-30"
   }
  ],
  "note": "Employer boards found and checked live with tools/find-boards.py (Recruitee: tools/find-recruitee.py) (counts on the day checked). Read by jobs_api.py after the hand-picked boards in SOURCES. Remove a row to stop reading a board."
