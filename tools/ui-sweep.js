@@ -66,11 +66,12 @@ module.exports = async ({ ev, sleep, nav, logs }) => {
   const newest = await ev("fetch('/api/outbox').then(r=>r.json()).then(j=>(j.applications[0]||{}).status||'')");
   check(REL ? "swipe right on a real job is recorded as a hand-off to the employer's own page" : "swipe right created an application in the test inbox",
         REL ? after > before && newest === "handoff" : (after > before || needsFile), "(newest status: " + newest + (needsFile ? "; the employer needs a resume file first" : "") + ")");
-  // Job Tracker (the nb-dash menu)
+  // Job Tracker: no menu, its button opens the Overview straight away (card 182); then every filter chip
   await ev(F + ".getElementById('nb-dash').click()");
   await sleep(500);
-  for (const t of ["Overview", "Applied", "Accepted", "Rejected", "Interviews"]) {
-    check("Job Tracker: " + t, await clickText(t));
+  check("Job Tracker opens the Overview with no menu", await ev("(()=>{const d=" + F + ";return !!d.querySelector('#pane-track .overview')&&![...d.querySelectorAll('.nwrap[data-k=\"dash\"] .nmenu')].some(m=>!m.hidden)})()"));
+  for (const t of ["Needs you", "Sent", "Heard back", "All"]) {
+    check("Job Tracker chip: " + t, await ev("(()=>{const d=" + F + ";const b=[...d.querySelectorAll('#pane-track .ovchip')].find(b=>b.textContent.trim().startsWith(" + JSON.stringify(t) + "));if(!b)return false;b.click();return !!d.querySelector('#pane-track .ovchip.on')&&d.querySelector('#pane-track .ovchip.on').textContent.trim().startsWith(" + JSON.stringify(t) + ")})()"));
     await sleep(250);
   }
   // profile sections

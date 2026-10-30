@@ -1,6 +1,6 @@
 /* "nav" experiment for the sandbox and dev instances (never loaded by prod).
-   Bottom navigation with three dropdowns: Services (Full-time, Part-time, Internships, Coop), Job Tracker (Overview, Applied,
-   Accepted, Rejected, Interviews), Profile (Profile setup, Filters, Account, Plan & billing, Data & privacy).
+   Bottom navigation: Services (Full-time, Part-time, Internships, Coop) and Profile are dropdowns; Job Tracker opens its Overview
+   straight away (card 182: one list with filter chips replaces the Applied/Accepted/Rejected/Interviews menu), Profile (Profile setup, Filters, Account, Plan & billing, Data & privacy).
    patch() edits an in-memory copy of index.html; apply() builds the UI. */
 (function(){
 /* the public hosted copies (GitHub Pages) have no server: share/build-share.js sets UAplyOpts.preview, and a page that finds no UAply
@@ -162,6 +162,19 @@ body{padding-bottom:calc(12px + var(--safe-b))}
 #acctSec .toggle{display:flex;gap:10px;align-items:center;min-height:44px}
 #acctSec .acts{display:flex;gap:8px;flex-wrap:wrap}
 #pane-track .overview{display:flex;flex-direction:column;gap:14px}
+#pane-track .ovgrid{display:grid;gap:16px;align-items:start}
+@media (min-width:900px){#pane-track .ovgrid{grid-template-columns:minmax(0,2fr) minmax(260px,1fr)}}
+#pane-track .ovapps,#pane-track .glance{display:flex;flex-direction:column;gap:10px;min-width:0}
+#pane-track .ovapps{border:1px solid var(--line);border-radius:14px;padding:14px;background:var(--surface)}
+#pane-track .ovhead{display:flex;justify-content:space-between;align-items:center;gap:10px}#pane-track .ovhead h3,#pane-track .glance h3{margin:0}
+#pane-track .ovchips{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}
+#pane-track .ovchip{flex:none;border:1px solid var(--line);background:var(--bg);color:inherit;border-radius:999px;padding:8px 14px;min-height:40px;font-weight:600}
+#pane-track .ovchip span{font:500 13px var(--mono);color:var(--muted);margin-left:4px}
+#pane-track .ovchip.on{background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);border-color:transparent}#pane-track .ovchip.on span{color:inherit}
+#pane-track .ovsoon{display:flex;flex-direction:column;gap:6px;border:1px dashed var(--line);border-radius:12px;padding:10px 12px}#pane-track .ovsoon .btn{align-self:flex-start}
+#pane-track .ovempty{text-align:center;padding:24px 8px;display:flex;flex-direction:column;align-items:center;gap:10px}#pane-track .ovempty p{margin:0;color:var(--muted)}
+#pane-track .ovpassed{margin:0}
+#pane-track .stsel{display:flex;align-items:center;gap:6px;font-weight:600}#pane-track .stsel select{min-height:40px}
 #paywall{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.45)}
 #paywall>div{background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:22px;max-width:400px;width:100%;box-shadow:var(--shadow)}
 /* Report this job: a quiet link at the end of the job card, and its box (the same look as the plan box above) */
@@ -427,7 +440,7 @@ function apply(w,host){
   if(OPTS.simpleTabs){SECS.svc.label="Jobs";nav.className="simple";if(typeof OPTS.navLift==="number")d.documentElement.style.setProperty("--nav-lift",Math.max(0,Math.min(80,OPTS.navLift))+"px");[].slice.call(d.querySelectorAll("p.hint")).forEach(function(h){if(/^Keyboard:/.test(h.textContent.trim()))h.remove()})}
   Object.keys(SECS).forEach(function(k){
     var wrap=d.createElement("div");wrap.className="nwrap";wrap.setAttribute("data-k",k);
-    wrap.innerHTML='<button type="button" class="nb" id="nb-'+k+'" aria-haspopup="menu" aria-expanded="false"><span>'+SECS[k].label+'</span><small></small></button><div class="nmenu" role="menu" aria-labelledby="nb-'+k+'" hidden></div>';
+    wrap.innerHTML='<button type="button" class="nb" id="nb-'+k+'"'+(k==="dash"?'':' aria-haspopup="menu" aria-expanded="false"')+'><span>'+SECS[k].label+'</span><small></small></button><div class="nmenu" role="menu" aria-labelledby="nb-'+k+'" hidden></div>';
     nav.appendChild(wrap);
   });
   main.after(nav);
@@ -562,7 +575,7 @@ function apply(w,host){
   function closeMenus(except){
     nav.querySelectorAll(".nwrap").forEach(function(wr){
       if(wr===except)return;
-      wr.querySelector(".nmenu").hidden=true;wr.querySelector(".nb").setAttribute("aria-expanded","false");
+      wr.querySelector(".nmenu").hidden=true;var b=wr.querySelector(".nb");if(b.hasAttribute("aria-haspopup"))b.setAttribute("aria-expanded","false");   /* Job Tracker has no menu (card 182) */
     });
   }
   function openMenu(wrap,focusLast){
@@ -582,6 +595,8 @@ function apply(w,host){
     var item=e.target.closest(".nitem"),wrap=e.target.closest(".nwrap");if(!wrap)return;
     var k=wrap.getAttribute("data-k");
     if(item){sub[k]=item.getAttribute("data-v");cur=k;closeMenus();go(k);wrap.querySelector(".nb").focus();return}
+    /* Job Tracker has one screen, the Overview: its button opens it, no menu (card 182) */
+    if(e.target.closest(".nb")&&k==="dash"){sub.dash="overview";cur="dash";closeMenus();go("dash");return}
     if(e.target.closest(".nb")){wrap.querySelector(".nmenu").hidden?openMenu(wrap):closeMenus()}
   });
   nav.addEventListener("keydown",function(e){
@@ -592,6 +607,7 @@ function apply(w,host){
       if(onBtn){var ws=[].slice.call(nav.querySelectorAll(".nwrap")),i=ws.indexOf(wrap)+(key==="ArrowRight"?1:-1);if(ws[i]){closeMenus();ws[i].querySelector(".nb").focus()}}
     }else if(key==="ArrowDown"||key==="ArrowUp"){
       e.stopPropagation();e.preventDefault();
+      if(wrap.getAttribute("data-k")==="dash")return;
       if(menu.hidden){openMenu(wrap,key==="ArrowUp");return}
       var items=[].slice.call(menu.querySelectorAll(".nitem")),i2=items.indexOf(d.activeElement)+(key==="ArrowDown"?1:-1);
       items[(i2+items.length)%items.length].focus();
@@ -678,15 +694,15 @@ function apply(w,host){
         (mark?'<button type="button" class="linkbtn" data-act="markapplied" data-id="'+o.j.id+'">Mark as applied</button>':'')+'</span>';
     }
     w.__uaplyTrack=function(){if(!tp.hidden)renderTrack()};   /* called when an application's state changes while the list is open */
-    function row(o,acts,view){
+    function row(o,acts,view,pre){
       var t=A.tone(o.x.pct),e=A.esc;
       return '<div class="row"><div class="logo" aria-hidden="true" style="background:hsl('+A.hue(o.j.id)+' 60% 46%)">'+e(o.j.co.charAt(0))+'</div><div class="info"><b>'+e(o.j.role)+'</b>'+modeChip(o.j)+'<small>'+e(o.j.co)+' · '+e(o.j.loc)+' · '+TYPE_LABEL[o.j.type||"job"]+(o.j.live&&w.__uaplyRouteWord?'<span class="rtword"> · '+e(w.__uaplyRouteWord(o.j))+'</span>':'')+'</small>'+
         (view!=="passed"?'<small>'+whenLine(o)+'</small>':'')+
         detLine(o,view)+(view!=="passed"?stChip(o):'')+sentLine(o)+(view!=="passed"?jobLinks(o):'')+'</div><span class="pill tone-'+t+'">'+o.x.pct+'%</span>'+
-        '<div class="acts">'+extraActs(o,acts,view).map(function(a,i){return '<button type="button" class="btn'+(i?' ghost':'')+'" data-act="'+a[0]+'" data-id="'+o.j.id+'" aria-label="'+a[1]+': '+e(o.j.role)+' at '+e(o.j.co)+'">'+a[1]+'</button>'}).join("")+'</div>'+(OPEN[o.j.id]&&view!=="passed"?detForm(o,view):"")+'</div>';
+        '<div class="acts">'+(pre||"")+extraActs(o,acts,view).map(function(a,i){return '<button type="button" class="btn'+(i?' ghost':'')+'" data-act="'+a[0]+'" data-id="'+o.j.id+'" aria-label="'+a[1]+': '+e(o.j.role)+' at '+e(o.j.co)+'">'+a[1]+'</button>'}).join("")+'</div>'+(OPEN[o.j.id]&&view!=="passed"?detForm(o,view):"")+'</div>';
     }
     var v=sub.dash;
-    if(v==="overview"){tp.innerHTML=overviewHTML(by)+upsellHTML(by);return}
+    if(v==="overview"){tp.innerHTML=overviewHTML(by,row)+upsellHTML(by);return}
     var sc=sentCounts(by.applied);   /* "Sent" and "To finish", never one "Applied" count that adds in hand-offs nobody sent (Trello K0QEMeQm) */
     var h=statsHTML([[sc.sent,"Sent"],[sc.finish,"To finish"],[by.interview.length,"Interviews"],[by.accepted.length,"Accepted"],[by.rejected.length,"Rejected"]],"five")+notSentNote(sc);
     h+='<h3>'+label("dash",v)+' ('+by[v].length+')</h3>';
@@ -1628,12 +1644,12 @@ function apply(w,host){
   }
   function statsHTML(tiles,cls){return '<div class="stats big'+(cls?" "+cls:"")+'">'+tiles.map(function(p){return '<div class="stat"><b>'+p[0]+'</b><small>'+p[1]+'</small></div>'}).join("")+'</div>'}
   function notSentNote(sc){
-    var t=(sc.notyet?sc.notyet+" not sent yet: the Applied list says why for each.":"")+(sc.notyet&&sc.test?" ":"")+
+    var t=(sc.notyet?sc.notyet+" not sent yet: each one below says why.":"")+(sc.notyet&&sc.test?" ":"")+
       (sc.test?sc.test+" went to the test inbox: nothing reached the employer.":"");
     return t?'<p class="note stnote">'+t+'</p>':"";
   }
   /* Job Tracker overview */
-  function overviewHTML(by){
+  function overviewHTML(by,row){
     var n=by.applied.length+by.interview.length+by.accepted.length+by.rejected.length,answered=by.interview.length+by.accepted.length+by.rejected.length,sum=0;
     ["applied","interview","accepted","rejected"].forEach(function(k){by[k].forEach(function(o){sum+=o.x.pct})});
     var cl=checklist(),done=cl.filter(function(c){return c[1]}).length,pct=Math.round(done/cl.length*100),ps=planState(),soon=[];
@@ -1642,8 +1658,24 @@ function apply(w,host){
     by.applied.forEach(function(o){var a=ap(o.j.id);if(a.follow)soon.push([new Date(a.follow+"T12:00").getTime(),"Follow up with "+o.j.co+" on "+fmtD(a.follow)])});
     soon.sort(function(a,b){return a[0]-b[0]});
     var sc=sentCounts(by.applied);   /* a hand-off nobody sent is "To finish", not an application or one waiting for an answer (Trello K0QEMeQm) */
-    var h='<div class="overview">'+statsHTML([[sc.sent,"Sent"],[sc.finish,"To finish"],[by.interview.length,"Interviews"],[by.accepted.length,"Offers"]])+
-      statsHTML([[by.rejected.length,"Rejected"],[n?Math.round(answered/n*100)+"%":"–","Heard back"],[n?Math.round(sum/n)+"%":"–","Avg match"],[by.passed.length,"Passed"]])+notSentNote(sc)+
+    /* every application in one list, each with the group its chip filters it under */
+    var all=[];["applied","interview","accepted","rejected"].forEach(function(k){by[k].forEach(function(o){all.push({o:o,b:k,c:ovCat(o,k)})})});
+    all.sort(function(a,b){return b.o.x.at-a.o.x.at});
+    var cnt={};all.forEach(function(r){cnt[r.c]=(cnt[r.c]||0)+1});
+    var chips=OV_CHIPS,tiles=chips.slice(1).map(function(c){return [cnt[c[0]]||0,c[1]]});
+    if(tiles.length<4)tiles.push([by.passed.length,"Passed"]);
+    var list=FILT==="passed"?by.passed.map(function(o){return {o:o,b:"passed"}}):all.filter(function(r){return FILT==="all"||r.c===FILT});
+    var h='<div class="overview">'+statsHTML(tiles)+notSentNote(sc)+'<div class="ovgrid"><div class="ovapps">'+
+      '<div class="ovhead"><h3>Applications</h3><button type="button" class="btn ghost" data-csv="1">Export CSV</button></div>'+
+      '<div class="ovchips" role="group" aria-label="Show applications">'+chips.map(function(c){var on=FILT===c[0];return '<button type="button" class="ovchip'+(on?' on':'')+'" data-filt="'+c[0]+'" aria-pressed="'+on+'">'+c[1]+(c[0]==="all"?"":' <span>'+(cnt[c[0]]||0)+'</span>')+'</button>'}).join("")+'</div>';
+    h+='<div class="ovsoon"><b>Suggested updates</b><small>Coming soon: when an employer replies, UAply suggests the new status here and you tap Approve or Decline. Nothing changes without you. Until then, set the status on a row yourself.</small></div>';
+    if(!list.length)h+='<div class="ovempty"><p>Nothing in this stage yet.</p><button type="button" class="btn" data-go="svc">Explore opportunities</button></div>';
+    list.forEach(function(r){
+      if(r.b==="passed"){h+=row(r.o,[["reconsider","Reconsider"]],"passed");return}
+      h+=row(r.o,[["withdraw","Withdraw"]],r.b,r.c==="needs"||r.c==="test"?"":stSelect(r.o,r.b));   /* no status to set until it reached the employer */
+    });
+    h+='<p class="ovpassed"><button type="button" class="linkbtn" data-filt="'+(FILT==="passed"?"all":"passed")+'">'+(FILT==="passed"?"Back to applications":"Jobs you passed on ("+by.passed.length+")")+'</button></p></div>'+
+      '<aside class="glance"><h3>At a glance</h3>'+
       '<div class="plan" style="display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:14px;padding:14px;background:var(--surface)"><b>Profile '+pct+'% complete</b><div class="bar" style="height:10px;border-radius:999px;background:var(--line);overflow:hidden"><i style="display:block;height:100%;width:'+pct+'%;background:linear-gradient(135deg,var(--accent),var(--accent2))"></i></div>';
     cl.filter(function(c){return !c[1]}).slice(0,4).forEach(function(c){h+='<div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span>'+E(c[0])+'</span><button type="button" class="btn ghost" data-go="'+c[2]+'">Add</button></div>'});
     if(done===cl.length)h+='<small>Everything employers usually ask for is filled in.</small>';
@@ -1652,10 +1684,30 @@ function apply(w,host){
       (ps.cap?ps.used+" of "+ps.cap+" applications used this week":ps.used+" applications this week, no limit")+(ps.ok?"":" · "+E(ps.why))+'</small><button type="button" class="btn ghost" data-go="plan" style="align-self:flex-start">Manage plan</button></div>';
     if(!(SRV&&SRV.user)&&!session())h+='<div class="plan" style="display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:14px;padding:14px;background:var(--surface)"><b>Save your progress</b><small>Sign in so your profile and applications are kept if you switch devices.</small><button type="button" class="btn" data-go="account" style="align-self:flex-start">Sign in or create account</button></div>';
     h+='<h3>Coming up</h3>'+(soon.length?soon.slice(0,6).map(function(s){return '<p class="note" style="margin:0">'+E(s[1])+'</p>'}).join(""):'<p class="note">Nothing scheduled. Open an application, tap Details and add an interview time, offer deadline or follow-up date.</p>');
-    h+='<div class="acts"><button type="button" class="btn" data-go="svc">Find opportunities</button><button type="button" class="btn ghost" data-go="dash:interview">Interviews</button><button type="button" class="btn ghost" data-csv="1">Export applications (CSV)</button></div></div>';
+    h+='<div class="acts"><button type="button" class="btn" data-go="svc">Find opportunities</button></div></aside></div></div>';
     return h;
   }
+  var FILT="all";
+  /* card 182 (Mohammed chose option C): one list, chips by what UAply knows, one status per row until email suggestions arrive */
+  var OV_CHIPS=[["all","All"],["needs","Needs you"],["sent","Sent"],["heard","Heard back"]];
+  /* the chip an application sits under: a stage the person set, else what UAply knows about the send */
+  function ovCat(o,b){
+    var s=o.x.sent&&o.x.sent.status;
+    if(b==="interview"||b==="accepted"||b==="rejected")return "heard";
+    if(s==="delivered_test")return "test";   /* only under All: nothing reached the employer, so never counted as Sent (Trello K0QEMeQm) */
+    return s==="sent"||s==="self"?"sent":"needs";
+  }
+  /* one status field per row, the fallback until email suggestions arrive */
+  function stSelect(o,b){
+    return '<label class="stsel">Status <select data-stsel="1" data-id="'+o.j.id+'">'+[["applied","Waiting to hear"],["interview","Interview"],["accepted","Offer"],["rejected","Rejected"]].map(function(p){return '<option value="'+p[0]+'"'+(p[0]===b?" selected":"")+'>'+p[1]+'</option>'}).join("")+'</select></label>';
+  }
+  tp.addEventListener("change",function(e){
+    var s=e.target.closest&&e.target.closest("[data-stsel]");if(!s)return;
+    var id=+s.getAttribute("data-id"),x=A.S.decisions[id];if(!x)return;
+    x.st=s.value;if(s.value!=="applied")OPEN[id]=true;A.save();A.renderAll();renderTrack();
+  });
   tp.addEventListener("click",function(e){
+    var f=e.target.closest("[data-filt]");if(f){FILT=f.getAttribute("data-filt");renderTrack();return}
     var g=e.target.closest("[data-go]");
     if(g){var v=g.getAttribute("data-go");if(v==="svc"){cur="svc";go("svc")}else if(v.indexOf("dash:")===0){sub.dash=v.slice(5);cur="dash";go("dash")}else{if(stepIndex(v)>-1){wz.want=v;v="settings"}sub.prof=v;cur="prof";go("prof")}return}
     if(e.target.closest("[data-csv]"))exportCsv();
