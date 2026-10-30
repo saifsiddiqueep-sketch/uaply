@@ -16,5 +16,10 @@
     { "src": "/uaply-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
     { "src": "/uaply-icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
     { "src": "/uaply-icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "screenshots": [
+    { "src": "/uaply-screenshot-swipe.png", "sizes": "1170x2532", "type": "image/png", "form_factor": "narrow", "label": "Swipe right to apply to jobs that match your profile" },
+    { "src": "/uaply-screenshot-jobtypes.png", "sizes": "1170x2532", "type": "image/png", "form_factor": "narrow", "label": "Pick full-time, part-time, internships or co-ops" },
+    { "src": "/uaply-screenshot-desktop.png", "sizes": "1262x704", "type": "image/png", "form_factor": "wide", "label": "UAply on a desktop browser" }
   ]
 }
