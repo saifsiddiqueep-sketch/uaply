@@ -622,6 +622,11 @@ def record_consent(user_id, version, ip, text_sha256, auto=False, authorize=Fals
                   (uid, int(version), int(time.time()), str(ip or "")[:64], str(text_sha256 or "")[:64], 1 if auto else 0, 1 if authorize else 0, 1 if accurate else 0))
         c.execute("DELETE FROM consents WHERE user_id=? AND id NOT IN (SELECT id FROM consents WHERE user_id=? ORDER BY id DESC LIMIT ?)",
                   (uid, uid, CONSENT_ROWS))
+    if int(version) > 0:                 # the same agreement on the legal ledger too (a take-back is not an acceptance)
+        try:
+            record_acceptance(uid, "first-swipe", int(version), "US", "", "checkbox", text_sha256)
+        except (sqlite3.Error, ValueError) as e:      # the ledger never stands in the way of the agreement itself
+            sys.stderr.write("[uaply] legal ledger: the first-swipe agreement was kept, its ledger row was not (%s)\n" % type(e).__name__)
     return consent_for(uid)
 
 
@@ -637,6 +642,73 @@ def consent_for(user_id):
     if not row or not row["version"]:
         return None
     return {"v": int(row["version"]), "at": int(row["at"]), "auto": bool(row["auto"]), "authorize": bool(row["authorize"]), "accurate": bool(row["accurate"])}
+
+
+# the legal ledger (legal_ca.py): one row each time a person accepts a document, never changed afterwards. The US first-swipe agreement
+# writes a row here too (record_consent). Made the same lazy way as consents, so an older database gets it on first use; the rows go with
+# the account when it is deleted.
+LEDGER_TABLE = """CREATE TABLE IF NOT EXISTS legal_acceptances(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            doc TEXT NOT NULL,
+            version INTEGER NOT NULL,
+            at INTEGER NOT NULL,
+            country TEXT NOT NULL DEFAULT '',
+            province TEXT NOT NULL DEFAULT '',
+            method TEXT NOT NULL CHECK (method IN ('checkbox', 'swipe')),
+            text_sha256 TEXT NOT NULL DEFAULT '')"""
+LEDGER_ROWS = 500                # the most ledger rows kept per account (the oldest go first), so repeated posts cannot fill the disk
+
+
+def record_acceptance(user_id, doc, version, country, province, method, text_sha256=""):
+    """Keep one acceptance on the ledger: the document and its version, the time on this server's clock, the country and province the
+    person gave, how they accepted (checkbox or swipe) and the SHA-256 of the words ("" while the words are a draft). Returns the row
+    as latest_acceptance gives it."""
+    uid = int(user_id)
+    with _lock, _db() as c:
+        c.execute(LEDGER_TABLE)
+        c.execute("INSERT INTO legal_acceptances(user_id, doc, version, at, country, province, method, text_sha256) VALUES(?,?,?,?,?,?,?,?)",
+                  (uid, str(doc)[:40], int(version), int(time.time()), str(country or "")[:2], str(province or "")[:2], str(method),
+                   str(text_sha256 or "")[:64]))
+        c.execute("DELETE FROM legal_acceptances WHERE user_id=? AND id NOT IN (SELECT id FROM legal_acceptances WHERE user_id=? ORDER BY id DESC LIMIT ?)",
+                  (uid, uid, LEDGER_ROWS))
+    return latest_acceptance(uid, doc)
+
+
+def latest_acceptance(user_id, doc):
+    """The account's latest acceptance of `doc` {doc, version, at, country, province, method, text_sha256}, or None."""
+    try:
+        uid = int(user_id)
+    except (TypeError, ValueError):
+        return None
+    with _lock, _db() as c:
+        c.execute(LEDGER_TABLE)
+        row = c.execute("SELECT doc, version, at, country, province, method, text_sha256 FROM legal_acceptances WHERE user_id=? AND doc=? "
+                        "ORDER BY id DESC LIMIT 1", (uid, str(doc))).fetchone()
+    return dict(row) if row else None
+
+
+# the Quebec waitlist (legal_ca.py): an address, when it was given and the version of the opt-in words, and nothing else (no name, no
+# visitor's address). One row per address; giving it again changes nothing.
+WAITLIST_TABLE = """CREATE TABLE IF NOT EXISTS quebec_waitlist(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT NOT NULL UNIQUE,
+            at INTEGER NOT NULL,
+            wording_version INTEGER NOT NULL)"""
+
+
+def waitlist_add(email, optin, wording_version=1):
+    """Put an address on the Quebec waitlist. Only with optin exactly True (not "true", not 1) and an address UAply accepts.
+    Returns (status, body); the same answer whether or not the address was already on it."""
+    if optin is not True:
+        return 400, {"error": "Tick the box to join the waitlist.", "code": "optin"}
+    e = canonical_email(email)
+    if not e:
+        return 400, {"error": "Enter a valid email address.", "code": "email"}
+    with _lock, _db() as c:
+        c.execute(WAITLIST_TABLE)
+        c.execute("INSERT OR IGNORE INTO quebec_waitlist(email, at, wording_version) VALUES(?,?,?)", (e, int(time.time()), int(wording_version)))
+    return 200, {"ok": True}
 
 
 def user_by_id(user_id):
