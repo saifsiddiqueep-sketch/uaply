@@ -18,10 +18,10 @@ CareerOneStop 100 per search. USAJOBS keeps every job each search lists (every p
 
 ## Coverage
 
-* **Anywhere in the US:** 2,558 employer sources: 1,171 Greenhouse, 565 Ashby, 230 Lever, 184 SmartRecruiters and 98 Workable boards
+* **Anywhere in the US and Canada:** 2,558 employer sources: 1,171 Greenhouse, 565 Ashby, 230 Lever, 184 SmartRecruiters and 98 Workable boards
   (80 of them hand-picked in `SOURCES`, the rest from `job-boards.json`) and 310 employers' own careers sites (298 on Workday, 12 on
   iCIMS); remote jobs from Jobicy (15 industries), Himalayas (all, internships, part-time) and Remote OK; internships and co-ops from
-  the Simplify / Pitt CSC lists. A remote job open to the US is shown to everyone; the distance filter never hides it (except "remote
+  the Simplify / Pitt CSC lists. A remote job open to the US or Canada is shown to everyone; the distance filter never hides it (except "remote
   only").
 * **Pennsylvania, New Jersey, Delaware:** USAJOBS around Philadelphia (50 mi), Wilmington DE (40), Trenton NJ (40), Newark NJ (40) and
   Camden NJ (25), each also for Pathways (students and recent graduates) and part-time schedules; CareerOneStop (the state job banks'
@@ -80,7 +80,7 @@ Training), 10 staffing or recruiting firms and talent pools, 4 internal or refer
 
 Each job carries `geo` ([lat, lng], two decimals) when its place names a US city, town, borough, CDP or township with its state
 ("Cherry Hill, NJ", "El Segundo, California, United States", "Abilene TX", "US-PA-Malvern"), a big city named alone ("San Francisco",
-"New York City"), or a ZIP code. The points come from `us-places.tsv.gz` (about 44,000 places; `tools/make-us-places.py` builds it from
+"New York City"), or a ZIP code. A Canadian job gets no `geo` (it is placed by its city and province text only). The points come from `us-places.tsv.gz` (about 44,000 places; `tools/make-us-places.py` builds it from
 the US Census Bureau's 2024 Gazetteer place and county-subdivision files, public domain), read on first use and kept as one string with
 an index. The app's "near you" order and distance filter use `geo` first and its own city list after; "where you live" now knows every
 ZIP code's first three digits. On October 21, 2026 the app's own list placed 52% of on-site jobs; with `geo`, 92% (the server's point
@@ -120,7 +120,7 @@ clearly cover a third party showing it; **High** = terms that forbid our use (no
 | Jobicy (`jobicy`) | Remote jobs open to the US, 15 industries | https://jobicy.com/jobs-rss-feed | Free; credit Jobicy, link to the job on Jobicy, at most one sync pass an hour | "via Jobicy" | 1 h | The job on Jobicy | `jobType` | **Low**: the source's own published conditions, followed |
 | The Muse (`muse`) | Internship and entry-level jobs | https://www.themuse.com/developers/api/v2 | Public API; register an app (key) for production use | "via The Muse" | 30 min | The job on The Muse | The Internship level | **Medium** until the app is registered (key), then **Low** |
 | Simplify and Pitt CSC lists (`simplify`) | GitHub lists of internships and co-ops, https://github.com/SimplifyJobs/Summer2027-Internships (README.md, README-Off-Season.md) | No license file, no reuse terms | Rows are facts (company, title, place, link); only rows linking to a Greenhouse, Lever or SmartRecruiters posting are used, each read from the employer's own board | "via Acme on Greenhouse, listed by Simplify and Pitt CSC" | 6 h (each posting checked daily) | Employer's own posting | Internship or co-op | **Medium**: no license; we credit the list and show only the employer's own data |
-| Himalayas (`himalayas`) | Remote jobs open to the US: all, internships, part-time (3 pages each) | https://himalayas.app/api , https://himalayas.app/terms#api | Show on our own app only; link to the job on Himalayas; `applicationLink` unchanged; never pass jobs on to other boards, Google Jobs or LinkedIn; remove expired jobs | "via Himalayas" | 3 h | `applicationLink` | `employmentType` | **Low**: its published API terms, followed |
+| Himalayas (`himalayas`) | Remote jobs open to the US or Canada: all, internships, part-time (3 pages each) | https://himalayas.app/api , https://himalayas.app/terms#api | Show on our own app only; link to the job on Himalayas; `applicationLink` unchanged; never pass jobs on to other boards, Google Jobs or LinkedIn; remove expired jobs | "via Himalayas" | 3 h | `applicationLink` | `employmentType` | **Low**: its published API terms, followed |
 | Employers' careers sites (`careerpage`) | Employers whose own careers site publishes a sitemap of job pages with schema.org JobPosting data (iCIMS sites such as Hackensack Meridian Health, Piedmont, UnityPoint, OHSU, NYU Langone, Dental Care Alliance, Sonrava; Workday sites such as ChristianaCare), found with `tools/find-boards.py` and listed in `job-boards.json` with their sitemap | Each site's robots.txt (read first, its Disallow rules and Crawl-delay followed; a site whose robots.txt cannot be read is not read) | JobPosting data is published for search engines to show; UAply reads at most 40 job pages per site every 6 hours (14 on a site's first read; a page again only when its lastmod changes, or after 2 days when the sitemap gives none), one request at a time with at least 2 seconds between them, only pages on the sitemap's own host or another host of the same domain (an iCIMS site moves its pages to externalcareers-), only over public https (every redirect checked again), never a page behind a login or a human check (that page is left alone until it changes) | "via Acme careers site" | 6 h | The employer's own job page (assisted hand-off) | `employmentType` | **Medium**: public structured data meant to be shown by job search engines, read politely as robots.txt allows; each employer's site terms are not individually reviewed |
 | Remote OK (`remoteok`) | Remote jobs | The notice in https://remoteok.com/api | Link back to the job on Remote OK (followed link) and name Remote OK; no logo | "via Remote OK" | 6 h | The job on Remote OK | Title words | **Low**: its published conditions, followed |
 | Remotive (`remotive`) | Remote jobs | https://remotive.com/api-documentation | Forbids using listings to collect sign-ups or emails, which UAply does | n/a | n/a | n/a | n/a | **High**: **do not switch on** without written permission |
@@ -218,9 +218,9 @@ unknown user id, a rate limit) and `tools/check-careeronestop.py` to check the k
 - Sign-up test mode (`UAPLY_SIGNUP_TEST=1`, mail off) never posts to a real employer: a Recruitee application is recorded as simulated
   unless it goes to a stand-in on this computer (`UAPLY_ATS_BASE_RECRUITEE` at 127.0.0.1 or localhost); delivery mode "test"
   simulates every one.
-- Offers outside the US are left out (one open in several places is placed in its first US one); pay is shown only in US dollars
+- Offers outside the US and Canada are left out (one open in several places is placed in its first US one, else its first Canadian one); pay is shown in US dollars or Canadian dollars (CA$), never converted
   (hourly or yearly ranges); drafts and offers with an unsafe slug are skipped.
-- 68 boards with at least 5 US jobs are in job-boards.json (found with a web search limited to recruitee.com and a Common Crawl
+- 66 boards with at least 5 US jobs are in job-boards.json (found with a web search limited to recruitee.com and a Common Crawl
   sweep, checked with `tools/find-recruitee.py`): 1,327 US jobs when last checked (October 23 and 30), 66 of them in PA, NJ or DE.
   A second sweep (October 30: Common Crawl 2026 crawls plus the Wayback Machine, 751 more sites probed) added 10 boards (129 US jobs).
   Sweep 3 (October 30) probed the remaining 1,784 Common Crawl tokens: 3 new boards (Aetherflux, Certus, Miaplaza, 16 US jobs); the

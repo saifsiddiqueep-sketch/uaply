@@ -41,6 +41,38 @@ def raw(title, loc, remote=None):
 
 t("a plain US job is kept", j._normalize(raw("Software Engineer", "Austin, TX"), "greenhouse", "Acme") is not None, True)
 t("a Toronto internship listed as ', CA' is dropped", j._normalize(raw("Software Engineering Intern 2027 (Toronto)", "Toronto, ON, CA"), "greenhouse", "Acme"), None)
+n = j._normalize(dict(raw("Data Analyst", "Austin, TX"), text="Python and SQL. Salary: $80,000 - $95,000 CAD per year."), "greenhouse", "Acme")
+t("CANADA_ENABLED off (the default): a US posting's CAD figure gets no currency mark, as before Canada", n is not None and "cur" not in n, True)
+# Canada (October 30, 2026), only with the server's CANADA_ENABLED switch on: a posting in Canada is kept as a Canadian job
+j.CANADA_ENABLED = True
+try:
+    n = j._normalize(raw("Software Engineering Intern 2027 (Toronto)", "Toronto, ON, CA"), "greenhouse", "Acme")
+    t("CANADA_ENABLED on: a Toronto internship listed as ', CA' is kept as Canadian, shown as 'Toronto, ON, Canada' (never California)",
+      n and (n["country"], n["loc"], n.get("geo")), ("ca", "Toronto, ON, Canada", None))
+    n = j._normalize(raw("Software Engineer", "San Jose, CA"), "greenhouse", "Acme")
+    t("'San Jose, CA' stays a California job, with no country field (a US job is as before Canada)", n is not None and "country" not in n, True)
+    for loc, remote, want in [
+        ("Toronto, ON, CA", False, ["ca"]), ("Vancouver, BC, Canada", False, ["ca"]), ("Remote - Canada", True, ["ca"]),
+        ("San Jose, CA", False, ["us"]), ("Los Angeles, CA, USA", False, ["us"]), ("Ontario, CA", False, ["us"]),     # Ontario, California
+        ("Vancouver, WA", False, ["us"]), ("London, ON", False, ["ca"]), ("Montreal, Quebec", False, ["ca"]), ("Calgary, AB", False, ["ca"]),
+        ("Halifax, Nova Scotia", False, ["ca"]), ("Whitehorse, YT", False, ["ca"]), ("CA-ON-Toronto", False, ["ca"]), ("Ottawa", False, ["ca"]),
+        ("Remote (US or Canada)", True, ["us", "ca"]), ("Austin, TX; Toronto, ON", False, ["us", "ca"]), ("Remote", True, ["us"]),
+        ("London, UK", False, []), ("Munich, BY, DE", False, []), ("Remote - Mexico", True, []), ("Sydney, Australia", True, []),
+        # a remote posting placed in Canada is Canada only (the bare-"Remote"-is-the-US rule is for a posting that names no place)
+        ("Remote - Ontario", True, ["ca"]), ("Remote, BC", True, ["ca"]), ("Remote - Calgary, AB", True, ["ca"]), ("Remote (Quebec)", True, ["ca"]),
+        ("Remote - Ottawa", True, ["ca"]), ("Remote - North America", True, ["us", "ca"]),
+        # Canadian, Texas (and Canadian, Oklahoma) are US towns; a US place beside a Canadian one with "/" is open in both
+        ("Canadian, TX", False, ["us"]), ("Canadian, Oklahoma", False, ["us"]), ("New York, NY / Toronto, ON", False, ["us", "ca"]),
+        ("Toronto, ON / Remote", True, ["ca"]),
+    ]:
+        t("job_countries(%r)" % loc, j.job_countries(loc, remote), want)
+    n = j._normalize(dict(raw("Data Analyst", "Toronto, ON"), text="Python and SQL. Salary: $80,000 - $95,000 CAD per year."), "greenhouse", "Acme")
+    t("CAD pay stays as the posting gives it (never converted, never called USD)", n and (n["sal"], n.get("cur")), ([80000, 95000], "CAD"))
+    n = j._normalize(dict(raw("Data Analyst", "Austin, TX"), text="Python and SQL. Salary: $80,000 - $95,000 per year."), "greenhouse", "Acme")
+finally:
+    j.CANADA_ENABLED = False
+t("US dollar pay carries no currency mark (USD is the default)", n and (n["sal"], "cur" in n), ([80000, 95000], False))
+t("USAJOBS stays US: a Canadian posting from it is dropped", j._normalize(raw("Analyst", "Toronto, ON, Canada"), "usajobs", "USAJOBS"), None)
 t("an 'ANZ' role listed as just Remote is dropped", j._normalize(raw("Support Representative - ANZ (Australia / New Zealand)", "Remote", True), "greenhouse", "Acme"), None)
 t("a 'LATAM' role listed as just Remote is dropped", j._normalize(raw("Developer Representative - LATAM", "Remote", True), "greenhouse", "Acme"), None)
 t("a US remote role is kept", j._normalize(raw("Backend Engineer", "Remote - USA", True), "greenhouse", "Acme") is not None, True)
@@ -318,6 +350,80 @@ try:
 finally:
     socket.getaddrinfo, socket.create_connection = real_gai, real_cc
     srv.shutdown()
+
+# ---------------- Canada (October 30, 2026): a Recruitee offer placed in Canada, and the job list's country filter ----------------
+OFFER = {"id": 7001, "title": "Data Analyst", "slug": "data-analyst-toronto", "status": "published", "description": "Python and SQL.",
+         "locations": [{"country_code": "CA", "city": "Toronto", "state_code": "ON"}],
+         "salary": {"min": "80000", "max": "95000", "currency": "CAD", "period": "year"},
+         "careers_url": "https://acme.recruitee.com/o/data-analyst-toronto"}
+r = j._recruitee_raw(OFFER, "Acme")
+t("CANADA_ENABLED off (the default): a Recruitee offer in Toronto is outside the US and left out, as before Canada",
+  (r and r["country"], r and j._normalize(r, "recruitee", "Acme", "acme")), ("other", None))
+j.CANADA_ENABLED = True
+try:
+    r = j._recruitee_raw(OFFER, "Acme")
+    t("CANADA_ENABLED on: a Recruitee offer in Toronto: 'Toronto, ON, Canada', country ca, its pay in Canadian dollars as given",
+      r and (r["loc"], r["country"], r["sal"], r["cur"]), ("Toronto, ON, Canada", "ca", [80000, 95000], "CAD"))
+    n = r and j._normalize(r, "recruitee", "Acme", "acme")
+    t("...and it stays a Canadian job with its CAD pay once normalized", n and (n["country"], n["loc"], n["sal"], n.get("cur")),
+      ("ca", "Toronto, ON, Canada", [80000, 95000], "CAD"))
+finally:
+    j.CANADA_ENABLED = False
+
+import json as _json  # noqa: E402
+import zlib as _zlib  # noqa: E402
+_rows = [{"id": 1, "where": "us"}, {"id": 2, "where": "ca"}, {"id": 3, "where": "both"}, {"id": 4, "where": "us"}]
+_places = [("us",), ("ca",), ("us", "ca"), ("us",)]
+_fake = {"blocks": [_zlib.compress(b"\n".join(_json.dumps(x).encode("utf-8") for x in _rows))], "kinds": ["job"] * 4, "places": _places,
+         "meta": {}, "stamp": 1}
+_real_memo, j._memo = j._memo, (lambda: _fake)
+try:
+    page = lambda c: _json.loads(j.get_page(size=10, countries=c))
+    ids = lambda c: [x["id"] for x in page(c)["jobs"]]
+    t("CANADA_ENABLED off: get_page has no country filter, whatever is asked (every listed job is a US one then), and no rate",
+      ([ids(c) for c in (None, ["us"], ["ca"], ["us", "ca"])], "cadToUsd" in page(["ca"])), ([[1, 2, 3, 4]] * 4, False))
+    j.CANADA_ENABLED = True
+    t("CANADA_ENABLED on: get_page with no country (a US profile): the US jobs and the one open in both, no rate", (ids(None), "cadToUsd" in page(None)),
+      ([1, 3, 4], False))
+    t("get_page(countries=['us']): the same", ids(["us"]), [1, 3, 4])
+    t("get_page(countries=['ca']): Canadian jobs and the one open in both, with the CAD rate", (ids(["ca"]), page(["ca"])["cadToUsd"]), ([2, 3], j.CAD_TO_USD))
+    t("get_page(countries=['us', 'ca']) (a Canadian profile): every job", ids(["us", "ca"]), [1, 2, 3, 4])
+    t("get_page(countries=['mx']): an unknown country is the US list, never an empty one", ids(["mx"]), [1, 3, 4])
+finally:
+    j._memo, j.CANADA_ENABLED = _real_memo, False
+
+# ---------------- the whole list (get_json): a US profile's list is byte for byte the same with CANADA_ENABLED on or off ----------------
+_US = [{"id": 11, "co": "Acme", "role": "Analyst", "loc": "Austin, TX", "type": "job", "desc": "x", "sal": [1, 2]},
+       {"id": 12, "co": "Beta", "role": "Intern", "loc": "Remote", "type": "internship", "countries": ["us", "ca"]}]
+_CA = [{"id": 13, "co": "Gamma", "role": "Clerk", "loc": "Toronto, ON, Canada", "type": "job", "country": "ca", "sal": [80000, 95000], "cur": "CAD"}]
+_real = (j._collect, j.partner_jobs, j.ats_connections, j.mailer.blocked_addresses)
+
+
+def _fake_collect(meta, now_ms):
+    for x in _US + (_CA if j.CANADA_ENABLED else []):           # a Canadian posting is only ever read with the switch on
+        yield dict(x), "feed"
+    meta.update({"fetched_at": 1, "sources": {"A": "ok"}, "merged": 0, "aged_out": 0, "pending": 0})
+
+
+j._collect, j.partner_jobs, j.ats_connections, j.mailer.blocked_addresses = _fake_collect, (lambda: []), (lambda: {}), (lambda: frozenset())
+try:
+    j._json_memo.update(key=None, gz=b"", gz_by={})
+    off = (j.get_json(), j.get_json(countries="us,ca"), j.get_json(countries=["ca"]), j.get_page(size=50), j.get_page(size=50, countries=["ca"]))
+    t("CANADA_ENABLED off: nothing Canadian in any list, whatever is asked (the same US list)", (off[1] == off[0], off[2] == off[0], b"Toronto" in off[0], b"CAD" in off[0],
+      b"countries" in off[0], b"cadToUsd" in off[0] + off[4]), (True, True, False, False, False, False))
+    j.CANADA_ENABLED = True
+    on = (j.get_json(), j.get_json(countries="us"), j.get_json(countries="us,ca"), j.get_json(countries="ca"), j.get_page(size=50))
+    t("CANADA_ENABLED on: a US profile's whole list (no country, or ?country=us) is byte for byte the one with the switch off", (on[0] == off[0], on[1] == off[0]),
+      (True, True))
+    t("...its gzip form too", j.get_json(compressed=True) == j._json_memo["gz_by"]["us"], True)
+    t("...and its first page as well (the paged form)", on[4] == off[3], True)
+    t("...a Canadian profile's list (?country=us,ca) has all three and the CAD rate; ?country=ca the Canadian one and the one open in both",
+      ([x["id"] for x in _json.loads(on[2])["jobs"]], _json.loads(on[2])["cadToUsd"], [x["id"] for x in _json.loads(on[3])["jobs"]]), ([11, 12, 13], j.CAD_TO_USD, [12, 13]))
+    t("...and the list form never carries a job's countries (LIST_DROP)", b"countries" in on[2], False)
+finally:
+    j._collect, j.partner_jobs, j.ats_connections, j.mailer.blocked_addresses = _real
+    j.CANADA_ENABLED = False
+    j._json_memo.update(key=None, gz=b"", gz_by={})
 
 print(sum(R), "/", len(R))
 sys.exit(0 if all(R) else 1)

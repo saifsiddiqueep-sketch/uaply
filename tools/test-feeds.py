@@ -249,7 +249,8 @@ def paged(url, headers=None):
     CALLS.append((url, {}))
     if "?" in url:
         off = int(url.split("offset=")[1].split("&")[0])
-        rows = [m for m in many if ((m.get("location") or {}).get("country") or "us") == "us"] if "country=us" in url else many   # the API's own filter
+        want = url.split("country=")[1].split("&")[0] if "country=" in url else ""
+        rows = [m for m in many if ((m.get("location") or {}).get("country") or "us") == want] if want else many   # the API's own filter
         return {"offset": off, "limit": 100, "totalFound": len(rows), "content": rows[off:off + 100]}
     raise OSError("no description")
 
@@ -263,6 +264,7 @@ lists = [u.split("?")[1] for u, _ in CALLS if "?" in u]
 t("pages are read 100 at a time by offset", lists, ["limit=100&offset=0", "limit=100&offset=100"])
 t("no more than 120 postings are kept, and no more than 120 descriptions read", (len(jobs), len([1 for u, _ in CALLS if "?" not in u])), (120, 120))
 J.SR_WHOLE = real_whole
+# CANADA_ENABLED off (the default): exactly as before Canada
 # a company that is not a public body (Equinox, Red Bull): US postings only, tri-state ones first, at most SR_BOARD_READ (24) descriptions, 14 + tri-state extras
 mixed = [dict(m, location=dict(m.get("location") or {}, country="de", region="BY", city="Munich")) if i % 3 == 0 else
          dict(m, location=dict(m.get("location") or {}, country="us", region="TX" if i % 3 == 1 else "NJ", city="Austin" if i % 3 == 1 else "Trenton"))
@@ -281,6 +283,31 @@ t("...with one request for its US postings only (country=us); the City's whole l
   [u.split("?")[1] for u, _ in CALLS if "?" in u], ["limit=100&offset=0&country=us"])
 t("...and it keeps 14 plus up to 10 tri-state extras, never a German one", (len(jobs) <= 24, any("Munich" in j["loc"] for j in jobs)), (True, False))
 many[:] = many_saved
+# CANADA_ENABLED on (October 30, 2026): the same board with Canadian postings too. The US ones are read exactly as above (SR_BOARD_READ,
+# tri-state first) and Canada's get SR_CA_READ descriptions of their own on top, from a second request (country=ca)
+mixed = [dict(m, location=dict(m.get("location") or {}, country="de", region="BY", city="Munich")) if i % 6 == 0 else
+         dict(m, location=dict(m.get("location") or {}, country="ca", region="ON", city="Toronto")) if i % 6 == 3 else
+         dict(m, location=dict(m.get("location") or {}, country="us", region="TX" if i % 3 == 1 else "NJ", city="Austin" if i % 3 == 1 else "Trenton"))
+         for i, m in enumerate(many)]
+many_saved, many[:] = list(many), mixed
+J.CANADA_ENABLED = True
+J._sr_desc.clear()
+CALLS.clear()
+J._cache.pop(("smartrecruiters", "GymCo", "GymCo"), None)
+jobs, status = J._fetch_source(("smartrecruiters", "GymCo", "GymCo"))
+read = [u.rsplit("/", 1)[1] for u, _ in CALLS if "?" not in u]
+by_id = {m["id"]: m for m in mixed}
+t("CANADA_ENABLED on: 24 US descriptions read as before plus SR_CA_READ Canadian ones, none for a posting outside the US and Canada",
+  (len(read), sum(1 for i in read if by_id[i]["location"]["country"] not in ("us", "ca"))), (J.SR_BOARD_READ + J.SR_CA_READ, 0))
+t("...Canada gets its SR_CA_READ places on top, never taking a US one", sum(1 for i in read if by_id[i]["location"]["country"] == "ca"), J.SR_CA_READ)
+t("...New Jersey postings are read first among the US ones, all 24 US places as before", sum(1 for i in read if by_id[i]["location"]["region"] == "NJ"), J.SR_BOARD_READ)
+t("...with one request for its US postings (country=us) and one for its Canadian ones (country=ca); the City's whole list is read without it",
+  [u.split("?")[1] for u, _ in CALLS if "?" in u], ["limit=100&offset=0&country=us", "limit=100&offset=0&country=ca"])
+t("...and it keeps 14 plus up to 10 tri-state US ones, Canadian ones in places of their own, never a German one",
+  (sum(1 for j in jobs if j.get("country") != "ca") <= 24, 0 < sum(1 for j in jobs if j.get("country") == "ca") <= J.SR_CA_READ,
+   all(j["loc"] == "Toronto, ON, Canada" for j in jobs if j.get("country") == "ca"), any("Munich" in j["loc"] for j in jobs)), (True, True, True, False))
+J.CANADA_ENABLED = False
+many[:] = many_saved
 
 
 def one(**over):
@@ -297,6 +324,19 @@ for label, over, want in (("typeOfEmployment Internship", {"typeOfEmployment": {
 J._get = lambda url, headers=None: one(location={"city": "Toronto", "region": "ON", "country": "ca", "fullLocation": "Toronto, ON, Canada"}) if "?" in url else {}
 J._sr_desc.clear()
 t("a SmartRecruiters posting outside the US is dropped", J._fetch_source(("smartrecruiters", "T2", "T2"))[0], [])
+J.CANADA_ENABLED = True
+try:
+    J._get = lambda url, headers=None: one(location={"city": "Munich", "region": "BY", "country": "de", "fullLocation": "Munich, BY, DE"}) if "?" in url else {}
+    J._sr_desc.clear()
+    J._cache.pop(("smartrecruiters", "T4", "T4"), None)
+    t("CANADA_ENABLED on: a SmartRecruiters posting outside the US and Canada is dropped", J._fetch_source(("smartrecruiters", "T4", "T4"))[0], [])
+    J._get = lambda url, headers=None: one(location={"city": "Toronto", "region": "ON", "country": "ca", "fullLocation": "Toronto, ON, Canada"}) if "?" in url else {}
+    J._sr_desc.clear()
+    J._cache.pop(("smartrecruiters", "T3", "T3"), None)
+    t("...a Canadian one is kept as Canadian", [(j["loc"], j["country"]) for j in J._fetch_source(("smartrecruiters", "T3", "T3"))[0]],
+      [("Toronto, ON, Canada", "ca")])
+finally:
+    J.CANADA_ENABLED = False
 J._get = fake_get
 
 # ---------------- Recruitee: the careers site's public offers (a saved sample, tools/fixtures/recruitee-offers.json) ----------------

@@ -17115,15 +17115,6 @@
   },
   {
    "kind": "recruitee",
-   "token": "constructivedialogue",
-   "name": "Constructive Dialogue Institute",
-   "total": 5,
-   "us": 5,
-   "tri": 0,
-   "checked": "2026-10-23"
-  },
-  {
-   "kind": "recruitee",
    "token": "aikidosecurity",
    "name": "Aikido Security",
    "total": 83,
@@ -17146,15 +17137,6 @@
    "name": "Framestore",
    "total": 36,
    "us": 10,
-   "tri": 0,
-   "checked": "2026-10-23"
-  },
-  {
-   "kind": "recruitee",
-   "token": "srahiring",
-   "name": "Next Level Exchange",
-   "total": 16,
-   "us": 16,
    "tri": 0,
    "checked": "2026-10-23"
   },

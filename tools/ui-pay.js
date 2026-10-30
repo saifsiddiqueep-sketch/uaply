@@ -68,6 +68,16 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   const share = JSON.parse(await ev("(()=>{const w=" + FW + ";if(typeof w.uaPayText!=='function')return 'null';return JSON.stringify(" + JSON.stringify(JOBS) + ".map(j=>w.uaPayText(j,1)||'Pay not listed'))})()"));
   check("the pay words every other screen uses (Share this job's rows): $60k–$80k a year, $18–$22.50 an hour, Pay not listed",
     JSON.stringify(share) === JSON.stringify(["$60k–$80k a year", "$18–$22.50 an hour", "Pay not listed"]), JSON.stringify(share));
+  // a Canadian posting's pay (cur "CAD", October 30) in Canadian dollars as given, never converted; US dollars unchanged
+  const cad = JSON.parse(await ev("(()=>{const w=" + FW + ";if(typeof w.uaPayText!=='function')return 'null';return JSON.stringify([w.uaPayText({sal:[80000,95000],cur:'CAD'},1)," +
+    "w.uaPayText({sal:[18,22.5],salUnit:'hour',cur:'CAD'},1),w.uaPayText({sal:[0,95000],cur:'CAD'}),w.uaPayText({sal:[80000,95000],cur:'USD'},1)])})()"));
+  check("Canadian pay is shown in Canadian dollars as given: CA$80k–CA$95k a year, CA$18–CA$22.50 an hour, Up to CA$95k; US dollars stay $80k–$95k",
+    JSON.stringify(cad) === JSON.stringify(["CA$80k–CA$95k a year", "CA$18–CA$22.50 an hour", "Up to CA$95k", "$80k–$95k a year"]), JSON.stringify(cad));
+  // the city list's "New Brunswick" is New Brunswick, NJ only: never the Canadian province (October 30)
+  const nb = JSON.parse(await ev("(()=>{const w=" + FW + ",g=w.__uaplyJobGeo;if(typeof g!=='function')return 'null';return JSON.stringify([{loc:'Moncton, NB',country:'ca'},{loc:'Saint John, NB'}," +
+    "{loc:'Fredericton, New Brunswick'},{loc:'New Brunswick, Canada'},{loc:'Moncton, New Brunswick, Canada',country:'ca'},{loc:'New Brunswick, NJ'},{loc:'New Brunswick, New Jersey'}].map(j=>!!g(j)))})()"));
+  check("a New Brunswick (Canada) location never maps to New Brunswick, NJ; New Brunswick, NJ still does",
+    JSON.stringify(nb) === JSON.stringify([false, false, false, false, false, true, true]), JSON.stringify(nb));
   const shareSrc = await ev("(()=>{const s=[...document.scripts].map(x=>x.src).filter(Boolean);return s.some(u=>/uaply-share\\.js/.test(u))})()");
   if (shareSrc) {
     const sr = JSON.parse(await ev("(()=>{const d=" + F + ";return JSON.stringify([...d.querySelectorAll('.ushr-row .ushr-pay')].map(e=>e.textContent))})()"));

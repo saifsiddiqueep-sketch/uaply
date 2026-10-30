@@ -6,6 +6,10 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 
+### US + Canada job feeds (c191, October 30)
+- Job feeds now cover the US and Canada. Canadian pay is shown as CA$ and never converted; Canadian jobs get no map `geo`; the server accepts `?country=us|ca`. Himalayas now also reads Canada-open remote jobs.
+- Recruitee: offers in Canada are kept (a province code is never read as a US state). Two dead boards (`constructivedialogue`, `srahiring`) were dropped; `tools/check-recruitee-live.py` checks every Recruitee board live.
+
 ### Job Tracker counts: Sent and To finish, not one "Applied" (Mohammed, October 22)
 - **The honesty fix:** Overview counted a hand-off nobody sent (the employer only takes applications on its own site) as an application
   ("Applications") and as one waiting for an answer ("Waiting"), and the Applied list's top count did the same ("Applied"). Both now show

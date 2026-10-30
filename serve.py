@@ -1021,11 +1021,13 @@ class H(http.server.SimpleHTTPRequestHandler):
             try:
                 if p == "/api/jobs" and "?" in self.path:
                     # the paged form (jobs_api.get_page): ?size=200&page=1, or ?cursor=<the "next" of the page before>, and ?type=internship,coop
-                    # for the deck's stacks. The same jobs in the same order as the whole list; any other query is the whole list, as before.
+                    # for the deck's stacks, and ?country=ca or us,ca (the US jobs when left out; Canada only with jobs_api.CANADA_ENABLED on).
+                    # The same jobs in the same order as the whole list; any other query is the whole list, as before.
                     q = urllib.parse.parse_qs(self.path.split("?", 1)[1])
                     if any(k in q for k in ("page", "size", "cursor", "type")):
                         one = lambda k: (q.get(k) or [""])[0][:40]
-                        body = jobs_api.get_page(one("size"), one("page"), one("cursor"), [x.strip() for x in one("type").split(",") if x.strip()])
+                        body = jobs_api.get_page(one("size"), one("page"), one("cursor"), [x.strip() for x in one("type").split(",") if x.strip()],
+                                                 [x.strip() for x in one("country").split(",") if x.strip()])
                         if "gzip" in (self.headers.get("Accept-Encoding") or "").lower() and len(body) > 1024:
                             return self._send(200, gzip.compress(body, 5), headers=[("Content-Encoding", "gzip"), ("Vary", "Accept-Encoding")])
                         return self._send(200, body, headers=[("Vary", "Accept-Encoding")])
@@ -1035,10 +1037,12 @@ class H(http.server.SimpleHTTPRequestHandler):
                     job = jobs_api.job_full(int(raw) if raw.isdigit() and len(raw) < 20 else raw[:80]) if raw else None
                     return self._send(200, {"job": job}) if job else self._send(404, {"error": "That job is no longer listed.", "code": "gone"})
                 if p == "/api/jobs":
-                    # a few thousand jobs are megabytes of JSON: sent compressed to any browser that says it takes gzip (all of them do)
+                    # a few thousand jobs are megabytes of JSON: sent compressed to any browser that says it takes gzip (all of them do).
+                    # ?country=ca or us,ca: the Canadian list (jobs_api.CANADA_ENABLED on only; the US list otherwise)
+                    ctry = (urllib.parse.parse_qs(self.path.split("?", 1)[1]).get("country") or [""])[0][:40] if "?" in self.path else ""
                     if "gzip" in (self.headers.get("Accept-Encoding") or "").lower():
-                        return self._send(200, jobs_api.get_json(compressed=True), headers=[("Content-Encoding", "gzip"), ("Vary", "Accept-Encoding")])
-                    return self._send(200, jobs_api.get_json(), headers=[("Vary", "Accept-Encoding")])
+                        return self._send(200, jobs_api.get_json(compressed=True, countries=ctry), headers=[("Content-Encoding", "gzip"), ("Vary", "Accept-Encoding")])
+                    return self._send(200, jobs_api.get_json(countries=ctry), headers=[("Vary", "Accept-Encoding")])
                 if p == "/api/feed-health":                                 # owner only (OWNER_PAGES): every source's count, successes and failures
                     return self._send(200, jobs_api.feed_health())
                 if p == "/api/apply/config":

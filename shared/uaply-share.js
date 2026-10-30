@@ -282,7 +282,7 @@ function apply(w){
     return t1.concat(t2).slice(0,10);
   }
   function ageTxt(n){if(typeof n!=="number")return "Posting date not listed";return n<=0?"Posted today":n===1?"Posted 1 day ago":n<7?"Posted "+n+" days ago":n<14?"Posted 1 week ago":"Posted "+Math.floor(n/7)+" weeks ago"}
-  function payTxt(j){if(typeof w.uaPayText==="function")return w.uaPayText(j,1)||"Pay not listed";return j.sal&&j.sal[1]>0&&j.salUnit!=="hour"?A.money(j.sal[0])+"–"+A.money(j.sal[1])+" a year":"Pay not listed"}   /* as the posting gives it, with its unit */
+  function payTxt(j){if(typeof w.uaPayText==="function")return w.uaPayText(j,1)||"Pay not listed";return j.sal&&j.sal[1]>0&&j.salUnit!=="hour"?A.money(j.sal[0],j.cur)+"–"+A.money(j.sal[1],j.cur)+" a year":"Pay not listed"}   /* as the posting gives it, with its unit */
   function rowHTML(x){
     var j=x.j,u=viaUAply(j),pay=payTxt(j),did="ushrD"+j.id;
     return '<button type="button" class="ushr-row" data-ushr-go="'+j.id+'" data-mode="'+esc(j.mode||"")+'" aria-label="'+esc(j.role)+' at '+esc(j.co)+'" aria-describedby="'+did+'">'+

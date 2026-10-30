@@ -106,18 +106,19 @@ function patch(s){
   /* pay as the posting gives it (the recommendations list: never guess or estimate). A yearly range says "per year", an hourly one
      (salUnit "hour") "per hour" with its cents; no pay says "Pay not listed" in the pay line's place. Nothing turns an hourly figure into
      a yearly one or the reverse, so an hourly job is not compared with the yearly minimum salary (it scores as pay not listed). uaPayText
-     is shared with Share this job's rows and anything else that names a job's pay. */
-  s=once(s,'function money(n){return "$"+Math.round(n/1000)+"k"}','function money(n){return "$"+Math.round(n/1000)+"k"}\n'+
+     is shared with Share this job's rows and anything else that names a job's pay. A Canadian posting's pay (job.cur "CAD") is shown in
+     Canadian dollars as given, "CA$80k–CA$95k"; US dollars stay "$80k–$95k". Never converted for display. */
+  s=once(s,'function money(n){return "$"+Math.round(n/1000)+"k"}','function money(n,c){return (c==="CAD"?"CA$":"$")+Math.round(n/1000)+"k"}\n'+
     'function uaYearly(x,u){x=+x||0;return u==="hour"?x*2080:x}\n'+   /* matching only: an hourly figure as a year of 40-hour weeks */
-    'function uaPayAmt(n,h){n=+n||0;return h?"$"+(Math.round(n*100)%100?n.toFixed(2):String(Math.round(n))):money(n)}\n'+
-    'function uaPayText(j,unit){var s=j&&Array.isArray(j.sal)?j.sal:[0,0],h=!!j&&j.salUnit==="hour",lo=+s[0]||0,hi=+s[1]||0;if(!(hi>0))return "";'+
-    'var r=lo>0&&lo<hi?uaPayAmt(lo,h)+"–"+uaPayAmt(hi,h):(lo>0?uaPayAmt(hi,h):"Up to "+uaPayAmt(hi,h));return unit?r+(h?" an hour":" a year"):r}\nwindow.uaPayText=uaPayText;');
+    'function uaPayAmt(n,h,c){n=+n||0;return h?(c==="CAD"?"CA$":"$")+(Math.round(n*100)%100?n.toFixed(2):String(Math.round(n))):money(n,c)}\n'+
+    'function uaPayText(j,unit){var s=j&&Array.isArray(j.sal)?j.sal:[0,0],h=!!j&&j.salUnit==="hour",c=j&&j.cur,lo=+s[0]||0,hi=+s[1]||0;if(!(hi>0))return "";'+
+    'var r=lo>0&&lo<hi?uaPayAmt(lo,h,c)+"–"+uaPayAmt(hi,h,c):(lo>0?uaPayAmt(hi,h,c):"Up to "+uaPayAmt(hi,h,c));return unit?r+(h?" an hour":" a year"):r}\nwindow.uaPayText=uaPayText;');
   s=once(s,"'+money(j.sal[0])+'–'+money(j.sal[1])+'<small>per year</small>","'+(uaPayText(j)?uaPayText(j)+'<small>'+(j.salUnit===\"hour\"?'per hour':'per year')+'</small>':'Pay not listed')+'");
   /* the lowest pay is per year or per hour (Profile setup, step 3), and a posting's pay too: both are put on one scale for matching only
      (an hour is 1/2080 of a year), so an hourly seeker is matched against yearly postings and the reverse. The card still shows the
      posting's own figure and unit, never a converted one. A posting with no pay scores as not listed */
   s=once(s,"var salOk=job.sal[1]>=p.salary;","var unk=job.sal[1]<=0,JY=uaYearly(job.sal[1],job.salUnit),PY=uaYearly(p.salary,p.payUnit);sa=PY<=0?1:Math.min(1,JY/PY);var salOk=unk||JY>=PY;");
-  s=once(s,'s:salOk?1:(sa>=0.9?0.5:0),ask:money(job.sal[0])+" to "+money(job.sal[1])','s:unk?0.5:salOk?1:(sa>=0.9?0.5:0),ask:unk?"Not listed":job.salUnit==="hour"?uaPayText(job,1):money(job.sal[0])+" to "+money(job.sal[1])');
+  s=once(s,'s:salOk?1:(sa>=0.9?0.5:0),ask:money(job.sal[0])+" to "+money(job.sal[1])','s:unk?0.5:salOk?1:(sa>=0.9?0.5:0),ask:unk?"Not listed":job.salUnit==="hour"?uaPayText(job,1):money(job.sal[0],job.cur)+" to "+money(job.sal[1],job.cur)');
   /* every real listing names its source and links to the original; example listings say they are examples */
   s=once(s,"<p class=\"blurb\">'+esc(j.blurb)+'</p>","<p class=\"blurb\">'+esc(j.blurb)+'</p>'+(j.url?'<button type=\"button\" class=\"linkbtn\" data-open=\"'+esc(j.url)+'\">View original posting ↗</button>':'')+(j.live?'<small class=\"note\">Source: '+esc(j.source||'the employer')+'</small>':'<small class=\"note\">Example listing, not a real opening.</small>')+'");
   s=once(s,'toast(dir==="applied"?"Applied to "+job.co+" · "+m.pct+"% match":"Passed on "+job.co,"Undo",undo);',
@@ -178,8 +179,12 @@ function apply(w,host){
     return 0;
   }
   function oneJob(id){return fetch("/api/jobs/"+id).then(function(r){return r.ok?r.json():null}).then(function(d){return d&&d.job||null},function(){return null})}
+  /* the job list's country: Canadian postings only for a person whose profile says they live in Canada (Profile: "Country you live in",
+     ext.country "CA"); everyone else asks exactly as before Canada. The server adds them only with its CANADA_ENABLED switch on */
+  function ctry(){try{var p=w.__uaply&&w.__uaply.S&&w.__uaply.S.profile;return p&&p.ext&&p.ext.country==="CA"?"country=us,ca":""}catch(e){return ""}}
   function took(data){
     w.__uaplyLoadingJobs=false;
+    if(+data.cadToUsd>0)w.__uaplyCadToUsd=+data.cadToUsd;   /* the minimum-pay filter's rate for Canadian pay (uaply-nav.js payYearUsd) */
     var now=Date.now(),fresh=(data.jobs||[]).map(function(j){j.seen=now;return j});
     if(fresh.length>=5)w.__uaplyHideSamples=true;      /* set before adding, so the deck renders once */
     var added=w.__uaplyJobs.add(fresh);
@@ -212,7 +217,7 @@ function apply(w,host){
     var t=stackType(),cur=PG[t]||(t?null:PG[""]);
     if(cur&&!cur.next)return;                                   /* this stack has every page it can get */
     pgBusy=true;
-    var u="/api/jobs?size="+PAGE+(t?"&type="+t:"")+(cur?"&cursor="+encodeURIComponent(cur.next):"&page=1");
+    var u="/api/jobs?size="+PAGE+(t?"&type="+t:"")+(cur?"&cursor="+encodeURIComponent(cur.next):"&page=1")+(ctry()?"&"+ctry():"");
     fetch(u).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}).then(function(data){
       PG[t]={next:data.next||null,total:data.total};pgBusy=false;took(data);   /* add() redraws the deck, which asks again if it is still short */
     }).catch(function(){pgBusy=false;pgWait=Date.now()+10000});   /* a page that failed: tried again on a later swipe, 10 s on */
@@ -240,7 +245,7 @@ function apply(w,host){
     fullBusy=true;ranking(true);
     var ac=null,timer=0;try{ac=new AbortController()}catch(e){}   /* this page's own, as the fetch below is */
     var late=new Promise(function(_,no){timer=setTimeout(function(){try{if(ac)ac.abort()}catch(e){}no(new Error("timeout"))},WHOLE_MS)});
-    return Promise.race([fetch("/api/jobs",ac?{signal:ac.signal}:undefined).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}),late]).then(function(data){
+    return Promise.race([fetch("/api/jobs"+(ctry()?"?"+ctry():""),ac?{signal:ac.signal}:undefined).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}),late]).then(function(data){
       clearTimeout(timer);
       hold();fullBusy=false;FULL=true;WHOLE_FAILED=false;wTries=0;ranking(false);took(data);
       if(data.pending>0&&round<15)setTimeout(function(){FULL=false;whole(round+1)},round<3?5000:15000);
@@ -249,7 +254,7 @@ function apply(w,host){
   function loadJobs(round){
   if(round>0)return whole(round);
   var want=sharedId(),oneP=want?oneJob(want):Promise.resolve(null);WANT=want;
-  return Promise.all([oneP,fetch("/api/jobs?size="+PAGE+"&page=1")]).then(function(x){var one=x[0],r=x[1];
+  return Promise.all([oneP,fetch("/api/jobs?size="+PAGE+"&page=1"+(ctry()?"&"+ctry():""))]).then(function(x){var one=x[0],r=x[1];
     /* a plain web host with no UAply server (a 404, or an HTML page): a preview. Show the example jobs and say so; a 5xx stays an outage */
     if(r.status===404||(r.ok&&/text\/html/i.test(r.headers.get("content-type")||""))){var pe=new Error("preview");pe.preview=true;throw pe}
     if(!r.ok)throw new Error("HTTP "+r.status);
