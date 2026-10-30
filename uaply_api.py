@@ -1307,7 +1307,7 @@ def submit(p, user=None, site=""):
                 APPS.append(rec)
                 if not _append("applications.jsonl", rec):       # the intent, on disk before Recruitee is called (a restart reads it as "unknown")
                     APPS.remove(rec)                             # no intent on disk: nothing is sent
-                    return 503, {"error": NOT_SAVED}
+                    return 503, {"error": NOT_SAVED, "code": "server"}
                 rsend = (rref["board"], rref["id"])
         elif mode == "test":
             # the same channels the live app would use: email only when the employer gave an address (or, for an example listing, has no
@@ -1340,7 +1340,7 @@ def submit(p, user=None, site=""):
                 APPS.append(rec)
                 if not _append("applications.jsonl", rec):       # the intent, on disk before anything is called (a restart reads it as "unknown")
                     APPS.remove(rec)                             # no intent on disk: nothing is sent
-                    return 503, {"error": NOT_SAVED}
+                    return 503, {"error": NOT_SAVED, "code": "server"}
                 send_args = (cfg, target if _smtp_ready(cfg) else "", dict(cand, answers=answers, job={"co": job["co"], "role": job["role"]}) if ats else cand,
                              job, note, contact,
                              resume_meta, resume_bytes, hook, rec, ats, stop_link(site, contact) if policy == "email" else "")

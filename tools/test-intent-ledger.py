@@ -222,6 +222,7 @@ n_apps = len(uaply_api.APPS)
 for name, job in (("webhook", jobs["Second Hook Co"]), ("Recruitee", RJOB)):
     code, out = apply(job, user_id=2)
     t("intent not saved (%s): 503 with a plain message" % name, (code, out.get("error")), (503, uaply_api.NOT_SAVED))
+    t("intent not saved (%s): the 503 carries code server (a retry keeps waiting)" % name, out.get("code"), "server")
 t("...the employer's system and Recruitee were never called", CALLS, [])
 t("...and nothing was left in memory to count or block a retry", len(uaply_api.APPS), n_apps)
 uaply_api.DATA = real_data
@@ -266,6 +267,18 @@ uaply_api.init(OLD)
 t("older files: every row loads, one record per id, in the order they were made",
   [(a.get("id"), a["status"]) for a in uaply_api.APPS], [(None, "sent"), ("old1", "handoff"), ("new1", "sent"), ("new2", "unknown")])
 t("...the dry run lists only the cut-off one", [r["id"] for r in uaply_api.uncertain(OLD)], ["new2"])
+
+# 6. the client says "unknown" in its own words, in a session and after a reload (the JS is checked as source, as the other tests do)
+import re
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+nav = open(os.path.join(ROOT, "shared", "uaply-nav.js"), encoding="utf-8").read()
+live = open(os.path.join(ROOT, "shared", "uaply-live.js"), encoding="utf-8").read()
+t("a restored unknown stays unknown (not a hand-off)", ("unknown:1" in nav, 'v==="unknown"?"handoff"' in nav), (True, False))
+t("the row says it may have been sent", "May have been sent to '+e(o.j.co)+'. Check with them before applying again." in nav, True)
+t("the chip says Maybe sent", 't="Maybe sent"' in nav, True)
+t("an unknown row is not offered as Finish on their site", 'function isHandoff(o){var x=o.x.sent;return !x||x.status==="handoff"}' in nav, True)
+t("in a session the live code stores unknown as is and shows the server's note", ('j.was==="unknown"&&j.note' in live, "dec.sent={at:Date.now(),to:st===\"handoff\"" in live), (True, True))
+t("a waiting-queue retry keeps the item waiting on code server", 'if(j.code!=="server")mark("failed")' in live, True)
 
 print(sum(R), "/", len(R))
 sys.exit(0 if all(R) else 1)
