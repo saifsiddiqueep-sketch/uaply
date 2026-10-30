@@ -1,7 +1,7 @@
-"""Fill from your resume (resume_parse.py and POST /api/profile/resume): the parser on fourteen made-up resumes, the layouts and date styles
+"""Fill from your resume (resume_parse.py and POST /api/profile/resume): the parser on forty-two made-up resumes, the layouts and date styles
 resumes use, every file it must refuse with a plain sentence, and the endpoint on a real server.
   python tools/test-resume.py [PORT]
-The fourteen resumes are in tools/fixtures/resumes/ (written by tools/make-resume-fixtures.py) with the right answers in expected.json.
+The forty-two resumes are in tools/fixtures/resumes/ (written by tools/make-resume-fixtures.py) with the right answers in expected.json.
 PDF cases need pypdf (pip install pypdf); without it they are skipped with a message and the rest still runs."""
 import base64
 import io
@@ -63,7 +63,7 @@ def val(f, k):
 
 
 # ---------------------------------------------------------------------------------------------------------------------------------
-print("== The fourteen made-up resumes")
+print("== The forty-two made-up resumes")
 EXPECTED = json.load(open(os.path.join(FIX, "expected.json"), encoding="utf-8"))
 ACCURACY = []
 
@@ -72,7 +72,7 @@ def same(a, b):
     return re.sub(r"\s+", " ", str(a)).strip().lower() == re.sub(r"\s+", " ", str(b)).strip().lower()
 
 
-WRONG, GOOD, TABLE = [], {}, []        # answers that are not right, which expected answers were right, each resume for the table
+WRONG, GOOD, TABLE, FIELDS = [], {}, [], {}        # answers that are not right, which expected answers were right, each resume for the table
 
 
 def squash(s):
@@ -110,8 +110,15 @@ for fname, want in EXPECTED.items():
     res = rp.parse(open(os.path.join(FIX, fname), "rb").read(), fname)
     got = res["fields"]
     hits = 0
+    may_blank = set(want.get("blank_ok", []))       # on the page, but fine to leave empty; if found it must be right
     for k, w in want.items():
+        if k == "blank_ok":
+            continue
         g = got.get(k)
+        if g is None and k in may_blank:
+            FIELDS.setdefault(k, {"right": 0, "blank": 0, "wrong": 0})["blank"] += 1
+            GOOD[(fname, k)] = False
+            continue
         if k == "skills":
             have = [s.lower() for s in (g or {}).get("value", [])]
             missing = [s for s in w if s.lower() not in have]
@@ -134,10 +141,13 @@ for fname, want in EXPECTED.items():
             WRONG.append((fname, k, g.get("confidence")))
         hits += 1 if good else 0
         GOOD[(fname, k)] = good
+        FIELDS.setdefault(k, {"right": 0, "blank": 0, "wrong": 0})["right" if good else "blank" if g is None else "wrong"] += 1
     extra = sorted(k for k in got if k not in want)
+    for k in extra:
+        FIELDS.setdefault(k, {"right": 0, "blank": 0, "wrong": 0})["wrong"] += 1
     t("%s: nothing found that is not in the resume" % fname, extra, [])
     WRONG.extend((fname, k, got[k].get("confidence")) for k in extra)
-    ACCURACY.append((fname, hits, len(want), extra))
+    ACCURACY.append((fname, hits, len([k for k in want if k != "blank_ok"]), extra))
     # only what is on the resume (card 181): every answer can be found in the resume's own text, as written or trivially reformatted
     untraced = [(k, got[k]["value"]) for k in got if not traceable(k, got[k], res["text"])]
     t("%s: every answer is in the resume's own words (nothing guessed, inferred or padded)" % fname, untraced, [])
@@ -301,6 +311,128 @@ t("without pypdf a PDF gets a plain 'use Word or text for now' (503), and Word s
   (503, 200))
 rp.pdf_available = real
 
+print("\n== Card 181 fixes: each wrong answer once found, now right or blank")
+footer = '<w:ftr %s>%s</w:ftr>' % (W, P("Charlotte, NC 28202 | 704-555-0163"))
+f = rp.parse(docx_bytes('<w:document %s><w:body>%s%s</w:body></w:document>' % (W, P("Kwame Mensah"), P("kwame@example.com")),
+                        {"word/footer1.xml": footer}), "cv.docx")["fields"]
+t("Word: the phone and city in the page footer are read", (val(f, "phone"), (f.get("location") or {}).get("city")), ("704-555-0163", "Charlotte"))
+f = fields_of("Kwame Mensah\nkwame@example.com\n\nExperience\nRegistered Nurse, Emergency Department\nQueen City Example Hospital\n"
+              "Jan 2021 - Present\n")
+t("the employer is the line of its own, not the rest of the title's line", (val(f, "job_title"), val(f, "employer")),
+  ("Registered Nurse", "Queen City Example Hospital"))
+f = fields_of("Grace Oduya\ngrace@example.com\n\nExperience\nCareer Break (family caregiving)\nMar 2023 - Present\n"
+              "Office Manager, Example Dental Group\nJun 2017 - Feb 2023\n")
+t("a career break is not the latest job", (val(f, "job_title"), val(f, "employer"), val(f, "job_end")), ("Office Manager", "Example Dental Group", "2023-02"))
+f = fields_of("Carlos Mendoza\ncarlos@example.com\n\nExperience\nWarehouse Lead, Example Valley Foods\nJun ’22 - Present\n")
+t("a year written with a curly apostrophe (’22)", (val(f, "job_title"), val(f, "job_start")), ("Warehouse Lead", "2022-06"))
+f = fields_of("Noah Ruiz\nnoah@example.com\n\nExperience\nSite Reliability Engineer — Example Transit Data Inc.\nFeb 2023 – Present\n")
+t("a header ending in 'Inc.' is not a sentence", (val(f, "job_title"), val(f, "employer")), ("Site Reliability Engineer", "Example Transit Data Inc"))
+f = fields_of("DeShawn Carter\nRecruiter\n\nExperience\nExample Robotics\nRecruiter\nMarch 2022 - Present (2 years 8 months)\n")
+t("a LinkedIn duration '(2 years 8 months)' is not part of the job", (val(f, "job_title"), val(f, "employer")), ("Recruiter", "Example Robotics"))
+f = fields_of("Michael Torres\nmike@example.com\n\nMILITARY EXPERIENCE\nSupply Sergeant, U.S. Army        JAN 2016 – DEC 2023\n\n"
+              "CIVILIAN EXPERIENCE\nWarehouse Associate, Example Distribution LLC        FEB 2024 – PRESENT\n\nSECURITY CLEARANCE\nSecret\n")
+t("Military and Civilian Experience are jobs; Security Clearance is not a skill", (val(f, "job_title"), val(f, "skills")), ("Warehouse Associate", None))
+f = fields_of("Thomas Clarke\nManchester, United Kingdom | thomas@example.co.uk\n\nSkills\nSolidWorks, MATLAB\nReferences available on request\n")
+t("a city and country is not a headline; 'References available on request' is not a skill", (val(f, "headline"), val(f, "skills")), (None, ["SolidWorks", "MATLAB"]))
+f = fields_of("Ananya Krishnan\nananya@example.in\n\nEducational Qualifications\nB.Tech in Computer Science and Engineering, Example Institute, 2020\n\n"
+              "Declaration\nI hereby declare that the above is true.\n")
+t("'B.Tech' is not a website; Educational Qualifications is education; Declaration is not a skill",
+  (val(f, "portfolio"), val(f, "major"), val(f, "grad"), val(f, "skills")), (None, "Computer Science and Engineering", "2020", None))
+f = fields_of("Grace Oduya\ngrace@example.com\n\nEducation\nExample College — Associate of Arts, 2014\n")
+t("'Associate of Arts' gives no major (Arts is the degree's name)", val(f, "major"), None)
+f = fields_of("Danielle Okonkwo\ndanielle@example.com\n\nEducation\nNorth Carolina State University — M.Ed. Science Education, 2015\n")
+t("M.Ed. is a degree, and its field the major", val(f, "major"), "Science Education")
+f = fields_of("MARY O'BRIEN\nmary@example.com\n\nEDUCATION\nBOSTON COLLEGE — BACHELOR OF SCIENCE IN NURSING, 2014\n")
+t("an all-capitals degree gives the major without 'IN'", val(f, "major"), "NURSING")
+f = fields_of("Robert Castellano\nrob@example.com\n\nSKILLS\nSAP  Budgeting  Forecasting\nTeam Leadership Board Reporting Treasury\n"
+              "Audit Planning Capital Markets Hedging\n")
+t("a skills grid with no commas is not joined into one skill", [s for s in (val(f, "skills") or []) if len(s.split()) > 3], [])
+f = fields_of("Brianna Lopez\nbrianna@example.com\n\nSkills\nOpera PMS    Customer Service    Conflict Resolution\n")
+t("skills set apart by wide spaces are separate", val(f, "skills"), ["Opera PMS", "Customer Service", "Conflict Resolution"])
+f = fields_of("Sofía Ramírez\nsofia@example.com\n\n🎓 Education\nUniversity of Texas at San Antonio — B.B.A. Marketing, 2018\n\n"
+              "💼 Experience\nCustomer Success Manager, Alamo Example Software\nFeb 2021 - Present\n\n🛠 Skills\nZendesk ⭐ Salesforce ⭐ Spanish\n")
+t("headings and skills with emoji icons", (val(f, "grad"), val(f, "job_title"), val(f, "skills")), ("2018", "Customer Success Manager", ["Zendesk", "Salesforce", "Spanish"]))
+f = fields_of("Ana Lucía de la Cruz\nana@example.com\n")
+t("a name with 'de la' is a name", val(f, "name"), "Ana Lucía de la Cruz")
+f = fields_of("CONTACT JORDAN PIKE\n(919) 555-0102\njordan.pike@example.com\nStatistics Example Biotech LLC\n")
+t("a company line is not a name; the name spelled by the email is", val(f, "name"), "Jordan Pike")
+f = fields_of("SARAH\nCONNOLLY\nsarah.connolly@example.com\n")
+t("a name set one word per line", val(f, "name"), "Sarah Connolly")
+f = fields_of("Arjun\narjun.dev@example.com\nSan Francisco, CA 94103\n")
+t("a one-word name on the first line that starts the email", val(f, "name"), "Arjun")
+f = fields_of("Taylor Brooks\ntaylor@example.com\n\nOctober 12, 2026\n\nHiring Manager\nExample Gateway Bank\nSt. Louis, MO 63101\n\n"
+              "Dear Hiring Manager,\nI am writing to apply for the Branch Operations Supervisor role.\n")
+t("a cover letter in front: the company's address and 'Hiring Manager' are not the person's", (val(f, "headline"), val(f, "location"), val(f, "summary")),
+  (None, None, None))
+f = fields_of("Contact\ndeshawn@example.com\nCertifications\nCertified Recruiter\nDeShawn Carter\nSenior Technical Recruiter at Example Robotics\n"
+              "Denver, Colorado, United States\nSummary\nI help teams hire engineers and close offers fast.\n")
+t("LinkedIn PDF: the city under the name is where the person lives", ((f.get("location") or {}).get("city"), (f.get("location") or {}).get("state")), ("Denver", "CO"))
+md = rp.parse(b"# Noah Ruiz\n**Site Reliability Engineer** \xc2\xb7 noah@example.com\n\n## Skills\n`Kubernetes` `Terraform`\n\n## Education\n"
+              b"**Illinois Institute of Technology** \xe2\x80\x94 B.S. Information Technology, 2019\n", "resume.md")["fields"]
+t("a Markdown resume: no # or ** or ` in the answers", (val(md, "name"), val(md, "school"), val(md, "skills")),
+  ("Noah Ruiz", "Illinois Institute of Technology", ["Kubernetes", "Terraform"]))
+
+print("\n== Odd files: empty, over 1 MB, no text layer, random bytes, cut-off files (no crash, an answer within 3 s)")
+for ext in ("pdf", "docx", "txt"):
+    t("a 0-byte .%s is refused as empty" % ext, err_code(b"", "cv." + ext), "empty")
+big_txt = (open(os.path.join(FIX, "student.txt"), "rb").read() + b"\n" + b"Volunteer at the food bank every Saturday.\n" * 30000)[:1500000]
+t0 = time.time()
+f = rp.parse(big_txt, "cv.txt")["fields"]
+t("a 1.5 MB text resume is read, the top fields right, in under 3 s", (val(f, "email"), time.time() - t0 < 3), ("maya.patel@example.edu", True))
+
+
+def fuzz_ok(data, name):
+    """Only fields or a ResumeError with a known code, within about 3 seconds."""
+    t0 = time.time()
+    try:
+        res = rp.parse(data, name)
+        good = isinstance(res.get("fields"), dict)
+    except rp.ResumeError as e:
+        good = e.code in rp.MESSAGES or e.code in ("empty", "bad_request")
+    except Exception as e:  # noqa: BLE001
+        return "%s crashed: %r" % (name, e)
+    if time.time() - t0 > 3.5:
+        return "%s took %.1f s" % (name, time.time() - t0)
+    return None if good else "%s: odd answer" % name
+
+
+import random  # noqa: E402
+rnd = random.Random(181)
+bad_runs = []
+for n in range(12):
+    blob = bytes(rnd.getrandbits(8) for _ in range(rnd.choice([1, 50, 2000, 40000])))
+    for name in ("cv.pdf", "cv.docx", "cv.txt"):
+        bad_runs.append(fuzz_ok(blob, name))
+        bad_runs.append(fuzz_ok(b"%PDF-1.4\n" + blob, name) if name == "cv.pdf" else fuzz_ok(b"PK\x03\x04" + blob, name))
+for fx in ("newgrad.docx", "gdocs.docx", "tablecv.docx") + (("datesfirst.pdf", "canva.pdf", "senior3page.pdf") if HAS_PDF else ()):
+    whole = open(os.path.join(FIX, fx), "rb").read()
+    for cut in (10, 100, len(whole) // 4, len(whole) // 2, len(whole) - 30):
+        bad_runs.append(fuzz_ok(whole[:cut], fx))
+bad_runs.append(fuzz_ok(b"Jane Doe jane@example.com " + b"Python, " * 120000, "cv.txt"))
+bad_runs.append(fuzz_ok(b"x" * 900000, "cv.txt"))
+bad_runs.append(fuzz_ok(("\n".join("Line %d " % i + "word " * 8 for i in range(40000))).encode(), "cv.txt"))
+t("fuzz: random bytes, cut-off Word and PDF files, a huge single line and 40,000 lines never crash or hang", [b for b in bad_runs if b], [])
+f = fields_of("Jane Doe\njane@example.com\n" + "Python, SQL, " * 20000)
+t("a huge single line of skills still gives the name and email", (val(f, "name"), val(f, "email")), ("Jane Doe", "jane@example.com"))
+if HAS_PDF:
+    import pypdf
+    many = pypdf.PdfWriter()
+    for _ in range(40):
+        many.append(pypdf.PdfReader(os.path.join(FIX, "senior3page.pdf")))
+    mb = io.BytesIO()
+    many.write(mb)
+    t0 = time.time()
+    try:
+        res = rp.parse(mb.getvalue(), "long.pdf")
+        r = (val(res["fields"], "email") or "", "ok")
+    except rp.ResumeError as e:
+        r = ("", e.code)
+    t("a 120-page PDF gives an answer (the fields, or a plain 'too long') in under 3 s", (r[1] in ("ok", "too_big", "unreadable"), time.time() - t0 < 3), (True, True))
+    pad = blank_pdf(b"0 0 m 100 100 l S\n" + b"% padding\n" * 120000)
+    t("a PDF over 1 MB with no text layer says it looks scanned", (len(pad) > 1024 * 1024, err_code(pad, "scan.pdf")), (True, "scanned"))
+else:
+    skip("many-page and no-text PDFs")
+
 print("\n== The request shapes (resume_parse.handle)")
 student = open(os.path.join(FIX, "student.txt"), "rb").read()
 js = json.dumps({"resume": {"name": "student.txt", "data": "data:text/plain;base64," + base64.b64encode(student).decode()}}).encode()
@@ -455,5 +587,11 @@ for fname, want, got in TABLE:
     print("  %-18s" % fname + "".join("%-14s" % r for r in row))
 print("  right %d, blank %d, wrong %d, n/a %d" % (totals["right"], totals["blank"], totals["wrong"], totals["n/a"]))
 t("the six answers: none wrong on any resume", totals["wrong"], 0)
+print("\n== Every field over all resumes: right / blank / wrong")
+for k in sorted(FIELDS):
+    print("  %-10s right %3d   blank %2d   wrong %2d" % (k, FIELDS[k]["right"], FIELDS[k]["blank"], FIELDS[k]["wrong"]))
+allt = {r: sum(v[r] for v in FIELDS.values()) for r in ("right", "blank", "wrong")}
+print("  all        right %3d   blank %2d   wrong %2d" % (allt["right"], allt["blank"], allt["wrong"]))
+t("every field: none wrong on any resume", [(k, v["wrong"]) for k, v in sorted(FIELDS.items()) if v["wrong"]], [])
 print("\n%d / %d" % (ok, ok + bad))
 sys.exit(1 if bad else 0)
