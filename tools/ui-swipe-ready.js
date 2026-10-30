@@ -98,7 +98,7 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   check("below-min", "the top card (" + topJob + ") has no profile badge (no per-card nagging)", badge === "" && (await q("return +d.querySelector('#deck .card.top').getAttribute('data-id')")) === topJob, badge);
   const before = await received(), top0 = await q("return +d.querySelector('#deck .card.top').getAttribute('data-id')");
   // Saif, October 24: an incomplete profile never blocks a swipe. A swipe right saves it to Job Tracker as "Needs profile", and one line says so
-  await q("try{w.sessionStorage.removeItem('uaply.np')}catch(e){}w.__uaplyNPTold=false;d.getElementById('btnYes').click();return 1");
+  await q("try{w.sessionStorage.removeItem('uaply.np');w.sessionStorage.removeItem('uaply.askSend')}catch(e){}w.__uaplyNPTold=false;w.__uaplyAskSendDone=false;d.getElementById('btnYes').click();return 1");
   // October 30: first the sheet asks for a resume or a phone number (never send nothing); Not now keeps it as Needs profile, as before
   const sheet0 = await waitFor("return d.querySelector('.rkSheet [data-sh=no]')?'yes':''", 6000);
   check("below-min", "a swipe right first opens the sheet asking for a resume or a phone number", sheet0 === "yes", sheet0);
@@ -141,14 +141,14 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
       const card = await q("return JSON.stringify(await w.__uaplyReadyOf(" + id + "))");
       const cardObj = (() => { try { return JSON.parse(card); } catch (e) { return null; } })();
       const n0 = await received();
-      await q("['kitAsk','kitToast','rdyBox'].forEach(i=>{const e=d.getElementById(i);if(e)e.remove()});return 1");
+      await q("['kitAsk','kitToast','rdyBox'].forEach(i=>{const e=d.getElementById(i);if(e)e.remove()});w.__sheetSeen=0;return 1");
       // the server allows 40 swipes a minute from one address, and this test swipes faster than a person: pause a minute every 30 swipes
       swipes++; if (swipes % 30 === 0) { console.log("     (a minute's pause: the server's limit of 40 swipes a minute)"); await sleep(61000); }
       const r = await swipe(id);
       let got = "", asked = "";
       if (r === "gated") got = "profile";
       else {
-        const seen = await waitFor("const sh=d.querySelector('.rkSheet [data-sh=no]');if(sh){sh.click();return ''}if(d.getElementById('kitAsk'))return 'ask';const x=w.__uaply.S.decisions[" + id + "];return x&&x.sent&&x.sent.status&&x.sent.status!=='pending'?x.sent.status:''", 25000);   // a busy computer: the employer's form is read first
+        const seen = await waitFor("const sh=d.querySelector('.rkSheet [data-sh=no]');if(sh){w.__sheetSeen=(w.__sheetSeen||0)+1;sh.click();return ''}if(d.getElementById('kitAsk'))return 'ask';const x=w.__uaply.S.decisions[" + id + "];return x&&x.sent&&x.sent.status&&x.sent.status!=='pending'?x.sent.status:''", 25000);   // a busy computer: the employer's form is read first
         if (seen === "ask") {
           asked = await q("return d.getElementById('kitAsk').innerText.replace(/\\s+/g,' ').slice(0,400)");
           const file = await q("return d.getElementById('kaYes').textContent");
@@ -168,6 +168,9 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
         } else got = seen || "nothing";
       }
       summary.outcomes[key] = { got, asked: asked.slice(0, 200), card: cardObj };
+      // card 181: the add-resume-or-phone sheet is asked once a session; it was answered Not now in part 1, so no swipe here opens it again
+      const seenSheet = await q("return w.__sheetSeen||0");
+      check(state, path + " (" + state + "): no add-resume sheet (asked once a session, answered Not now earlier)", seenSheet === 0, seenSheet + " sheets");
       const n1 = await received();
       const label = path + " (" + state + ")";
       const ok = want === "profile" ? got === "needs_profile" : want === "ask" ? got === "ask:sent" : want === "ask-file" ? got === "ask-file:needs_answers" : want === "handoff" ? got === "handoff" : got === "sent";

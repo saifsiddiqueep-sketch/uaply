@@ -11,7 +11,8 @@ const path = require("path");
 const PORT = process.env.PORT || "8766";
 const BASE = "http://127.0.0.1:" + PORT;
 const STUDENT = fs.readFileSync(path.join(__dirname, "fixtures", "resumes", "student.txt"), "utf8");
-module.exports = async ({ ev, sleep, nav }) => {
+const SHOTS = process.env.SHOTS || "";   // a folder: also saves the card 181 screenshots (ask-*.png)
+module.exports = async ({ ev, sleep, nav, shot }) => {
   const F = "document.querySelector('iframe').contentDocument";
   const W = "document.querySelector('iframe').contentWindow";
   let bad = 0;
@@ -92,17 +93,50 @@ module.exports = async ({ ev, sleep, nav }) => {
   const keys = JSON.parse(await q("return JSON.stringify({sheets:d.querySelectorAll('.rkSheetBg').length,ph:d.querySelectorAll('#rkShPh').length})"));
   const after = await nDec();
   check("...with the sheet open, ArrowRight and ArrowLeft do nothing behind it: still one sheet, no job swiped", keys.sheets === 1 && keys.ph <= 1 && after === before, JSON.stringify(keys) + " decisions " + before + " -> " + after);
+  if (SHOTS) await shot(path.join(SHOTS, "ask-1-sheet.png"));
   await q("[...d.querySelectorAll('.rkSheet [data-sh=no]')][0].click();return 1"); await sleep(600);
   check("Not now: the sheet closes and the job is kept as Needs profile (as before)", !(await q("return !!d.querySelector('.rkSheet')")) && (await status(j1)) === "needs_profile", await status(j1));
+  // card 181: asked once a session, not on every swipe. After Not now, the next swipes right go straight to Needs profile, with the saved line
+  const sheetNow = () => q("return d.querySelectorAll('.rkSheetBg').length");
+  const npWait = (id) => waitFor("const x=w.__uaply.S.decisions[" + JSON.stringify(id) + "];return x&&x.sent&&x.sent.status==='needs_profile'?'needs_profile':''", 6000);
   const j2 = await swipe(0); await sleep(300); await consent();
+  const np2 = await npWait(j2), sh2 = await sheetNow(), toast2 = await waitFor("const t=d.getElementById('kitToast');return t?t.innerText:''", 4000);
+  check("card 181: a second swipe right after Not now opens NO sheet; the job is kept as Needs profile and the saved line shows", np2 === "needs_profile" && sh2 === 0 && /Job Tracker/.test(toast2), np2 + " sheets " + sh2 + " / " + toast2);
+  if (SHOTS) await shot(path.join(SHOTS, "ask-2-no-sheet.png"));
+  // a reload is the same session (sessionStorage stays): still no sheet
+  const reload = async () => {
+    await nav(BASE + "/"); await resumeOn();
+    await waitFor("return w.__uaply&&w.__uaply.JOBS&&w.__uaply.JOBS.length>1&&!d.body.classList.contains('sgGated')&&w.__uaplyOnDecision?1:0", 20000);
+    await consent(); await sleep(900); await consent();
+  };
+  await reload();
+  const j3 = await swipe(0); await sleep(300); await consent();
+  const np3 = await npWait(j3), sh3 = await sheetNow();
+  check("...and after a reload in the same session, a third swipe right: still no sheet, kept as Needs profile", np3 === "needs_profile" && sh3 === 0 && j3 !== j2, np3 + " sheets " + sh3);
+  // a new session (sessionStorage gone) on a device without the resume this account added elsewhere: the sheet asks once more and names it
+  await q("const K=w.__uaplyKey,A=JSON.parse(w.localStorage.getItem(K+'.acct'));A.resumeWas='made-up-resume.pdf';w.localStorage.setItem(K+'.acct',JSON.stringify(A));w.sessionStorage.removeItem('uaply.askSend');w.__uaplyAskSendDone=false;return 1");
+  await reload();
+  const resRow = await q("const r=d.getElementById('resNow');return r?r.textContent:''");
+  check("card 181: Profile's resume row says the resume was added on another device", resRow === "You added made-up-resume.pdf on another device. Add it here too, or use a phone number.", resRow);
+  const j4 = await swipe(0); await sleep(300); await consent();
   await waitFor("return d.querySelector('.rkSheet')?1:0", 5000);
+  const was4 = await q("const p=d.querySelector('.rkSheet .rkWas');return p?p.textContent:''");
+  check("...a new session: the sheet shows once more and says plainly: You added made-up-resume.pdf on another device", was4 === "You added made-up-resume.pdf on another device. Add it here too, or use a phone number.", was4);
+  if (SHOTS) await shot(path.join(SHOTS, "ask-4-new-device.png"));
   await q("d.querySelector('.rkSheet [data-sh=phone]').click();return 1"); await sleep(200);
   await q("const i=d.getElementById('rkShPh');i.value='555';d.querySelector('.rkPh').requestSubmit();return 1"); await sleep(200);
   check("...a phone number that is not one is refused", /US number/.test(await q("return d.querySelector('.rkPh .err').textContent")));
   await q("const i=d.getElementById('rkShPh');i.value='+44 20 7946 0000';d.querySelector('.rkPh').requestSubmit();return 1");
-  const st2 = await waitFor("const x=w.__uaply.S.decisions[" + JSON.stringify(j2) + "];const s=x&&x.sent&&x.sent.status;return s&&s!=='pending'?s:''", 20000);
+  const st2 = await waitFor("const x=w.__uaply.S.decisions[" + JSON.stringify(j4) + "];const s=x&&x.sent&&x.sent.status;return s&&s!=='pending'?s:''", 20000);
   const rd = await q("return JSON.stringify({min:w.__uaplyReadiness().min,phone:w.__uaplyApplyExt().phone,sheet:!!d.querySelector('.rkSheet')})");
   check("a phone number added in the sheet: it closes, the minimum is met, and THAT application goes the normal way (not Needs profile)", /"min":true/.test(rd) && /\+44 20 7946 0000/.test(rd) && /"sheet":false/.test(rd) && st2 && st2 !== "needs_profile", st2 + " " + rd);
+  // what each application carries (the resume file, or none), read from the request the app sends
+  const spy = () => q("if(!w.__spyOn){w.__spyOn=1;w.__spy=[];const of=w.fetch;w.fetch=function(p,o){try{if(/\\/api\\/apply$/.test(String(p)))w.__spy.push(JSON.parse(o.body).resume)}catch(e){}return of.apply(this,arguments)}}return 1");
+  await spy();
+  const j5 = await swipe(0); await sleep(300); await consent();
+  const st5 = await waitFor("const x=w.__uaply.S.decisions[" + JSON.stringify(j5) + "];const s=x&&x.sent&&x.sent.status;return s&&s!=='pending'?s:''", 20000);
+  const sp5 = JSON.parse(await q("return JSON.stringify(w.__spy)"));
+  check("...the next swipe right sends with the phone and no resume: no sheet, not Needs profile, no file in the application", st5 && st5 !== "needs_profile" && (await sheetNow()) === 0 && sp5.length >= 1 && sp5.every((r) => r === null), st5 + " " + JSON.stringify(sp5));
 
   // ---------- person A: starts with a resume ----------
   // sign out on the server and start the device fresh (the same way ui-apply-paths.js does)
@@ -136,6 +170,54 @@ module.exports = async ({ ev, sleep, nav }) => {
   check("...kept where Profile setup keeps them: city, state, phone, title; the typed name; the ZIP left out; the file is the application resume",
     st.name === "Test Person" && st.loc === "Philadelphia" && st.state === "PA" && st.phone === "(215) 555-0134" && st.title === "Software Engineering Intern" && st.zip === "" && st.res === "student.txt", JSON.stringify(st));
   check("...nothing filled that the resume did not say", ["headline", "summary", "linkedin"].every((k) => found.indexOf(k) > -1 || !st[k]), JSON.stringify(st));
+  // card 181: the resume added once is used for every application on this device; nothing asks for it again
+  await next(); await sleep(1500);
+  await consent(); await sleep(900); await consent();
+  await waitFor("return w.__uaply&&w.__uaply.JOBS&&w.__uaply.JOBS.length>3&&!d.body.classList.contains('sgGated')?1:0", 20000);
+  await spy();
+  const sentA = [], sheetsA = [];
+  for (let i = 0; i < 3; i++) {
+    const id = await swipe(0); await sleep(300); await consent();
+    const s = await waitFor("const x=w.__uaply.S.decisions[" + JSON.stringify(id) + "];const s=x&&x.sent&&x.sent.status;return s&&s!=='pending'?s:''", 20000);
+    sentA.push(s); sheetsA.push(await q("return d.querySelectorAll('.rkSheetBg').length+(d.getElementById('kitAsk')&&/resume/i.test(d.getElementById('kitAsk').innerText)?10:0)"));
+    await q("const n=d.getElementById('kaNo');if(n)n.click();return 1"); await sleep(300);   // an employer's own question box (not this test's subject) is closed
+  }
+  const spA = JSON.parse(await q("return JSON.stringify((w.__spy||[]).map(r=>r&&r.name))"));
+  check("card 181: three swipes right after the resume was added: no sheet and no resume prompt, none kept as Needs profile", sheetsA.every((x) => x === 0) && sentA.every((s) => s && s !== "needs_profile"), JSON.stringify({ sentA, sheetsA }));
+  check("...each of the 3 applications carries the stored resume (student.txt)", spA.length >= 3 && spA.every((n) => n === "student.txt"), JSON.stringify(spA));
+  await q("w.__uaplyOpenProf('back');return 1"); await sleep(900);
+  const rowA = await q("const r=d.getElementById('resNow');if(r&&r.scrollIntoView)r.scrollIntoView({block:'center'});return r?r.innerText.replace(/\\s+/g,' '):''");
+  check("...Profile shows the saved resume by name, with Download and Remove (replacing it is optional)", /student\.txt/.test(rowA) && /Remove/.test(rowA) && /Download/.test(rowA), rowA);
+  if (SHOTS) { await sleep(400); await shot(path.join(SHOTS, "ask-3-profile-resume.png")); }
+  // the same account on a new device (this browser's storage cleared, still signed in): the account brings the resume's name, not the file
+  await nav(BASE + "/legal/privacy.html"); await ev("(()=>{localStorage.clear();sessionStorage.clear();return 1})()");
+  await nav(BASE + "/"); await resumeOn();
+  const wasA = await waitFor("const r=d.getElementById('resNow');return r&&/another device/.test(r.textContent)?r.textContent:''", 20000);
+  check("card 181: a new device for the same account: Profile's resume row says You added student.txt on another device", wasA === "You added student.txt on another device. Add it here too, or use a phone number.", wasA);
+
+  // ---------- person C: no resume, everything typed by hand, and a phone number in the questions ----------
+  await ev("fetch('/api/auth/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.status)");
+  await nav(BASE + "/legal/privacy.html"); await ev("(()=>{localStorage.clear();sessionStorage.clear();return 1})()");
+  await nav(BASE + "/"); await resumeOn();
+  const hc = await signUp(email("c"));
+  check("person C: the resume question first", /Start with your resume/.test(hc), hc);
+  await next(); await sleep(400);
+  await q("[...d.querySelectorAll('.sg-chip')].find(b=>b.textContent==='Retail').click();return 1"); await sleep(200);
+  await next(); await sleep(400);
+  await q("const i=d.querySelector('#acctSec .sg-qs input');i.value='Austin, TX';i.dispatchEvent(new Event('input',{bubbles:true}));return 1");
+  await next(); await sleep(400);
+  await q("const i=d.querySelector('.sg-ph input');i.value='(215) 555-0100';i.dispatchEvent(new Event('input',{bubbles:true}));return 1");
+  await next(); await sleep(400);
+  const doneC = await h2();
+  check("...no resume, the phone typed in the questions: You're ready to swipe (a resume is not required)", doneC === "You’re ready to swipe.", doneC + " / " + (await q("return d.querySelector('#acctSec .sg-qs').innerText.slice(0,200)")));
+  await next(); await sleep(1500);
+  await consent(); await sleep(900); await consent();
+  await waitFor("return w.__uaply&&w.__uaply.JOBS&&w.__uaply.JOBS.length>1&&!d.body.classList.contains('sgGated')?1:0", 20000);
+  await spy();
+  const jc = await swipe(0); await sleep(300); await consent();
+  const stc = await waitFor("const x=w.__uaply.S.decisions[" + JSON.stringify(jc) + "];const s=x&&x.sent&&x.sent.status;return s&&s!=='pending'?s:''", 20000);
+  const spC = JSON.parse(await q("return JSON.stringify({spy:w.__spy,res:w.__uaplyResume(),min:w.__uaplyReadiness().min,sheets:d.querySelectorAll('.rkSheetBg').length})"));
+  check("...a swipe right sends with no resume and no sheet (not Needs profile)", stc && stc !== "needs_profile" && spC.min === true && spC.sheets === 0 && spC.res === null && spC.spy.length >= 1 && spC.spy.every((r) => r === null), stc + " " + JSON.stringify(spC));
   console.log(bad ? "FAILED: " + bad : "ALL ONBOARDING CHECKS PASSED");
   if (bad) process.exitCode = 1;
 };

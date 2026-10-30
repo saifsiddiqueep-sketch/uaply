@@ -76,7 +76,7 @@ module.exports = async ({ ev, sleep, nav, send, shot, logs }) => {
   check("1. the card has no profile badge (no per-card nagging)", b1 === "", b1);
   await snap("1-card");
   // 1. a finger swipe right (Saif, October 24: an incomplete profile never blocks it): saved to Job Tracker, and one line says so
-  await q("try{w.sessionStorage.removeItem('uaply.np')}catch(e){}w.__uaplyNPTold=false;return 1");
+  await q("try{w.sessionStorage.removeItem('uaply.np');w.sessionStorage.removeItem('uaply.askSend')}catch(e){}w.__uaplyNPTold=false;w.__uaplyAskSendDone=false;return 1");
   await swipeRight();
   // October 30: first the sheet asks for a resume or a phone number (never send nothing); Not now keeps the job as Needs profile
   const sheet = await waitFor("const s=d.querySelector('.rkSheet');return s?s.querySelector('h2').textContent:''", 6000);
