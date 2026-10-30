@@ -673,9 +673,10 @@ function apply(w,host){
     function jobLinks(o){
       /* a real posting's hand-off keeps Mark as applied even with no link left (a row copy without one): it can always be marked finished */
       var e=A.esc,u=o.j.url,link=!!u&&/^https:\/\//.test(u),ho=isHandoff(o),mark=ho&&(link||o.j.live);if(!link&&!mark)return "";
-      return '<span class="joblinks">'+(link?'<button type="button" class="linkbtn" data-open="'+e(u)+'">See the job posting ↗</button>':'')+
-        (link&&ho?'<button type="button" class="linkbtn" data-finish="'+o.j.id+'">Finish applying on their site ↗</button>':'')+
-        (mark?'<button type="button" class="linkbtn" data-act="markapplied" data-id="'+o.j.id+'">Mark as applied</button>':'')+'</span>';
+      var nm=e(o.j.role)+' at '+e(o.j.co);   /* same "role at company" name the status buttons use */
+      return '<span class="joblinks">'+(link?'<button type="button" class="linkbtn" data-open="'+e(u)+'" aria-label="See the job posting: '+nm+' (opens their site)">See the job posting ↗</button>':'')+
+        (link&&ho?'<button type="button" class="linkbtn" data-finish="'+o.j.id+'" aria-label="Finish applying on their site: '+nm+' (opens their site)">Finish applying on their site ↗</button>':'')+
+        (mark?'<button type="button" class="linkbtn" data-act="markapplied" data-id="'+o.j.id+'" aria-label="Mark as applied: '+nm+'">Mark as applied</button>':'')+'</span>';
     }
     w.__uaplyTrack=function(){if(!tp.hidden)renderTrack()};   /* called when an application's state changes while the list is open */
     function row(o,acts,view){
