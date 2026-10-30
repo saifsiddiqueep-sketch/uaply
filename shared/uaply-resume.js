@@ -66,7 +66,7 @@ function apply(w){
     {k:"portfolio",label:"Portfolio or GitHub",id:PX?"px-portfolio":"aSite",twin:PX?"aSite":""},
     {k:"school",label:"School",id:"px-school"},
     {k:"major",label:"Major",id:"px-major"},
-    {k:"grad",label:"Graduation",id:"px-grad",show:month},
+    {k:"grad",label:"Graduation",id:"px-grad",show:month,when:ym},   /* a year alone ("2019") fills nothing: no month is made up */
     {k:"gpa",label:"GPA",id:"px-gpa"},
     {k:"employer",label:"Most recent employer",id:"px-employer"},
     {k:"skills",label:"Skills",id:"pSkills",sample:true},
@@ -312,6 +312,7 @@ function apply(w){
     MAP.forEach(function(m){
       if(!el(m.id)&&!/^(pName|pEmail|pTitle|pSkills|pLoc|adState|adZip)$/.test(m.id))return;
       var got=valueOf(m,F);if(!got)return;
+      if(m.when===ym&&!ym(String(got.v)))return;   /* a date the month input cannot hold (a year alone) is not offered */
       if(has(m))return;
       var r=by[m.k];
       if(!r){r=by[m.k]={k:m.k,label:LABEL[m.k]||m.label,v:m.k==="skills"?got.v.join(", "):String(got.v),f:got.f,ms:[],core:CORE.indexOf(m.k)>-1};rows.push(r)}
@@ -389,7 +390,7 @@ function apply(w){
         r.ms.forEach(function(m){
           if(has(m))return;   /* typed meanwhile: never replaced */
           if(m.when&&!m.when(r.out,lastF||{}))return;
-          if((m.k==="job_start"||m.k==="job_end")&&!ym(r.out))return;
+          if((m.k==="job_start"||m.k==="job_end"||m.k==="grad")&&!ym(r.out))return;
           put(m,r.out);did=true;if(m.id==="pTitle")title=r.out;
         });
         if(did)saved.push(r.k);
