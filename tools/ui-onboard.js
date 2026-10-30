@@ -47,7 +47,7 @@ module.exports = async ({ ev, sleep, nav }) => {
   check("the first question after sign-up is the resume", first === "Start with your resume — we’ll fill in the rest", first);
   const r1 = JSON.parse(await q("const s=d.querySelector('#acctSec .sg-qs');return JSON.stringify({eb:(s.querySelector('.sg-eyebrow')||{}).textContent,sub:(s.querySelector('.sg-sub')||{}).textContent," +
     "acc:(s.querySelector('.sg-rk input[type=file]')||{}).accept||'',pick:(s.querySelector('[data-rk=pick]')||{}).offsetHeight,next:d.querySelector('.sg-next').textContent,focus:d.activeElement&&d.activeElement.tagName,pv:(d.querySelector('.sg-pvmini')||{}).textContent})"));
-  check("...it says what is read and who sees it, and counts its steps (1 of 4: resume, work, where, phone)", r1.sub === "PDF, Word or text, up to 1 MB. Read once to fill your profile; employers only see it when you apply." && r1.eb === "1 of 4", JSON.stringify(r1));
+  check("...it says a resume is needed to apply, what is read and who sees it, and counts its steps (1 of 4: resume, work, where, phone)", r1.sub === "Most jobs need a resume to apply. PDF, Word or text, up to 1 MB. Read once to fill your profile; employers only see it when you apply." && r1.eb === "1 of 4", JSON.stringify(r1));
   check("...takes PDF, Word and text, with a 44px pick button; focus is on the heading", /\.pdf/.test(r1.acc) && /\.docx/.test(r1.acc) && /\.txt/.test(r1.acc) && r1.pick >= 44 && r1.focus === "H2", JSON.stringify(r1));
   check("...the main button is the way past it: I don't have one right now; the preview says 2 of 3 needed", r1.next === "I don’t have one right now" && /2 of 3 needed/.test(r1.pv), JSON.stringify(r1));
   await next(); await sleep(400);
