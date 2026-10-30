@@ -178,6 +178,8 @@ f = fields_of("Ana Silva\nana@example.com\nEducation 2015 - 2019 Springfield Hig
 t("a date range is never read as a phone number", val(f, "phone"), None)
 f = fields_of("Ravi Kumar\nravi@example.com\nMobile: +91 98765 43210\nBengaluru, India")
 t("an Indian mobile number and a city outside the US", (val(f, "phone"), (f.get("location") or {}).get("city")), ("+91 98765 43210", "Bengaluru"))
+f = fields_of("Ana Silva\nana@example.com\n\nEducation\nTemple University\nCoursework in MS Office and Excel")
+t("'MS Office' under Education is not an M.S. degree: no major", val(f, "major"), None)
 f = fields_of("Ravi Kumar\nravi@example.com\nGPA: 8.9/10")
 t("a GPA on a 10-point scale is not offered as a 4-point GPA", val(f, "gpa"), None)
 f = fields_of("SUMMARY\nI build things.\n\nJane Q Public\njane@example.com")
