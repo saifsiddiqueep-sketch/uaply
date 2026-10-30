@@ -812,18 +812,37 @@ HOST_PARALLEL = 6                    # requests to one feed's system at the same
 #                                      descriptions 3 or 4 at a time, SmartRecruiters reset connections and Greenhouse answers slowed to minutes
 HOST_PARALLEL_BY = {"boards-api.greenhouse.io": 10, "api.lever.co": 8, "api.ashbyhq.com": 8,   # systems served from a CDN take a few more
                     "www.workable.com": 2, "apply.workable.com": 2}                               # Workable answers 429 quickly
-_host_sems, _host_sems_lock = {}, threading.Lock()
+#                                      A system that gives every company its own subdomain ({company}.recruitee.com) is one service: all its
+#                                      subdomains share one family's places, and request starts are spaced (seconds apart), so hundreds of its
+#                                      boards are read one after another at a steady pace instead of eight at once on a fresh start
+HOST_FAMILY = {"recruitee.com": (2, 1.0)}                  # family -> (places at the same time, seconds between request starts)
+_host_sems, _host_sems_lock, _host_next = {}, threading.Lock(), {}
+
+
+def _host_key(host):
+    """(the key a host's places are counted under, its places, its spacing in seconds)."""
+    fam = next((f for f in HOST_FAMILY if host == f or host.endswith("." + f)), None)
+    if fam:
+        return fam, HOST_FAMILY[fam][0], HOST_FAMILY[fam][1]
+    return host, HOST_PARALLEL_BY.get(host, HOST_PARALLEL), 0
 
 
 class _host_slot:
-    """Holds one of HOST_PARALLEL places for the address's host while a request (or a streamed answer) is in progress."""
+    """Holds one of HOST_PARALLEL places for the address's host (or its HOST_FAMILY) while a request (or a streamed answer) is in progress."""
     def __init__(self, url):
-        host = urllib.parse.urlsplit(url).hostname or ""
+        self.key, n, self.gap = _host_key((urllib.parse.urlsplit(url).hostname or "").lower())
         with _host_sems_lock:
-            self.sem = _host_sems.setdefault(host, threading.BoundedSemaphore(HOST_PARALLEL_BY.get(host, HOST_PARALLEL)))
+            self.sem = _host_sems.setdefault(self.key, threading.BoundedSemaphore(n))
 
     def __enter__(self):
         self.sem.acquire()
+        if self.gap:
+            with _host_sems_lock:
+                now = time.time()
+                wait = _host_next.get(self.key, 0) - now
+                _host_next[self.key] = max(now, _host_next.get(self.key, 0)) + self.gap
+            if wait > 0:
+                time.sleep(min(wait, 60))
         return self
 
     def __exit__(self, *exc):
