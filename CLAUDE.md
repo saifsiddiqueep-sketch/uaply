@@ -60,6 +60,11 @@ Trello is shared through one UAply login: every Trello comment, card or descript
 Branch `c<card#>-<slug>` off `sandbox` → builder/builder-deep → proof (command + output) → reviewer if risky →
 `queue.py take sandbox` → merge → `queue.py release sandbox` → one Trello update. Live: Saif only (`queue.py take live`).
 Details: `/ship`. Never claim a merge, Trello write or backup happened without the tool output.
+**UI GATE: any change a user can see (pages, components, CSS, copy, icons, layout) is NEVER committed to sandbox until
+Mohammed approves it. Before committing: show it in the browser preview at phone (390px) and desktop (1280px) widths; if
+there's a design choice, show 2–3 labeled options (A/B/C) side by side; then STOP and ask 'Which option do you approve?'.
+Only after an explicit 'approve A/B/C' → commit, PR, merge. Overnight/unattended bots may build UI but must stop at the
+preview — never merge UI. Server-only changes are exempt.**
 Never edit or switch branches in the main repo folder; it stays on sandbox. All code changes happen in your own git worktree (../aply-c<card#>).
 Trello: merged to sandbox → Waiting (comment with PR #). Completed only after it's live on dev.
 Trello columns: Next / queued = ready, progress kept · <FOUNDER> is working on = active now, max 2 per founder, heads-up only (never blocks the other

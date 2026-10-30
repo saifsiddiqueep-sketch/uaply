@@ -15,6 +15,11 @@ secrets, or >5 files. Everything else is **Fast**. Unsure → Risky.
 3. TPD writes the builder brief (card goal, files, done-when). Launch `builder` (fast lane) or `builder-deep` (risky lane).
    Tiny one-line fixes: TPD does them itself.
 4. Check the builder's proof: `node check.js` + the named test, command + last lines of output. No output = not done.
+   **UI GATE** (anything a user can see: pages, components, CSS, copy, icons, layout) — NEVER commit to sandbox until
+   Mohammed approves. Show it in the browser preview at phone (390px) and desktop (1280px); if there's a design choice,
+   show 2–3 labeled options (A/B/C) side by side; then STOP and ask 'Which option do you approve?'. Only after an explicit
+   'approve A/B/C' → commit, PR, merge. Overnight/unattended bots may build UI but stop at the preview — never merge UI.
+   Server-only changes are exempt.
 5. TPD opens the PR into `sandbox` (`gh pr create --base sandbox --title "c<#>: ..."`).
 6. `python tools/lite/queue.py take sandbox "c<#> <slug>"` → merge PR (`gh pr merge --squash`) → `queue.py release sandbox`.
    If taken: `queue.py wait sandbox "c<#> <slug>"`. Never merge without holding the lock.
