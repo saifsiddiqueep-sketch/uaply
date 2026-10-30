@@ -85,6 +85,13 @@ module.exports = async ({ ev, sleep, nav }) => {
   check("a swipe right below the minimum opens the sheet: Add your resume to send this", sh === "Add your resume to send this", sh);
   const shOpts = await q("const s=d.querySelector('.rkSheet');return JSON.stringify({pick:!!s.querySelector('[data-rk=pick]'),phone:!!s.querySelector('[data-sh=phone]'),st:" + JSON.stringify("") + "})");
   check("...with the resume upload and Add a phone number instead; nothing marked yet", /"pick":true/.test(shOpts) && /"phone":true/.test(shOpts) && (await status(j1)) === "", shOpts);
+  // the arrow keys belong to the sheet: ArrowRight must not apply to the next job (and open a second sheet), ArrowLeft must not pass one unseen
+  const nDec = () => q("return Object.keys(w.__uaply.S.decisions).length");
+  const before = await nDec();
+  for (const k of ["ArrowRight", "ArrowLeft", "ArrowRight"]) { await q("(d.activeElement||d.body).dispatchEvent(new KeyboardEvent('keydown',{key:" + JSON.stringify(k) + ",bubbles:true,cancelable:true}));return 1"); await sleep(250); }
+  const keys = JSON.parse(await q("return JSON.stringify({sheets:d.querySelectorAll('.rkSheetBg').length,ph:d.querySelectorAll('#rkShPh').length})"));
+  const after = await nDec();
+  check("...with the sheet open, ArrowRight and ArrowLeft do nothing behind it: still one sheet, no job swiped", keys.sheets === 1 && keys.ph <= 1 && after === before, JSON.stringify(keys) + " decisions " + before + " -> " + after);
   await q("[...d.querySelectorAll('.rkSheet [data-sh=no]')][0].click();return 1"); await sleep(600);
   check("Not now: the sheet closes and the job is kept as Needs profile (as before)", !(await q("return !!d.querySelector('.rkSheet')")) && (await status(j1)) === "needs_profile", await status(j1));
   const j2 = await swipe(0); await sleep(300); await consent();

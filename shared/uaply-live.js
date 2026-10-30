@@ -515,12 +515,12 @@ function kitApply(w,host){
      deck behind it) waits for the answer and then goes on, or back. Only one: more presses, or a double tap on a box a swipe
      opened, add nothing, so a job is never sent twice. */
   var consentWait=[],consentAtStart=false;
-  /* while a box is open over the deck (this consent box, an employer's questions, the apply sheet, the plan paywall), the arrow
+  /* while a box is open over the deck (this consent box, an employer's questions, the apply sheet, the add-resume-or-phone sheet, the plan paywall), the arrow
      keys and Z belong to the box, never to the deck behind it. They used to reach it: ArrowRight on a focused button in the box
      applied to the next job behind it, which then sat in Applied without ever being sent; ArrowLeft passed it unseen. */
   d.addEventListener("keydown",function(e){
     var k=e.key;if(k!=="ArrowRight"&&k!=="ArrowLeft"&&k!=="z"&&k!=="Z")return;
-    if(d.getElementById("kitConsent")||d.getElementById("kitAsk")||d.getElementById("kitSheet")||d.getElementById("paywall"))e.stopPropagation();
+    if(d.getElementById("kitConsent")||d.getElementById("kitAsk")||d.getElementById("kitSheet")||d.getElementById("paywall")||d.getElementById("rkSheetBg"))e.stopPropagation();
   },true);
   function ensureConsent(go,cancel,atStart){
     if(hasConsent()){go();return}      /* outside hasConsent's try: a problem while applying must never look like "not agreed yet" and bring this box back */

@@ -418,7 +418,8 @@ function apply(w){
   /* ---------- swipe right without enough to send (October 30: never send nothing). The sheet offers the resume (read and checked
      as above) or a phone number; done(true) sends THAT application through the normal path, done(false) keeps "Needs profile". ---------- */
   w.__uaplyAddToSend=function(job,done){
-    var prev=d.activeElement,bg=d.createElement("div"),closed=false;bg.className="rkSheetBg";
+    if(d.getElementById("rkSheetBg")){done(false);return}   /* one sheet at a time: a second ask while one is open keeps that job as "Needs profile" */
+    var prev=d.activeElement,bg=d.createElement("div"),closed=false;bg.className="rkSheetBg";bg.id="rkSheetBg";
     var needName=!has(MAP[0]);
     bg.innerHTML='<div class="rkSheet" role="dialog" aria-modal="true" aria-labelledby="rkSh"><h2 id="rkSh" tabindex="-1">Add your resume to send this</h2>'+
       '<p>'+esc(job.co||"This employer")+' needs a way to reach you. Add your resume, or a phone number, and '+(job.contact||job.instant?'we send this application now':'we save it to Job Tracker, where a link opens the employer\'s own page to finish')+'.</p>'+
