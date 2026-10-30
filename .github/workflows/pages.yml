@@ -43,8 +43,8 @@ jobs:
           (cd sb && node share/build-share.js --full)
           (cd dv && node share/build-share.js --full)
           mkdir -p site/sandbox site/dev
-          # complete pages (doctype, head with the icons) under every published name: share/sandbox.html itself is the body only,
-          # for a host that adds the document around it, so it is not published as it is
+          # complete pages (doctype, head with the icons) under every published name; with --full, share/sandbox.html is the
+          # same complete page (the body-only copy is share/sandbox.body.html), but the .full.html name is the one kept for this step
           cp sb/share/sandbox.full.html site/sandbox.html
           cp sb/share/sandbox.full.html site/sandbox.full.html
           cp dv/share/dev.full.html site/dev.html

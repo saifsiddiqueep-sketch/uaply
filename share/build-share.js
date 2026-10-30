@@ -71,8 +71,14 @@ function build(src, out, title, edits, extras) {
     // so are the "add to Home Screen as an app" tags: phones read them only from <head>
     const iconTags = h.match(/<link rel="(?:icon|apple-touch-icon)"[^>]*>\s*|<meta name="(?:apple-mobile-web-app-[a-z-]+|mobile-web-app-capable|theme-color)"[^>]*>\s*/g) || [];
     const bodyHtml = iconTags.reduce((s, t) => s.replace(t, ""), h);
-    fs.writeFileSync(full, '<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="' + viewport + '">' + iconTags.map((t) => t.trim()).join("") + '</head><body>\n' + bodyHtml + "\n</body></html>\n");
+    const page = '<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="' + viewport + '">' + iconTags.map((t) => t.trim()).join("") + '</head><body>\n' + bodyHtml + "\n</body></html>\n";
+    fs.writeFileSync(full, page);
     console.log("wrote", full);
+    // a static host (the Render preview) serves share/ as it is: there share/sandbox.html must be the complete page too, or iPhone Safari,
+    // with no viewport tag and no doctype, lays the page out 980 px wide and shrinks it. The body-only copy stays as NAME.body.html
+    fs.renameSync(out, out.replace(/\.html$/, ".body.html"));
+    fs.writeFileSync(out, page);
+    console.log("wrote", out, "(complete page; body only in", out.replace(/\.html$/, ".body.html") + ")");
   }
 }
 
