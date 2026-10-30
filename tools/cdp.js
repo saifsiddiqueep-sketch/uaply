@@ -6,7 +6,8 @@ const os = require("os");
 const path = require("path");
 
 // Which Chrome to start: UAPLY_CHROME if set, else the usual Windows install, else common Linux/Mac places
-// (a Playwright Chromium under /opt/pw-browsers, google-chrome, chromium, the Mac app).
+// (a Playwright Chromium under /opt/pw-browsers, google-chrome, chromium, the Mac app), else on Windows a Chrome installed for all
+// users (Program Files), else Microsoft Edge (Chromium, the same DevTools protocol, and every Windows 11 laptop has it).
 function findChrome() {
   if (process.env.UAPLY_CHROME) return process.env.UAPLY_CHROME;
   const win = path.join(process.env.LOCALAPPDATA || "", "Google", "Chrome", "Application", "chrome.exe");
@@ -26,6 +27,14 @@ function findChrome() {
   }
   const mac = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
   if (fs.existsSync(mac)) return mac;
+  for (const pf of [process.env["ProgramFiles(x86)"], process.env.ProgramFiles]) {
+    const chrome = path.join(pf || "", "Google", "Chrome", "Application", "chrome.exe");
+    if (pf && fs.existsSync(chrome)) return chrome;
+  }
+  for (const pf of [process.env["ProgramFiles(x86)"], process.env.ProgramFiles]) {
+    const edge = path.join(pf || "", "Microsoft", "Edge", "Application", "msedge.exe");
+    if (pf && fs.existsSync(edge)) return edge;
+  }
   return win;                                             // not found: keep the old path so the error names it
 }
 const CHROME = findChrome();
