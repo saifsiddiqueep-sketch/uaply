@@ -92,7 +92,7 @@ services:
       - key: MALLOC_ARENA_MAX         # glibc keeps 2 memory pools instead of up to 8 per CPU: with Python's threads, freed memory is reused, not held per thread
         value: "2"
       - key: UAPLY_FEEDS              # the same real postings as dev, so the test bench shows what users see. Remove this line to switch them off.
-        value: greenhouse,lever,ashby
+        value: greenhouse,lever,ashby,recruitee
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: OWNER_PASSWORD
