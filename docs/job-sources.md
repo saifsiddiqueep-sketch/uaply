@@ -201,8 +201,9 @@ unknown user id, a rate limit) and `tools/check-careeronestop.py` to check the k
   simulates every one.
 - Offers outside the US are left out (one open in several places is placed in its first US one); pay is shown only in US dollars
   (hourly or yearly ranges); drafts and offers with an unsafe slug are skipped.
-- 55 boards with at least 5 US jobs are in job-boards.json (found with a web search limited to recruitee.com and a Common Crawl
-  sweep, checked with `tools/find-recruitee.py`): 1,182 US jobs when last checked (October 23 and 30), 62 of them in PA, NJ or DE.
+- 65 boards with at least 5 US jobs are in job-boards.json (found with a web search limited to recruitee.com and a Common Crawl
+  sweep, checked with `tools/find-recruitee.py`): 1,311 US jobs when last checked (October 23 and 30), 66 of them in PA, NJ or DE.
+  A second sweep (October 30: Common Crawl 2026 crawls plus the Wayback Machine, 751 more sites probed) added 10 boards (129 US jobs).
   Recruitee is mostly European, and its US health care, dental, legal and hospitality sites are small (most have under 5 openings),
   so few of those passed the 5-job rule. Four boards found earlier were dropped for having under 5 US jobs: dillinggroup,
   anywhereworks, goodwall and hostaway.
