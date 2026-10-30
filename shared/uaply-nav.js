@@ -600,10 +600,11 @@ function apply(w,host){
     }
     /* two separate actions on a hand-off (a later version can make "Finish applying" a prefilled link); a sent application only links the posting */
     function jobLinks(o){
-      var e=A.esc,u=o.j.url;if(!u||!/^https:\/\//.test(u))return "";
-      return '<span class="joblinks"><button type="button" class="linkbtn" data-open="'+e(u)+'">See the job posting ↗</button>'+
-        (isHandoff(o)?'<button type="button" class="linkbtn" data-finish="'+o.j.id+'">Finish applying on their site ↗</button>'+
-          '<button type="button" class="linkbtn" data-act="markapplied" data-id="'+o.j.id+'">Mark as applied</button>':'')+'</span>';
+      /* a real posting's hand-off keeps Mark as applied even with no link left (a row copy without one): it can always be marked finished */
+      var e=A.esc,u=o.j.url,link=!!u&&/^https:\/\//.test(u),ho=isHandoff(o),mark=ho&&(link||o.j.live);if(!link&&!mark)return "";
+      return '<span class="joblinks">'+(link?'<button type="button" class="linkbtn" data-open="'+e(u)+'">See the job posting ↗</button>':'')+
+        (link&&ho?'<button type="button" class="linkbtn" data-finish="'+o.j.id+'">Finish applying on their site ↗</button>':'')+
+        (mark?'<button type="button" class="linkbtn" data-act="markapplied" data-id="'+o.j.id+'">Mark as applied</button>':'')+'</span>';
     }
     w.__uaplyTrack=function(){if(!tp.hidden)renderTrack()};   /* called when an application's state changes while the list is open */
     function row(o,acts,view){
@@ -748,11 +749,12 @@ function apply(w,host){
     if(act==="complete-profile"){if(w.__uaplyCompleteProfile)w.__uaplyCompleteProfile();return}
     /* a hand-off finished on the employer's own site: the person marks it, so it no longer says "Finish on their site" (October 22).
        Undo puts back what it said before, once; a second mark after an undo stays */
-    if(act==="markapplied"){var was=x.sent||null;x.sent={at:Date.now(),to:"",status:"self",prev:was?String(was.status||""):"",once:!!(was&&was.once)};A.save();renderTrack();
+    /* what UAply learns from swipes counts it as finished on the employer's site, the strongest yes (uaply-learn.js); Undo takes that back */
+    if(act==="markapplied"){var was=x.sent||null;x.sent={at:Date.now(),to:"",status:"self",prev:was?String(was.status||""):"",once:!!(was&&was.once)};if(w.__uaplyLearnMark)w.__uaplyLearnMark(id,true);A.save();renderTrack();
       /* the server's daily "finish your application" reminder stops listing it (uaply_api.mark_applied); nothing to say if that fails */
       if(SRV.user)apiPost("/api/apply/mark",{job:id,marked:true});
       var nb=tp.querySelector('[data-act="unmark"][data-id="'+id+'"]')||tp.querySelector('.row [data-id="'+id+'"]');if(nb&&nb.focus)nb.focus();return}
-    if(act==="unmark"){if(x.sent&&x.sent.status==="self"&&!x.sent.once){x.sent={at:Date.now(),to:"",status:x.sent.prev||"handoff",prev:"",once:true};A.save();renderTrack();if(SRV.user)apiPost("/api/apply/mark",{job:id,marked:false});
+    if(act==="unmark"){if(x.sent&&x.sent.status==="self"&&!x.sent.once){x.sent={at:Date.now(),to:"",status:x.sent.prev||"handoff",prev:"",once:true};if(w.__uaplyLearnMark)w.__uaplyLearnMark(id,false);A.save();renderTrack();if(SRV.user)apiPost("/api/apply/mark",{job:id,marked:false});
       var mb=tp.querySelector('[data-act="markapplied"][data-id="'+id+'"]');if(mb)mb.focus()}return}
     if(act==="withdraw"||act==="reconsider"){
       delete A.S.decisions[id];A.S.history=A.S.history.filter(function(i){return i!==id});delete acct.apps[id];saveA();
@@ -2229,7 +2231,7 @@ function apply(w,host){
     if(t.id==="aEnf"){acct.enforce=t.checked;saveA();msg(acct.enforce?"Limits are now enforced.":"Limits are off.")}
     else if(t.id==="aImp"&&t.files[0]){
       var g=t.files[0];if(g.size>3145728){msg("That file is too large.");return}
-      readFile(g,true,function(txt){var r=importBackup(txt);if(r===true)renderAcct("data");msg(r===true?"Restored. Your profile, applications and details from the file are on this device now.":r)});   /* the screen is redrawn first: drawing it after the message wiped the message, so a restore looked like nothing happened */
+      readFile(g,true,function(txt){var r=importBackup(txt);if(r===true)renderAcct("data");msg(r===true?restoredMsg(restoreLost):r)});   /* the screen is redrawn first: drawing it after the message wiped the message, so a restore looked like nothing happened */
     }
   });
   acctSec.addEventListener("input",function(e){
@@ -2289,6 +2291,11 @@ function apply(w,host){
       setTimeout(reload,8000);
     }
   });
+  /* applications a restore could not bring back: their job is no longer listed and the file has no copy of it (made before October 22) */
+  var restoreLost=0;
+  /* the first words never claim more than came back: "Restored, except for N" when some could not */
+  function restoredMsg(n){return n?"Restored, except for "+n+(n===1?" application: its job is no longer listed, and the file has no copy of it.":" applications: their jobs are no longer listed, and the file has no copy of them.")+
+    " Your profile, your other applications and the details from the file are on this device now.":"Restored. Your profile, applications and details from the file are on this device now."}
   function importBackup(txt){
     var o;try{o=JSON.parse(txt)}catch(e){return "That is not a valid backup file."}
     /* "aply" is accepted too: backups made before the rename */ if(!o||(o.app!=="uaply"&&o.app!=="aply")||o.v!==1||typeof o.profile!=="object"||o.profile===null)return "That file was not made by UAply.";
@@ -2301,11 +2308,28 @@ function apply(w,host){
     var np={name:str(p.name,100),title:str(p.title,100),email:str(p.email,200),ext:ext,years:num(p.years,0,50),edu:LV.indexOf(p.edu)>-1?p.edu:"Bachelor",
       skills:Array.isArray(p.skills)?p.skills.filter(function(s){return typeof s==="string"&&s.trim()}).slice(0,25).map(function(s){return s.slice(0,40)}):[],
       payUnit:p.payUnit==="hour"?"hour":"year",salary:num(p.salary,0,10000000),loc:str(p.loc,100),modes:{remote:!!m.remote,hybrid:!!m.hybrid,onsite:!!m.onsite},reloc:!!p.reloc,custom:true};
+    /* a swipe whose job is no longer listed comes back from its own row copy (uaply-live.js __uaplyRowStub), with what happened to it
+       ("sent", cleaned as at start-up): a restore used to drop every application whose job had left the list, and every Sent or Mark as
+       applied, while saying everything was restored. Only a swipe with neither its job nor a row copy (a file made before October 22) is
+       left out, and the message says how many (restoreLost) */
+    /* What happened to an application comes back only as a state the Job Tracker can show. "pending" (waiting to send) never comes back as
+       pending: the next start would send it to the employer with nobody tapping anything (retryPending in uaply-live.js), from a file that
+       can be months old or not the person's own. It comes back as "Not sent" with Try again, so only a tap sends it. Anything else unknown
+       comes back as a hand-off (Finish on their site, Mark as applied). "prev" (what Undo of Mark as applied goes back to) the same way */
+    var SENT_OK={sent:1,self:1,delivered_test:1,handoff:1,failed:1,needs_answers:1};
+    function sentSt(v){v=str(v,20);return v==="pending"?"failed":SENT_OK[v]?v:""}
+    function prevSt(v){v=sentSt(v);return v==="handoff"||v==="failed"||v==="needs_answers"?v:""}
     var known={};A.JOBS.forEach(function(j){known[j.id]=1});
-    var nd={},ids=[];
+    var nd={},ids=[],stubs=[];restoreLost=0;
     if(o.decisions&&typeof o.decisions==="object")Object.keys(o.decisions).forEach(function(k){
-      var x=o.decisions[k];if(!known[k]||!x||(x.s!=="applied"&&x.s!=="passed"))return;
-      nd[k]={s:x.s,at:num(x.at,0,4e12),pct:num(x.pct,0,100),as:str(x.as,100)||"You",title:str(x.title,100),st:(x.st==="interview"||x.st==="accepted"||x.st==="rejected")?x.st:"applied"};
+      if(!/^(0|[1-9][0-9]{0,15})$/.test(k))return;   /* a job id is a plain number: a hand-edited key such as "1e6" used to stop the whole restore */
+      var x=o.decisions[k];if(!x||(x.s!=="applied"&&x.s!=="passed"))return;
+      var rc=w.__uaplyRowStub?w.__uaplyRowStub(k,x.row):null;
+      if(!known[k]){if(!rc||!rc.job){if(x.s==="applied")restoreLost++;return}stubs.push(rc.job);known[k]=1}
+      var v=x.sent,vs=(v&&typeof v==="object")?sentSt(v.status):"";
+      nd[k]={s:x.s,at:num(x.at,0,4e12),pct:num(x.pct,0,100),as:str(x.as,100)||"You",title:str(x.title,100),st:(x.st==="interview"||x.st==="accepted"||x.st==="rejected")?x.st:"applied",
+        sent:vs?{at:num(v.at,0,4e12),to:str(v.to,120),status:vs,prev:prevSt(v.prev),once:v.once===true}:undefined};
+      if(rc)nd[k].row=rc.row;
       ids.push(+k);
     });
     ids.sort(function(a,b){return nd[a].at-nd[b].at});
@@ -2324,6 +2348,7 @@ function apply(w,host){
     if(!acct.resumeName||!DATA_URL.test(acct.resumeData)){acct.resumeName="";acct.resumeData="";acct.resumeSize=0}
     cleanF(acct);
     if(!saveA()){acct=keep;return "Not enough browser storage for that backup."}
+    if(stubs.length&&w.__uaplyJobs)w.__uaplyJobs.add(stubs);   /* only once the restore is saved: a failed one leaves no stand-in behind */
     A.S.profile=np;A.S.decisions=nd;A.S.history=ids;A.save();A.renderAll();
     if(w.__uaplySyncPrefs)w.__uaplySyncPrefs();
     return true;

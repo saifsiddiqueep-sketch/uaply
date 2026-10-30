@@ -274,6 +274,15 @@ function apply(w){
     try{var hit=false,bare=String(u||"").replace(/([?&])(gh_src|lever-source)=uaply(&|$)/,function(m,p1,k,p3){return p3?p1:""});A.JOBS.forEach(function(j){if(u&&(j.url===u||j.url===bare||(w.__uaplyHandoffURL&&j.url&&w.__uaplyHandoffURL(j.url)===u))&&finish(st,j.id))hit=true});if(hit){A.save();summary()}}catch(e){}
     return open0.apply(this,arguments);
   };
+  /* Mark as applied in Job Tracker (uaply-nav.js): the person says they finished on the employer's site, the same strongest yes. Its Undo
+     puts back what the swipe was (kept for this visit only; the caller saves) */
+  var marked={};
+  w.__uaplyLearnMark=function(id,on){
+    try{id=+id;var i=last(st,id);
+      if(on){var k=i>-1?st.ev[i].k:"";if(finish(st,id)){marked[id]=k;summary()}}
+      else if(marked[id]&&i>-1&&st.ev[i].k==="F"){st.ev[i].k=marked[id];delete marked[id];st.ver++;summary()}
+    }catch(e){}
+  };
 
   /* Profile, Filters: what it learned, and the Reset button */
   var box=d.createElement("div");box.className="field";box.id="lrnBox";

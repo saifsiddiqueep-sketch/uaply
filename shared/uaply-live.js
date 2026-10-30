@@ -85,7 +85,14 @@ function patch(s){
   s=once(s,"var JOB_BY_ID={};JOBS.forEach(function(j){JOB_BY_ID[j.id]=j});",
     "var JOB_BY_ID={};JOBS.forEach(function(j){JOB_BY_ID[j.id]=j});\nwindow.__uaplyJobs={add:function(list){var n=0;list.forEach(function(j){if(!JOB_BY_ID[j.id]){JOBS.push(j);JOB_BY_ID[j.id]=j;n++}else{var o=JOB_BY_ID[j.id];if(o.stub){for(var f in j)o[f]=j[f];delete o.stub;return}if(j.posted)o.posted=j.posted;if(j.perks)o.perks=j.perks;if(j.type)o.type=j.type;if(j.jobType)o.jobType=j.jobType;o.comm=!!j.comm}});renderAll();return n}};\n"+
     /* Links open as real anchor clicks (a user gesture), which popup blockers accept; window.open can be refused silently. */
-    "window.__uaplyOpen=function(u){if(!/^https:\\/\\//.test(u||\"\"))return;var a=document.createElement(\"a\");a.href=u;a.target=\"_blank\";a.rel=\"noopener noreferrer\";document.body.appendChild(a);a.click();a.remove()};");
+    "window.__uaplyOpen=function(u){if(!/^https:\\/\\//.test(u||\"\"))return;var a=document.createElement(\"a\");a.href=u;a.target=\"_blank\";a.rel=\"noopener noreferrer\";document.body.appendChild(a);a.click();a.remove()};\n"+
+    /* __uaplyRowStub(id, row copy): the cleaned row copy and, for a real posting not in the list, its stand-in. Defined here, where it always
+       runs: load() uses it only when something was saved, and a backup restored on a new device (uaply-nav.js) needs it too */
+    'window.__uaplyRowStub=function(k,r){if(!r||typeof r!=="object"||!/^(0|[1-9][0-9]{0,15})$/.test(String(k)))return null;'+
+    'var u=String(r.u||"");var row={t:String(r.t||"").slice(0,160),c:String(r.c||"").slice(0,120),l:String(r.l||"").slice(0,120),u:u.indexOf("https://")===0?u.slice(0,600):"",ty:String(r.ty||"job").slice(0,12),m:String(r.m||"").slice(0,10)};'+
+    'var sj=null;if(!JOB_BY_ID[k]&&+k>=100000&&row.t&&row.c)sj={id:+k,co:row.c,role:row.t,loc:row.l||"Not listed",url:row.u,'+
+    'type:["job","parttime","internship","coop"].indexOf(row.ty)>-1?row.ty:"job",mode:["remote","hybrid","onsite"].indexOf(row.m)>-1?row.m:"onsite",'+
+    'sal:[0,0],yrs:0,edu:"High school",skills:[],blurb:"",live:true,stub:true,source:""};return {row:row,job:sj}};');
   /* a swipe on a real posting is kept when the page starts, even before the job list arrives (or after the job left the feed): the start-up
      read used to drop every decision whose job was not in the list yet, and the next save made that loss permanent */
   s=once(s,'if(JOB_BY_ID[k]&&x&&(x.s==="applied"||x.s==="passed"))','if((JOB_BY_ID[k]||+k>=100000)&&x&&(x.s==="applied"||x.s==="passed"))');
@@ -93,11 +100,8 @@ function patch(s){
   /* a swipe's own copy of its row (rowOf) is kept at start-up, and a swiped job that is in neither the list nor the saved copy comes back
      from it as a stand-in ("stub": its row in Job Tracker, never a card on the deck; the real posting replaces it when the list has it) */
   s=once(s,"S.history=(Array.isArray(d.history)?d.history:[])",
-    'Object.keys(S.decisions).forEach(function(k){var r=d.decisions[k]&&d.decisions[k].row;if(!r||typeof r!=="object")return;'+
-    'var u=String(r.u||"");var row={t:String(r.t||"").slice(0,160),c:String(r.c||"").slice(0,120),l:String(r.l||"").slice(0,120),u:u.indexOf("https://")===0?u.slice(0,600):"",ty:String(r.ty||"job").slice(0,12),m:String(r.m||"").slice(0,10)};'+
-    'S.decisions[k].row=row;if(!JOB_BY_ID[k]&&+k>=100000&&row.t&&row.c){var sj={id:+k,co:row.c,role:row.t,loc:row.l||"Not listed",url:row.u,'+
-    'type:["job","parttime","internship","coop"].indexOf(row.ty)>-1?row.ty:"job",mode:["remote","hybrid","onsite"].indexOf(row.m)>-1?row.m:"onsite",'+
-    'sal:[0,0],yrs:0,edu:"High school",skills:[],blurb:"",live:true,stub:true,source:""};JOBS.push(sj);JOB_BY_ID[k]=sj}});\n    '+
+    'Object.keys(S.decisions).forEach(function(k){var o=window.__uaplyRowStub(k,d.decisions[k]&&d.decisions[k].row);if(!o)return;'+
+    'S.decisions[k].row=o.row;if(o.job){JOBS.push(o.job);JOB_BY_ID[k]=o.job}});\n    '+
     "S.history=(Array.isArray(d.history)?d.history:[])");
   /* pay as the posting gives it (the recommendations list: never guess or estimate). A yearly range says "per year", an hourly one
      (salUnit "hour") "per hour" with its cents; no pay says "Pay not listed" in the pay line's place. Nothing turns an hourly figure into
