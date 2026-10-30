@@ -370,6 +370,8 @@ DEGREE = re.compile(r"\b(bachelor(?:'?s)?" + _DW + r"|master(?:'?s)?" + _DW + r"
                     r"high school diploma|diploma|certificate|ged)(?![a-z])", re.I)
 
 _BARE_DEGREE = re.compile(r"(?:bachelor|master|associate|doctor(?:ate)?)(?:'?s)?|diploma|certificate", re.I)
+_MS_SOFTWARE = re.compile(r"\s+(?:Office|Word|Excel|PowerPoint|Outlook|Access|Teams|Project|Windows|SQL|Dynamics|Visio|Paint|DOS|Azure|365|"
+                          r"Exchange|SharePoint)\b", re.I)
 _DOTLESS_OK = ("bsc", "msc", "beng", "meng", "btech", "mtech", "bba", "bfa", "mba", "phd", "ged")
 
 
@@ -388,8 +390,12 @@ def _real_degree(p, d):
         # ("Associate Professor of Biology")
         return not before and bool(re.match(r"\s*(?:[,:;(|\-–—]|$)", after))
     if "." not in g and " " not in g and g.lower() not in _DOTLESS_OK:
-        # "AS", "BA", "MS", "BS": capitals ("as", "ma" are words), and then "in", "of", a comma or the line's end ("MS Office" is software)
-        return g.isupper() and bool(re.match(r"\s*(?:(?:in|of)\b|,|$)", p[d.end():], re.I))
+        # "AS", "BA", "MS", "BS": capitals ("as", "ma" are words), and then "in", "of", a comma, the line's end or a capitalized
+        # subject ("BS Computer Science"), never software ("MS Office", "MS Excel")
+        after = p[d.end():]
+        if not g.isupper() or _MS_SOFTWARE.match(after):
+            return False
+        return bool(re.match(r"\s*(?:(?:[Ii]n|[Oo]f)\b|,|$|[A-Z][a-z])", after))
     return True
 
 
