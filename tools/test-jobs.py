@@ -40,7 +40,25 @@ def raw(title, loc, remote=None):
 
 
 t("a plain US job is kept", j._normalize(raw("Software Engineer", "Austin, TX"), "greenhouse", "Acme") is not None, True)
-t("a Toronto internship listed as ', CA' is dropped", j._normalize(raw("Software Engineering Intern 2027 (Toronto)", "Toronto, ON, CA"), "greenhouse", "Acme"), None)
+# Oct 30, 2026: UAply covers the US and Canada, so this posting is now kept as a Canadian job (before, it was dropped as outside the US)
+n = j._normalize(raw("Software Engineering Intern 2027 (Toronto)", "Toronto, ON, CA"), "greenhouse", "Acme")
+t("a Toronto internship listed as ', CA' is kept as Canadian, shown as 'Toronto, ON, Canada' (never California)",
+  n and (n["country"], n["loc"], n.get("geo")), ("ca", "Toronto, ON, Canada", None))
+t("'San Jose, CA' stays a California job", (j._normalize(raw("Software Engineer", "San Jose, CA"), "greenhouse", "Acme") or {}).get("country"), "us")
+for loc, remote, want in [
+    ("Toronto, ON, CA", False, ["ca"]), ("Vancouver, BC, Canada", False, ["ca"]), ("Remote - Canada", True, ["ca"]),
+    ("San Jose, CA", False, ["us"]), ("Los Angeles, CA, USA", False, ["us"]), ("Ontario, CA", False, ["us"]),     # Ontario, California
+    ("Vancouver, WA", False, ["us"]), ("London, ON", False, ["ca"]), ("Montreal, Quebec", False, ["ca"]), ("Calgary, AB", False, ["ca"]),
+    ("Halifax, Nova Scotia", False, ["ca"]), ("Whitehorse, YT", False, ["ca"]), ("CA-ON-Toronto", False, ["ca"]), ("Ottawa", False, ["ca"]),
+    ("Remote (US or Canada)", True, ["us", "ca"]), ("Austin, TX; Toronto, ON", False, ["us", "ca"]), ("Remote", True, ["us"]),
+    ("London, UK", False, []), ("Munich, BY, DE", False, []), ("Remote - Mexico", True, []), ("Sydney, Australia", True, []),
+]:
+    t("job_countries(%r)" % loc, j.job_countries(loc, remote), want)
+n = j._normalize(dict(raw("Data Analyst", "Toronto, ON"), text="Python and SQL. Salary: $80,000 - $95,000 CAD per year."), "greenhouse", "Acme")
+t("CAD pay stays as the posting gives it (never converted, never called USD)", n and (n["sal"], n.get("cur")), ([80000, 95000], "CAD"))
+n = j._normalize(dict(raw("Data Analyst", "Austin, TX"), text="Python and SQL. Salary: $80,000 - $95,000 per year."), "greenhouse", "Acme")
+t("US dollar pay carries no currency mark (USD is the default)", n and (n["sal"], "cur" in n), ([80000, 95000], False))
+t("USAJOBS stays US: a Canadian posting from it is dropped", j._normalize(raw("Analyst", "Toronto, ON, Canada"), "usajobs", "USAJOBS"), None)
 t("an 'ANZ' role listed as just Remote is dropped", j._normalize(raw("Support Representative - ANZ (Australia / New Zealand)", "Remote", True), "greenhouse", "Acme"), None)
 t("a 'LATAM' role listed as just Remote is dropped", j._normalize(raw("Developer Representative - LATAM", "Remote", True), "greenhouse", "Acme"), None)
 t("a US remote role is kept", j._normalize(raw("Backend Engineer", "Remote - USA", True), "greenhouse", "Acme") is not None, True)

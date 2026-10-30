@@ -652,10 +652,78 @@ def _us_ok(loc, remote):
         if EXPLICIT_US.search(p) or (US_RE.search(p) and not FOREIGN_RE.search(p)):
             return True
     return bool(remote and not FOREIGN_RE.search(loc))
-SAL_RE = re.compile(r"\$\s?(\d{2,3}(?:,\d{3})+|\d{2,3}\s?[kK])\s*(?:-|–|—|to)\s*\$?\s*(\d{2,3}(?:,\d{3})+|\d{2,3}\s?[kK])")
+
+
+# ---------- Canada (October 30, 2026): UAply shows US and Canadian postings; every other country is still left out ----------
+# _us_ok above is unchanged (a US posting is exactly what it was). job_countries adds Canada beside it: a province after a comma
+# ("Toronto, ON", "Halifax, Nova Scotia"), the word Canada, or (when no US place is named) a big Canadian city or a bare province name.
+# The trap: ", CA" alone is California ("San Jose, CA"); after a province it is Canada ("Toronto, ON, CA"), and so is "Ontario, Canada".
+# Codes never overlap: no US state is AB, BC, MB, NB, NL, NS, NT, NU, ON, PE, QC, SK or YT.
+CA_PROV = "AB BC MB NB NL NS NT NU ON PE QC SK YT".split()
+CA_PROV_NAMES = ("Alberta|British Columbia|Manitoba|New Brunswick|Newfoundland(?: and Labrador)?|Nova Scotia|Northwest Territories|Nunavut|Ontario|"
+                 "Prince Edward Island|Qu[eé]bec|Saskatchewan|Yukon")
+# big cities named without a province ("Toronto", "Hybrid - Montréal"). Left out on purpose: London, Hamilton, Waterloo, Victoria, Kingston,
+# Windsor, Surrey, Richmond (each is also a US or British place), so those count only with their province ("London, ON", "Victoria, BC").
+CA_CITIES = ("Toronto|Montr[eé]al|Vancouver|Calgary|Edmonton|Ottawa|Winnipeg|Qu[eé]bec City|Kitchener|Mississauga|Halifax|Saskatoon|Regina|"
+             "Brampton|Markham|Gatineau|Burnaby|Laval|Kelowna|Fredericton|Moncton|Charlottetown|Whitehorse|Yellowknife|Iqaluit|St\\.? John's")
+# "Toronto, ON, CA" / "Montreal, Quebec, CAN": the trailing code after a province is Canada's, written out before anything else reads it
+# (and "Vancouver, CA": no California city is called Toronto, Vancouver or Calgary)
+CA_TAIL_RE = re.compile(r"(,\s*(?:%s|%s)|^\s*(?:%s))\s*,\s*(?:CA|CAN)\s*$" % ("|".join(CA_PROV), CA_PROV_NAMES, CA_CITIES))
+CA_STRONG_RE = re.compile(r"(?i:\bcanad(?:a|ian)\b)|,\s*(?:%s)\b(?!-)|,\s*(?:%s)\b|^(?:CA|CAN)\s*-\s*(?:%s)\b" % ("|".join(CA_PROV), CA_PROV_NAMES, "|".join(CA_PROV)))
+CA_WEAK_RE = re.compile(r"\b(?:%s|%s)\b" % (CA_CITIES, CA_PROV_NAMES))
+CA_WORD_RE = re.compile(r"(?i:\bcanad(?:a|ian)\b)|\b(?:%s)\b" % CA_CITIES)      # FOREIGN_RE's Canadian words and more: taken out before FOREIGN_RE reads the rest
+COUNTRIES = ("us", "ca")
+US_ONLY_KINDS = ("usajobs", "careeronestop")      # federal and US Department of Labor lists: US postings only, whatever a place's words say
+COUNTRY_NAMES = {"us": "us", "usa": "us", "united states": "us", "united states of america": "us",
+                 "ca": "ca", "can": "ca", "canada": "ca"}
+
+
+def _ca_part(p):
+    """True when one place (one part of a location) is in Canada."""
+    if CA_STRONG_RE.search(p):
+        return True
+    if EXPLICIT_US.search(p) or US_RE.search(p):
+        return False                                    # "Vancouver, WA", "Ontario, CA" (California), "Ottawa, IL": US places
+    if FOREIGN_RE.search(CA_WORD_RE.sub(" ", p)):
+        return False                                    # another country named ("London", "Paris, IDF, FR")
+    return bool(CA_WEAK_RE.search(p))
+
+
+def _foreign_other(text):
+    """A country or place outside the US and Canada named in `text`."""
+    return bool(FOREIGN_RE.search(CA_WORD_RE.sub(" ", text or "")))
+
+
+def job_countries(loc, remote):
+    """The countries a posting can be done from, of COUNTRIES ("us", "ca"), in that order; empty when neither. The location is split as
+    in _us_ok; each part is a US place (_us_ok), a Canadian one (_ca_part), or both. A bare "Remote" is the US, as before."""
+    loc = loc or ""
+    parts = [p.strip() for p in re.split(r"[;|]", loc) if p.strip()] or [loc]
+    us = ca = False
+    for p in parts:
+        q = CA_TAIL_RE.sub(r"\1, Canada", p)            # "Toronto, ON, CA" -> "Toronto, ON, Canada": never California
+        if _ca_part(q):
+            ca = True
+            us = us or bool(EXPLICIT_US.search(q))      # "Remote - US or Canada" is open in both
+        elif _us_ok(q, False) or (US_RE.search(q) and not _foreign_other(q) and not FOREIGN_CODE_RE.search(q)):
+            us = True                                   # (the second: "Vancouver, WA", whose city FOREIGN_RE names as Canada's)
+    if not us and remote and not FOREIGN_RE.search(loc):
+        us = True
+        ca = ca or bool(re.search(r"\bNorth America\b", loc, re.I))      # "Remote - North America": Canada too
+    return [c for c, ok in (("us", us), ("ca", ca)) if ok]
+
+
+def raw_country(value):
+    """A feed's own country field as "us", "ca", "" (none given) or "other"."""
+    v = str(value or "").strip().lower()
+    return COUNTRY_NAMES.get(v, "other") if v else ""
+
+
+CAD_RE = re.compile(r"\bCAD\b|\bC\$|\bCA\$|Canadian dollars?", re.I)
+SAL_RE =re.compile(r"\$\s?(\d{2,3}(?:,\d{3})+|\d{2,3}\s?[kK])\s*(?:-|–|—|to)\s*\$?\s*(\d{2,3}(?:,\d{3})+|\d{2,3}\s?[kK])")
 # an hourly range written out with its unit ("$18 - $22 per hour", "$28.10–$36.50/hr", "$17 to $19 an hour", "$20-25 hourly"). Pay is never
 # guessed and never converted: an hourly figure stays hourly (salUnit "hour"), a yearly one yearly, and no unit means no pay on the card
-HOURLY_RE = re.compile(r"\$\s?(\d{1,3}(?:\.\d{1,2})?)\s*(?:-|–|—|to)\s*\$?\s?(\d{1,3}(?:\.\d{1,2})?)\s*(?:USD\s*)?(?:/\s?(?:hr|hour)\b|per\s+hour\b|an\s+hour\b|hourly\b)", re.I)
+HOURLY_RE = re.compile(r"\$\s?(\d{1,3}(?:\.\d{1,2})?)\s*(?:-|–|—|to)\s*\$?\s?(\d{1,3}(?:\.\d{1,2})?)\s*(?:(?:USD|CAD)\s*)?(?:/\s?(?:hr|hour)\b|per\s+hour\b|an\s+hour\b|hourly\b)", re.I)
 YRS_RE = re.compile(r"(\d{1,2})\+?\s*(?:or more\s*)?(?:years|yrs)", re.I)
 
 _cache = {}
@@ -664,7 +732,7 @@ _disk = {"loaded": False, "dirty": False, "filled": False}   # filled: a saved l
 _load_lock = threading.Lock()
 hide_errors = False                # serve.py sets this on a hosted server: the public job list then says "unavailable right now" instead of a raw network error
 DISK_MAX_AGE = 24 * 3600          # never trust a saved copy older than a day
-CACHE_VERSION = 13              # raise this whenever the rules for keeping or classifying postings change: older saved copies are then ignored
+CACHE_VERSION = 14             # raise this whenever the rules for keeping or classifying postings change: older saved copies are then ignored
 
 
 def _cache_file():
@@ -1193,27 +1261,49 @@ def _hourly(*texts):
     return None
 
 
+def _pay_in_cad(text):
+    """True when the pay range the text gives (the one _salary or _hourly read) is written in Canadian dollars ("CAD", "C$", "CA$")."""
+    for rx in (SAL_RE, HOURLY_RE):
+        m = rx.search(text or "")
+        if m:
+            return bool(CAD_RE.search(text[max(0, m.start() - 3):m.end() + 30]))
+    return False
+
+
+def _cur(code):
+    """A feed's own pay currency field: "USD" or "CAD" (pay in any other currency is not shown), else ""."""
+    c = str(code or "").strip().upper()
+    return c if c in ("USD", "CAD") else ""
+
+
 RECRUITEE_US = ("US", "USA", "UNITED STATES", "UNITED STATES OF AMERICA")
+RECRUITEE_CA = ("CA", "CAN", "CANADA")
 
 
 def _recruitee_raw(j, name):
     """One offer of a Recruitee careers site's public list (GET https://{company}.recruitee.com/api/offers/, no key; the careers site's own
     API, documented at docs.recruitee.com/reference/offers) as a raw posting, or None. The posting id is Recruitee's offer number (the same
     for the life of the offer); its slug is where an application goes (/api/offers/{slug}/candidates), kept as the job's ats id. An offer
-    open in several places is placed in its first US one; one with none in the US is left out."""
+    open in several places is placed in its first US one, else its first Canadian one; one with neither is left out."""
     if not isinstance(j, dict) or not j.get("id") or not j.get("title") or not j.get("slug") or j.get("status") not in (None, "published"):
         return None
     if not _recruitee_slug_ok(j.get("slug")):
         return None
     places = [l for l in (j.get("locations") or []) if isinstance(l, dict)]
-    us = [l for l in places if str(l.get("country_code") or l.get("country") or "").strip().upper() in RECRUITEE_US]
-    if us:
-        l = us[0]
-        city, state, country = l.get("city") or "", l.get("state_code") or l.get("state") or "", "us"
+    code = lambda x: str(x.get("country_code") or x.get("country") or "").strip().upper()
+    us = [l for l in places if code(l) in RECRUITEE_US]
+    ca = [l for l in places if code(l) in RECRUITEE_CA]
+    if us or ca:
+        l = (us or ca)[0]
+        city, state, country = l.get("city") or "", l.get("state_code") or l.get("state") or "", "us" if us else "ca"
     else:
         city, state = j.get("city") or "", j.get("state_code") or ""
-        country = "us" if str(j.get("country_code") or "").strip().upper() in RECRUITEE_US else (j.get("country_code") or "other")
-    loc = ", ".join(x.strip() for x in (city, state) if x and x.strip()) or ("United States" if country == "us" else "")
+        top = str(j.get("country_code") or "").strip().upper()
+        country = "us" if top in RECRUITEE_US else "ca" if top in RECRUITEE_CA else (j.get("country_code") or "other")
+    home = {"us": "United States", "ca": "Canada"}.get(country, "")
+    loc = ", ".join(x.strip() for x in (city, state) if x and x.strip()) or home
+    if country == "ca" and loc != home:
+        loc += ", Canada"                                 # "Toronto, ON, Canada": a province code alone is never read as a US state
     remote = True if j.get("remote") is True else None
     if remote and not j.get("on_site") and not j.get("hybrid"):
         loc = "Remote - " + (loc or "United States")
@@ -1221,7 +1311,8 @@ def _recruitee_raw(j, name):
         loc += " (hybrid)"
     pay = j.get("salary") if isinstance(j.get("salary"), dict) else {}
     sal = unit = None
-    if str(pay.get("currency") or "").upper() == "USD":
+    cur = _cur(pay.get("currency"))
+    if cur:                                               # US or Canadian dollars, as the offer gives them (never converted)
         if pay.get("period") == "hour":
             sal = _hour_pay(pay.get("min"), pay.get("max"))
             unit = "hour" if sal else None
@@ -1236,6 +1327,7 @@ def _recruitee_raw(j, name):
     url = str(j.get("careers_url") or "")
     return dict(id=j["id"], ats_id=j["slug"], apply_url=str(j.get("careers_apply_url") or ""), title=j["title"], company=j.get("company_name") or name, loc=loc, remote=remote, country=country,
                 text=_text((j.get("description") or "") + " " + (j.get("requirements") or "")), url=url, salary_text="", sal=sal, sal_unit=unit or "",
+                cur=cur if sal else "",
                 posted=_ts(when(j.get("published_at") or j.get("created_at"))), updated=_ts(when(j.get("updated_at"))), emp=emp,
                 force_type="internship" if emp in ("internship", "traineeship", "apprenticeship") else None,
                 fallback=(j.get("department") or "").strip() or None)
@@ -1306,7 +1398,7 @@ def _iter_raw(kind, token, name):
     elif kind == "remotive":
         for j in _get("https://remotive.com/api/remote-jobs?category=%s&limit=60" % token).get("jobs", []):
             loc = j.get("candidate_required_location") or ""
-            if not re.search(r"usa|united states|worldwide|americas|north america|anywhere", loc, re.I):
+            if not re.search(r"usa|united states|canada|worldwide|americas|north america|anywhere", loc, re.I):
                 continue
             yield dict(id=j["id"], title=j["title"], company=j["company_name"], loc="Remote (%s)" % loc, remote=True,
                        text=_text(j.get("description")) + " " + " ".join(j.get("tags") or []),
@@ -1352,18 +1444,19 @@ def _iter_raw(kind, token, name):
                 if isinstance(j.get("expiryDate"), (int, float)) and j["expiryDate"] < now:
                     continue
                 where = [c for c in (j.get("locationRestrictions") or []) if isinstance(c, str)]
-                if where and not any(re.search(r"United States|\bUSA?\b", c) for c in where):
+                if where and not any(re.search(r"United States|\bUSA?\b|Canada", c) for c in where):
                     continue
                 sal = None
                 lo, hi = j.get("minSalary"), j.get("maxSalary")
-                if j.get("currency") == "USD" and j.get("salaryPeriod") in ("annual", "yearly") and isinstance(lo, (int, float)) \
+                cur = _cur(j.get("currency"))                         # US or Canadian dollars, never converted
+                if cur and j.get("salaryPeriod") in ("annual", "yearly") and isinstance(lo, (int, float)) \
                         and isinstance(hi, (int, float)) and 20000 <= lo < hi <= 600000:
                     sal = [int(lo), int(hi)]
-                hour = _hour_pay(lo, hi) if j.get("currency") == "USD" and j.get("salaryPeriod") in ("hour", "hourly") else None
+                hour = _hour_pay(lo, hi) if cur and j.get("salaryPeriod") in ("hour", "hourly") else None
                 link = j.get("applicationLink") if str(j.get("applicationLink") or "").startswith("https://") else j["guid"]
                 yield dict(id=j["guid"], title=j["title"], company=j.get("companyName") or "Himalayas", loc="Remote (%s)" % (", ".join(where[:3]) or "Worldwide"),
                            remote=True, text=_text(j.get("description") or j.get("excerpt")), url=link, salary_text="", sal=hour or sal, sal_unit="hour" if hour else "",
-                           posted=_ts(j.get("pubDate")), emp=j.get("employmentType"),
+                           cur=cur if (hour or sal) else "", posted=_ts(j.get("pubDate")), emp=j.get("employmentType"),
                            fallback=next((c.replace("-", " ") for c in (j.get("categories") or []) if isinstance(c, str)), None))
     elif kind == "remoteok":
         # https://remoteok.com/api : the first entry is the legal notice (link back to the job on Remote OK, name Remote OK as the source)
@@ -1452,27 +1545,31 @@ SR_BOARD_READ = 24                     # an employer board: at most this many US
 def _smartrecruiters(token, name):
     """A company's public SmartRecruiters postings: the list page by page (100 at a time, until totalFound, at most KEEP postings),
     then each posting's own record for its description. Shapes as seen on the live API (October 16, 2026). For a company that is not a
-    public body (Equinox, Red Bull ...), postings outside the US are left out before any description is read, and at most SR_BOARD_READ
+    public body (Equinox, Red Bull ...), postings outside the US and Canada are left out before any description is read, and at most SR_BOARD_READ
     descriptions are read (it keeps 14 plus tri-state extras, like any employer board)."""
     whole = token in SR_WHOLE
     cap = KEEP["smartrecruiters"]
     base = "https://api.smartrecruiters.com/v1/companies/%s/postings" % urllib.parse.quote(token, safe="")
     items, offset = [], 0
     while len(items) < cap:
-        # an employer board: one page of its US postings only (SmartRecruiters filters by country), not every country's first 120
-        page = _get("%s?limit=100&offset=%d" % (base, offset) + ("" if whole else "&country=us"))
+        # an employer board: one page of its US postings and one of its Canadian ones (SmartRecruiters filters by country), not every
+        # country's first 120
         if not whole:
-            items += page.get("content") or []
+            for c in COUNTRIES:
+                items += _get("%s?limit=100&offset=%d&country=%s" % (base, offset, c)).get("content") or []
             break
+        page = _get("%s?limit=100&offset=%d" % (base, offset))
         got = page.get("content") or []
         items += got
         offset += len(got)
         if not got or offset >= int(page.get("totalFound") or 0):
             break
     items = [p for p in items if isinstance(p, dict) and p.get("id")]
-    if not whole:                                   # US postings only, Pennsylvania, New Jersey and Delaware ones first
-        items = [p for p in items if ((p.get("location") or {}).get("country") or "us").lower() == "us"]
-        items.sort(key=lambda p: ((p.get("location") or {}).get("region") or "").upper() not in ("PA", "NJ", "DE"))
+    if not whole:                                   # US and Canadian postings only: Pennsylvania, New Jersey and Delaware first, then the US, then Canada
+        cc = lambda p: ((p.get("location") or {}).get("country") or "us").lower()
+        seen = set()
+        items = [p for p in items if cc(p) in COUNTRIES and not (str(p["id"]) in seen or seen.add(str(p["id"])))]
+        items.sort(key=lambda p: (cc(p) != "us", ((p.get("location") or {}).get("region") or "").upper() not in ("PA", "NJ", "DE")))
         items = items[:SR_BOARD_READ]
     items = items[:cap]
     prev = _prev_jobs(("smartrecruiters", token, name))
@@ -1486,16 +1583,19 @@ def _smartrecruiters(token, name):
         L = p.get("location") or {}
         city, region = (L.get("city") or "").strip(), (L.get("region") or "").strip()
         loc = city + (", " + region if region and region not in city else "")
-        if (L.get("country") or "us").lower() != "us":
+        if (L.get("country") or "us").lower() == "ca":
+            loc = (loc + ", Canada") if loc else "Canada"         # "Toronto, ON, Canada": a province code alone is never read as a US state
+        elif (L.get("country") or "us").lower() != "us":
             loc = L.get("fullLocation") or (loc + ", " + (L.get("country") or "").upper())
         secs = ((d.get("jobAd") or {}).get("sections")) or {}
         text = " ".join((secs.get(k) or {}).get("text") or "" for k in ("jobDescription", "qualifications", "additionalInformation"))
         comp = d.get("compensation") or {}
         sal = None
-        if comp.get("currency") == "USD" and comp.get("period") == "YEARLY" and isinstance(comp.get("min"), (int, float)) and isinstance(comp.get("max"), (int, float)) \
+        cur = _cur(comp.get("currency"))                          # US or Canadian dollars, never converted
+        if cur and comp.get("period") == "YEARLY" and isinstance(comp.get("min"), (int, float)) and isinstance(comp.get("max"), (int, float)) \
                 and 20000 <= comp["min"] < comp["max"] <= 600000:
             sal = [int(comp["min"]), int(comp["max"])]
-        hour = _hour_pay(comp.get("min"), comp.get("max")) if comp.get("currency") == "USD" and comp.get("period") == "HOURLY" else None
+        hour = _hour_pay(comp.get("min"), comp.get("max")) if cur and comp.get("period") == "HOURLY" else None
         kind_label = ((p.get("typeOfEmployment") or {}).get("label") or "").lower()
         force = "internship" if "intern" in kind_label else ("parttime" if "part" in kind_label else None)
         dept = re.split(r"\s[-–—]\s", (p.get("department") or {}).get("label") or "")[0].strip()      # "Law Department – Tax Unit" -> "Law Department"
@@ -1504,7 +1604,8 @@ def _smartrecruiters(token, name):
         out.append(dict(id=p["id"], title=(p.get("name") or "").strip(), company=(p.get("company") or {}).get("name") or name, country=L.get("country") or "us",
                         loc=loc or "Not listed", remote=True if L.get("remote") else None,
                         text=_text(text) or (p.get("name") or ""), url="https://jobs.smartrecruiters.com/%s/%s" % (token, p["id"]),
-                        salary_text="", sal=hour or sal, sal_unit="hour" if hour else "", posted=_ts(p.get("releasedDate")), fallback=fallback, force_type=force, emp=kind_label,
+                        salary_text="", sal=hour or sal, sal_unit="hour" if hour else "", cur=cur if (hour or sal) else "",
+                        posted=_ts(p.get("releasedDate")), fallback=fallback, force_type=force, emp=kind_label,
                         ats_id=str(p.get("uuid") or "")))     # the Application API addresses a posting by its uuid, not by its number
         if again:
             out[-1]["_prev"] = again                              # unchanged since the last read: the same job again
@@ -1844,15 +1945,16 @@ def _ld_raw(p, page_url, name):
     v = bs.get("value") if isinstance(bs.get("value"), dict) else {}
     try:
         lo, hi = float(v.get("minValue")), float(v.get("maxValue"))
-        if bs.get("currency") == "USD" and str(v.get("unitText") or "").upper() == "YEAR" and 20000 <= lo < hi <= 600000:
+        if _cur(bs.get("currency")) and str(v.get("unitText") or "").upper() == "YEAR" and 20000 <= lo < hi <= 600000:
             sal = [int(lo), int(hi)]
-        elif bs.get("currency") == "USD" and str(v.get("unitText") or "").upper() == "HOUR" and _hour_pay(lo, hi):
+        elif _cur(bs.get("currency")) and str(v.get("unitText") or "").upper() == "HOUR" and _hour_pay(lo, hi):
             sal, cp_unit = _hour_pay(lo, hi), "hour"
     except (TypeError, ValueError):
         pass
     clean = _cp_clean(page_url)
     return dict(id=clean, title=title, company=str(company).strip(), loc="; ".join(x for x in places if x) or ("Remote" if remote else ""),
                 remote=True if remote else None, text=_text(p.get("description") or "")[:CP_TEXT], url=clean, salary_text="", sal=sal, sal_unit=cp_unit,
+                cur=_cur(bs.get("currency")) if sal else "",
                 posted=_ts(p.get("datePosted")), emp=p.get("employmentType"), country=country or "us",
                 # a clinical or store role often names no skill UAply scores on: its category (or the employer's industry) stands in
                 fallback=str(p.get("occupationalCategory") or p.get("industry") or "").strip()[:60] or "General")
@@ -1908,7 +2010,7 @@ def _career_pages(token, name):
         except Exception:
             continue
         raw = _ld_raw(ps[0], u, name) if ps else None
-        us = bool(raw) and str(raw.get("country") or "us").strip().lower() in ("us", "usa", "united states", "united states of america")
+        us = bool(raw) and raw_country(raw.get("country")) in ("", "us", "ca")       # a US or Canadian posting
         with _lock:                                   # the job made from it is in the source's packed copy (see _prev_jobs); a posting
             _cp_pages[(token, u)] = (lm, us, time.time())     # outside the US is not read again until its page changes
         if raw:
@@ -2282,13 +2384,29 @@ def _normalize(raw, kind, name, board=None):
     if list_credit:                                     # a Simplify / Pitt CSC row: it is the employer's own posting, read from its own board
         kind, board, name = raw["ats_kind"], raw["board"], raw["company"]
     title, loc, text = raw["title"], raw["loc"], raw["text"]
-    if str(raw.get("country") or "us").strip().lower() not in ("us", "usa", "united states", "united states of america"):
-        return None
+    rc = raw_country(raw.get("country"))
+    if rc == "other" or (rc == "ca" and kind in US_ONLY_KINDS):
+        return None                                     # a country other than the US and Canada (and USAJOBS / CareerOneStop stay US)
     remote = raw["remote"] if raw["remote"] is not None else bool(re.search(r"\bremote\b", loc, re.I))
-    if not _us_ok(loc, remote):
+    countries = job_countries(loc, remote)
+    if rc == "ca" and not countries and not _foreign_other(loc):
+        countries = ["ca"]                              # the feed says Canada and the place names nothing else ("Remote")
+    if rc:
+        countries = [c for c in countries if c == rc]   # the feed's own country field wins over the words of the place
+    if kind in US_ONLY_KINDS:
+        countries = [c for c in countries if c == "us"]
+    if not countries:
         return None
-    if FOREIGN_RE.search(title) and not EXPLICIT_US.search(loc):
-        return None                                     # a region-specific role (for example "ANZ" or "Toronto") listed as just "Remote"
+    if _foreign_other(title) and not (EXPLICIT_US.search(loc) or CA_STRONG_RE.search(loc)):
+        return None                                     # a region-specific role (for example "ANZ" or "London") listed as just "Remote"
+    if CA_WORD_RE.search(title) and not EXPLICIT_US.search(loc):
+        # a role named for Canada or a Canadian city ("Account Executive (Toronto)"): Canadian, when the place says so or says nothing more
+        if "ca" in countries:
+            countries = ["ca"]
+        elif rc != "us" and kind not in US_ONLY_KINDS and not US_RE.search(loc) and not _foreign_other(loc):
+            countries = ["ca"]                          # "Remote" with a Canadian title
+        else:
+            return None
     if raw["url"].startswith("http://"):                # some employers list their careers page as http:// (Squarespace, Block): open it securely
         raw = dict(raw, url="https://" + raw["url"][len("http://"):])
     if not raw["url"].startswith("https://"):
@@ -2330,23 +2448,33 @@ def _normalize(raw, kind, name, board=None):
     contact = apply_address(text, company, board or "", raw["url"])
     # pay as the posting gives it: a yearly range, or an hourly one with its unit; nothing at all ([0, 0], "Pay not listed") otherwise
     sal, sal_unit = raw.get("sal"), (raw.get("sal_unit") or "") if raw.get("sal") else ""
+    cur = (raw.get("cur") or "") if sal else ""                  # a feed's own pay currency (only CAD is ever set: USD is the default)
     if not sal:
         sal = _salary(raw["salary_text"], text)
         if not sal[1]:
             hour = _hourly(raw["salary_text"], text)
             if hour:
                 sal, sal_unit = hour, "hour"
-    out = dict(id=jid, co=company, role=title, loc=_place(loc, mode), mode=mode,
+        if sal and sal[1] and _pay_in_cad(raw["salary_text"] + " " + text):
+            cur = "CAD"                                           # "$80,000 - $95,000 CAD": kept as written, never converted or called US dollars
+    place = _place(CA_TAIL_RE.sub(r"\1, Canada", loc) if countries == ["ca"] else loc, mode)    # "Toronto, ON, Canada", never ", CA"
+    if countries == ["ca"] and place == "United States":
+        place = "Canada"                                          # a bare "Remote" the feed or the title placed in Canada
+    out = dict(id=jid, co=company, role=title, loc=place, mode=mode,
                sal=sal, yrs=yrs, edu=edu, skills=skills, blurb=blurb, desc=desc,
                type=typ, jobType=jtype, url=raw["url"], source=src, contact=contact, apply="email" if contact else "link", live=True, ats=ats,
-               posted=_ts(raw.get("posted")), perks=_perks(text), comm=bool(COMM_RE.search(text)))
+               posted=_ts(raw.get("posted")), perks=_perks(text), comm=bool(COMM_RE.search(text)), country=countries[0])
+    if len(countries) > 1:
+        out["countries"] = countries                              # open in both ("Remote - US or Canada"): a Canada filter shows it too
+    if cur == "CAD":
+        out["cur"] = "CAD"                                        # pay in Canadian dollars, as the posting gives it
     if sal_unit == "hour":
         out["salUnit"] = "hour"                                   # the card says "per hour"; nothing compares it with a yearly minimum
     if contact:
         out["instant"] = True                                     # the card says "Apply instantly": a swipe right emails the application
     if jtype in ("internship", "co-op") and _grad_only(title, text):
         out["gradOnly"] = True                                    # the Internship and Co-op stacks show undergraduate roles first
-    pt = job_geo(loc, mode == "remote")
+    pt = job_geo(loc, mode == "remote") if "us" in countries else None     # US places only (PLACES_FILE is US Census data)
     if pt:
         out["geo"] = pt                                           # where it is, for "near you" (see PLACES_FILE)
     # dates in epoch ms whatever the caller gave (_ts: seconds are converted): a date in seconds reads as January 1970, and the 60-day rule
@@ -2838,7 +2966,7 @@ def _simplify(token, name):
     del text
     todo, seen = [], set()
     for company, title, place, link, days in sorted(rows, key=lambda r: r[4]):
-        if days > MAX_AGE_DAYS or not _us_ok(place, bool(re.search(r"\bremote\b", place, re.I))):
+        if days > MAX_AGE_DAYS or not job_countries(place,bool(re.search(r"\bremote\b", place, re.I))):
             continue
         for kind, rx, api in SIMPLIFY_ATS:
             m = rx.match(link)
@@ -2890,8 +3018,8 @@ def _fetch_source(src):
                     continue
                 if raw.get("lazy"):                  # Greenhouse: pick the postings to keep from the list, read their descriptions after
                     listed.add(raw["lazy"][1])
-                    if not _us_ok(raw["loc"], bool(re.search(r"\bremote\b", raw["loc"], re.I))) or _gh_skip.get(raw["lazy"][:2]) == raw["lazy"][2]:
-                        continue                     # not a US job, or read before and not kept (no skill to score it on) and unchanged since
+                    if not job_countries(raw["loc"], bool(re.search(r"\bremote\b", raw["loc"], re.I))) or _gh_skip.get(raw["lazy"][:2]) == raw["lazy"][2]:
+                        continue                     # not a US or Canadian job, or read before and not kept (no skill to score it on) and unchanged since
                     lazy.append(raw)                 # every eligible posting, in board order (small: no description yet)
                     continue
                 # only the first STUDENT_PER_SOURCE student roles and PER_SOURCE others can be kept below, so a posting past those is not worked
@@ -3323,7 +3451,7 @@ def _collect(meta, now_ms):
 
 
 JSON_MEMO_S = 20                 # seconds the encoded job list is reused while nothing changed (a few thousand jobs are megabytes to encode)
-_json_memo = {"key": None, "at": 0.0, "gz": b"", "pending": 0, "blocks": [], "kinds": [], "meta": {}, "stamp": 0}
+_json_memo = {"key": None, "at": 0.0, "gz": b"", "pending": 0, "blocks": [], "kinds": [], "places": [], "meta": {}, "stamp": 0}
 PAGE_SIZE, PAGE_MAX = 200, 1000  # the paged form (get_page): jobs per page when none is asked for, and the most one page may hold
 PAGE_BLOCK = 250                 # jobs per compressed block of the memo (a page unpacks only the blocks it needs)
 PAGE_TYPES = ("job", "parttime", "internship", "coop")      # the deck's stacks (a job's "type"), the paged form's type filter
@@ -3339,21 +3467,25 @@ def get_json(compressed=False):
     return m["gz"] if compressed else gzip.decompress(m["gz"])
 
 
-def get_page(size=None, page=None, cursor=None, types=None):
+def get_page(size=None, page=None, cursor=None, types=None, countries=None):
     """One page of the job list as JSON bytes: {"jobs": [...], "total", "page", "size", "next", and the list's other fields (sources,
     merged, aged_out, pending, fetched_at)}. The same jobs in the same order as get_json, cut from the same memo (nothing is encoded again).
     size: jobs per page (PAGE_SIZE, at most PAGE_MAX). page: 1 for the first. cursor: the "next" of the page before, which carries on where
     it ended even if the list was rebuilt meanwhile ("changed": true then, and the app keeps telling jobs apart by id). types: a job's
-    "type" values to keep (PAGE_TYPES), all when empty; "total" counts the jobs that pass it."""
+    "type" values to keep (PAGE_TYPES), all when empty; countries: "us" and/or "ca" (COUNTRIES), both when empty (a job open in both
+    passes either); "total" counts the jobs that pass them."""
     m = _memo()
     with _json_lock:
-        blocks, kinds, meta, stamp = m["blocks"], m["kinds"], m["meta"], m["stamp"]
+        blocks, kinds, places, meta, stamp = m["blocks"], m["kinds"], m["places"], m["meta"], m["stamp"]
     try:
         size = min(PAGE_MAX, max(1, int(size))) if size not in (None, "") else PAGE_SIZE
     except (TypeError, ValueError):
         size = PAGE_SIZE
     want = {t for t in (types or ()) if t in PAGE_TYPES}
-    sel = [i for i, k in enumerate(kinds) if k in want] if want else range(len(kinds))
+    where = {c for c in (str(x or "").strip().lower() for x in (countries or ())) if c in COUNTRIES}
+    where = where if where and len(where) < len(COUNTRIES) else None          # both (or nothing usable): no country filter
+    sel = [i for i, k in enumerate(kinds) if (not want or k in want) and (not where or where & set(places[i]))] \
+        if want or where else range(len(kinds))
     changed, start = False, 0
     if cursor:
         try:
@@ -3386,7 +3518,7 @@ def get_page(size=None, page=None, cursor=None, types=None):
 
 def _memo():
     """The encoded job list (see get_json), rebuilt when it is out of date: the whole list gzip-compressed, and the same jobs in blocks of
-    PAGE_BLOCK (zlib, one job per line) with each job's type, for get_page."""
+    PAGE_BLOCK (zlib, one job per line) with each job's type and countries, for get_page."""
     pj = partner_jobs()
     blocked = mailer.blocked_addresses()        # an address that bounced or asked UAply to stop: its postings are hand-offs again at once
     key = (_version[0], tuple((j.get("id"), j.get("closed"), j.get("posted"), j.get("role")) for j in pj), tuple(sorted(ats_connections())), hide_errors,
@@ -3403,12 +3535,13 @@ def _memo():
             # Compact JSON (no spaces after , and :): about 7% fewer bytes to parse on a phone, the same once compressed.
             meta, conns, now_ms = {}, ats_connections(), time.time() * 1000
             z = zlib.compressobj(5, zlib.DEFLATED, 31)          # 31: a gzip stream
-            parts, blocks, block, kinds = [z.compress(b'{"jobs":[')], [], [], []
+            parts, blocks, block, kinds, places = [z.compress(b'{"jobs":[')], [], [], [], []
             for i, (j, feed) in enumerate(_collect(meta, now_ms)):
                 line = json.dumps(_out_job(j, now_ms, conns, feed, blocked), separators=(",", ":")).encode("utf-8")
                 parts.append(z.compress((b"," if i else b"") + line))
                 block.append(line)                               # (JSON text never holds a raw line break: one job per line)
                 kinds.append(sys.intern(j.get("type") or "job"))
+                places.append(tuple(j.get("countries") or (j.get("country") or "us",)))     # a partner employer's job: US
                 if len(block) == PAGE_BLOCK:
                     blocks.append(zlib.compress(b"\n".join(block), 5))
                     block = []
@@ -3416,6 +3549,6 @@ def _memo():
                 blocks.append(zlib.compress(b"\n".join(block), 5))
             parts.append(z.compress(b"]," + json.dumps(meta, separators=(",", ":"))[1:].encode("utf-8")) + z.flush())     # the list's other fields after the jobs
             m.update(key=(_version[0],) + key[1:], at=time.time(), gz=b"".join(parts), pending=meta.get("pending", 0),
-                     blocks=blocks, kinds=kinds, meta=meta, stamp=m["stamp"] + 1)
+                     blocks=blocks, kinds=kinds, places=places, meta=meta, stamp=m["stamp"] + 1)
             del parts, block
         return m

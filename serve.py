@@ -1021,11 +1021,13 @@ class H(http.server.SimpleHTTPRequestHandler):
             try:
                 if p == "/api/jobs" and "?" in self.path:
                     # the paged form (jobs_api.get_page): ?size=200&page=1, or ?cursor=<the "next" of the page before>, and ?type=internship,coop
-                    # for the deck's stacks. The same jobs in the same order as the whole list; any other query is the whole list, as before.
+                    # for the deck's stacks, and ?country=us, ca or us,ca (both when left out). The same jobs in the same order as the whole
+                    # list; any other query is the whole list, as before.
                     q = urllib.parse.parse_qs(self.path.split("?", 1)[1])
-                    if any(k in q for k in ("page", "size", "cursor", "type")):
+                    if any(k in q for k in ("page", "size", "cursor", "type", "country")):
                         one = lambda k: (q.get(k) or [""])[0][:40]
-                        body = jobs_api.get_page(one("size"), one("page"), one("cursor"), [x.strip() for x in one("type").split(",") if x.strip()])
+                        body = jobs_api.get_page(one("size"), one("page"), one("cursor"), [x.strip() for x in one("type").split(",") if x.strip()],
+                                                 [x.strip() for x in one("country").split(",") if x.strip()])
                         if "gzip" in (self.headers.get("Accept-Encoding") or "").lower() and len(body) > 1024:
                             return self._send(200, gzip.compress(body, 5), headers=[("Content-Encoding", "gzip"), ("Vary", "Accept-Encoding")])
                         return self._send(200, body, headers=[("Vary", "Accept-Encoding")])
