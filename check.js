@@ -76,6 +76,36 @@ console.log("Release build (dev)");
   testy.length ? bad("help/articles.json: release answers with test or developer wording: " + testy.map((t) => t.split(":")[0]).join(", ")) : ok("no release answer mentions a test version, a test inbox or the coding tools");
 }
 
+console.log("Honest swipe-right wording");
+{
+  /* the honest rule (Trello nXbxb0tL, October 22): a swipe right applies through UAply only for employers who take UAply applications;
+     for every other job UAply sends nothing to the employer (the server still keeps a record, see the privacy article) and saves it in Job Tracker, where a link opens the employer's own page for the person to finish. So no help answer and no in-app help text may say a
+     swipe right "applies for you" in a sentence that does not also name who takes UAply applications */
+  const QUAL = /take(s)? UAply applications|applications through UAply/i;
+  const texts = [];
+  JSON.parse(fs.readFileSync("help/articles.json", "utf8")).articles.forEach((a) => {
+    texts.push(["help " + a.id, a.body || ""]);
+    if (a.release && a.release.body) texts.push(["help " + a.id + " (release)", a.release.body]);
+  });
+  ["prod/index.html", "dev/index.html", "sandbox/index.html"].concat(fs.readdirSync("shared").filter((f) => f.endsWith(".js")).map((f) => "shared/" + f)).forEach((f) => texts.push([f, fs.readFileSync(f, "utf8")]));
+  const loose = [];
+  texts.forEach(([where, t]) => t.split(/[.!?](?=\s|<|'|"|$)|\n/).forEach((s) => { if (/\bappl(y|ies) for you\b/i.test(s) && !QUAL.test(s)) loose.push(where + ': "' + s.trim().slice(0, 90) + '"'); }));
+  loose.length ? bad("a swipe right is said to apply for you without the honest rule (only employers who take UAply applications): " + loose.join("; "))
+    : ok("no help article or in-app text says a swipe right applies for you without naming who takes UAply applications");
+  const sr = JSON.parse(fs.readFileSync("help/articles.json", "utf8")).articles.find((a) => a.id === "swipe-right");
+  const both = (t) => QUAL.test(t || "") && /employer's own page/.test(t || "");
+  sr && both(sr.body) && sr.release && both(sr.release.body) ? ok("the swipe-right help answer (test and release) states both halves of the rule")
+    : bad("help/articles.json: the swipe-right article (body and release.body) must say who takes UAply applications and that every other job is the employer's own page");
+  /* a hand-off swipe still posts the profile to UAply's server (uaply-live.js deliver, /api/apply), which keeps a record and may email a
+     receipt; only the employer gets nothing. So a help sentence about "every other job" may not say nothing is sent without "to the employer" */
+  const wide = [];
+  texts.filter(([w]) => w.startsWith("help ")).forEach(([where, t]) => t.split(/[.!?](?=\s|$)/).forEach((s) => {
+    if ((/UAply sends nothing(?! to the employer)/.test(s)) || (/every other job|^\s*Otherwise/i.test(s) && /(nothing is sent|sends nothing)(?! to the employer)/i.test(s))) wide.push(where + ': "' + s.trim().slice(0, 90) + '"');
+  }));
+  wide.length ? bad("a help answer says nothing is sent for other jobs, but the profile still reaches UAply's server; say \"to the employer\": " + wide.join("; "))
+    : ok("for every other job the help says nothing is sent to the employer (not that nothing leaves the device)");
+}
+
 console.log("Wiring between files");
 try {
   /* a fresh copy of every shared script, so this does not depend on the section above */
