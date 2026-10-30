@@ -38,6 +38,9 @@ UNPUSHED WORK: none (checked) | <what's still local and why> (from step 0)
      `bash tools/lite/run.sh trello.py handoff "<chat title or area>" --file .handoff-note.md`.
      It is posted only if the output contains `POSTED ✓`. Exit 2 = area name not recognised: pick from the list it
      prints and rerun. `python tools/lite/trello.py areas` lists the cards.
+2b. Cards touched this chat (Trello connector, each comment ends `— <FOUNDER> via Claude`):
+   unfinished → "Next / queued — retain progress" + a one-line progress comment; merged to sandbox →
+   "Waiting on someone" + comment with the PR #. Never move a card to Completed here.
 3. Success → tell the user: "Posted to <card> <url>. Next time in this area (either laptop): /clear, then: Read the
    latest comment on the <area> card and nothing else. Confirm the next step in one line."
 4. ONLY if A and B both failed: save the note as `HANDOFF-<area>.md` in the repo root (gitignored, never commit —
