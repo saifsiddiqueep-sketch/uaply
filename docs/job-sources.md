@@ -212,15 +212,15 @@ unknown user id, a rate limit) and `tools/check-careeronestop.py` to check the k
   (hourly or yearly ranges); drafts and offers with an unsafe slug are skipped.
 - 68 boards with at least 5 US jobs are in job-boards.json (found with a web search limited to recruitee.com and a Common Crawl
   sweep, checked with `tools/find-recruitee.py`): 1,327 US jobs when last checked (October 23 and 30), 66 of them in PA, NJ or DE.
+  A second sweep (October 30: Common Crawl 2026 crawls plus the Wayback Machine, 751 more sites probed) added 10 boards (129 US jobs).
   Sweep 3 (October 30) probed the remaining 1,784 Common Crawl tokens: 3 new boards (Aetherflux, Certus, Miaplaza, 16 US jobs); the
   other hits were alternate tokens of boards already listed, or EWOR (243 fellowship postings, held for a decision).
-  A second sweep (October 30: Common Crawl 2026 crawls plus the Wayback Machine, 751 more sites probed) added 10 boards (129 US jobs).
   Recruitee is mostly European, and its US health care, dental, legal and hospitality sites are small (most have under 5 openings),
   so few of those passed the 5-job rule. Four boards found earlier were dropped for having under 5 US jobs: dillinggroup,
   anywhereworks, goodwall and hostaway.
 - Recruitee US ceiling (measured October 30, 2026): 859 Recruitee sites found in Common Crawl, 787 of them live, with about 10,000
   offers, 582 of them in the US (about 5.7%). The sweep only covered sites that were not yet in this file, so that 582 splits into
-  359 US jobs on the 17 boards added below (now part of the 1,311 above) and 128 on boards too small to list. The sweep found 19 sites
+  359 US jobs on the 17 boards added below (now part of the 1,327 above) and 128 on boards too small to list. The sweep found 19 sites
   with 5+ US jobs; two of them (chg, gainpro) redirect to boards already listed or kept (chgcareers, gain), so 17 distinct new boards
   were added (vertigis came from a follow-up probe).
   Another 59 boards with 1 to 4 US jobs (128 jobs) are left out by the 5-US rule. Recruitee alone cannot reach 50k US jobs.
