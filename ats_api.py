@@ -570,6 +570,35 @@ def plan(kind, job_id, key, cand, job, note, resume_meta, answers, board=""):
     return None
 
 
+def resume_goes(kind, plan, resume_type):
+    """Whether a send into this hiring system carries the uploaded resume file itself (what the app and the receipt then say): True, False,
+    or None when it cannot be known. Lever and SmartRecruiters always take it; Workable only as PDF, Word or RTF (another file is left out,
+    see _workable); Greenhouse and Ashby only into the form's own resume question, so only the plan read before the send can tell. Without
+    one it is None: test mode never reads an Ashby form (it must not use the employer's key), and a Greenhouse form whose read failed (a
+    posting that is gone, a network error) or was skipped (a test redirect) was not read either, so it cannot say whether the file would go."""
+    if kind == "workable":
+        return resume_type in _WK_RESUME_TYPES
+    if kind in ("greenhouse", "ashby"):
+        if plan is None:
+            return None
+        return bool(plan.get("resume") or any(f[0] == "resume" for f in plan.get("files") or []))
+    return True
+
+
+def link_goes(kind, plan, file_goes, link):
+    """Whether a send into this hiring system carries the person's resume link (False when they added none): True, False, or None when it
+    cannot be known. Lever always lists it (urls[Resume link]); SmartRecruiters and Workable put it in the message when the file does not go
+    (_sr_body, _wk_body). Anywhere else it goes only as the answer to one of the form's questions (a website question when there is no
+    portfolio link, see autofill._rules), so only the plan read before the send can tell."""
+    if not link:
+        return False
+    if kind == "lever" or (kind in ("smartrecruiters", "workable") and file_goes is False):
+        return True
+    if plan is None:
+        return None
+    return any(v == link for _, v in list(plan.get("values") or []) + list(plan.get("fields") or []))
+
+
 def submit(kind, board, job_id, key, cand, note, resume_meta, resume_bytes):
     """Send one application into the employer's hiring system. Returns (status, reason): "sent", "needs_manual" (nothing was sent: the posting
     has required questions the profile cannot answer, so the person finishes on the employer's page) or "failed"."""

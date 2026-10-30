@@ -10,13 +10,15 @@ no profile can answer, 1004 a job that does not exist, 1005 an employer system t
 application (willing to relocate, expected pay, country) plus Greenhouse's location box (location with its hidden latitude and longitude), 1007 and
 1008 every kind of question the app asks on screen (long text, a long single-choice list, a multi-select, a month, a date and a number asked in
 text boxes, a yes/no, a notice to acknowledge, and a voluntary question that must stay unanswered; 1008 is the same form for a second employer),
-1009 a required file other than the resume (the app cannot ask it, so the person finishes on the employer's page).
+1009 a required file other than the resume (the app cannot ask it, so the person finishes on the employer's page), 1010 a form with no resume
+question that asks for a personal website, 1011 a form with no resume question and nothing else to carry a link.
 Like Greenhouse, it also takes country_short_name and one employments[0][...] entry; it refuses a location without its map position, an
 employment entry with a missing part and a country that is not a two-letter code, so a test sees a half-sent field. Lever posting id 'slow' answers 429.
 Ashby posting ids are the forms in fixtures/ashby-forms.json; 4444... refuses the form (success false), 5555... answers with a hostile body, 6666... is
 blocked by the employer's application limit, 8888... answers 429 (these four use the 1111... form). SmartRecruiters uuids are the configurations in
 fixtures/smartrecruiters-configurations.json; ...0004 answers 429 and ...0005 a hostile body (both use the ...0001 configuration). The Ashby form
-12121212-... and the SmartRecruiters configuration ...0006 below carry every field kind those systems publish (except files other than the resume).
+12121212-... and the SmartRecruiters configuration ...0006 below carry every field kind those systems publish (except files other than the resume);
+the Ashby form 13131313-... has no resume field.
 Workable: Bearer token 'wk-token-345' (and 'wk-readonly-token', which has r_jobs but not w_candidates: HTTP 403 on a send). Shortcodes are the jobs in
 fixtures/workable-questions.json; WK00000004 answers 429, WK00000005 a hostile body, WK00000006 "candidate already exists" (all three with no questions).
 Every Workable request is checked against workable.readme.io/reference/job-questions and /job-candidates-create (see wk_check)."""
@@ -79,6 +81,12 @@ SR_CONFIGS["aaaaaaaa-0000-4000-8000-000000000006"] = {"questions": [
     "consentSettings": {"scopes": [{"scope": "SINGLE", "required": True, "label": "I agree to the privacy policy"}]},
     "privacyPolicies": [{"url": "https://example.org/privacy", "orgName": "Every Kind Co"}]}
 HOSTILE = {"message": "<script>alert(1)</script>\x00\x07 bad key ashby-key-789 sr-smarttoken-012 " + "x" * 5000, "errors": [{"code": "<b>boom</b>"}]}
+
+
+# an Ashby form with no resume field: an application into it carries no file
+ASHBY_FORMS["13131313-1313-4131-8131-131313131313"] = {"title": "Field Researcher", "applicationFormDefinition": {"sections": [{"fields": [
+    {"isRequired": True, "field": {"path": "_systemfield_name", "type": "String", "title": "Name"}},
+    {"isRequired": True, "field": {"path": "_systemfield_email", "type": "Email", "title": "Email"}}]}]}}
 
 
 def ashby_form(pid):
@@ -324,6 +332,10 @@ def questions_for(job_id):
     q = std()
     if job_id in ("1007", "1008"):
         q += every_kind()
+    if job_id in ("1010", "1011"):                 # no resume question: an application into this form carries no file
+        q = [x for x in q if x["label"] != "Resume/CV"]
+    if job_id == "1010":
+        q += [{"required": False, "label": "Personal website", "fields": [{"name": "question_110", "type": "input_text", "values": []}]}]
     if job_id == "1009":
         q += [{"required": True, "label": "Writing sample", "fields": [{"name": "question_450", "type": "input_file", "values": []}]}]
     if job_id == "1002":

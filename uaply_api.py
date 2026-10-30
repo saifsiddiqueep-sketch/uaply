@@ -340,6 +340,57 @@ def _resume(raw):
     return {"name": name, "size": len(data), "type": "%s/%s" % (maintype, subtype)}, data
 
 
+def _resume_to(rec, plan=None, kind=""):
+    """What of this application carried the resume file and the resume link, read from what the send really used: the email attaches the
+    file and lists the link, a webhook includes both, and a hiring system takes them as its form does (ats_api.resume_goes and link_goes). A
+    hand-off or a failure carried nothing. Returns {"file": the channels that carried the file, "unsure": the channels where that cannot be
+    known (a form that was not read, such as an Ashby form in test mode), "link": the channels that carried the resume link, "link_unsure":
+    the channels where that cannot be known}. The link lists are filled with or without a file. Kept in the record as "resume_to", so the
+    app's message and the receipt describe what left, not a sentence written apart from the send."""
+    out = {"file": [], "unsure": [], "link": [], "link_unsure": []}
+    meta = rec.get("resume")
+    link = ((rec.get("candidate") or {}).get("ext") or {}).get("resume") or ""
+    if not (meta or link) or rec["status"] not in ("sent", "delivered_test"):
+        return out
+    for ch in rec.get("channels") or []:
+        ats = ch.startswith("hiring system")
+        goes = (ats_api.resume_goes(kind, plan, meta["type"]) if ats else True) if meta else False     # no file: nothing to carry
+        if meta and goes:
+            out["file"].append(ch)
+        elif meta and goes is None:
+            out["unsure"].append(ch)
+        lg = ats_api.link_goes(kind, plan, goes, link) if ats else bool(link)
+        if lg is True:
+            out["link"].append(ch)
+        elif lg is None:
+            out["link_unsure"].append(ch)
+    return out
+
+
+def _resume_summary(rec):
+    """What the app and the receipt say about the resume file of one application: its name, size and type, the channels that carried it
+    ("sent_with": empty when nothing carried it, None for a record made before UAply kept this), the channels where that cannot be known
+    ("unsure_with"), the channels that carried the resume link ("link_with") and whether it was a hand-off (the person uploads it on the
+    employer's own form). None when no file was uploaded."""
+    meta = rec.get("resume")
+    if not meta:
+        return None
+    rt = rec.get("resume_to")
+    return {"name": meta["name"], "size": meta["size"], "type": meta["type"], "sent_with": list(rt["file"]) if rt else None,
+            "unsure_with": list(rt["unsure"]) if rt else None, "link_with": list(rt["link"]) if rt else None, "handoff": rec["status"] == "handoff"}
+
+
+def _link_summary(rec):
+    """What the app and the receipt say about the resume link of one application, with or without a file: the channels that carried it
+    ("link_with") and those where that cannot be known ("unsure_with": a form that was not read). None when no link was given, or for a
+    record made before UAply kept this (the receipt then lists the link as it always did)."""
+    link = ((rec.get("candidate") or {}).get("ext") or {}).get("resume")
+    rt = rec.get("resume_to")
+    if not link or not rt:
+        return None
+    return {"link_with": list(rt.get("link") or []), "unsure_with": list(rt.get("link_unsure") or [])}
+
+
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *a, **k):
         return None                                            # a webhook that redirects is a failure, never followed
@@ -497,7 +548,7 @@ def _mail_ctx(cfg, rec, note, user_email="", site=""):
     return {"test": test, "status": rec["status"], "cand": rec["candidate"], "job": rec["job"], "at": rec["at"],
             "match": rec.get("match", 0), "to": rec.get("to", ""), "rows": _detail_rows(rec["candidate"], note), "note": note,
             "channels": rec.get("channels") or [], "user_email": user_email, "base_url": _site_base(cfg, site), "support_email": _s(cfg.get("support_email"), 120),
-            "preview": rec.get("preview") is True}
+            "preview": rec.get("preview") is True, "resume": _resume_summary(rec), "resume_link": _link_summary(rec)}
 
 
 def _copy_message(cfg, rec):
@@ -852,6 +903,7 @@ def submit(p, user=None, site=""):
         cand["ext"] = dict(cand["ext"], salary="")
 
     send_args = None
+    kind = (ats or {}).get("kind") or ("greenhouse" if preview else "")      # the hiring system a "hiring system" channel means, for _resume_to
     with _lock:
         seen = dup()                                       # checked again: a second tap may have landed while the form was being read
         if seen:
@@ -867,6 +919,7 @@ def submit(p, user=None, site=""):
             rec["simulated"] = rec["preview"] = True             # "preview": this employer has not connected, so the live app would hand off
             rec["status"] = "delivered_test"
             rec["channels"] = ["hiring system (simulated)"]
+            rec["resume_to"] = _resume_to(rec, plan, kind)
             APPS.append(rec)
             _append("applications.jsonl", rec)
         elif policy == "link" or (policy == "unknown" and mode == "live"):
@@ -884,6 +937,7 @@ def submit(p, user=None, site=""):
             rec["simulated"] = True
             rec["status"] = "delivered_test"
             rec["channels"] = (["email (simulated)"] if by_mail else []) + (["webhook (simulated)"] if hook else []) + (["hiring system (simulated)"] if ats else [])
+            rec["resume_to"] = _resume_to(rec, plan, kind)
             APPS.append(rec)
             _append("applications.jsonl", rec)
         else:
@@ -913,12 +967,17 @@ def submit(p, user=None, site=""):
             status, err, channels = "failed", "unexpected problem (%s)" % type(e).__name__, []
         with _lock:
             rec["status"], rec["channels"] = status, channels
+            rec["resume_to"] = _resume_to(rec, plan, kind)
             if err:
                 rec["error"] = err
             _append("applications.jsonl", rec)
     out = {"status": rec["status"], "id": rec["id"], "to": rec["to"], "mode": mode, "simulated": rec["simulated"], "copied": False}
     if summary:
         out["plan"] = summary
+    if rec.get("resume"):
+        out["resume"] = _resume_summary(rec)        # where the file really went, so the app never says more or less than the send did
+    if _link_summary(rec):
+        out["resume_link"] = _link_summary(rec)    # and where the resume link went (a hiring system's form may have no place for it)
     if rec.get("error"):
         sys.stderr.write("[uaply] delivery of application %s failed: %s\n" % (rec["id"], rec["error"]))      # the real reason stays in the server's own log and applications.jsonl
         # say "email" only when email was the way it went; an application for a hiring system or a webhook is not an email

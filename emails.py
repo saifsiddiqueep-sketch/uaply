@@ -102,18 +102,40 @@ def _test_note(status, job, contact, channels=(), preview=False):
     return "This is a test email. In test mode UAply does not send applications to employers. %s Your test application is saved in the test inbox." % what
 
 
-def _resume_rows(rows, status, co, owner=False):
-    """The resume line says where the file really went: no email from UAply to the applicant or the owner carries the file itself."""
+def _resume_rows(rows, status, co, owner=False, resume=None, link=None):
+    """The resume lines say where the file and the link really went: no email from UAply to the applicant or the owner carries the file itself.
+    `resume` is uaply_api._resume_summary of the record: when the send carried no file (a hiring system whose form takes none, or Workable
+    with a text file) the line says so instead of claiming it went along, and names the resume link only when a channel really carried it
+    (Workable and SmartRecruiters put it in the message; a Greenhouse or Ashby form only as the answer to one of its questions). When the
+    form was not read (an Ashby form in test mode, or a form whose read failed) it says that is not known. `link` is
+    uaply_api._link_summary, with or without a file: the "Resume" (link) row says the link was not sent, or that it is not known, when no
+    channel carried it, instead of listing it under what was shared. None (no link, or an older record) leaves the row as it was."""
     where = {"sent": "sent to %s with the application" % co, "delivered_test": "included in the test application",
              "handoff": "upload it on %s's form" % co}.get(status, "")
-    if owner and status in ("sent", "delivered_test"):
+    test = status == "delivered_test"
+    done = status in ("sent", "delivered_test")
+    unread = "not known: UAply did not read %s's form in test mode, so it cannot tell whether the %s would go"      # true whether test mode skips the form or the read failed
+    if resume and done and resume.get("sent_with") == [] and resume.get("unsure_with"):
+        where = (unread % (co, "file") if test else "not confirmed: UAply could not tell whether %s's form took this file" % co)
+    elif resume and done and resume.get("sent_with") == []:
+        where = "%s: %s's form does not take this file" % ("not in the test application" if test else "not sent", co)
+        if resume.get("link_with"):
+            where += "; %s resume link %s instead" % ("their" if owner else "your", "is in it" if test else "went")
+    elif owner and done:
         where += "; not attached to this copy"
     elif owner and status == "handoff":
         where = "the applicant uploads it on %s's form" % co
+    gone = ""
+    if link and done and not link.get("link_with"):
+        gone = (unread % (co, "link") if test and link.get("unsure_with") else
+                "not confirmed: UAply could not tell whether %s's form took it" % co if link.get("unsure_with") else
+                "%s: %s's form has no place for it" % ("not in the test application" if test else "not sent", co))
     out = []
     for k, v in rows:
         if k == "Resume file" and str(v).endswith(" (attached)"):
             v = str(v)[:-len(" (attached)")] + ((" (%s)" % where) if where else "")
+        elif k == "Resume" and gone:
+            v = "%s (%s)" % (v, gone)
         out.append((k, v))
     return out
 
@@ -128,7 +150,7 @@ def applicant_receipt(ctx):
     track = (ctx.get("base_url") or "").rstrip("/")
     desc = (job.get("desc") or job.get("blurb") or "").strip()
     summary = _summary_rows(job, ctx.get("match") or 0)
-    rows = _resume_rows(ctx.get("rows") or [], status, job.get("co") or "the employer")
+    rows = _resume_rows(ctx.get("rows") or [], status, job.get("co") or "the employer", resume=ctx.get("resume"), link=ctx.get("resume_link"))
     note = (ctx.get("note") or "").strip()
     name = cand.get("name") or "there"
     when = _when(ctx.get("at") or time.time())
@@ -265,7 +287,8 @@ def owner_copy(ctx):
                                                {"delivered_test": "test application", "sent": "sent", "handoff": "applicant sent to the employer's site"}.get(status, status))
     posting = _https(job.get("url"))
     summary = [("Match", v) if k == "Your match" else (k, v) for k, v in _summary_rows(job, ctx.get("match") or 0)]     # this copy is read by the owner, not the applicant
-    rows = [("Name", cand.get("name")), ("Email", cand.get("email"))] + [r for r in _resume_rows(ctx.get("rows") or [], status, job.get("co") or "the employer", owner=True)
+    rows = [("Name", cand.get("name")), ("Email", cand.get("email"))] + [r for r in _resume_rows(ctx.get("rows") or [], status, job.get("co") or "the employer", owner=True, resume=ctx.get("resume"),
+                                                                                      link=ctx.get("resume_link"))
                                                                          if r[0] not in ("Applicant", "Email")]
     t = ["This is a copy for you, the UAply owner.", "", "A swipe right on %s at %s" % (job.get("role"), job.get("co")),
          "Applied on: %s" % _when(ctx.get("at") or time.time()), "It went to: %s." % where, "", "THE JOB"]

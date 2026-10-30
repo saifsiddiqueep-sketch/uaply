@@ -52,9 +52,9 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
 
   if (SRV === "devtest") {
     await boot(false, "anon.ui@example.com");
-    await walk("signed out, email employer", ID["Mail Co|Marketing Intern"], 2500, /Applied to Mail Co \(test\)\. Sign in to get a confirmation email/, /Sent to hr@mailco\.example \(test, nothing reached Mail Co\)/);
+    await walk("signed out, email employer", ID["Mail Co|Marketing Intern"], 2500, /Applied to Mail Co \(test\)\. Your resume file \(Sam Rivera Resume\.pdf\) is in the test application\. Sign in to get a confirmation email/, /Sent to hr@mailco\.example \(test, nothing reached Mail Co\)/);
     await boot(true);
-    await walk("Greenhouse partner", ID["GH Partner|Robotics Intern"], 3000, /Applied to GH Partner \(test\)\. UAply filled in \d+ of \d+ answers\. Confirmation is in the test inbox/, /Sent to GH Partner hiring system \(test, nothing reached GH Partner\)/);
+    await walk("Greenhouse partner", ID["GH Partner|Robotics Intern"], 3000, /Applied to GH Partner \(test\)\. UAply filled in \d+ of \d+ answers\. Your resume file \(Sam Rivera Resume\.pdf\) is in the test application\. Confirmation is in the test inbox/, /Sent to GH Partner hiring system \(test, nothing reached GH Partner\)/);
     await walk("public Greenhouse posting in dev (hand-off)", ID["Discord|Data Intern"], 3000, /Not sent yet: Discord takes applications on its own site/, /Not sent yet: Discord takes applications on its own site\. Finish on their site/);
     // a job saved on this device that the server no longer lists
     await ev(FW + ".__uaplyJobs.add([{id:4242425,live:true,co:'Vanished Co',role:'Gone Intern',loc:'Philadelphia, PA',mode:'onsite',type:'internship',sal:[0,0],yrs:0,edu:'High school',skills:['Python'],blurb:'Gone.',url:'https://boards.greenhouse.io/vanished/jobs/9',source:\"Vanished Co's careers page\"}])");
@@ -110,7 +110,7 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
     check("the Undo button during the countdown cancels and says so (no toast left counting)", /Cancelled\. Nothing was sent to Mail Co/.test(tc), tc);
     await sleep(5000);
     check("nothing was sent", (await outbox()) === n0, "outbox " + n0 + " -> " + (await outbox()));
-    await walk("live, verified, employer that takes email", id, 8500, /Applied to Mail Co\. Confirmation emailed to ui@example\.com/, /Application sent to hr@mailco\.example/);
+    await walk("live, verified, employer that takes email", id, 8500, /Applied to Mail Co\. Your resume file \(Sam Rivera Resume\.pdf\) went with it\. Confirmation emailed to ui@example\.com/, /Application sent to hr@mailco\.example/);
     await undoBtn(); await sleep(800);
     const tu = await toast(); say("undo after it was sent | toast", tu);
     check("undo after it was sent says the employer still has it", /Your application to Mail Co was already sent, so Mail Co still has it/.test(tu), tu);

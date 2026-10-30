@@ -50,6 +50,8 @@ run "verification codes: expiry, tries, resends, gates" python tools/test-verify
 
 step "Delivery to employers (email with resume, signed webhook, retries, opt-in only) and the Connect Gmail form"
 run "delivery channels" python tools/test-delivery.py
+run "resume file: what the app says matches what is sent (PDF, Word, text, no file, link, hand-off, receipts)" python tools/test-resume-disclosure.py 2541
+run "resume file and link: what the app says matches what each hiring system received (Greenhouse, Lever, Ashby, SmartRecruiters, Workable, test mode)" python tools/test-resume-disclosure-ats.py 2542
 run "Connect Gmail form" python tools/test-setup.py
 
 step "Swipe-right emails (content, test label, safety, real send)"
@@ -102,6 +104,7 @@ for sz in 390x844 375x667 440x956 1280x800; do
 done
 run "sandbox: learns from swipes (remote first, explore card, reset)" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-learn.js
 run "sandbox: fill from your resume (fills empty fields, keeps typed ones, Replace, errors, fits the phone)" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-resume.js
+run "sandbox: the resume sentence in the upload box and the preview matches the file the swipe sends (computer and phone)" env PORT=18766 node tools/cdp.js tools/ui-resume-disclosure.js
 
 step "Google sign-in (against a stand-in Google)"
 PIDS="$PIDS $(start python tools/mock-google.py 8790)"

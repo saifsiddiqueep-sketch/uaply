@@ -199,10 +199,10 @@ function kitApply(w,host){
         if(!r.ok){setStatus(j.error||"Could not send.",true);if(sendBtn&&live)sendBtn.disabled=false;return}
         var dec=S&&S.decisions&&S.decisions[job.id];
         if(dec&&(j.status!=="duplicate"||j.was)){dec.sent={at:Date.now(),to:j.to||"",status:j.status==="duplicate"?j.was:j.status};if(save)save()}
-        if(j.status==="delivered_test")setStatus("Delivered to the test inbox as "+(j.to||"recruiter")+".");
-        else if(j.status==="sent")setStatus("Sent to "+j.to+". Replies go to "+p.email+".");
+        if(j.status==="delivered_test")setStatus("Delivered to the test inbox as "+(j.to||"recruiter")+"."+resumeNote(j,job.co));
+        else if(j.status==="sent")setStatus("Sent to "+j.to+". Replies go to "+p.email+"."+resumeNote(j,job.co));
         else if(j.status==="duplicate")setStatus("You already sent this application.");
-        else if(j.status==="handoff")setStatus("This employer takes applications on its own page. Use the button below.");
+        else if(j.status==="handoff")setStatus("This employer takes applications on its own page. Use the button below."+resumeNote(j,job.co));
         else if(j.status==="failed"){setStatus(j.error||"The email could not be sent.",true);if(sendBtn)sendBtn.disabled=false;return}
         else setStatus("Done.");
         var rc=j.receipt,au=w.__uaplyAuth?w.__uaplyAuth():null;
@@ -254,6 +254,27 @@ function kitApply(w,host){
     var origin="";try{origin=host.defaultView.location.origin}catch(e){}
     return "Confirmation is in the test inbox: "+origin+w.__uaplyTestInbox;
   }
+  /* where the resume file went, from the server's own account of this send (uaply_api.py _resume_summary: the channels that carried the
+     file, those where that cannot be known, and those that carried the resume link), never from a sentence written apart from the send.
+     With no file, only a resume link that did not go (or may not have: a form that was not read) is mentioned (_link_summary), so the
+     upload box's "where the employer's form has a place for it" is never left uncorrected. Empty when the server did not say. */
+  function resumeNote(j,co){
+    var r=j&&j.resume,done=!!j&&(j.status==="sent"||j.status==="delivered_test"),test=!!j&&j.status==="delivered_test";
+    if(!r||!r.name){
+      var l=j&&j.resume_link;if(!done||!l||!Array.isArray(l.link_with)||l.link_with.length)return "";
+      if(l.unsure_with&&l.unsure_with.length)return test?" UAply did not read "+co+"'s form in test mode, so it cannot tell whether your resume link would go with it."
+        :" UAply could not confirm that "+co+"'s form took your resume link.";
+      return test?" Your resume link is not in the test application: "+co+"'s form has no place for it.":" Your resume link was not sent: "+co+"'s form has no place for it.";
+    }
+    if(r.handoff)return " UAply did not send your resume file ("+r.name+"): upload it on "+co+"'s form.";
+    if(!Array.isArray(r.sent_with)||!done)return "";
+    if(r.sent_with.length)return test?" Your resume file ("+r.name+") is in the test application.":" Your resume file ("+r.name+") went with it.";
+    if(r.unsure_with&&r.unsure_with.length)return test?" UAply did not read "+co+"'s form in test mode, so it cannot tell whether your resume file ("+r.name+") would go with it."
+      :" UAply could not confirm that "+co+"'s form took your resume file ("+r.name+").";
+    var ln=r.link_with&&r.link_with.length;
+    return test?" Your resume file is not in the test application: "+co+"'s form does not take it."+(ln?" Your resume link is in it instead.":"")
+      :" Your resume file was not sent: "+co+"'s form does not take it."+(ln?" Your resume link went instead.":"");
+  }
   var showSheet=!!((host&&host.defaultView&&host.defaultView.UAplyOpts)||{}).showSheet;   /* opt back in to the full sheet */
   function toast(msg,action,fn,ms){
     var old=d.getElementById("kitToast");if(old)old.remove();
@@ -266,7 +287,8 @@ function kitApply(w,host){
     return {el:t,set:function(x){s.textContent=x}};
   }
   /* first application only: say plainly what a swipe right does with the person's details, and get agreement */
-  var CONSENT_V=2;   /* 2: also explains the optional hiring-manager message and that voluntary answers are never sent */
+  var CONSENT_V=2;   /* 2: also explains the optional hiring-manager message and that voluntary answers are never sent. The resume file
+                        clause only narrows what was agreed to (a form that takes no file gets none), so it does not ask again */
   function legalBase(){var p=(host&&host.defaultView&&host.defaultView.location.pathname)||"/";return /\/(sandbox|dev)\/(index\.html)?$/.test(p)?"../legal/":"legal/"}   /* the hosted copies live at /dev/ and /sandbox/, with legal/ beside them */
   function consentKey(){return (w.__uaplyKey||"uaply")+".consent"}
   function hasConsent(){try{var c=JSON.parse(w.localStorage.getItem(consentKey()));return !!(c&&c.v===CONSENT_V)}catch(e){return false}}
@@ -291,7 +313,7 @@ function kitApply(w,host){
     o.style.cssText="position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.45);overflow:auto";
     o.innerHTML='<div role="dialog" aria-modal="true" aria-labelledby="kcH" style="background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:20px;max-width:460px;width:100%;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:10px;font-size:14px">'+
       '<h2 id="kcH" style="margin:0;font:800 20px var(--display)">'+(consentFirst?"Before you start swiping":"Before your first application")+'</h2>'+
-      '<p style="margin:0">When you swipe right, UAply applies for you. It sends the details in your profile (your name, email, and anything else you filled in, such as phone, resume file or link, education or work authorization) to the employer, plus a short message if you turned on "Message the hiring manager", but only if that employer has agreed to receive applications through UAply. Otherwise it sends you to the employer\'s own application page. UAply never emails a company that has not agreed.</p>'+
+      '<p style="margin:0">When you swipe right, UAply applies for you. It sends the details in your profile (your name, email, and anything else you filled in, such as phone, your resume file (when the employer\'s form takes one) or resume link, education or work authorization) to the employer, plus a short message if you turned on "Message the hiring manager", but only if that employer has agreed to receive applications through UAply. Otherwise it sends you to the employer\'s own application page. UAply never emails a company that has not agreed.</p>'+
       '<p style="margin:0">Your voluntary answers (such as race, gender, veteran or disability status) are never sent. They stay on your device unless you copy them yourself.</p>'+
       '<p style="margin:0">The match percentage is worked out automatically from your profile to help order jobs. It never rejects you, and employers make every hiring decision. <a href="'+b+'ai-and-employment.html" target="_blank" rel="noopener noreferrer">How matching works</a></p>'+
       '<p style="margin:0">By continuing you confirm you are 18 or older and agree to the <a href="'+b+'terms.html" target="_blank" rel="noopener noreferrer">Terms of Service</a> and <a href="'+b+'privacy.html" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.</p>'+
@@ -621,7 +643,7 @@ function kitApply(w,host){
           if(j.was==="handoff"){toast("Already in Applied, not sent yet: "+job.co+" takes applications on its own site.",job.url?"Finish now":"",function(){if(w.__uaplyOpen)w.__uaplyOpen(job.url)},12000);return}
         }
         else mark(j.status,j.to);
-        var cp=receiptNote(j),pl=j.plan;
+        var cp=resumeNote(j,job.co)+receiptNote(j),pl=j.plan;
         var auto=pl&&pl.total?" UAply filled in "+pl.filled+" of "+pl.total+" answers.":"";
         if(j.status==="delivered_test")toast("Applied to "+job.co+" (test)."+auto+cp,"","",9000);
         else if(j.status==="sent")toast("Applied to "+job.co+"."+auto+cp,"","",9000);

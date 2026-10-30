@@ -1213,11 +1213,24 @@ function apply(w,host){
     paintTitles();fillEeo();fillAddr();paintLevel();vis();A.renderAll();
   })();
 
+  /* the resume file an application carries: the one place it is read, by the swipe (w.__uaplyResume), the upload box and the preview */
+  function resumeFile(){return acct.resumeData&&DATA_URL.test(acct.resumeData)?{name:acct.resumeName,size:acct.resumeSize,data:acct.resumeData}:null}
+  var resumeRepaint=null;   /* the desktop preview redraws itself here once a file is added or removed (set where the preview is built) */
+  /* what the resume file and link do on a swipe right, said the same way in the upload box (all a phone shows) and the desktop preview.
+     It reads the same file and link the application is built from (resumeFile, resumeLinkOf), and says what uaply_api.py does with them:
+     an application UAply sends (email, a webhook, or a hiring system whose form takes a file) carries the file; the link goes with an email
+     or a webhook, but into a hiring system only where its form has a place for it (ats_api.link_goes); a hand-off sends the employer nothing. */
+  function resumeShare(){
+    var f=resumeFile(),ln=resumeLinkOf();
+    return (f?"Your file "+f.name+" ("+Math.max(1,Math.round(f.size/1024))+" KB) is kept on this device. It goes with each application UAply sends for you: attached to the email, or into the employer's hiring system when its form takes it. UAply's server passes it on and does not keep a copy."
+             :ln?"No resume file is added. UAply sends your resume link instead with an emailed application, and to an employer's hiring system when its form has a place for it; some forms ask for a file.":"No resume file or link is added yet.")+
+      " When an employer takes applications only on its own site, UAply sends it nothing: you finish there and upload your resume yourself.";
+  }
   /* resume file and resume link: Profile setup, Background and links */
   (function(){
     var rf=d.createElement("div");rf.className="field full";rf.id="aResF";
     rf.innerHTML='<span class="l">Resume</span><div id="resNow"></div>'+
-      '<label for="pResFile" style="margin-top:4px">Upload your resume file</label><input type="file" id="pResFile" accept=".pdf,.doc,.docx,.txt,.md"><small>PDF, Word or text, up to 1 MB. Kept on this device, and sent with each application UAply delivers to an employer.</small>'+
+      '<label for="pResFile" style="margin-top:4px">Upload your resume file</label><input type="file" id="pResFile" accept=".pdf,.doc,.docx,.txt,.md"><small>PDF, Word or text, up to 1 MB. <span id="resShare"></span></small>'+
       '<div id="resLinkWrap" style="display:flex;flex-direction:column;gap:5px"><label for="pResUrl" style="margin-top:8px">Or add a link to your resume (optional)</label><input type="text" id="pResUrl" inputmode="url" maxlength="300" placeholder="https://drive.google.com/..."></div><small id="resMsg" role="status"></small>';
     d.querySelector("#form .grid").appendChild(rf);FIELDS.preferences.push("aResF");
     function paintRes(m){
@@ -1227,6 +1240,8 @@ function apply(w,host){
         :'<small>No resume file yet.</small>';
       d.getElementById("pResUrl").value=a.resumeUrl;
       d.getElementById("resMsg").textContent=m||"";
+      d.getElementById("resShare").textContent=resumeShare();
+      if(resumeRepaint)resumeRepaint();
       var rm=d.getElementById("resRm");if(rm)rm.onclick=function(){acct.resumeName="";acct.resumeData="";acct.resumeSize=0;saveA();paintRes("Resume file removed.")};
     }
     d.getElementById("pResFile").addEventListener("change",function(){
@@ -1431,7 +1446,7 @@ function apply(w,host){
   w.__uaplyAutoMsg=function(){return autoAllowed()&&!!acct.fAuto};
   /* what the application sends besides the profile: the details saved in Profile setup, Background and links (phone, LinkedIn, portfolio, About you, resume link) win over the optional profile form */
   w.__uaplyApplyExt=function(){var x=Object.assign({},XV());var ph=phoneOf(),li=linkOf("linkedin"),pf=linkOf("portfolio"),su=summaryOf(),rs=resumeLinkOf();if(ph)x.phone=ph;if(li)x.linkedin=li;if(pf)x.portfolio=pf;if(su)x.summary=su;if(rs)x.resume=rs;var ad=acct.addr||{};if(ad.zip)x.zip=ad.zip;if(A.S.profile&&A.S.profile.reloc&&x.relocate!=="no")x.relocate="yes";if(ad.state)x.state=ad.state;x.ack=x.ack==="yes";return x};
-  w.__uaplyResume=function(){return acct.resumeData&&DATA_URL.test(acct.resumeData)?{name:acct.resumeName,size:acct.resumeSize,data:acct.resumeData}:null};   /* the file uploaded in Profile setup, Background and links */
+  w.__uaplyResume=resumeFile;   /* the file uploaded in Profile setup, Background and links */
   w.__uaplyMessage=function(job,m,p){
     var skills=(m.matched||[]).slice(0,3),name=p.name||"[Your name]",sumv=summaryOf();
     var fit=skills.length?"My experience with "+skills.join(", ")+" lines up with what the role asks for":"My background lines up well with what the role asks for";
@@ -2092,14 +2107,19 @@ function apply(w,host){
     var auth=px?[selText("px-auth"),selText("px-sponsor")?"sponsorship: "+selText("px-sponsor").toLowerCase():""].filter(Boolean).join("; "):"";
     function mon(id){var m=/^(\d{4})-(\d{2})$/.exec(fv(id));return m?new Date(+m[1],m[2]-1,1).toLocaleDateString(undefined,{month:"long",year:"numeric"}):""}
     var job=px?[fv("px-employer"),[fv("px-job_title"),mon("px-job_start")?mon("px-job_start")+" to "+(mon("px-job_end")||"present"):""].filter(Boolean).join(", ")].filter(Boolean).join(": "):"";
-    var rows=[["Email",fv("pEmail")],["Location",loc],["Experience",yrs?yrs+(+yrs===1?" year":" years"):""]];
     function site(u){try{var x=new w.URL(u);return x.hostname.replace(/^www\./,"")+(x.pathname.length>1?"/…":"")}catch(e){return u}}
-    if(px)rows.push(["Phone",fv("px-phone")],["Resume link",fv("px-resume")&&site(fv("px-resume"))],["LinkedIn",fv("px-linkedin")&&site(fv("px-linkedin"))],["Portfolio",fv("px-portfolio")&&site(fv("px-portfolio"))],["Education",edu],["Most recent employer",job],["Country",selText("px-country")],["Work authorization",auth],["Earliest start",selText("px-start")],["Willing to relocate",fv("px-relocate")&&selText("px-relocate")],["Looking for",types]);
+    /* the resume file and link rows come from what the swipe sends (resumeFile and resumeLinkOf, the saved values, like the server's "Resume file:
+       name (attached)"), never from the box as typed: a link the box refused (not https) is not saved, so it is not shown here either. The box's
+       own change handler saves first, then the form's change handler redraws this. */
+    var rf=resumeFile(),rl=resumeLinkOf();
+    var rows=[["Email",fv("pEmail")],["Location",loc],["Experience",yrs?yrs+(+yrs===1?" year":" years"):""],["Resume file",rf?rf.name+" (attached)":""],["Resume link",rl&&site(rl)]];
+    if(px)rows.push(["Phone",fv("px-phone")],["LinkedIn",fv("px-linkedin")&&site(fv("px-linkedin"))],["Portfolio",fv("px-portfolio")&&site(fv("px-portfolio"))],["Education",edu],["Most recent employer",job],["Country",selText("px-country")],["Work authorization",auth],["Earliest start",selText("px-start")],["Willing to relocate",fv("px-relocate")&&selText("px-relocate")],["Looking for",types]);
     wzPrev.innerHTML='<div class="pvh">What employers see</div><div class="pv"><div class="pvTop"><span class="pvAv" aria-hidden="true">'+E(ini)+'</span><div><b>'+E(name||"Your name")+'</b><span>'+E(head||"Your title or headline")+'</span></div></div>'+
       (skills.length?'<div class="chips">'+skills.slice(0,8).map(function(s){return '<span class="chip">'+E(s)+'</span>'}).join("")+(skills.length>8?'<span class="chip">+'+(skills.length-8)+' more</span>':"")+'</div>':'<div class="pvMeta">No skills added yet</div>')+
       '<ul>'+rows.map(function(r){return '<li class="'+(r[1]?"":"no")+'"><span>'+r[0]+'</span><span>'+(r[1]?E(r[1]):"Not added yet")+'</span></li>'}).join("")+'</ul></div>'+
-      '<p class="note">This is what an employer receives when you swipe right on a listing from an employer that accepts applications through UAply. Never sent: your street address, your resume file (it stays on this device, so add a link above), and your voluntary answers. Your expected pay goes only to an employer whose own form requires it.</p>';
+      '<p class="note" id="wzPrevNote">This is what an employer receives when you swipe right on a listing from an employer that accepts applications through UAply. '+E(resumeShare())+' Never sent: your street address and your voluntary answers. Your expected pay goes only to an employer whose own form requires it.</p>';
   }
+  resumeRepaint=function(){if(form.classList.contains("wz"))wzPrevPaint()};
   function wzPaint(){
     var S=STEPS[wz.i],cl=checklist(),done=cl.filter(function(c){return c[1]}).length,pct=Math.round(done/cl.length*100);
     [].slice.call(wzGrid.children).forEach(function(el){el.classList.toggle("wz-off",stepOf(el)!==wz.i)});
