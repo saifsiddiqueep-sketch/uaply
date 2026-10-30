@@ -209,7 +209,7 @@ unknown user id, a rate limit) and `tools/check-careeronestop.py` to check the k
   anywhereworks, goodwall and hostaway.
 - Recruitee US ceiling (measured October 30, 2026): 859 Recruitee sites found in Common Crawl, 787 of them live, with about 10,000
   offers, 582 of them in the US (about 5.7%). The sweep only covered sites that were not yet in this file, so that 582 splits into
-  359 US jobs on the 17 boards added below (now part of the 1,182 above) and 128 on boards too small to list. The sweep found 19 sites
+  359 US jobs on the 17 boards added below (now part of the 1,311 above) and 128 on boards too small to list. The sweep found 19 sites
   with 5+ US jobs; two of them (chg, gainpro) redirect to boards already listed or kept (chgcareers, gain), so 17 distinct new boards
   were added (vertigis came from a follow-up probe).
   Another 59 boards with 1 to 4 US jobs (128 jobs) are left out by the 5-US rule. Recruitee alone cannot reach 50k US jobs.
