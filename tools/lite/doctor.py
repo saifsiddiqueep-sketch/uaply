@@ -70,7 +70,11 @@ def main():
     check("big-chat blocker stops a 160k chat", code == 2 and "go!" in err, f"exit {code}: {(err or out)[:120]}")
     code, out, err = run_hook("hook_prompt.py", {"session_id": "doctor-test", "prompt": "go! hello"})
     check("'go!' lets a message through", code == 0, f"exit {code}: {(err or out)[:120]}")
-    for f in STATE_DIR.glob("sess-doctor-test.json"):
+    code, out, err = run_hook("hook_prompt.py", {"session_id": "doctor-brief", "prompt": " ".join(["word"] * 85)})
+    check("long prompt gets the /brief line", code == 0 and "Long/dictated" in out, f"exit {code}: {(err or out)[:120]}")
+    code, out, err = run_hook("hook_prompt.py", {"session_id": "doctor-brief", "prompt": "hello"})
+    check("short prompt gets no /brief line", code == 0 and "Long/dictated" not in out, f"exit {code}: {(err or out)[:120]}")
+    for f in STATE_DIR.glob("sess-doctor-*.json"):
         f.unlink()
 
     s = read_state()

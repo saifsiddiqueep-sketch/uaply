@@ -4,9 +4,13 @@
 BIG-CHAT BLOCKER: if this chat is ≥150k tokens, or it was idle ≥60 min and is ≥30k, the message is stopped
 before Claude re-reads the whole chat. Choose: /clear (free fresh start), /handoff (save first, then /clear),
 or start the message with  go!  to send it anyway.   [fix 4: was "!go", but "!" means shell mode in Claude Code]
-Otherwise adds one [lite] line (model · effort · context) for the MODE check."""
+Otherwise adds one [lite] line (model · effort · context) for the MODE check.
+
+AUTO-BRIEF: a long or dictated prompt (80+ words, or 3+ asks) also gets one [lite] line telling Claude to apply
+/brief first. Never for prompts starting with "/" or "go!", and it never blocks."""
 import json
 import os
+import re
 import sys
 import time
 
@@ -15,6 +19,23 @@ from _common import read_stdin_json, read_sess, read_state, write_sess  # noqa: 
 
 BIG_K, IDLE_MIN, IDLE_MIN_K = 150, 60, 30
 ESCAPE = "go!"
+BRIEF_WORDS, BRIEF_ASKS = 80, 3
+BRIEF_LINE = ("[lite] Long/dictated prompt — apply the /brief skill first: rewrite it the top-0.1% way, show QUEUE "
+              "(or 'BRIEF ✓' + one-line goal if it's a single ask), then execute.")
+# one ask per numbered/bulleted line, plus each "also" / "and then" / "another thing" joining asks in running speech
+ASK_LINE = re.compile(r"^\s*(?:\d+[.)]|[-*•])\s+", re.M)
+ASK_JOIN = re.compile(r"\b(?:also|and then|another thing)\b", re.I)
+
+
+def needs_brief(prompt):
+    """True for a long or multi-ask prompt that /brief should rewrite first."""
+    if not prompt or prompt.startswith("/") or prompt.lower().startswith(ESCAPE):
+        return False
+    if len(prompt.split()) >= BRIEF_WORDS:
+        return True
+    lines = len(ASK_LINE.findall(prompt))
+    asks = max(lines, 1) + len(ASK_JOIN.findall(prompt))
+    return asks >= BRIEF_ASKS
 
 
 def main():
@@ -42,6 +63,8 @@ def main():
     model = s.get("model") or g.get("model", "unknown (status line not running)")
     write_sess(sid, {"last_prompt_at": time.time()})
     print(f"[lite] running {model} · effort {effort} · context {ctx}k")
+    if needs_brief(prompt):
+        print(BRIEF_LINE)
 
 
 if __name__ == "__main__":
