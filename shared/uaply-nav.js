@@ -140,6 +140,9 @@ body{padding-bottom:calc(12px + var(--safe-b))}
 #pane-track .stats{grid-template-columns:repeat(4,1fr)}
 /* four figures in a row need about 460 px for "Interviews" at 14 px; narrower, they sit two by two so no label breaks inside a word */
 @media (max-width:460px){#pane-track .stats{grid-template-columns:repeat(2,1fr)}}
+#pane-track .stats.five{grid-template-columns:repeat(5,1fr);gap:6px}
+#pane-track .stats.five .stat{padding:14px 4px}
+#pane-track .stnote{margin:-4px 0 0}
 #pane-track .row{flex-wrap:wrap}
 #pane-track .acts{display:flex;gap:6px;flex-wrap:wrap;flex-basis:100%}
 #pane-track .acts .btn{padding:6px 12px;font-size:14px}
@@ -597,10 +600,11 @@ function apply(w,host){
     }
     /* two separate actions on a hand-off (a later version can make "Finish applying" a prefilled link); a sent application only links the posting */
     function jobLinks(o){
-      var e=A.esc,u=o.j.url;if(!u||!/^https:\/\//.test(u))return "";
-      return '<span class="joblinks"><button type="button" class="linkbtn" data-open="'+e(u)+'">See the job posting ↗</button>'+
-        (isHandoff(o)?'<button type="button" class="linkbtn" data-finish="'+o.j.id+'">Finish applying on their site ↗</button>'+
-          '<button type="button" class="linkbtn" data-act="markapplied" data-id="'+o.j.id+'">Mark as applied</button>':'')+'</span>';
+      /* a real posting's hand-off keeps Mark as applied even with no link left (a row copy without one): it can always be marked finished */
+      var e=A.esc,u=o.j.url,link=!!u&&/^https:\/\//.test(u),ho=isHandoff(o),mark=ho&&(link||o.j.live);if(!link&&!mark)return "";
+      return '<span class="joblinks">'+(link?'<button type="button" class="linkbtn" data-open="'+e(u)+'">See the job posting ↗</button>':'')+
+        (link&&ho?'<button type="button" class="linkbtn" data-finish="'+o.j.id+'">Finish applying on their site ↗</button>':'')+
+        (mark?'<button type="button" class="linkbtn" data-act="markapplied" data-id="'+o.j.id+'">Mark as applied</button>':'')+'</span>';
     }
     w.__uaplyTrack=function(){if(!tp.hidden)renderTrack()};   /* called when an application's state changes while the list is open */
     function row(o,acts,view){
@@ -612,7 +616,8 @@ function apply(w,host){
     }
     var v=sub.dash;
     if(v==="overview"){tp.innerHTML=overviewHTML(by)+upsellHTML(by);return}
-    var h='<div class="stats big">'+[["applied","Applied"],["accepted","Accepted"],["rejected","Rejected"],["interview","Interviews"]].map(function(p){return '<div class="stat"><b>'+by[p[0]].length+'</b><small>'+p[1]+'</small></div>'}).join("")+'</div>';
+    var sc=sentCounts(by.applied);   /* "Sent" and "To finish", never one "Applied" count that adds in hand-offs nobody sent (Trello K0QEMeQm) */
+    var h=statsHTML([[sc.sent,"Sent"],[sc.finish,"To finish"],[by.interview.length,"Interviews"],[by.accepted.length,"Accepted"],[by.rejected.length,"Rejected"]],"five")+notSentNote(sc);
     h+='<h3>'+label("dash",v)+' ('+by[v].length+')</h3>';
     if(!by[v].length)h+='<p class="note">'+EMPTY[v]+'</p>';
     by[v].sort(function(a,b){return b.x.at-a.x.at}).forEach(function(o){h+=row(o,ACTS[v],v)});
@@ -744,11 +749,12 @@ function apply(w,host){
     if(act==="complete-profile"){if(w.__uaplyCompleteProfile)w.__uaplyCompleteProfile();return}
     /* a hand-off finished on the employer's own site: the person marks it, so it no longer says "Finish on their site" (October 22).
        Undo puts back what it said before, once; a second mark after an undo stays */
-    if(act==="markapplied"){var was=x.sent||null;x.sent={at:Date.now(),to:"",status:"self",prev:was?String(was.status||""):"",once:!!(was&&was.once)};A.save();renderTrack();
+    /* what UAply learns from swipes counts it as finished on the employer's site, the strongest yes (uaply-learn.js); Undo takes that back */
+    if(act==="markapplied"){var was=x.sent||null;x.sent={at:Date.now(),to:"",status:"self",prev:was?String(was.status||""):"",once:!!(was&&was.once)};if(w.__uaplyLearnMark)w.__uaplyLearnMark(id,true);A.save();renderTrack();
       /* the server's daily "finish your application" reminder stops listing it (uaply_api.mark_applied); nothing to say if that fails */
       if(SRV.user)apiPost("/api/apply/mark",{job:id,marked:true});
       var nb=tp.querySelector('[data-act="unmark"][data-id="'+id+'"]')||tp.querySelector('.row [data-id="'+id+'"]');if(nb&&nb.focus)nb.focus();return}
-    if(act==="unmark"){if(x.sent&&x.sent.status==="self"&&!x.sent.once){x.sent={at:Date.now(),to:"",status:x.sent.prev||"handoff",prev:"",once:true};A.save();renderTrack();if(SRV.user)apiPost("/api/apply/mark",{job:id,marked:false});
+    if(act==="unmark"){if(x.sent&&x.sent.status==="self"&&!x.sent.once){x.sent={at:Date.now(),to:"",status:x.sent.prev||"handoff",prev:"",once:true};if(w.__uaplyLearnMark)w.__uaplyLearnMark(id,false);A.save();renderTrack();if(SRV.user)apiPost("/api/apply/mark",{job:id,marked:false});
       var mb=tp.querySelector('[data-act="markapplied"][data-id="'+id+'"]');if(mb)mb.focus()}return}
     if(act==="withdraw"||act==="reconsider"){
       delete A.S.decisions[id];A.S.history=A.S.history.filter(function(i){return i!==id});delete acct.apps[id];saveA();
@@ -1540,6 +1546,21 @@ function apply(w,host){
     download("uaply-applications.csv","text/csv",rows.map(function(r){return r.map(csvCell).join(",")}).join("\r\n"));
   }
 
+  /* what happened to the applications still at Applied, in the Applied list's own words (stChip in renderTrack): "Sent" and "Sent (by you)"
+     reached the employer; "Sent (test)" went to the test inbox and nothing reached the employer, so it is never counted as Sent, only said
+     under the counts; "Waiting to send", "Needs profile", "Not sent" and "Not sent yet" (a question only the person can answer) are not sent yet; everything
+     else is a hand-off, "Finish on their site". So the counts always equal the rows the list labels the same way */
+  function sentCounts(list){
+    var c={sent:0,finish:0,notyet:0,test:0};
+    list.forEach(function(o){var t=o.x.sent&&o.x.sent.status;c[t==="sent"||t==="self"?"sent":t==="delivered_test"?"test":t==="pending"||t==="needs_profile"||t==="failed"||t==="needs_answers"?"notyet":"finish"]++});
+    return c;
+  }
+  function statsHTML(tiles,cls){return '<div class="stats big'+(cls?" "+cls:"")+'">'+tiles.map(function(p){return '<div class="stat"><b>'+p[0]+'</b><small>'+p[1]+'</small></div>'}).join("")+'</div>'}
+  function notSentNote(sc){
+    var t=(sc.notyet?sc.notyet+" not sent yet: the Applied list says why for each.":"")+(sc.notyet&&sc.test?" ":"")+
+      (sc.test?sc.test+" went to the test inbox: nothing reached the employer.":"");
+    return t?'<p class="note stnote">'+t+'</p>':"";
+  }
   /* Job Tracker overview */
   function overviewHTML(by){
     var n=by.applied.length+by.interview.length+by.accepted.length+by.rejected.length,answered=by.interview.length+by.accepted.length+by.rejected.length,sum=0;
@@ -1549,8 +1570,9 @@ function apply(w,host){
     by.accepted.forEach(function(o){var a=ap(o.j.id);if(a.deadline)soon.push([new Date(a.deadline+"T12:00").getTime(),"Reply to "+o.j.co+" offer by "+fmtD(a.deadline)])});
     by.applied.forEach(function(o){var a=ap(o.j.id);if(a.follow)soon.push([new Date(a.follow+"T12:00").getTime(),"Follow up with "+o.j.co+" on "+fmtD(a.follow)])});
     soon.sort(function(a,b){return a[0]-b[0]});
-    var h='<div class="overview"><div class="stats big">'+[[n,"Applications"],[by.interview.length,"Interviews"],[by.accepted.length,"Offers"],[by.rejected.length,"Rejected"]].map(function(p){return '<div class="stat"><b>'+p[0]+'</b><small>'+p[1]+'</small></div>'}).join("")+'</div>'+
-      '<div class="stats big">'+[[by.applied.length,"Waiting"],[n?Math.round(answered/n*100)+"%":"–","Heard back"],[n?Math.round(sum/n)+"%":"–","Avg match"],[by.passed.length,"Passed"]].map(function(p){return '<div class="stat"><b>'+p[0]+'</b><small>'+p[1]+'</small></div>'}).join("")+'</div>'+
+    var sc=sentCounts(by.applied);   /* a hand-off nobody sent is "To finish", not an application or one waiting for an answer (Trello K0QEMeQm) */
+    var h='<div class="overview">'+statsHTML([[sc.sent,"Sent"],[sc.finish,"To finish"],[by.interview.length,"Interviews"],[by.accepted.length,"Offers"]])+
+      statsHTML([[by.rejected.length,"Rejected"],[n?Math.round(answered/n*100)+"%":"–","Heard back"],[n?Math.round(sum/n)+"%":"–","Avg match"],[by.passed.length,"Passed"]])+notSentNote(sc)+
       '<div class="plan" style="display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:14px;padding:14px;background:var(--surface)"><b>Profile '+pct+'% complete</b><div class="bar" style="height:10px;border-radius:999px;background:var(--line);overflow:hidden"><i style="display:block;height:100%;width:'+pct+'%;background:linear-gradient(135deg,var(--accent),var(--accent2))"></i></div>';
     cl.filter(function(c){return !c[1]}).slice(0,4).forEach(function(c){h+='<div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span>'+E(c[0])+'</span><button type="button" class="btn ghost" data-go="'+c[2]+'">Add</button></div>'});
     if(done===cl.length)h+='<small>Everything employers usually ask for is filled in.</small>';
@@ -2209,7 +2231,7 @@ function apply(w,host){
     if(t.id==="aEnf"){acct.enforce=t.checked;saveA();msg(acct.enforce?"Limits are now enforced.":"Limits are off.")}
     else if(t.id==="aImp"&&t.files[0]){
       var g=t.files[0];if(g.size>3145728){msg("That file is too large.");return}
-      readFile(g,true,function(txt){var r=importBackup(txt);if(r===true)renderAcct("data");msg(r===true?"Restored. Your profile, applications and details from the file are on this device now.":r)});   /* the screen is redrawn first: drawing it after the message wiped the message, so a restore looked like nothing happened */
+      readFile(g,true,function(txt){var r=importBackup(txt);if(r===true)renderAcct("data");msg(r===true?restoredMsg(restoreLost):r)});   /* the screen is redrawn first: drawing it after the message wiped the message, so a restore looked like nothing happened */
     }
   });
   acctSec.addEventListener("input",function(e){
@@ -2269,6 +2291,11 @@ function apply(w,host){
       setTimeout(reload,8000);
     }
   });
+  /* applications a restore could not bring back: their job is no longer listed and the file has no copy of it (made before October 22) */
+  var restoreLost=0;
+  /* the first words never claim more than came back: "Restored, except for N" when some could not */
+  function restoredMsg(n){return n?"Restored, except for "+n+(n===1?" application: its job is no longer listed, and the file has no copy of it.":" applications: their jobs are no longer listed, and the file has no copy of them.")+
+    " Your profile, your other applications and the details from the file are on this device now.":"Restored. Your profile, applications and details from the file are on this device now."}
   function importBackup(txt){
     var o;try{o=JSON.parse(txt)}catch(e){return "That is not a valid backup file."}
     /* "aply" is accepted too: backups made before the rename */ if(!o||(o.app!=="uaply"&&o.app!=="aply")||o.v!==1||typeof o.profile!=="object"||o.profile===null)return "That file was not made by UAply.";
@@ -2281,11 +2308,28 @@ function apply(w,host){
     var np={name:str(p.name,100),title:str(p.title,100),email:str(p.email,200),ext:ext,years:num(p.years,0,50),edu:LV.indexOf(p.edu)>-1?p.edu:"Bachelor",
       skills:Array.isArray(p.skills)?p.skills.filter(function(s){return typeof s==="string"&&s.trim()}).slice(0,25).map(function(s){return s.slice(0,40)}):[],
       payUnit:p.payUnit==="hour"?"hour":"year",salary:num(p.salary,0,10000000),loc:str(p.loc,100),modes:{remote:!!m.remote,hybrid:!!m.hybrid,onsite:!!m.onsite},reloc:!!p.reloc,custom:true};
+    /* a swipe whose job is no longer listed comes back from its own row copy (uaply-live.js __uaplyRowStub), with what happened to it
+       ("sent", cleaned as at start-up): a restore used to drop every application whose job had left the list, and every Sent or Mark as
+       applied, while saying everything was restored. Only a swipe with neither its job nor a row copy (a file made before October 22) is
+       left out, and the message says how many (restoreLost) */
+    /* What happened to an application comes back only as a state the Job Tracker can show. "pending" (waiting to send) never comes back as
+       pending: the next start would send it to the employer with nobody tapping anything (retryPending in uaply-live.js), from a file that
+       can be months old or not the person's own. It comes back as "Not sent" with Try again, so only a tap sends it. Anything else unknown
+       comes back as a hand-off (Finish on their site, Mark as applied). "prev" (what Undo of Mark as applied goes back to) the same way */
+    var SENT_OK={sent:1,self:1,delivered_test:1,handoff:1,failed:1,needs_answers:1};
+    function sentSt(v){v=str(v,20);return v==="pending"?"failed":SENT_OK[v]?v:""}
+    function prevSt(v){v=sentSt(v);return v==="handoff"||v==="failed"||v==="needs_answers"?v:""}
     var known={};A.JOBS.forEach(function(j){known[j.id]=1});
-    var nd={},ids=[];
+    var nd={},ids=[],stubs=[];restoreLost=0;
     if(o.decisions&&typeof o.decisions==="object")Object.keys(o.decisions).forEach(function(k){
-      var x=o.decisions[k];if(!known[k]||!x||(x.s!=="applied"&&x.s!=="passed"))return;
-      nd[k]={s:x.s,at:num(x.at,0,4e12),pct:num(x.pct,0,100),as:str(x.as,100)||"You",title:str(x.title,100),st:(x.st==="interview"||x.st==="accepted"||x.st==="rejected")?x.st:"applied"};
+      if(!/^(0|[1-9][0-9]{0,15})$/.test(k))return;   /* a job id is a plain number: a hand-edited key such as "1e6" used to stop the whole restore */
+      var x=o.decisions[k];if(!x||(x.s!=="applied"&&x.s!=="passed"))return;
+      var rc=w.__uaplyRowStub?w.__uaplyRowStub(k,x.row):null;
+      if(!known[k]){if(!rc||!rc.job){if(x.s==="applied")restoreLost++;return}stubs.push(rc.job);known[k]=1}
+      var v=x.sent,vs=(v&&typeof v==="object")?sentSt(v.status):"";
+      nd[k]={s:x.s,at:num(x.at,0,4e12),pct:num(x.pct,0,100),as:str(x.as,100)||"You",title:str(x.title,100),st:(x.st==="interview"||x.st==="accepted"||x.st==="rejected")?x.st:"applied",
+        sent:vs?{at:num(v.at,0,4e12),to:str(v.to,120),status:vs,prev:prevSt(v.prev),once:v.once===true}:undefined};
+      if(rc)nd[k].row=rc.row;
       ids.push(+k);
     });
     ids.sort(function(a,b){return nd[a].at-nd[b].at});
@@ -2304,6 +2348,7 @@ function apply(w,host){
     if(!acct.resumeName||!DATA_URL.test(acct.resumeData)){acct.resumeName="";acct.resumeData="";acct.resumeSize=0}
     cleanF(acct);
     if(!saveA()){acct=keep;return "Not enough browser storage for that backup."}
+    if(stubs.length&&w.__uaplyJobs)w.__uaplyJobs.add(stubs);   /* only once the restore is saved: a failed one leaves no stand-in behind */
     A.S.profile=np;A.S.decisions=nd;A.S.history=ids;A.save();A.renderAll();
     if(w.__uaplySyncPrefs)w.__uaplySyncPrefs();
     return true;
@@ -2839,7 +2884,9 @@ function apply(w,host){
     wzPrev.innerHTML='<div class="pvh">What employers see</div><div class="pv"><div class="pvTop"><span class="pvAv" aria-hidden="true">'+E(ini)+'</span><div><b>'+E(name||"Your name")+'</b><span>'+E(head||"Your title or headline")+'</span></div></div>'+
       (skills.length?'<div class="chips">'+skills.slice(0,8).map(function(s){return '<span class="chip">'+E(s)+'</span>'}).join("")+(skills.length>8?'<span class="chip">+'+(skills.length-8)+' more</span>':"")+'</div>':'<div class="pvMeta">No skills added yet</div>')+
       '<ul>'+rows.map(function(r){return '<li class="'+(r[1]?"":"no")+'"><span>'+r[0]+'</span><span>'+(r[1]?E(r[1]):"Not added yet")+'</span></li>'}).join("")+'</ul></div>'+
-      '<p class="note">This is what an employer receives when you swipe right on a listing from an employer that accepts applications through UAply. Never sent: your street address, your resume file (it stays on this device, so add a link above), and your voluntary answers. Your expected pay goes only to an employer whose own form requires it.</p>';
+      '<p class="note">This is what an employer receives when you swipe right on a listing from an employer that accepts applications through UAply. '+E(acct.resumeName?"Your resume file "+acct.resumeName+" is kept on this device and goes with each of these applications: attached to the email, or into the employer's hiring system when its form takes a file."
+        :resumeLinkOf()?"No resume file is added, so these applications send your resume link instead.":"No resume file or link is added yet.")+
+      ' When an employer takes applications only on its own site, UAply sends it nothing: you finish there. Never sent: your street address and your voluntary answers. Your expected pay goes only to an employer whose own form requires it.</p>';
   }
   function wzPaint(){
     var S=STEPS[wz.i],cl=checklist(),done=cl.filter(function(c){return c[1]}).length,pct=Math.round(done/cl.length*100);

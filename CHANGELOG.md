@@ -6,6 +6,70 @@ production page and only changes when the owner decides.
 
 ## Unreleased (sandbox)
 
+### Job Tracker counts: Sent and To finish, not one "Applied" (Mohammed, October 22)
+- **The honesty fix:** Overview counted a hand-off nobody sent (the employer only takes applications on its own site) as an application
+  ("Applications") and as one waiting for an answer ("Waiting"), and the Applied list's top count did the same ("Applied"). Both now show
+  two counts in the Applied list's own words: **Sent** (the rows marked Sent or Sent (by you)) and **To finish** (the rows marked Finish
+  on their site). Anything else at Applied (waiting for the connection, a question only the person can answer, a send that failed) gets
+  one line under the counts, "N not sent yet: the Applied list says why for each", instead of being counted as sent. A send that went to
+  the test inbox (Sent (test): nothing reached the employer) is not counted as Sent either; the same line says "N went to the test inbox:
+  nothing reached the employer".
+  Overview: Sent, To finish, Interviews, Offers / Rejected, Heard back, Avg match, Passed. The lists: Sent, To finish, Interviews,
+  Accepted, Rejected (`shared/uaply-nav.js`: `sentCounts`, `statsHTML`, `notSentNote`). The help article "Tracking my applications" says
+  what the two counts mean.
+- Test: `tools/ui-dashboard-split.js` (13 checks, including a failed send, a test-inbox send and a click on a row's real Mark as applied;
+  4 of 13 passed on the code before the fix, 7 of 13 with test-inbox sends counted as Sent), in `tools/run-all-tests.sh` next to the Job
+  Tracker keep test. Trello K0QEMeQm.
+### Phone apps: location and notification permissions (Mohammed, October 22)
+- **iPhone** (`mobile/ios/App/App/Info.plist`): the location reason iOS shows in its prompt, "UAply uses your location only to show
+  jobs near you first. It is rounded to about a mile, stays on this device and is never sent to our server." Without it iOS refused
+  location inside the app, so Jobs near you could never work there. "While using the app" only; no background location.
+- **Android** (`mobile/android/app/src/main/AndroidManifest.xml`): approximate and precise location (the app's web view asks for both
+  at once and accepts "Approximate" on Android 12 and later), location hardware optional, and POST_NOTIFICATIONS for the interview
+  reminders on Android 13 and later (the reminders plugin also adds it; now it is written down and checked). No background location.
+- No plugin added: Jobs near you uses the browser's own location call, which the app's web view passes to these prompts. The website
+  is unchanged. Jobs near you is already on dev (546ecd6), so both apps use these prompts from their next build. **Before store
+  submission** the in-app wording must name the app, not the browser ("Your browser will ask", "the icon at the left of the address
+  bar" in shared/uaply-nav.js and the sign-up step in shared/uaply-signup.js): follow-up card for Mohammed.
+- New check `tools/test-mobile-perms.py` (24 checks, in `tools/run-all-tests.sh`): the permissions, the iPhone text and its promise,
+  every plugin the web code calls present in both apps, the same "never sent to our server" in the web card and Play's Data safety,
+  and two guards that keep the location away from employer pages (no `allowNavigation` to other sites, no location in AssistActivity).
+### Help wording: what a swipe right really does (Mohammed's review, October 22)
+- **The help answers** "How do I apply?" (test and release wording) and "What is UAply?" now give the honest rule: a swipe right
+  applies through UAply only for employers who take UAply applications; for every other job UAply sends nothing to the employer and saves it in
+  Job Tracker, Applied, where Finish applying on their site opens the employer's own page (the swipe itself opens nothing). They used to open with "Swiping right applies for you", which the landing page's rule contradicts.
+- **In the app:** the empty Job Tracker, Applied list and the last sign-up step ("A swipe right applies for you.") say the same rule; the sign-up
+  step's second line no longer says "we open their own site" (it says the job waits in Job Tracker with a link to their site).
+- **Checked:** `node check.js` has a new "Honest swipe-right wording" section: no help article or in-app script may say a swipe right
+  "applies for you" in a sentence that does not name who takes UAply applications, and the swipe-right article must say both halves
+  (it fails on the old wording), and a help sentence about every other job may not say nothing is sent without "to the employer"
+  (the profile still reaches UAply's server, which keeps a record). It scans the help articles, prod, dev and sandbox index.html, and every shared script.
+### Job Tracker: a restored backup keeps its applications, and every hand-off can be marked finished (Mohammed, October 22)
+- **A restore no longer drops applications.** Restoring a backup (Profile, Data & privacy, Restore) kept only the swipes whose job was in
+  the list at that moment, and dropped what happened to each one (Sent, Sent (by you)), while saying everything was restored. On a new
+  device or a month later most applications were gone. Now every swipe that carries its own row copy (title, company, place, link, kind:
+  every swipe since October 22) comes back as a Job Tracker row, never a card on the deck, with its Sent or Mark as applied status, its
+  Interview / Accepted / Rejected stage and its details. A swipe from an older file whose job is no longer listed cannot come back, and the
+  message now starts with how many: "Restored, except for 1 application: its job is no longer listed, and the file has no copy of it."
+  (`shared/uaply-nav.js` `importBackup`; the row-copy helper `__uaplyRowStub` in `shared/uaply-live.js` now always exists, not only when
+  something was saved.)
+- **A restore never sends an application by itself.** An application the file says was waiting to send comes back as "Not sent" with
+  Try again, never as waiting to send: the next start used to send it to the employer (profile, resume and answers) with nobody tapping
+  anything, from a file that could be months old or not the person's own. Only states the Job Tracker can show come back (Sent, Sent (by
+  you), Sent (test), Finish on their site, Not sent, Not sent yet); anything else comes back as a hand-off, and what Undo of Mark as
+  applied goes back to is cleaned the same way. A job id that is not a plain number (a hand-edited "1e6") is skipped: it used to stop
+  the whole restore with a script error. The stand-ins are added only once the restore is saved.
+- **Mark as applied on every hand-off of a real posting**, including a row whose copy has no link to the posting (before, no link meant no
+  button, so that row said "Finish on their site" for ever).
+- **Mark as applied counts for what UAply learns from swipes** as finishing on the employer's site, the strongest yes (`uaply-learn.js`
+  `finish`, which only an opened employer link used before). Undo puts it back as it was.
+- The 30-day and 400-job loss the card describes was already fixed on sandbox ("Job Tracker keeps every row" below); checked again with a
+  seeded 31-day-old cache. The Sent / To finish counts are PR 51's (Trello K0QEMeQm) and are not repeated here.
+- Test: `tools/ui-tracker-keep.js` 31 checks (16 new: a restore on a new device whose jobs left the list, a restored application that was
+  waiting to send (no request to /api/apply after a reload with no tap), a hand-edited id, a hand-off with no link, Mark as applied and
+  Undo in what UAply learns; the restore ones fail on the code before, the waiting-to-send one with a real POST /api/apply; its answers fixture is now written from inside the app's
+  frame, so it no longer sets off a script error in the app). Trello EJDLrliG.
+
 ### Always jobs, and an incomplete profile never blocks a swipe (Saif, October 24)
 - The deck never runs dry while there are jobs: the filters (stack, work style, minimum match, the rest) rank first; under 20 cards the
   deck goes on with the jobs outside them, nearest first, each card saying "Outside your filters: ..." on one line. Blocked companies and

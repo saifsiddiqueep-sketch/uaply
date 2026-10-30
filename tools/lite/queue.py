@@ -24,6 +24,7 @@ from _common import die, founder, git, load_env, trello  # noqa: E402
 
 TARGETS = {"sandbox", "live"}
 STALE_MIN = 45
+PUSH_TIMEOUT = 90  # lock pushes run the pre-push hook on some laptops; 30s timed out
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
 
@@ -75,7 +76,7 @@ def take(t, note):
     commit = git("commit-tree", EMPTY_TREE, "-m", msg)
     r = __import__("subprocess").run(
         ["git", "push", "-q", f"--force-with-lease={ref(t)}:", "origin", f"{commit}:{ref(t)}"],
-        capture_output=True, text=True, timeout=30)
+        capture_output=True, text=True, timeout=PUSH_TIMEOUT)
     if r.returncode != 0:
         print(status_line(t))
         return False
@@ -92,7 +93,7 @@ def release(t, force=False):
     msg, age = holder_info(t, sha)
     if not force and not msg.lower().startswith(founder().lower()):
         die(f"{t} is held by {msg}, not you. Use `break {t} --yes` only after checking with them.")
-    git("push", "-q", f"--force-with-lease={ref(t)}:{sha}", "origin", f":{ref(t)}", timeout=30)
+    git("push", "-q", f"--force-with-lease={ref(t)}:{sha}", "origin", f":{ref(t)}", timeout=PUSH_TIMEOUT)
     print(f"{t}: RELEASED (was {msg}, {age} min)")
     mirror(f"🔓 {t} released by {founder()} (was {msg})")
 

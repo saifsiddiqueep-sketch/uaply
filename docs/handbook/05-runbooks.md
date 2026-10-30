@@ -235,7 +235,7 @@ If the deploy fails with "repository not found" after the repository went privat
 
 **Symptom:** `tools/cdp.js` fails to find Chrome; many `ui-*` groups fail at once.
 
-**Check:** is Chrome or Chromium installed in a usual place?
+**Check:** is Chrome, Chromium or (on Windows) Microsoft Edge installed in a usual place (on Windows, Chrome per-user or in Program Files)? Edge is used only when no Chrome is found.
 
 **Fix:** set `UAPLY_CHROME=/path/to/chrome` (in PowerShell `$env:UAPLY_CHROME = "C:\path\to\chrome.exe"`).
 

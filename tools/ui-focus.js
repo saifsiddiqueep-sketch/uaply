@@ -47,6 +47,8 @@ module.exports = async ({ ev, sleep, nav, send, shot, on }) => {
     return true;
   };
   const ring = (sel) => ev("(()=>{const e=" + (sel ? "document.querySelector(" + JSON.stringify(sel) + ")" : "document.activeElement") + ";if(!e)return 'none';const s=getComputedStyle(e);return s.outlineStyle+' '+s.outlineWidth+' '+(e===document.activeElement?'focused':'not focused')})()");
+  // light mode on purpose: the accent colour checked below is the light theme's, and a laptop set to dark mode would fail it
+  await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "light" }] });
   try {
     const dev = await serve("dev"), sb = await serve("sandbox"), moved = await serve("dev", { UAPLY_PUBLIC_URL: "https://uaply.net" });
 

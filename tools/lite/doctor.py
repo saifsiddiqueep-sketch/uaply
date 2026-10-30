@@ -70,7 +70,11 @@ def main():
     check("big-chat blocker stops a 160k chat", code == 2 and "go!" in err, f"exit {code}: {(err or out)[:120]}")
     code, out, err = run_hook("hook_prompt.py", {"session_id": "doctor-test", "prompt": "go! hello"})
     check("'go!' lets a message through", code == 0, f"exit {code}: {(err or out)[:120]}")
-    for f in STATE_DIR.glob("sess-doctor-test.json"):
+    code, out, err = run_hook("hook_prompt.py", {"session_id": "doctor-brief", "prompt": " ".join(["word"] * 85)})
+    check("long prompt gets the /brief line", code == 0 and "Long/dictated" in out, f"exit {code}: {(err or out)[:120]}")
+    code, out, err = run_hook("hook_prompt.py", {"session_id": "doctor-brief", "prompt": "hello"})
+    check("short prompt gets no /brief line", code == 0 and "Long/dictated" not in out, f"exit {code}: {(err or out)[:120]}")
+    for f in STATE_DIR.glob("sess-doctor-*.json"):
         f.unlink()
 
     s = read_state()
@@ -82,6 +86,17 @@ def main():
         check("Trello credentials work (optional)", bool(me.get("username")))
     except Exception as e:
         print(f"SKIP  Trello credentials (optional): {str(e)[:90]}")
+    # /handoff posts to the '📍 Areas' cards; if that list is missing, handoffs can't be shared.
+    import trello as tr  # noqa: E402 — same folder
+    if tr.missing_keys():
+        print(f"WARN  /handoff can't post to Trello yet → {tr._keys_msg(tr.missing_keys())}")
+    else:
+        try:
+            cards = tr.area_cards()
+            check(f"'{tr.AREAS_LIST}' list has 12 area cards (found {len(cards)})", len(cards) == 12,
+                  "restore/unarchive the area cards in Trello so each area has exactly one card")
+        except Exception as e:
+            check(f"'{tr.AREAS_LIST}' list reachable for /handoff", False, tr._explain(e))
     check("node available (for ccusage + check.js)", bool(shutil.which("node")), "install Node.js LTS from nodejs.org")
     r = git("ls-remote", "origin", "refs/heads/lock/*", check=False, timeout=15)
     check("GitHub reachable for the merge lock", r is not None, "check your internet / GitHub login")

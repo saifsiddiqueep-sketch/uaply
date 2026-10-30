@@ -23,6 +23,20 @@
       "port": 8766
     },
     {
+      "name": "sandbox-recruitee",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "serve.py",
+        "8766",
+        "sandbox",
+        "--api"
+      ],
+      "env": {
+        "UAPLY_FEEDS": "recruitee"
+      },
+      "port": 8766
+    },
+    {
       "name": "dev",
       "runtimeExecutable": "python",
       "runtimeArgs": [

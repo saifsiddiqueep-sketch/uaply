@@ -36,7 +36,10 @@ run "phone apps' native settings: iPhone portrait only, the privacy manifest in 
 run "taps and focus in Chrome at phone size: no default tap highlight anywhere, no ring after a tap, a keyboard ring, the starting-up retries" env W=390 H=844 node tools/cdp.js tools/ui-focus.js
 run "assisted apply on a mock form of each hiring system: every field lands, nothing voluntary, never Submit; filled from only what the scan saw" env W=390 H=844 node tools/cdp.js tools/test-assist.js
 run "assisted apply against hostile pages: a page's own UAplyAssist, a redirect to another site and a look-alike host receive nothing" env W=390 H=844 node tools/cdp.js tools/test-assist-hostile.js
+run "handoff: WIP commits/pushes only on its own branch, blocks keys/.env/user data, carries open decisions" python tools/test-lite-handoff.py
+run "prompt hook: long or 3+-ask prompts get the /brief line; short, / and go! don't; big-chat blocker unchanged" python tools/test-lite-prompt-hook.py
 run "Google Play listing pack: picture sizes and formats, text lengths, the Data safety and App content answers" python tools/test-play-listing.py
+run "phone app permissions: iPhone location text, Android location and notifications, every plugin the web code calls" python tools/test-mobile-perms.py
 if python -m ruff --version >/dev/null 2>&1; then run "Python syntax errors and undefined names (Ruff)" python -m ruff check --select E9,F63,F7,F82 .; fi
 
 step "Servers"
@@ -115,6 +118,7 @@ mkdir -p "$TMP/tk"
 PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/tk" UAPLY_CONFIG_JSON='{"feeds":[],"smtp":{},"owner_copy":""}' start python serve.py 18846 sandbox --api)"
 wait_port 18846
 run "Job Tracker keeps every row: a reload 31 days later, 500 swipes, 1,000 passes and one more" env W=390 H=844 PORT=18846 node tools/cdp.js tools/ui-tracker-keep.js
+run "Job Tracker counts Sent and To finish, never a hand-off nobody sent as applied, and each count equals its rows" env W=390 H=844 PORT=18846 node tools/cdp.js tools/ui-dashboard-split.js
 
 step "Accounts, applying, reset and setup (back end)"
 run "sandbox reset/setup/accounts" python tools/test-reset.py 18766
