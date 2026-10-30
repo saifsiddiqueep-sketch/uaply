@@ -25,6 +25,7 @@ FEEDS='{"feeds":["greenhouse","lever","ashby"],"delivery":"test","smtp":{},"goog
 unset ANTHROPIC_API_KEY
 # never read uaply-config.json (your real email login, keys and copy address): every server and test below uses only its own settings
 export UAPLY_CONFIG_FILE=none
+export PYTHONIOENCODING=utf-8                 # Windows consoles and pipes default to cp1252, which cannot print a test line with a non-ASCII character (such as the arrow)
 
 step "Static checks (syntax of every script, Python lint, JSON, legal pages, release flags, hosted builds)"
 run "node check.js" node check.js
