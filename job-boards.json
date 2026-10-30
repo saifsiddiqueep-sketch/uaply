@@ -17220,6 +17220,87 @@
    "us": 6,
    "tri": 0,
    "checked": "2026-10-23"
+  },
+  {
+   "kind": "recruitee",
+   "token": "starr",
+   "name": "Starr Bus Charters & Tours",
+   "total": 5,
+   "us": 5,
+   "tri": 5,
+   "checked": "2026-10-29"
+  },
+  {
+   "kind": "recruitee",
+   "token": "infoprolearning",
+   "name": "Infopro Learning",
+   "total": 41,
+   "us": 5,
+   "tri": 5,
+   "checked": "2026-10-29"
+  },
+  {
+   "kind": "recruitee",
+   "token": "allredi",
+   "name": "Allredi",
+   "total": 13,
+   "us": 9,
+   "tri": 0,
+   "checked": "2026-10-29"
+  },
+  {
+   "kind": "recruitee",
+   "token": "qualitytruckcarecenter",
+   "name": "Quality Truck Care Center",
+   "total": 8,
+   "us": 8,
+   "tri": 0,
+   "checked": "2026-10-29"
+  },
+  {
+   "kind": "recruitee",
+   "token": "trafilea",
+   "name": "Trafilea",
+   "total": 37,
+   "us": 7,
+   "tri": 0,
+   "checked": "2026-10-29"
+  },
+  {
+   "kind": "recruitee",
+   "token": "dillinggroup",
+   "name": "Dilling Group",
+   "total": 3,
+   "us": 3,
+   "tri": 0,
+   "checked": "2026-10-29"
+  },
+  {
+   "kind": "recruitee",
+   "token": "anywhereworks",
+   "name": "AnywhereWorks",
+   "total": 2,
+   "us": 2,
+   "tri": 0,
+   "checked": "2026-10-29"
+  },
+  {
+   "kind": "recruitee",
+   "token": "goodwall",
+   "name": "Goodwall",
+   "total": 3,
+   "us": 2,
+   "tri": 0,
+   "checked": "2026-10-29"
+  },
+  {
+   "kind": "recruitee",
+   "token": "hostaway",
+   "name": "Hostaway",
+   "total": 8,
+   "us": 1,
+   "tri": 0,
+   "checked": "2026-10-29"
   }
  ],
  "note": "Employer boards found and checked live with tools/find-boards.py (Recruitee: tools/find-recruitee.py) (counts on the day checked). Read by jobs_api.py after the hand-picked boards in SOURCES. Remove a row to stop reading a board."
