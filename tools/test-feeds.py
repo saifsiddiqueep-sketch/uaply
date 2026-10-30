@@ -577,12 +577,14 @@ def http_checks(port):
         t("HTTP: a page and the whole list are both sent gzip-compressed when the browser takes it", (gz_page, gz_all), (("gzip", len(whole)), ("gzip", len(whole))))
         with open(os.path.join(TMP, "server.log"), encoding="utf-8", errors="replace") as f:
             t("HTTP: the server log never contains a key", any(k in f.read() for k in (KEY, MUSE)), False)
-        # the same places tools/cdp.js looks: UAPLY_CHROME, the Windows install, a Playwright Chromium, google-chrome/chromium, the Mac app
+        # the same places tools/cdp.js looks: UAPLY_CHROME, the Windows install, a Playwright Chromium, google-chrome/chromium, the Mac app, then on Windows a Chrome for all users and Edge
         chrome = os.environ.get("UAPLY_CHROME") or next((p for p in [
             os.path.join(os.environ.get("LOCALAPPDATA", ""), "Google", "Chrome", "Application", "chrome.exe"),
             *sorted(glob.glob(os.path.join(os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "/opt/pw-browsers"), "chromium-*", "chrome-linux*", "chrome")), reverse=True),
             *[shutil.which(n) or "" for n in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser")],
-            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"] if p and os.path.exists(p)), "")
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            *[os.path.join(pf, *sub) for sub in (("Google", "Chrome", "Application", "chrome.exe"), ("Microsoft", "Edge", "Application", "msedge.exe"))
+              for pf in (os.environ.get("ProgramFiles(x86)"), os.environ.get("ProgramFiles")) if pf]] if p and os.path.exists(p)), "")
         if chrome and os.path.exists(chrome) and shutil.which("node"):
             r = subprocess.run(["node", os.path.join(HERE, "cdp.js"), os.path.join(HERE, "ui-via.js")], env=dict(os.environ, PORT=str(port), W="390", H="844"),
                                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
