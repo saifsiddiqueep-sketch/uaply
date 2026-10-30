@@ -66,6 +66,13 @@ check(not moves and "not moved" in out, "work card → 📍 Areas: NOT moved")
 out = run_update("34", "Waiting on someone", "PR #9")
 check(moves == [("C34", "L-wait")], f"work card → Waiting: moved ({moves})")
 
+# a second 'Areas — old' list earlier on the board can't hide the real one
+LISTS.insert(0, {"id": "L-old", "name": "Areas — old"})
+moves.clear()
+run_update("191", "Waiting on someone")
+check(not moves, "area card with an 'Areas — old' list present: NOT moved")
+LISTS.pop(0)
+
 # gh-event moves through update() too, so a PR on an area-numbered branch can't drag the area card
 moves.clear()
 os.environ["GITHUB_EVENT_PATH"] = os.path.join(tempfile.mkdtemp(prefix="uaply-areas-"), "ev.json")
