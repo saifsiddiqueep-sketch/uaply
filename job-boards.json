@@ -334,7 +334,7 @@
   {
    "kind": "smartrecruiters",
    "token": "liftedanupworkcompany",
-   "name": "Lifted, an Upwork Company™",
+   "name": "Lifted, an Upwork Company\u2122",
    "total": 467,
    "us": 294,
    "tri": 51,
@@ -1622,7 +1622,7 @@
   {
    "kind": "careerpage",
    "token": "spectris-hbk_careers",
-   "name": "Hottinger Brüel & Kjaer (HBK)",
+   "name": "Hottinger Br\u00fcel & Kjaer (HBK)",
    "total": 66,
    "us": 19,
    "tri": 9,
@@ -4395,7 +4395,7 @@
   {
    "kind": "greenhouse",
    "token": "eosfitness",
-   "name": "EōS Fitness",
+   "name": "E\u014dS Fitness",
    "total": 2787,
    "us": 2498,
    "tri": 0,
@@ -4597,7 +4597,7 @@
   {
    "kind": "careerpage",
    "token": "cincinnatichildrens-careersatcincinnatichildrens",
-   "name": "Cincinnati Children’s Hospital and Medical Center",
+   "name": "Cincinnati Children\u2019s Hospital and Medical Center",
    "total": 517,
    "us": 517,
    "tri": 0,
@@ -6732,7 +6732,7 @@
   {
    "kind": "greenhouse",
    "token": "oura",
-   "name": "Ōura",
+   "name": "\u014cura",
    "total": 82,
    "us": 71,
    "tri": 0,
@@ -10354,7 +10354,7 @@
   {
    "kind": "greenhouse",
    "token": "clenera",
-   "name": "Clēnera, LLC",
+   "name": "Cl\u0113nera, LLC",
    "total": 19,
    "us": 19,
    "tri": 0,
@@ -11614,7 +11614,7 @@
   {
    "kind": "greenhouse",
    "token": "8451",
-   "name": "84.51°",
+   "name": "84.51\u00b0",
    "total": 14,
    "us": 14,
    "tri": 0,
@@ -15639,7 +15639,7 @@
   {
    "kind": "greenhouse",
    "token": "fccincinnati",
-   "name": "Fussball Club Cincinnati LLC (“FC Cincinnati”)",
+   "name": "Fussball Club Cincinnati LLC (\u201cFC Cincinnati\u201d)",
    "total": 6,
    "us": 6,
    "tri": 0,
@@ -17574,15 +17574,6 @@
   },
   {
    "kind": "greenhouse",
-   "token": "arcodb",
-   "name": "ARCO Design/Build",
-   "total": 161,
-   "us": 161,
-   "tri": 22,
-   "checked": "2026-10-30"
-  },
-  {
-   "kind": "greenhouse",
    "token": "atwellgroup",
    "name": "Atwell, LLC",
    "total": 187,
@@ -17624,15 +17615,6 @@
    "total": 188,
    "us": 126,
    "tri": 10,
-   "checked": "2026-10-30"
-  },
-  {
-   "kind": "greenhouse",
-   "token": "amn",
-   "name": "ARCO/Murray National Construction",
-   "total": 127,
-   "us": 126,
-   "tri": 0,
    "checked": "2026-10-30"
   },
   {
@@ -17997,15 +17979,6 @@
   },
   {
    "kind": "greenhouse",
-   "token": "anc",
-   "name": "ARCO National Holdings",
-   "total": 48,
-   "us": 48,
-   "tri": 0,
-   "checked": "2026-10-30"
-  },
-  {
-   "kind": "greenhouse",
    "token": "c5miinsightllc",
    "name": "C5MI Insight",
    "total": 47,
@@ -18295,7 +18268,7 @@
   {
    "kind": "greenhouse",
    "token": "dept",
-   "name": "DEPT®",
+   "name": "DEPT\u00ae",
    "total": 167,
    "us": 33,
    "tri": 0,
@@ -18736,7 +18709,7 @@
   {
    "kind": "greenhouse",
    "token": "gruns",
-   "name": "Grüns",
+   "name": "Gr\u00fcns",
    "total": 24,
    "us": 24,
    "tri": 0,
