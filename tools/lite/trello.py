@@ -58,12 +58,27 @@ def sign(text, limit=16000):
     return f"{text[:limit - len(tag) - 1]}\n{tag}"
 
 
+def areas_list_id():
+    """Id of the '📍 Areas' list, or None if the board has none."""
+    want = _norm(AREAS_LIST)
+    for lst in trello("GET", f"/boards/{board()}/lists", {"fields": "name"}) or []:
+        if _norm(lst.get("name")) == want:
+            return lst["id"]
+    return None
+
+
 def update(num, to_list=None, comment=None, check=None):
     c = card(num)
     done = [f"#{num} {c['name'][:60]}"]
     if to_list:
-        trello("PUT", f"/cards/{c['id']}", {"idList": list_id(to_list)})
-        done.append(f"→ {to_list}")
+        # area cards are pinned to '📍 Areas' for good; only work cards move between columns (and never into Areas)
+        if c.get("idList") == areas_list_id():
+            done.append(f"(area card — stays in {AREAS_LIST}, not moved)")
+        elif _norm(to_list) == _norm(AREAS_LIST):
+            done.append(f"(not moved — only area cards live in {AREAS_LIST})")
+        else:
+            trello("PUT", f"/cards/{c['id']}", {"idList": list_id(to_list)})
+            done.append(f"→ {to_list}")
     if comment:
         trello("POST", f"/cards/{c['id']}/actions/comments", {"text": sign(comment)})
         done.append("+comment")
@@ -157,7 +172,7 @@ def area_cards():
     """Open cards in the '📍 Areas' list, in board order."""
     lists = trello("GET", f"/boards/{board()}/lists", {"fields": "name"}) or []
     want = _norm(AREAS_LIST)
-    hit = [l for l in lists if _norm(l.get("name")) == want]
+    hit = [lst for lst in lists if _norm(lst.get("name")) == want]
     if not hit:
         raise HandoffError(f"No list named '{AREAS_LIST}' on board {board()} — someone renamed or archived it; "
                            f"restore it in Trello")
