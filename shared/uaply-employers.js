@@ -311,6 +311,7 @@ var CSS=[
 "#hub .impok{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:12px 16px;border-radius:14px;background:var(--yes-bg);color:var(--ink);font-size:14px}#hub .impok b{color:var(--yes)}",
 "#hub .chipok,#hub .f.filled>label:first-child::after,#hub .f.filled>.l::after{display:inline-block;margin-left:8px;font:600 10.5px var(--mono);padding:2px 7px;border-radius:99px;background:var(--yes-bg);color:var(--yes);vertical-align:middle}#hub .f.filled>label:first-child::after,#hub .f.filled>.l::after{content:'From your post'}",
 "#hub .f.filled{border-left:3px solid var(--yes);padding-left:9px}",
+"#hub .vsub{font-size:13px;color:var(--muted)}@media (max-width:720px){#hub .doors{grid-template-columns:minmax(0,1fr)}}",
 "#hub .optn{display:inline-block;margin-bottom:6px;font:600 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--accent)}",
 "#hub .psteps{display:flex;gap:6px;list-style:none;margin:0;padding:0}#hub .psteps li{flex:1;min-width:0}#hub .psteps button{width:100%;min-height:44px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--muted);font-weight:600;font-size:13.5px;cursor:pointer;padding:6px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#hub .psteps button.done{background:var(--yes-bg);color:var(--ink);border-color:transparent}#hub .psteps button[aria-current=step]{background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);border-color:transparent}#hub .psteps button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}",
 "#hub .pbar.pnav{position:static;backdrop-filter:none;background:var(--surface)}#hub .pbar.pnav .acts{display:flex;gap:8px;flex-wrap:wrap}",
@@ -427,6 +428,9 @@ function apply(w,host){
   },true);
 
   /* ================= data ================= */
+  /* card 108: the new "Post a job" start (one paste box, then the live swipe card on Review). Off until the server checks the
+     employer behind a posting; ?postajob=1 previews it. */
+  var POST_A_JOB=false;try{POST_A_JOB=/[?&]postajob=1(&|$)/.test(w.location.search+((w.parent!==w&&w.parent.location.search)||""))}catch(e){}
   var H={mode:"loading",company:null,jobs:[],apps:[],verified:false,email:"",view:"overview",edit:null,appJob:"all",mustOnly:false,sort:"match",pendingLogo:null,L:null};
   function api(path,body){
     var o=body?{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}:{credentials:"same-origin"};
@@ -602,6 +606,16 @@ function apply(w,host){
   /* Post a job in four named steps. Every field stays in one form, so moving between steps never loses what was typed. */
   var STEP_NAME={1:"Import",2:"The role",3:"Pay and rules",4:"Review"};
   function postSteps(editing){return editing?[2,3,4]:[1,2,3,4]}
+  var ATS_CONNECT='<a href="/employers/connect">';
+  function startBox(){
+    if(POST_A_JOB)return '<div class="box imp" id="impBox"><div id="impLinkWrap" hidden><input type="hidden" id="impUrl"></div>'+
+      '<div id="impTextWrap" class="f"><label for="impText">Paste your job link or description</label><textarea id="impText" rows="5" maxlength="30000" placeholder="https://… or paste the job text">'+esc(H.impText||"")+'</textarea></div>'+
+      '<div><button type="button" class="btn" data-act="impAuto">Post a job</button></div><small class="vsub">We fill in the form for you. You check it before it goes live.</small>'+
+      '<p class="msg" id="impMsg" role="status" aria-live="polite"></p></div>'+
+      '<div class="orline"><span>already use an ATS?</span></div><p class="note">'+ATS_CONNECT+'Connect Greenhouse, Lever, Ashby or Workable</a> so applications land there.</p>'+
+      '<div><button type="button" class="btn ghost" data-act="manual">Fill it in myself</button></div>';
+    return importBox();
+  }
   function fieldEl(field){
     var map={role:"jRole",mode:"jMode",city:"jCity",sal_min:"jSalMin",skills:"jSkills",blurb:"jBlurb",gpa:"jGpa",grad_to:"jGradTo",url:"jUrl"};
     var id=map[field]||field;return hub.querySelector("#"+id)||hub.querySelector('input[name="'+id+'"]');
@@ -634,6 +648,7 @@ function apply(w,host){
     H.step=s;f.hidden=false;
     [].slice.call(f.querySelectorAll("[data-st]")).forEach(function(x){x.hidden=+x.getAttribute("data-st")!==s});
     if(s===4)f.querySelector("#pReview").innerHTML=reviewHTML();
+    var pn=hub.querySelector("#pPrevNote");if(pn&&POST_A_JOB)pn.textContent=s===4?"This is the card job seekers will swipe. Check it, then publish.":"It updates as you type.";
     [].slice.call(hub.querySelectorAll(".psteps button")).forEach(function(b){var k=+b.getAttribute("data-s");if(k===s)b.setAttribute("aria-current","step");else b.removeAttribute("aria-current");b.classList.toggle("done",k<s);b.textContent=(k<s?"✓ ":(ST.indexOf(k)+1)+" ")+STEP_NAME[k]});
     var i=ST.indexOf(s);
     f.querySelector("#pStepN").innerHTML="Step "+(i+1)+" of "+ST.length+' <small class="note">· price to post: TBD, no card needed</small>';
@@ -651,7 +666,7 @@ function apply(w,host){
     var ST=postSteps(editing),cur=H.step&&ST.indexOf(H.step)>-1?H.step:ST[0];H.step=cur;
     return '<div><h1>'+(editing?"Edit job":"Post a job")+'</h1><p class="lead">'+(editing?'One page. Each section is matched to what job seekers fill in, so the right people see your job and their match score is fair.':'Bring in a job you already posted, or fill it in yourself. Each section is matched to what job seekers fill in.')+'</p></div>'+
     '<ol class="psteps" aria-label="Steps">'+ST.map(function(s){return '<li><button type="button" data-act="step" data-s="'+s+'"'+(s===cur?' aria-current="step"':'')+(s<cur?' class="done"':'')+'>'+(s<cur?'✓ ':(ST.indexOf(s)+1)+' ')+STEP_NAME[s]+'</button></li>'}).join("")+'</ol>'+
-    (editing?'':H.filled?'<div class="impok" role="status"><div><b>✓ Filled '+n+' field'+(n===1?"":"s")+' from '+esc(H.impFrom||"your post")+'.</b> Fields marked <span class="chipok">From your post</span> came from it. Check them, then fill in the rest.'+(need.length?' <b>Still needed:</b> '+esc(need.join(", "))+'.':'')+'</div><button type="button" class="btn ghost sm" data-act="reimport">Use a different link</button></div>':cur===1?importBox():'')+
+    (editing?'':H.filled?'<div class="impok" role="status"><div><b>✓ Filled '+n+' field'+(n===1?"":"s")+' from '+esc(H.impFrom||"your post")+'.</b> Fields marked <span class="chipok">From your post</span> came from it. Check them, then fill in the rest.'+(need.length?' <b>Still needed:</b> '+esc(need.join(", "))+'.':'')+'</div><button type="button" class="btn ghost sm" data-act="reimport">Use a different link</button></div>':cur===1?startBox():'')+
     '<form id="pForm" class="pform" novalidate'+(cur===1?' hidden':'')+'><div style="display:flex;flex-direction:column;gap:16px;min-width:0">'+
     '<fieldset data-st="2"><legend>The role</legend><p class="match">Matched to the job seeker\'s <b>target titles</b>, <b>opportunity types</b>, <b>work style</b>, <b>city and commute distance</b> and <b>willingness to relocate</b>.</p>'+
       F("jRole","Job title",'<input type="text" id="jRole" maxlength="120" value="'+esc(j.role)+'" placeholder="Marketing Coordinator">',{req:1,full:1})+
@@ -689,7 +704,7 @@ function apply(w,host){
       '<div class="f full"><label class="ckline"><input type="checkbox" id="jShowMgr"'+(j.show_manager?" checked":"")+'> Show the name and title on the job card under "Meet the hiring team"</label></div></fieldset>'+
     '<div class="box prev" data-st="4" id="pReview"></div>'+
     '<div class="pbar pnav"><span class="price" id="pStepN"></span><div class="acts"><button type="button" class="btn ghost" data-act="back" id="pBack">Back</button><button type="button" class="btn ghost" data-view="jobs">Cancel</button><button type="button" class="btn" data-act="next" id="pNext">Next</button><button type="submit" class="btn" id="jSubmit">'+(editing?"Save changes":"Publish job")+'</button></div></div>'+
-    '</div><aside class="pside" aria-label="Preview"><div><h2>Preview</h2><p class="note">What job seekers see on the swipe card.</p></div><div id="pPrev"></div></aside></form>';
+    '</div><aside class="pside" aria-label="Preview"><div><h2>'+(POST_A_JOB?"What job seekers will swipe":"Preview")+'</h2><p class="note" id="pPrevNote">'+(POST_A_JOB?"It updates as you type.":"What job seekers see on the swipe card.")+'</p></div><div id="pPrev"></div></aside></form>';
   }
   function readPost(){
     var f=hub.querySelector("#pForm");function v(id){var e=f.querySelector("#"+id);return e?e.value.trim():""}function r(n){var e=f.querySelector('input[name="'+n+'"]:checked');return e?e.value:""}function c(id){var e=f.querySelector("#"+id);return !!(e&&e.checked)}
@@ -960,6 +975,8 @@ function apply(w,host){
     if(act==="reimport"){H.manual=false;H.filled=null;H.edit=null;H.step=1;render();return}
     if(act==="impLink"){runImport("link");return}
     if(act==="impText"){runImport("text");return}
+    if(act==="impAuto"){var raw=((hub.querySelector("#impText")||{}).value||"").trim();       /* POST_A_JOB: one box takes a link or the job text */
+      if(/^(https?:\/\/)?[^\s\/]+\.[a-z]{2,}(\/\S*)?$/i.test(raw)){hub.querySelector("#impUrl").value=raw;runImport("link")}else runImport("text");return}
     if(act==="apps"){H.appJob=String(id);H.view="applicants";render();return}
     if(act==="rmlogo"){H.pendingLogo=null;H.removeLogo=true;var box=hub.querySelector(".logoup .hlogo");if(box)box.textContent=((H.company||{}).name||"?").charAt(0).toUpperCase();b.remove();say("Logo will be removed when you save.");return}
     if(act==="status"||act==="del"){
