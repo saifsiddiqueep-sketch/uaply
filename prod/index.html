@@ -419,7 +419,7 @@ function cardHTML(q,cls){
   var j=q.j,m=q.m,t=tone(m.pct),C=2*Math.PI*26;
   var have=S.profile.skills.map(norm);
   var chips=j.skills.map(function(s){return '<span class="chip '+(have.indexOf(norm(s))>-1?"have":"")+'">'+esc(s)+'</span>'}).join("");
-  var under=cls!=="top"?' aria-hidden="true"':'';
+  var under=cls!=="top"?' aria-hidden="true" inert':' role="group" aria-label="'+esc(j.role)+' at '+esc(j.co)+'"';
   return '<article class="card '+cls+'" data-id="'+j.id+'" style="--h:'+hue(j.id)+'"'+under+'>'+
    '<div class="stamp yes" aria-hidden="true">APPLY</div><div class="stamp no" aria-hidden="true">PASS</div>'+
    '<div class="chead">'+logoHTML(j)+'<div><h2>'+esc(j.role)+'</h2><p>'+esc(j.co)+'</p></div></div>'+

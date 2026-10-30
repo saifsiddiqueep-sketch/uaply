@@ -267,6 +267,7 @@ var CSS=[
 "#hub .hub{display:grid;grid-template-columns:230px minmax(0,1fr);gap:20px;align-items:start;padding-bottom:40px}",
 "#hub .hnav{position:sticky;top:0;display:flex;flex-direction:column;gap:4px;padding:14px;border:1px solid var(--line);border-radius:18px;background:var(--surface)}",
 "#hub .hnav button.hco{display:flex;gap:10px;align-items:center;justify-content:flex-start;padding:6px 6px 12px;margin-bottom:6px;border-bottom:1px solid var(--line);border-radius:12px 12px 0 0;min-width:0;text-align:left}#hub .hco b{display:block;font:800 15px/1.2 var(--display);overflow-wrap:anywhere}#hub .hco small{display:block;color:var(--muted);font-size:12px;font-weight:500}",
+".brand[role=link]{position:relative}.brand[role=link]::after{content:\"\";position:absolute;left:0;right:0;top:50%;height:44px;transform:translateY(-50%)}",
 ".brand[role=link]:focus-visible{outline:3px solid var(--accent);outline-offset:4px;border-radius:10px}",
 "#hub .hlogo{width:42px;height:42px;flex:none;border-radius:11px;display:grid;place-items:center;background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);font:800 18px var(--display);overflow:hidden}#hub .hlogo img{width:100%;height:100%;object-fit:contain;background:#fff}",
 "#hub .hnav button{display:flex;align-items:center;justify-content:space-between;gap:8px;text-align:left;min-height:42px;padding:8px 12px;border:0;border-radius:11px;background:none;color:var(--ink);font:600 14.5px var(--body);cursor:pointer}",
