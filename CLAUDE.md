@@ -60,6 +60,8 @@ Trello is shared through one UAply login: every Trello comment, card or descript
 Branch `c<card#>-<slug>` off `sandbox` → builder/builder-deep → proof (command + output) → reviewer if risky →
 `queue.py take sandbox` → merge → `queue.py release sandbox` → one Trello update. Live: Saif only (`queue.py take live`).
 Details: `/ship`. Never claim a merge, Trello write or backup happened without the tool output.
+Never edit or switch branches in the main repo folder; it stays on sandbox. All code changes happen in your own git worktree (../aply-c<card#>).
+Trello: merged to sandbox → Waiting (comment with PR #). Completed only after it's live on dev.
 
 ## UAply joint rules kept from the Oct 23 CLAUDE.md (per side)
 - Saif's side (server, auth, API, data, billing, email, infra, live, releases): a change merges to `sandbox` after three green
