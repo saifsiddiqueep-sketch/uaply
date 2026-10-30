@@ -20,6 +20,30 @@ production page and only changes when the owner decides.
 - Test: `tools/ui-dashboard-split.js` (13 checks, including a failed send, a test-inbox send and a click on a row's real Mark as applied;
   4 of 13 passed on the code before the fix, 7 of 13 with test-inbox sends counted as Sent), in `tools/run-all-tests.sh` next to the Job
   Tracker keep test. Trello K0QEMeQm.
+### Phone apps: location and notification permissions (Mohammed, October 22)
+- **iPhone** (`mobile/ios/App/App/Info.plist`): the location reason iOS shows in its prompt, "UAply uses your location only to show
+  jobs near you first. It is rounded to about a mile, stays on this device and is never sent to our server." Without it iOS refused
+  location inside the app, so Jobs near you could never work there. "While using the app" only; no background location.
+- **Android** (`mobile/android/app/src/main/AndroidManifest.xml`): approximate and precise location (the app's web view asks for both
+  at once and accepts "Approximate" on Android 12 and later), location hardware optional, and POST_NOTIFICATIONS for the interview
+  reminders on Android 13 and later (the reminders plugin also adds it; now it is written down and checked). No background location.
+- No plugin added: Jobs near you uses the browser's own location call, which the app's web view passes to these prompts. The website
+  is unchanged. Jobs near you is already on dev (546ecd6), so both apps use these prompts from their next build. **Before store
+  submission** the in-app wording must name the app, not the browser ("Your browser will ask", "the icon at the left of the address
+  bar" in shared/uaply-nav.js and the sign-up step in shared/uaply-signup.js): follow-up card for Mohammed.
+- New check `tools/test-mobile-perms.py` (24 checks, in `tools/run-all-tests.sh`): the permissions, the iPhone text and its promise,
+  every plugin the web code calls present in both apps, the same "never sent to our server" in the web card and Play's Data safety,
+  and two guards that keep the location away from employer pages (no `allowNavigation` to other sites, no location in AssistActivity).
+### Help wording: what a swipe right really does (Mohammed's review, October 22)
+- **The help answers** "How do I apply?" (test and release wording) and "What is UAply?" now give the honest rule: a swipe right
+  applies through UAply only for employers who take UAply applications; for every other job UAply sends nothing to the employer and saves it in
+  Job Tracker, Applied, where Finish applying on their site opens the employer's own page (the swipe itself opens nothing). They used to open with "Swiping right applies for you", which the landing page's rule contradicts.
+- **In the app:** the empty Job Tracker, Applied list and the last sign-up step ("A swipe right applies for you.") say the same rule; the sign-up
+  step's second line no longer says "we open their own site" (it says the job waits in Job Tracker with a link to their site).
+- **Checked:** `node check.js` has a new "Honest swipe-right wording" section: no help article or in-app script may say a swipe right
+  "applies for you" in a sentence that does not name who takes UAply applications, and the swipe-right article must say both halves
+  (it fails on the old wording), and a help sentence about every other job may not say nothing is sent without "to the employer"
+  (the profile still reaches UAply's server, which keeps a record). It scans the help articles, prod, dev and sandbox index.html, and every shared script.
 ### Job Tracker: a restored backup keeps its applications, and every hand-off can be marked finished (Mohammed, October 22)
 - **A restore no longer drops applications.** Restoring a backup (Profile, Data & privacy, Restore) kept only the swipes whose job was in
   the list at that moment, and dropped what happened to each one (Sent, Sent (by you)), while saying everything was restored. On a new

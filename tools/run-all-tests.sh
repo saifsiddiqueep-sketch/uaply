@@ -37,6 +37,7 @@ run "assisted apply on a mock form of each hiring system: every field lands, not
 run "assisted apply against hostile pages: a page's own UAplyAssist, a redirect to another site and a look-alike host receive nothing" env W=390 H=844 node tools/cdp.js tools/test-assist-hostile.js
 run "handoff: WIP commits/pushes only on its own branch, blocks keys/.env/user data, carries open decisions" python tools/test-lite-handoff.py
 run "Google Play listing pack: picture sizes and formats, text lengths, the Data safety and App content answers" python tools/test-play-listing.py
+run "phone app permissions: iPhone location text, Android location and notifications, every plugin the web code calls" python tools/test-mobile-perms.py
 if python -m ruff --version >/dev/null 2>&1; then run "Python syntax errors and undefined names (Ruff)" python -m ruff check --select E9,F63,F7,F82 .; fi
 
 step "Servers"
