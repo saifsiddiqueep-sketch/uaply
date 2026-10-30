@@ -421,7 +421,7 @@ function apply(w){
     var prev=d.activeElement,bg=d.createElement("div"),closed=false;bg.className="rkSheetBg";
     var needName=!has(MAP[0]);
     bg.innerHTML='<div class="rkSheet" role="dialog" aria-modal="true" aria-labelledby="rkSh"><h2 id="rkSh" tabindex="-1">Add your resume to send this</h2>'+
-      '<p>'+esc(job.co||"This employer")+' needs a way to reach you. Add your resume, or a phone number, and we send this application now.</p>'+
+      '<p>'+esc(job.co||"This employer")+' needs a way to reach you. Add your resume, or a phone number, and '+(job.contact||job.instant?'we send this application now':'we save it to Job Tracker, where a link opens the employer\'s own page to finish')+'.</p>'+
       '<div class="rkUp"></div>'+
       '<div class="rkActs"><button type="button" class="btn ghost" data-sh="phone">Add a phone number instead</button><button type="button" class="linkbtn" data-sh="no">Not now</button></div>'+
       '<form class="rkPh rkCheck" hidden novalidate><h3 tabindex="-1">Add a phone number</h3>'+
