@@ -828,7 +828,8 @@ def _host_key(host):
 
 
 class _host_slot:
-    """Holds one of HOST_PARALLEL places for the address's host (or its HOST_FAMILY) while a request (or a streamed answer) is in progress."""
+    """Holds one of HOST_PARALLEL places for the address's host (or its HOST_FAMILY) while a request (or a streamed answer) is in progress.
+    .started: when the place was had (time.monotonic()), so FEED_DEADLINE counts the request itself, not the wait for a place."""
     def __init__(self, url):
         self.key, n, self.gap = _host_key((urllib.parse.urlsplit(url).hostname or "").lower())
         with _host_sems_lock:
@@ -838,11 +839,12 @@ class _host_slot:
         self.sem.acquire()
         if self.gap:
             with _host_sems_lock:
-                now = time.time()
+                now = time.monotonic()
                 wait = _host_next.get(self.key, 0) - now
                 _host_next[self.key] = max(now, _host_next.get(self.key, 0)) + self.gap
             if wait > 0:
                 time.sleep(min(wait, 60))
+        self.started = time.monotonic()
         return self
 
     def __exit__(self, *exc):
@@ -854,8 +856,8 @@ def _get(url, headers=None, as_text=False, opener=None):
     """One feed answer, parsed as JSON (or the plain text with as_text=True), refused past MAX_FEED_BYTES. opener: _cp_open for a careers
     site (every hop a public https address), else urllib's own."""
     req = urllib.request.Request(url, headers=dict({"User-Agent": UA, "Accept": "text/plain" if as_text else "application/json"}, **(headers or {})))
-    started, parts, size = time.time(), [], 0
-    with _host_slot(url), (opener or urllib.request.urlopen)(req, timeout=FEED_TIMEOUT) as r:
+    parts, size = [], 0
+    with _host_slot(url) as slot, (opener or urllib.request.urlopen)(req, timeout=FEED_TIMEOUT) as r:
         while True:                                     # in parts, so a feed that trickles is stopped at FEED_DEADLINE
             part = r.read(STREAM_CHUNK)
             if not part:
@@ -864,7 +866,7 @@ def _get(url, headers=None, as_text=False, opener=None):
             size += len(part)
             if size > MAX_FEED_BYTES:
                 break
-            if time.time() - started > FEED_DEADLINE:
+            if time.monotonic() - slot.started > FEED_DEADLINE:
                 raise TimeoutError("the feed took longer than %d s; tried again at the next refresh" % FEED_DEADLINE)
     body = b"".join(parts)
     del parts
@@ -889,8 +891,7 @@ def _get_items(url, key=None):
     the answer not yet worked through is held (a few hundred KB), instead of the whole answer, its text and every parsed posting at once:
     Carvana's 19 MB board cost about 75 MB that way. Past MAX_FEED_BYTES the answer is refused, as in _get."""
     req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "application/json"})
-    started = time.time()
-    with _host_slot(url), urllib.request.urlopen(req, timeout=FEED_TIMEOUT) as r:
+    with _host_slot(url) as slot, urllib.request.urlopen(req, timeout=FEED_TIMEOUT) as r:
         dec = codecs.getincrementaldecoder("utf-8")("replace")
         st = {"buf": "", "pos": 0, "read": 0, "done": False}
 
@@ -899,7 +900,7 @@ def _get_items(url, key=None):
                 return False
             chunk = r.read(STREAM_CHUNK)
             st["read"] += len(chunk)
-            if time.time() - started > FEED_DEADLINE:
+            if time.monotonic() - slot.started > FEED_DEADLINE:
                 raise TimeoutError("the feed took longer than %d s; tried again at the next refresh" % FEED_DEADLINE)
             if st["read"] > MAX_FEED_BYTES:
                 raise ValueError("the answer is larger than %d MB" % (MAX_FEED_BYTES // 1000000))
@@ -1748,8 +1749,8 @@ def _cp_blocks(url, tag="url"):
 def _get_parts(url, headers, opener=None):
     """An answer's bytes as they arrive (STREAM_CHUNK at a time), refused past MAX_FEED_BYTES or FEED_DEADLINE."""
     req = urllib.request.Request(url, headers=headers)
-    started, size = time.time(), 0
-    with _host_slot(url), (opener or urllib.request.urlopen)(req, timeout=FEED_TIMEOUT) as r:
+    size = 0
+    with _host_slot(url) as slot, (opener or urllib.request.urlopen)(req, timeout=FEED_TIMEOUT) as r:
         while True:
             part = r.read(STREAM_CHUNK)
             if not part:
@@ -1757,7 +1758,7 @@ def _get_parts(url, headers, opener=None):
             size += len(part)
             if size > MAX_FEED_BYTES:
                 raise ValueError("the answer is larger than %d MB" % (MAX_FEED_BYTES // 1000000))
-            if time.time() - started > FEED_DEADLINE:
+            if time.monotonic() - slot.started > FEED_DEADLINE:
                 raise TimeoutError("the answer took longer than %d s; tried again at the next refresh" % FEED_DEADLINE)
             yield part
 
@@ -2659,8 +2660,10 @@ def _start_refresh(src):
         ev = _refreshing[src] = threading.Event()
         # queued for FEED_PARALLEL reader threads, in the order asked (SOURCES order on a fresh start): with 500 sources a thread
         # each, all waiting for a slot, cost about 30 MB of thread stacks
-        slow = src[0] == "careerpage"
-        pool, q, size = (_slow_readers, _to_read_slow, CP_PARALLEL) if slow else (_readers, _to_read, FEED_PARALLEL)
+        # careers sites and Recruitee boards have reader threads of their own: both wait between requests (crawl delays, Recruitee's
+        # spacing), and in the shared readers 8 Recruitee boards in a row (they sit together at the end of SOURCES) held every place for minutes
+        pool, q, size = ((_slow_readers, _to_read_slow, CP_PARALLEL) if src[0] == "careerpage" else
+                         (_rc_readers, _to_read_rc, RC_PARALLEL) if src[0] == "recruitee" else (_readers, _to_read, FEED_PARALLEL))
         while len(pool) < size:
             th = threading.Thread(target=_reader, args=(q,), daemon=True)
             pool.append(th)
@@ -2674,6 +2677,10 @@ _readers = []                    # the reader threads (started on first use, FEE
 _to_read_slow = queue.Queue()    # the same for careers sites (CP_PARALLEL threads of their own)
 _cp_slots = threading.BoundedSemaphore(CP_PARALLEL)
 _slow_readers = []
+RC_PARALLEL = HOST_FAMILY["recruitee.com"][0]     # Recruitee boards read at once: as many as the service has places (HOST_FAMILY)
+_to_read_rc = queue.Queue()      # the same for Recruitee boards (RC_PARALLEL threads, places of their own instead of _feed_slots)
+_rc_slots = threading.BoundedSemaphore(RC_PARALLEL)
+_rc_readers = []
 
 
 def _reader(q=_to_read):
@@ -2900,8 +2907,9 @@ def _fetch_source(src):
         keep = KEEP.get(kind) if (kind != "smartrecruiters" or token in SR_WHOLE) else None   # a whole public list, or None for an employer board
         lazy, listed = [], set()
         # at most FEED_PARALLEL boards downloaded and parsed at once (memory, see FEED_PARALLEL); careers sites have places of their own:
-        # holding a board's place through 2-second crawl delays, 16 of them kept the boards waiting (14 boards in the first 70 s)
-        with (_cp_slots if kind == "careerpage" else _feed_slots):
+        # holding a board's place through 2-second crawl delays, 16 of them kept the boards waiting (14 boards in the first 70 s); Recruitee
+        # boards too (they wait for the service's places and spacing, see HOST_FAMILY), so the other boards never wait behind them
+        with (_cp_slots if kind == "careerpage" else _rc_slots if kind == "recruitee" else _feed_slots):
             for raw in _iter_raw(kind, token, name):
                 if kind not in AGE_EXEMPT and _too_old(raw, now_ms) and not (kind in EVERGREEN_KINDS and _job_type(raw) in EVERGREEN_TYPES):
                     # (before the caps, so a stale posting never takes a fresh one's place)

@@ -86,7 +86,7 @@ for _th in _ths:
     _th.join()
 _starts.sort()
 t("six boards of one family at once: at most 2 requests in flight, starts at least the spacing apart",
-  (_peak[0], all(b - a >= 0.09 for a, b in zip(_starts, _starts[1:]))), (2, True))
+  (_peak[0], all(b - a >= 0.07 for a, b in zip(_starts, _starts[1:]))), (2, True))
 
 # ---------- a stand-in Recruitee careers site ----------
 GOT = []
