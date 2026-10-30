@@ -252,6 +252,7 @@ run "live-check.py, email, Google and payments on (stand-ins), all of them requi
 run "ui-live.js, everything off: agreement, Got it, a swipe, Account says email is off, no Google, early access, help" node tools/cdp.js tools/ui-live.js --base "http://127.0.0.1:$LP"
 run "ui-live.js, all on: Google button and redirect, buy buttons, sign-up by email code, Applied list" node tools/cdp.js tools/ui-live.js --base "http://127.0.0.1:$((LP+1))" --google-host "127.0.0.1:$((LP+2))" --email live.check+one@example.com --code-file "$TMP/lc-on/mail.jsonl"
 run "Plan & billing, yearly (390x844): the Monthly / Yearly toggle, 2 months free, the 7-day refund line, Choose on Yearly opens Checkout with the yearly price" env W=390 H=844 PORT=$((LP+1)) MOCK_STRIPE=$((LP+4)) node tools/cdp.js tools/ui-billing-plans.js
+run "sandbox: resume-first onboarding (resume first, skip to phone, a reload resumes the step, the swipe sheet sends after a phone, Check these lists only what was found)" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-onboard.js
 
 printf "\n"
 if [ "$FAILS" -eq 0 ]; then echo "ALL TESTS PASSED"; else echo "$FAILS test group(s) FAILED"; fi

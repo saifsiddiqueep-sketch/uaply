@@ -852,6 +852,7 @@ function kitApply(w,host){
     quietApply(job,{pct:A.S.decisions[id].pct||0},A.S.profile,function(){},A.S,A.save,false);
   };
 
+  var askedSend={};
   function quietApply(job,m,p,undo,S,save,retry){
     var live=w.__uaplyMode==="live",auto=w.__uaplyAuto!==false;
     var target=(live&&w.__uaplyRedirect)||job.contact||(job.instant?"hiring system":"");
@@ -872,6 +873,12 @@ function kitApply(w,host){
     var rdy=w.__uaplyReadiness?w.__uaplyReadiness():null;
     /* an incomplete profile: saved to Job Tracker as "Needs profile" (sent from there once the profile is complete); the line says so once a session */
     if(rdy&&!rdy.min){
+      /* October 30, never send nothing: the sheet asks for a resume or a phone number first; done, THIS application goes out the normal
+         way; dismissed, it is kept as "Needs profile" as before. Once per job, so an answer that is still not enough never loops */
+      if(!retry&&w.__uaplyAddToSend&&!askedSend[job.id]){
+        askedSend[job.id]=true;
+        w.__uaplyAddToSend(job,function(sent){if(sent)quietApply(job,m,(w.__uaply&&w.__uaply.S.profile)||p,undo,S,save,retry);else quietApply(job,m,p,undo,S,save,retry)});
+        return}
       mark("needs_profile");if(w.__uaplyBadge)w.__uaplyBadge();
       var told=false;try{told=w.sessionStorage.getItem("uaply.np")==="1"}catch(e){told=!!w.__uaplyNPTold}
       if(!told){try{w.sessionStorage.setItem("uaply.np","1")}catch(e){}w.__uaplyNPTold=true;

@@ -216,6 +216,12 @@ function patch(s){
 }
 
 var WORK=["Barista","Retail","Warehouse","Front desk","Cook","Delivery","Office","Healthcare"];
+/* the first-run questions, in order: the ONE place to change it (October 30: the resume comes first). A step is left out when it does
+   not apply: resume (the resume experiment is off), name (typed on the card, or read from the resume), work and where (answered by the
+   resume), phone (only with the resume step, and only while there is no phone number or resume) */
+var Q_ORDER=["resume","name","work","where","phone"];
+/* a kind-of-work chip from the resume's job title only when exactly one chip is named in it, as whole words ("Retail Sales Associate") */
+function chipFor(t){t=String(t||"");var hit=WORK.filter(function(c){return new RegExp("\\b"+c.replace(/ /g,"\\s+")+"\\b","i").test(t)});return hit.length===1?hit[0]:""}
 var GSTART="uaply.gstart";            /* the same top-page key shared/uaply-nav.js reads when a tab comes back from Google */
 var PENDING="uaply.signup.pending";   /* top-page sessionStorage: what the card held when this tab left for Google */
 var CODEK="uaply.signup.code";        /* top-page sessionStorage: the code step (which address, which step, when the code was sent) */
@@ -326,6 +332,20 @@ function apply(w,host){
   function setCodeStep(c){try{var s=topStore();if(!s)return;if(c)s.setItem(CODEK,JSON.stringify(c));else s.removeItem(CODEK)}catch(e){}}
   function ownGet(){try{var o=JSON.parse(w.localStorage.getItem(OWN));return o&&typeof o==="object"?o:{}}catch(e){return {}}}
   function ownSet(o){try{w.localStorage.setItem(OWN,JSON.stringify(o))}catch(e){}}
+  /* the first-run questions in progress (this device): each answer as it is given, so a reload comes back to the same step. Only the
+     answers and the step; the resume file stays in Bottom navigation's resume store. Cleared when the questions end or on sign-out. */
+  var QK=OWN+".q",QKEEP=["steps","k","work","other","where","remote","first","last","typedName","isNew","viaG","auto","noResume","needName","phone"];
+  function qSave(){
+    if(V.view!=="q")return;var em=String((V.user||srv().user||{}).email||V.email||"").toLowerCase();if(!em)return;
+    var o={email:em,at:Date.now()};QKEEP.forEach(function(k){o[k]=V[k]});
+    try{w.localStorage.setItem(QK,JSON.stringify(o))}catch(e){}
+  }
+  function qGet(user){
+    try{var o=JSON.parse(w.localStorage.getItem(QK));
+      if(o&&user&&o.email&&o.email===String(user.email||"").toLowerCase()&&Array.isArray(o.steps)&&o.steps.length&&Date.now()-(+o.at||0)<14*864e5)return o}catch(e){}
+    return null;
+  }
+  function qClear(){try{w.localStorage.removeItem(QK)}catch(e){}}
 
   /* the app's readiness rule (shared/uaply-nav.js): null when that nav has no such rule */
   function ready(){try{return typeof w.__uaplyReadiness==="function"?w.__uaplyReadiness():null}catch(e){return null}}
@@ -462,6 +482,8 @@ function apply(w,host){
       if(pend){startAfterGoogle(user,pend);return true}
       /* a reload during a new password account's code step: the account is signed in but not confirmed, and the step comes back */
       var pcs=pwStep(user);if(pcs){V.user=user;resume(pcs);return true}
+      /* a reload in the middle of the first-run questions: back to the same step with the answers given so far */
+      var qo=qGet(user);if(qo){QKEEP.forEach(function(k){if(k in qo)V[k]=qo[k]});V.work=V.work||[];V.auto=V.auto||{};V.user=user;V.view="q";render(true);setTimeout(gateSync,0);return true}
       return false;   /* signed in, nothing to ask: the app's own signed-in card */
     }
     if(V.view!=="up"&&V.view!=="in"&&!(V.view==="code"&&V.kind!=="g"))V.view="up";   /* signed out in the middle of the questions */
@@ -507,7 +529,7 @@ function apply(w,host){
   function wantGate(){
     var s=srv();
     if(!s.up)return !preview();
-    return !s.user||V.view==="q"||V.view==="code"||!!pwStep(s.user);
+    return !s.user||V.view==="q"||V.view==="code"||!!pwStep(s.user)||!!qGet(s.user);
   }
   /* this tab's code step for a new password account that is signed in and not yet confirmed (survives a reload, as Mohammed's does) */
   function pwStep(u){var cs=getCodeStep();return u&&u.emailVerified===false&&cs&&cs.kind==="pw"&&cs.email.toLowerCase()===String(u.email||"").toLowerCase()?cs:null}
@@ -978,9 +1000,32 @@ function apply(w,host){
     /* the name is asked unless it was typed on the card in this visit (lost with a refresh before the code, or when the account was
        started on another device), and after Google unless typed. It is never taken from an earlier account on this device: on a
        shared computer that would put someone else's name on applications */
-    var needName=!(V.first&&V.last)||(V.viaG&&!V.typedName);
-    V.steps=needName?["name","work","where"]:["work","where"];
-    V.k=0;V.view="q";render(true);
+    V.needName=!(V.first&&V.last)||(V.viaG&&!V.typedName);
+    V.auto={};V.noResume=false;V.phone="";V.steps=[];
+    V.steps=plan();V.k=0;V.view="q";render(true);
+  }
+  /* the steps left to ask, in Q_ORDER */
+  function plan(){
+    var kit=!!w.__uaplyResumeKit,a=V.auto||{};
+    return Q_ORDER.filter(function(s){
+      if(s==="resume")return kit;
+      if(s==="name")return !!V.needName&&!a.name;
+      if(s==="work")return !a.work;
+      if(s==="where")return !a.where;
+      if(s==="phone")return kit&&(V.steps.indexOf("phone")>-1||!hasPR());
+      return false;
+    });
+  }
+  /* "I don't have one right now" (or Continue without after a file that could not be read): the questions, then a phone number */
+  function skipResume(){V.noResume=true;V.steps=plan();V.k=V.steps.indexOf("resume")+1;render(true)}
+  /* the resume was read and checked: what it answered is not asked again */
+  function afterResume(info){
+    var p=A.S.profile||{},a=V.auto=V.auto||{},em=String((V.user||srv().user||{}).email||V.email||"");
+    if(info.saved.indexOf("name")>-1&&p.name){var parts=String(p.name).trim().split(/\s+/);V.first=parts[0];V.last=parts.slice(1).join(" ");V.typedName=true;a.name=true;ownSet({first:V.first,last:V.last,email:em.toLowerCase()})}
+    if(info.title){a.work=true;var c=chipFor(info.title);V.work=c?[c]:[];V.other=""}
+    if(info.saved.indexOf("city")>-1||info.saved.indexOf("zip")>-1){a.where=true;V.where=p.loc||""}
+    commit();V.noResume=false;
+    V.steps=V.steps.filter(function(s){return s!=="phone"});V.steps=plan();V.k=V.steps.indexOf("resume")+1;render(true);
   }
   function profile(focus){
     back=null;wide(true);
@@ -997,8 +1042,8 @@ function apply(w,host){
     [].forEach.call(root.querySelectorAll(".sg-prog i"),function(x,i){x.classList.toggle("on",i<k);x.classList.toggle("cur",i===k)});
     function paintPV(flashKey){
       /* the meter counts the app's minimum to apply (READY_MIN in shared/uaply-nav.js): a name, an email, and a phone number or a resume */
-      var p=A.S.profile||{},own=!!p.custom,name=(V.first+" "+V.last).trim()||(own?String(p.name||"").trim():""),title=V.work[0]||V.other||(own?p.title||"":""),
-        where=V.where||(own?p.loc||"":""),em=(own&&p.email)||email,pr=hasPR(),
+      var p=A.S.profile||{},own=!!p.custom,name=(V.first+" "+V.last).trim()||(own?String(p.name||"").trim():""),title=(V.auto&&V.auto.work&&own&&p.title)||V.work[0]||V.other||(own?p.title||"":""),
+        where=V.where||(own?p.loc||"":""),em=(own&&p.email)||email,pr=hasPR(),rq=ready(),hasRes=!!(rq&&rq.items.some(function(i){return i.k==="resume"&&i.done})),
         filled=[name,/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em),pr].filter(Boolean).length,pct=Math.round(filled/3*100);
       /* confirmed only from the server's emailVerified; it is not sent to employers, so it sits under their view, not on it */
       var vfd=(V.user||srv().user||{}).emailVerified===true;
@@ -1007,11 +1052,12 @@ function apply(w,host){
         '<div class="sg-pvr" data-k="work"><span>Target title</span><b>'+(title?esc(title):"—")+'</b></div>'+
         '<div class="sg-pvr" data-k="where"><span>Lives in</span><b>'+esc(where||"—")+'</b></div>'+
         '<div class="sg-pvr" data-k="email"><span>Email</span><b>'+esc(em)+'</b></div>'+
-        '<div class="sg-pvr'+(pr?'':' later')+'" data-k="pr"><span>Phone or resume</span><b>'+(pr?"Added":"Needed before UAply can apply")+'</b></div>'+
+        '<div class="sg-pvr'+(pr?'':' later')+'" data-k="pr"><span>Phone or resume</span><b>'+(pr?(hasRes?"Resume added":"Phone added"):"Needed before UAply can apply")+'</b></div>'+
         '<div class="sg-meter"><i style="width:'+pct+'%"></i></div><p class="sg-fine">'+filled+' of 3 needed to apply: your name, your email, and a phone number or a resume. Your other work picks stay on this device and only sort jobs.</p></div>'+
         (vfd?'<p class="sg-vfl">'+I.check+'Your email is confirmed.</p>':'');
       pv.querySelector(".sg-pvmini").onclick=function(){pv.classList.toggle("open");V.pvOpen=pv.classList.contains("open");this.setAttribute("aria-expanded",V.pvOpen)};
       if(flashKey&&!RM()){var el=pv.querySelector('[data-k="'+flashKey+'"]');if(el)el.classList.add("sg-flash")}
+      qSave();
     }
     var made="",eyebrow='<p class="sg-eyebrow">'+(k+1)+' of '+n+'</p>',html="";
     if(k===0&&V.isNew)made=V.viaG?
@@ -1020,6 +1066,8 @@ function apply(w,host){
     if(k===0&&V.pwGone)made+='<p class="sg-fine">'+PWGONE()+'</p>';
     if(k===0&&gOff(email))made+='<p class="sg-fine">'+GGONE+'</p>';
     if(k===0&&V.cleared)made+='<p class="sg-fine">This device had another account’s details (phone, resume, saved answers). They were cleared here, so your applications carry only your own.</p>';
+    if(step==="resume")html=made+eyebrow+'<h2 tabindex="-1">Start with your resume — we’ll fill in the rest</h2><p class="sg-sub">PDF, Word or text, up to 1 MB. Read once to fill your profile; employers only see it when you apply.</p><div class="sg-rk"></div>';
+    if(step==="phone")html=made+eyebrow+'<h2 tabindex="-1">What number can employers call?</h2><p class="sg-sub">Optional. UAply needs a phone number or a resume before it can apply for you.</p>'+textFieldHTML("Phone number","tel","(215) 555-0100 or +44 20 7946 0000",V.phone||"","sg-ph","done")+'<p class="sg-fine sg-pherr" role="alert"></p>';
     if(step==="name")html=made+eyebrow+'<h2 tabindex="-1">What should employers call you?</h2><div class="sg-two">'+textFieldHTML("First name","given-name","",V.first,"sg-fn","next")+textFieldHTML("Last name","family-name","",V.last,"sg-ln","next")+'</div><p class="sg-fine">Employers need a name on every application. Goes on your applications. Use the name on your resume.</p>';
     if(step==="work")html=made+eyebrow+'<h2 tabindex="-1">What kind of work are you after?</h2><p class="sg-sub">We’ll show these first. You can change this later.</p><div class="sg-chips" role="group" aria-label="Kinds of work">'+WORK.map(function(x){return '<button type="button" class="sg-chip" aria-pressed="'+(V.work.indexOf(x)>-1)+'">'+x+'</button>'}).join("")+'</div>'+textFieldHTML("Something else","off","e.g. dental assistant",V.other,"","next");
     if(step==="where")html=eyebrow+'<h2 tabindex="-1">Where do you live?</h2>'+textFieldHTML("City or ZIP code","address-level2","Austin, TX",V.where,"","done")+'<div class="sg-chips"><button type="button" class="sg-chip sg-rem" aria-pressed="'+V.remote+'">Remote is fine</button>'+(s.near?'<button type="button" class="sg-chip sg-loc" aria-pressed="'+V.near+'">'+I.pin+' Use my location</button>':'')+'</div><p class="sg-fine sg-locmsg" aria-live="polite">'+(s.near?(V.near?"Using your device location, rounded to about a mile. It stays on this device and is never sent to our server.":"Your browser asks before it shares your location. It stays on this device and is never sent to our server."):"Kept on this device as your home city. Jobs near it show first, and remote jobs too if you tap Remote is fine.")+'</p>';
@@ -1031,7 +1079,21 @@ function apply(w,host){
     q.innerHTML='<div class="sg-stack sg-qstack">'+html+'</div>';
     var ins=q.querySelectorAll("input"),advance=function(){V.k=k+1;render(true)};
     /* one main button: Skip while the question is empty, Continue once something is picked or typed */
-    function paintNext(){var has=step==="work"?(V.work.length||V.other):step==="where"?(V.where||V.remote||V.near):true,r=step==="done"?ready():null;nextBtn.textContent=step==="done"?(r&&!r.min?"Show me jobs":"Start swiping"):has?"Continue":"Skip"}
+    function paintNext(){var has=step==="work"?(V.work.length||V.other):step==="where"?(V.where||V.remote||V.near):step==="phone"?!!V.phone:true,r=step==="done"?ready():null;nextBtn.textContent=step==="resume"?"I don’t have one right now":step==="done"?(r&&!r.min?"Show me jobs":"Start swiping"):has?"Continue":"Skip"}
+    if(step==="resume"){
+      w.__uaplyResumeKit.mount(q.querySelector(".sg-rk"),{fresh:freshProfile,skipLabel:"Continue without",onSkip:skipResume,onDone:afterResume});
+      advance=skipResume;
+    }
+    if(step==="phone"){
+      var phi=ins[0],phe=q.querySelector(".sg-pherr");phi.type="tel";phi.setAttribute("inputmode","tel");phi.maxLength=25;
+      phi.oninput=function(){V.phone=this.value.trim();phe.textContent="";paintPV("pr");paintNext()};
+      advance=function(){
+        var v=phi.value.trim();
+        if(v&&!w.__uaplyResumeKit.phoneOk(v)){phe.textContent="Enter a US number (10 digits) or an international one starting with +.";fxs(phi);return}
+        if(v){w.__uaplyResumeKit.savePhone(v);commit()}
+        V.k=k+1;render(true);
+      };
+    }
     if(step==="name"){
       var fn=wireReq(q.querySelector(".sg-fn"),"Add your first name."),ln=wireReq(q.querySelector(".sg-ln"),"Add your last name.");
       fn.input.addEventListener("input",function(){V.first=fn.value();paintPV()});
@@ -1071,14 +1133,14 @@ function apply(w,host){
     /* Enter continues from anywhere on the question except a button (a chip toggles, Back goes back) */
     root.addEventListener("keydown",function(e){
       if(e.key!=="Enter"||e.defaultPrevented)return;
-      var t=e.target;if(t.closest("button,a"))return;
+      var t=e.target;if(t.closest("button,a,.sg-rk"))return;
       e.preventDefault();advance();
     });
     back=k>0?function(){V.k=k-1;render(true)}:null;
     paintPV();
     if(focus)fx(q.querySelector("h2"));
   }
-  function resetV(){V.view="";V.steps=[];V.k=0;V.work=[];V.other="";V.where="";V.remote=false;V.near=false;V.isNew=false;V.viaG=false;V.typedName=false;V.pwGone=false;V.cleared=false;back=null;wide(false)}
+  function resetV(){qClear();V.auto={};V.noResume=false;V.phone="";V.needName=false;V.view="";V.steps=[];V.k=0;V.work=[];V.other="";V.where="";V.remote=false;V.near=false;V.isNew=false;V.viaG=false;V.typedName=false;V.pwGone=false;V.cleared=false;back=null;wide(false)}
   function finish(){
     resetV();
     gateSync();

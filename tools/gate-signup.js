@@ -28,12 +28,12 @@ module.exports = async function gateSignup({ ev, sleep, nav }, base, tag, opts) 
     const setv = (sel, v) => ev("(()=>{const e=" + F + ".querySelector(" + JSON.stringify(sel) + ");if(!e)return false;e.value=" + JSON.stringify(v) + ";e.dispatchEvent(new Event('input',{bubbles:true}));return true})()");
     await setv(".sg-su [data-email] input", email); await setv(".sg-su .sg-fn input", "Test"); await setv(".sg-su .sg-ln input", "Person"); await setv(".sg-su .sg-pw input", PW);
     await ev("(()=>{const d=" + F + ",a=d.querySelector('.sg-su .sg-ag');if(a&&!a.checked)a.click();d.querySelector('.sg-su [type=submit]').click()})()");
-    for (let i = 0; i < 40; i++) { await sleep(250); if (/Check your email|1 of 2|What kind of work|What should employers/i.test(await ev("(" + F + ".getElementById('acctSec')||{innerText:''}).innerText"))) break; }
+    for (let i = 0; i < 40; i++) { await sleep(250); if (/Check your email|1 of \d|Start with your resume|What kind of work|What should employers/i.test(await ev("(" + F + ".getElementById('acctSec')||{innerText:''}).innerText"))) break; }
     if (/Check your email/.test(await ev("(" + F + ".getElementById('acctSec')||{innerText:''}).innerText"))) {
       let c = ""; for (let i = 0; i < 20 && !c; i++) { c = await code(); if (!c) await sleep(500); }
       if (c) { await setv(".sg-code input", c); await sleep(2000); }
     }
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 6; i++) {   // resume (skipped), work, where, phone, then the last screen
       if (!(await ev(F + ".body.classList.contains('sgGated')"))) break;
       await ev("(()=>{const b=" + F + ".querySelector('.sg-next');if(b)b.click()})()"); await sleep(700);
     }
