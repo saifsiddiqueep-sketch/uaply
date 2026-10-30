@@ -18,7 +18,8 @@ secrets, or >5 files. Everything else is **Fast**. Unsure → Risky.
 5. TPD opens the PR into `sandbox` (`gh pr create --base sandbox --title "c<#>: ..."`).
 6. `python tools/lite/queue.py take sandbox "c<#> <slug>"` → merge PR (`gh pr merge --squash`) → `queue.py release sandbox`.
    If taken: `queue.py wait sandbox "c<#> <slug>"`. Never merge without holding the lock.
-7. Trello (ONE call): `trello.py update <#> --comment "<what changed, PR link, test evidence>"`.
+7. Trello (ONE call): `trello.py update <#> --comment "<what changed, PR link, test evidence>"`, then move the card to
+   "Waiting on someone" (connector, signed). Never Completed here.
 
 ## Risky lane (adds 3 things, nothing else)
 - Before building: a 5-line plan (files, approach, test, rollback) → wait for the area owner's OK.
@@ -28,7 +29,7 @@ secrets, or >5 files. Everything else is **Fast**. Unsure → Risky.
 
 ## Live release (sandbox → dev) — Saif only
 `queue.py take live "release <date>"` → PR sandbox→dev → CI green → Saif merges → verify Render shows the new SHA
-→ smoke test sign-up/sign-in/apply → `queue.py release live`.
+→ smoke test sign-up/sign-in/apply → `queue.py release live` → move each released card to "Completed" with a signed comment.
 
 ## Roles
 Need a specialist lens? Read only that section of `roles.md` in this folder. The main chat wears the hat;
