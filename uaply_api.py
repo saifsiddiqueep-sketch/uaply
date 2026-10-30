@@ -119,7 +119,8 @@ def public_config():
 
 def append_line(path, text):
     """Add one record (one line) to a records file. If the last write was cut short (a full disk, a forced stop), the file does not end in a
-    line break: one is added first, so the new record never gets glued to the broken one. Never raises; a failure is written to the server's log."""
+    line break: one is added first, so the new record never gets glued to the broken one. Never raises; a failure is written to the server's log.
+    True when the record is on disk, False when it is not (most callers ignore it and keep working from memory)."""
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "a+b") as f:
@@ -128,8 +129,10 @@ def append_line(path, text):
                 if f.read(1) != b"\n":
                     f.write(b"\n")
             f.write(text.encode("utf-8") + b"\n")
+        return True
     except Exception as e:
         sys.stderr.write("[uaply] could not save a record to %s: %s: %s\n" % (path, type(e).__name__, str(e)[:200]))      # kept in memory only
+        return False
 
 
 def read_lines(path):
@@ -154,7 +157,7 @@ def read_lines(path):
 
 
 def _append(name, obj):
-    append_line(os.path.join(DATA, name), json.dumps(obj))        # keep working from memory if the disk is not writable
+    return append_line(os.path.join(DATA, name), json.dumps(obj))        # keep working from memory if the disk is not writable
 
 
 # An application that leaves UAply (an employer's webhook or hiring system, Recruitee, email) is written to applications.jsonl twice under one
@@ -166,6 +169,7 @@ UNKNOWN = "unknown"
 LIVE_COUNTED = ("sent", "sending", UNKNOWN)        # what counts toward the daily sending limit and an employer domain's share
 UNKNOWN_NOTE = ("UAply started sending this application, but the server stopped before it heard back, so it may or may not have reached "
                 "the employer. It was not sent again, so it cannot arrive twice. Check with the employer or finish on their site.")
+NOT_SAVED = "UAply could not save this application safely, so nothing was sent. Please try again in a minute."      # the intent write failed
 
 
 def _fold(rows):
@@ -1301,7 +1305,9 @@ def submit(p, user=None, site=""):
                     return 429, {"error": "Daily sending limit reached."}
                 rec["to"], rec["status"] = "%s on Recruitee" % job["co"], "sending"      # reserved now, so a double tap cannot send twice
                 APPS.append(rec)
-                _append("applications.jsonl", rec)       # the intent, on disk before Recruitee is called (a restart reads it as "unknown")
+                if not _append("applications.jsonl", rec):       # the intent, on disk before Recruitee is called (a restart reads it as "unknown")
+                    APPS.remove(rec)                             # no intent on disk: nothing is sent
+                    return 503, {"error": NOT_SAVED}
                 rsend = (rref["board"], rref["id"])
         elif mode == "test":
             # the same channels the live app would use: email only when the employer gave an address (or, for an example listing, has no
@@ -1332,7 +1338,9 @@ def submit(p, user=None, site=""):
                     return 429, {"error": "Daily sending limit reached."}
                 rec["to"], rec["status"] = target, "sending"      # reserved now, so a double tap cannot send twice
                 APPS.append(rec)
-                _append("applications.jsonl", rec)       # the intent, on disk before anything is called (a restart reads it as "unknown")
+                if not _append("applications.jsonl", rec):       # the intent, on disk before anything is called (a restart reads it as "unknown")
+                    APPS.remove(rec)                             # no intent on disk: nothing is sent
+                    return 503, {"error": NOT_SAVED}
                 send_args = (cfg, target if _smtp_ready(cfg) else "", dict(cand, answers=answers, job={"co": job["co"], "role": job["role"]}) if ats else cand,
                              job, note, contact,
                              resume_meta, resume_bytes, hook, rec, ats, stop_link(site, contact) if policy == "email" else "")

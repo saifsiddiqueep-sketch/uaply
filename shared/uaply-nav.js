@@ -2317,7 +2317,7 @@ function apply(w,host){
        can be months old or not the person's own. It comes back as "Not sent" with Try again, so only a tap sends it. Anything else unknown
        comes back as a hand-off (Finish on their site, Mark as applied). "prev" (what Undo of Mark as applied goes back to) the same way */
     var SENT_OK={sent:1,self:1,delivered_test:1,handoff:1,failed:1,needs_answers:1};
-    function sentSt(v){v=str(v,20);return v==="pending"?"failed":SENT_OK[v]?v:""}
+    function sentSt(v){v=str(v,20);return v==="pending"?"failed":v==="unknown"?"handoff":SENT_OK[v]?v:""}     /* unknown (cut off mid-send): check on their site */
     function prevSt(v){v=sentSt(v);return v==="handoff"||v==="failed"||v==="needs_answers"?v:""}
     var known={};A.JOBS.forEach(function(j){known[j.id]=1});
     var nd={},ids=[],stubs=[];restoreLost=0;

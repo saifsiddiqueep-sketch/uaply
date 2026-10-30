@@ -391,7 +391,7 @@ function kitApply(w,host){
         if(st==="handoff"&&j.preview===true)j=Object.assign({},j,{status:"handoff"});
         if(j.status==="delivered_test")setStatus("Delivered to the test inbox as "+(j.to||"recruiter")+".");
         else if(j.status==="sent")setStatus("Sent to "+j.to+". Replies go to "+p.email+".");
-        else if(j.status==="duplicate")setStatus("You already sent this application.");
+        else if(j.status==="duplicate")setStatus(j.was==="unknown"&&j.note?j.note:"You already sent this application.");     /* unknown: may or may not have arrived */
         else if(j.status==="handoff")setStatus("This employer takes applications on its own page. Use the button below.");
         else if(j.status==="failed"){setStatus(j.error||"The email could not be sent.",true);if(sendBtn)sendBtn.disabled=false;return}
         else setStatus("Done.");
@@ -938,6 +938,7 @@ function kitApply(w,host){
         var auto=pl&&pl.total?" UAply filled in "+pl.filled+" of "+pl.total+" answers.":"";
         if(j.status==="delivered_test")toast("Applied to "+job.co+" (test)."+auto+cp,"","",9000);
         else if(j.status==="sent")toast("Applied to "+job.co+"."+auto+cp,"","",9000);
+        else if(j.status==="duplicate"&&j.was==="unknown"&&j.note)toast(j.note,"","",9000);     /* cut off mid-send: may or may not have arrived */
         else if(j.status==="duplicate")toast("Already applied to "+job.co+".");
         else if(j.status==="handoff"&&j.sendForMe===false){if(!retry)toast("Saved "+job.co+" to Job Tracker. Send applications for me is off (Profile, Account), so nothing was sent.","Undo",undoThis,9000)}
         else if(j.status==="handoff"){if(!retry&&!deliver.waiting){

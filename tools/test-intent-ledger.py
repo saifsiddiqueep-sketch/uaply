@@ -210,6 +210,47 @@ code, out = apply(RJOB)
 t("...after a restart it is unknown and a second swipe sends nothing", (out.get("status"), out.get("was"), len(CALLS)), ("duplicate", "unknown", 1))
 ats_api.recruitee_submit = real_recruitee
 
+# 5b. the intent cannot be written (a full or read-only disk): 503, nothing is sent, nothing is kept in memory
+with open(os.path.join(TMP, "not-a-folder"), "w") as f:
+    f.write("x")
+real_data = uaply_api.DATA
+uaply_api.DATA = os.path.join(TMP, "not-a-folder", INST)            # append_line cannot create this folder: the write fails
+uaply_api._deliver = counts
+ats_api.recruitee_submit = lambda *a, **k: (CALLS.append(a[:2]), ("sent", None))[1]
+CALLS.clear()
+n_apps = len(uaply_api.APPS)
+for name, job in (("webhook", jobs["Second Hook Co"]), ("Recruitee", RJOB)):
+    code, out = apply(job, user_id=2)
+    t("intent not saved (%s): 503 with a plain message" % name, (code, out.get("error")), (503, uaply_api.NOT_SAVED))
+t("...the employer's system and Recruitee were never called", CALLS, [])
+t("...and nothing was left in memory to count or block a retry", len(uaply_api.APPS), n_apps)
+uaply_api.DATA = real_data
+code, out = apply(jobs["Second Hook Co"], user_id=2)
+t("...once the disk is back, trying again sends it", (out.get("status"), len(CALLS)), ("sent", 1))
+uaply_api._deliver = real_deliver
+ats_api.recruitee_submit = real_recruitee
+
+# 5c. deleting an account removes both lines (the intent and the result) of each of its applications
+two = [r["status"] for r in rows() if r.get("id") == did]
+uaply_api.forget_user(2)
+t("forget_user: the account had an intent and a result under one id", two, ["sending", "sent"])
+t("...both are gone from the file, with every other line of that account", [r for r in rows() if r.get("user") == 2], [])
+t("...the other account's lines stay", any(r.get("user") == 1 for r in rows()), True)
+uaply_api.init(INST)
+t("...and nothing of it comes back after a restart", [a for a in uaply_api.APPS if a.get("user") == 2], [])
+
+# 5d. the dry run never reads outside the records folder: "../x" is the instance "x" inside it
+ROOT2 = os.path.join(TMP, "root")
+for folder, rid in ((os.path.join(TMP, "x"), "outside"), (os.path.join(ROOT2, "x"), "inside")):
+    os.makedirs(folder, exist_ok=True)
+    with open(os.path.join(folder, "applications.jsonl"), "w", encoding="utf-8") as f:
+        f.write(json.dumps({"id": rid, "status": "sending", "mode": "live", "job": {"id": 9, "co": "X Co", "role": "X"}}) + "\n")
+os.environ["UAPLY_DATA_DIR"] = ROOT2
+try:
+    t("uncertain(\"../x\") stays inside the records folder", [r["id"] for r in uaply_api.uncertain("../x")], ["inside"])
+finally:
+    os.environ["UAPLY_DATA_DIR"] = TMP
+
 # 6. older files: rows without an id, single rows, a broken last line all still load; the last line per id wins, in first-seen order
 OLD = "ledger-old"
 os.makedirs(os.path.join(TMP, OLD), exist_ok=True)
