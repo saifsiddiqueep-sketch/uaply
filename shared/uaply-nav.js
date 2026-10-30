@@ -140,6 +140,9 @@ body{padding-bottom:calc(12px + var(--safe-b))}
 #pane-track .stats{grid-template-columns:repeat(4,1fr)}
 /* four figures in a row need about 460 px for "Interviews" at 14 px; narrower, they sit two by two so no label breaks inside a word */
 @media (max-width:460px){#pane-track .stats{grid-template-columns:repeat(2,1fr)}}
+#pane-track .stats.five{grid-template-columns:repeat(5,1fr);gap:6px}
+#pane-track .stats.five .stat{padding:14px 4px}
+#pane-track .stnote{margin:-4px 0 0}
 #pane-track .row{flex-wrap:wrap}
 #pane-track .acts{display:flex;gap:6px;flex-wrap:wrap;flex-basis:100%}
 #pane-track .acts .btn{padding:6px 12px;font-size:14px}
@@ -613,7 +616,8 @@ function apply(w,host){
     }
     var v=sub.dash;
     if(v==="overview"){tp.innerHTML=overviewHTML(by)+upsellHTML(by);return}
-    var h='<div class="stats big">'+[["applied","Applied"],["accepted","Accepted"],["rejected","Rejected"],["interview","Interviews"]].map(function(p){return '<div class="stat"><b>'+by[p[0]].length+'</b><small>'+p[1]+'</small></div>'}).join("")+'</div>';
+    var sc=sentCounts(by.applied);   /* "Sent" and "To finish", never one "Applied" count that adds in hand-offs nobody sent (Trello K0QEMeQm) */
+    var h=statsHTML([[sc.sent,"Sent"],[sc.finish,"To finish"],[by.interview.length,"Interviews"],[by.accepted.length,"Accepted"],[by.rejected.length,"Rejected"]],"five")+notSentNote(sc);
     h+='<h3>'+label("dash",v)+' ('+by[v].length+')</h3>';
     if(!by[v].length)h+='<p class="note">'+EMPTY[v]+'</p>';
     by[v].sort(function(a,b){return b.x.at-a.x.at}).forEach(function(o){h+=row(o,ACTS[v],v)});
@@ -1542,6 +1546,21 @@ function apply(w,host){
     download("uaply-applications.csv","text/csv",rows.map(function(r){return r.map(csvCell).join(",")}).join("\r\n"));
   }
 
+  /* what happened to the applications still at Applied, in the Applied list's own words (stChip in renderTrack): "Sent" and "Sent (by you)"
+     reached the employer; "Sent (test)" went to the test inbox and nothing reached the employer, so it is never counted as Sent, only said
+     under the counts; "Waiting to send", "Needs profile", "Not sent" and "Not sent yet" (a question only the person can answer) are not sent yet; everything
+     else is a hand-off, "Finish on their site". So the counts always equal the rows the list labels the same way */
+  function sentCounts(list){
+    var c={sent:0,finish:0,notyet:0,test:0};
+    list.forEach(function(o){var t=o.x.sent&&o.x.sent.status;c[t==="sent"||t==="self"?"sent":t==="delivered_test"?"test":t==="pending"||t==="needs_profile"||t==="failed"||t==="needs_answers"?"notyet":"finish"]++});
+    return c;
+  }
+  function statsHTML(tiles,cls){return '<div class="stats big'+(cls?" "+cls:"")+'">'+tiles.map(function(p){return '<div class="stat"><b>'+p[0]+'</b><small>'+p[1]+'</small></div>'}).join("")+'</div>'}
+  function notSentNote(sc){
+    var t=(sc.notyet?sc.notyet+" not sent yet: the Applied list says why for each.":"")+(sc.notyet&&sc.test?" ":"")+
+      (sc.test?sc.test+" went to the test inbox: nothing reached the employer.":"");
+    return t?'<p class="note stnote">'+t+'</p>':"";
+  }
   /* Job Tracker overview */
   function overviewHTML(by){
     var n=by.applied.length+by.interview.length+by.accepted.length+by.rejected.length,answered=by.interview.length+by.accepted.length+by.rejected.length,sum=0;
@@ -1551,8 +1570,9 @@ function apply(w,host){
     by.accepted.forEach(function(o){var a=ap(o.j.id);if(a.deadline)soon.push([new Date(a.deadline+"T12:00").getTime(),"Reply to "+o.j.co+" offer by "+fmtD(a.deadline)])});
     by.applied.forEach(function(o){var a=ap(o.j.id);if(a.follow)soon.push([new Date(a.follow+"T12:00").getTime(),"Follow up with "+o.j.co+" on "+fmtD(a.follow)])});
     soon.sort(function(a,b){return a[0]-b[0]});
-    var h='<div class="overview"><div class="stats big">'+[[n,"Applications"],[by.interview.length,"Interviews"],[by.accepted.length,"Offers"],[by.rejected.length,"Rejected"]].map(function(p){return '<div class="stat"><b>'+p[0]+'</b><small>'+p[1]+'</small></div>'}).join("")+'</div>'+
-      '<div class="stats big">'+[[by.applied.length,"Waiting"],[n?Math.round(answered/n*100)+"%":"–","Heard back"],[n?Math.round(sum/n)+"%":"–","Avg match"],[by.passed.length,"Passed"]].map(function(p){return '<div class="stat"><b>'+p[0]+'</b><small>'+p[1]+'</small></div>'}).join("")+'</div>'+
+    var sc=sentCounts(by.applied);   /* a hand-off nobody sent is "To finish", not an application or one waiting for an answer (Trello K0QEMeQm) */
+    var h='<div class="overview">'+statsHTML([[sc.sent,"Sent"],[sc.finish,"To finish"],[by.interview.length,"Interviews"],[by.accepted.length,"Offers"]])+
+      statsHTML([[by.rejected.length,"Rejected"],[n?Math.round(answered/n*100)+"%":"–","Heard back"],[n?Math.round(sum/n)+"%":"–","Avg match"],[by.passed.length,"Passed"]])+notSentNote(sc)+
       '<div class="plan" style="display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:14px;padding:14px;background:var(--surface)"><b>Profile '+pct+'% complete</b><div class="bar" style="height:10px;border-radius:999px;background:var(--line);overflow:hidden"><i style="display:block;height:100%;width:'+pct+'%;background:linear-gradient(135deg,var(--accent),var(--accent2))"></i></div>';
     cl.filter(function(c){return !c[1]}).slice(0,4).forEach(function(c){h+='<div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span>'+E(c[0])+'</span><button type="button" class="btn ghost" data-go="'+c[2]+'">Add</button></div>'});
     if(done===cl.length)h+='<small>Everything employers usually ask for is filled in.</small>';
