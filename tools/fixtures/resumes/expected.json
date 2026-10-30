@@ -70,7 +70,7 @@
     "name": "Priya Raman", "email": "priya.raman@example.com", "phone": "(412) 555-0163",
     "linkedin": "https://www.linkedin.com/in/priya-raman-example", "headline": "Director of Supply Chain Operations",
     "summary": "Operations leader with eighteen years of experience",
-    "school": "Carnegie Mellon University", "grad": "2011-05",
+    "school": "Carnegie Mellon University", "major": "Business Administration", "grad": "2011-05",
     "employer": "Allegheny Freight Systems", "job_title": "Director of Supply Chain Operations", "job_start": "2021-01", "job_end": "present",
     "skills": ["Lean Six Sigma", "SAP", "SQL", "Excel", "Tableau", "Forecasting", "Budgeting"],
     "location": {"city": "Pittsburgh", "state": "PA", "zip": "15222"}
@@ -95,5 +95,9 @@
     "employer": "Bayou City Pharmacy", "job_title": "Pharmacy Technician", "job_start": "2022-08", "job_end": "present",
     "skills": ["Inventory", "Customer Service", "Vietnamese", "Excel"],
     "location": {"city": "Houston", "state": "TX", "zip": "77036"}
+  },
+  "store.txt": {
+    "name": "Dana Example", "email": "dana.example@example.com", "phone": "(267) 555-0188",
+    "location": {"city": "Philadelphia", "state": "PA", "zip": "19104"}
   }
 }

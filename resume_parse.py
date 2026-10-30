@@ -369,6 +369,24 @@ DEGREE = re.compile(r"\b(bachelor(?:'?s)?" + _DW + r"|master(?:'?s)?" + _DW + r"
                     r"b\.?\s?tech\.?|m\.?\s?tech\.?|b\.?\s?b\.?\s?a\.?|b\.?\s?f\.?\s?a\.?|a\.?\s?a\.?s?\.?|a\.?\s?s\.?|bsc|msc|beng|meng|btech|mtech|bba|bfa|"
                     r"high school diploma|diploma|certificate|ged)(?![a-z])", re.I)
 
+_BARE_DEGREE = re.compile(r"(?:bachelor|master|associate|doctor(?:ate)?)(?:'?s)?|diploma|certificate", re.I)
+_DOTLESS_OK = ("bsc", "msc", "beng", "meng", "btech", "mtech", "bba", "bfa", "mba", "phd", "ged")
+
+
+def _real_degree(p, d):
+    """True when a DEGREE match in line p names a degree, not a job title or a plain word: "Sales Associate" and "Scrum Master" are jobs,
+    "as" in a sentence is not an A.S.; "Associate in Arts", "Associate's degree", "B.S." and "BSc" are degrees."""
+    g = d.group(0)
+    if _BARE_DEGREE.fullmatch(g):
+        before = p[:d.start()].rstrip()
+        if re.search(r"\b[A-Z][A-Za-z]+$", before):        # a capitalized word right before it: a title ("Sales Associate")
+            return False
+        return bool(re.match(r"\s*(?:'?s\b)?\s*(?:in|degree|of)\b", p[d.end():], re.I)) or not before
+    if "." not in g and " " not in g and g.lower() not in _DOTLESS_OK:
+        return g.isupper()                                       # "AS", "BA", "MS", "BS": capitals; "as", "ma" are words
+    return True
+
+
 # a reasonable vocabulary of skills that appear on resumes, with the spelling shown back to the person
 SKILLS = ["Python", "Java", "JavaScript", "TypeScript", "C", "C++", "C#", "Go", "Golang", "Rust", "Ruby", "PHP", "Swift", "Kotlin", "Scala", "R",
           "MATLAB", "SQL", "NoSQL", "PostgreSQL", "MySQL", "SQLite", "MongoDB", "Redis", "Elasticsearch", "GraphQL", "REST", "HTML", "CSS",
@@ -663,14 +681,19 @@ def _education(lines, secs, inline):
         nxt = next((i for i in near if i > school_i and SCHOOL_WORDS.search(_plain(lines[i])) and not DEGREE.match(_plain(lines[i]))), None)
         if nxt is not None:
             near = [i for i in near if i < nxt]
+    # a major comes only from an education line: never from a line under Experience, Skills or another heading ("Sales Associate,
+    # Example Store" is a job, not an Associate degree in Example Store), and with no Education heading only from near the school
+    other = {j for s, js in secs.items() if s not in ("education", "top") for j in js}
     for i in near or pool:
+        if i in other or (not idx and school_i is None):
+            continue
         p = at(i)
         major = ""
         m = re.search(r"\b(?:major|concentration|field of study)\s*(?:in)?\s*[:\-]?\s*([A-Z][A-Za-z&,' -]{2,60})", p)
         if m:
             major = m.group(1)
         else:
-            d = DEGREE.search(p)
+            d = next((x for x in DEGREE.finditer(p) if _real_degree(p, x)), None)
             if d:
                 tail = p[d.end():]
                 m = re.match(r"^\.?\s*(?:,|in|of|:|-|–)?\s*(?:in\s+)?([A-Z][A-Za-z&' -]{2,60}?)(?=\s*(?:,|\||;|\(|·|•|\s[-–—]\s|\s{2,}|minor|gpa|$|%s|%s))" % (_MON, _YEAR), tail)
@@ -678,7 +701,8 @@ def _education(lines, secs, inline):
                     major = m.group(1)
                 elif d.group(0).lower().startswith(("bachelor of", "master of", "associate of", "doctor of")):
                     sub = re.sub(r"^(bachelor|master|associate|doctor)(?:'?s)? of ", "", d.group(0), flags=re.I)
-                    if sub.lower() not in ("science", "arts", "engineering", "business administration", "fine arts", "applied science", "philosophy"):
+                    # "Master of Business Administration" names its field (Business Administration, as written); "of Science" alone does not
+                    if sub.lower() not in ("science", "arts", "engineering", "fine arts", "applied science", "philosophy"):
                         major = sub
         major = re.sub(r"\s+(minor|with|gpa|expected|graduat).*$", "", major, flags=re.I).strip(" ,.-–")
         if major and 2 < len(major) <= 80 and not SCHOOL_WORDS.search(major):

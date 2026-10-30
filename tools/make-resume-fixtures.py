@@ -218,6 +218,16 @@ Skills
 Food Safety, Knife Skills, Inventory, Spanish
 """
 
+# no headings, a "Sales Associate" job and no school (card 181): "Example Store" was read as the major (an Associate degree in
+# Example Store); a major comes only from an education line, so here there is none
+STORE = """Dana Example
+dana.example@example.com · (267) 555-0188
+Philadelphia, PA 19104
+Sales Associate, Example Store, Philadelphia, PA        June 2023 – Present
+Helped about 80 customers a shift and kept the floor stocked
+Cashier, Sample Market, Philadelphia, PA        2021 – 2023
+"""
+
 # a Word resume built on a table: a Vietnamese name, the email and LinkedIn address in the page header, no phone number (card 181)
 LAN_HEADER = ["lan.nguyen@example.com  |  https://www.linkedin.com/in/lan-nguyen-example"]
 LAN_TOP = ["Nguyễn Thị Lan"]
@@ -340,7 +350,7 @@ def docx_table(path, header, top, left, right):
 def main():
     os.makedirs(HERE, exist_ok=True)
     for name, text in (("student.txt", STUDENT), ("international.txt", INTERNATIONAL), ("messy.txt", MESSY), ("sparse.txt", SPARSE),
-                       ("nunez.txt", NUNEZ)):
+                       ("nunez.txt", NUNEZ), ("store.txt", STORE)):
         with open(os.path.join(HERE, name), "w", encoding="utf-8", newline="\n") as f:
             f.write(text)
     docx(os.path.join(HERE, "newgrad.docx"), NEWGRAD_PARAS)
