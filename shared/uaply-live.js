@@ -88,7 +88,7 @@ function patch(s){
     "window.__uaplyOpen=function(u){if(!/^https:\\/\\//.test(u||\"\"))return;var a=document.createElement(\"a\");a.href=u;a.target=\"_blank\";a.rel=\"noopener noreferrer\";document.body.appendChild(a);a.click();a.remove()};\n"+
     /* __uaplyRowStub(id, row copy): the cleaned row copy and, for a real posting not in the list, its stand-in. Defined here, where it always
        runs: load() uses it only when something was saved, and a backup restored on a new device (uaply-nav.js) needs it too */
-    'window.__uaplyRowStub=function(k,r){if(!r||typeof r!=="object"||!/^(0|[1-9][0-9]{0,11})$/.test(String(k)))return null;'+
+    'window.__uaplyRowStub=function(k,r){if(!r||typeof r!=="object"||!/^(0|[1-9][0-9]{0,15})$/.test(String(k)))return null;'+
     'var u=String(r.u||"");var row={t:String(r.t||"").slice(0,160),c:String(r.c||"").slice(0,120),l:String(r.l||"").slice(0,120),u:u.indexOf("https://")===0?u.slice(0,600):"",ty:String(r.ty||"job").slice(0,12),m:String(r.m||"").slice(0,10)};'+
     'var sj=null;if(!JOB_BY_ID[k]&&+k>=100000&&row.t&&row.c)sj={id:+k,co:row.c,role:row.t,loc:row.l||"Not listed",url:row.u,'+
     'type:["job","parttime","internship","coop"].indexOf(row.ty)>-1?row.ty:"job",mode:["remote","hybrid","onsite"].indexOf(row.m)>-1?row.m:"onsite",'+

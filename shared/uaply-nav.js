@@ -2302,7 +2302,7 @@ function apply(w,host){
     var known={};A.JOBS.forEach(function(j){known[j.id]=1});
     var nd={},ids=[],stubs=[];restoreLost=0;
     if(o.decisions&&typeof o.decisions==="object")Object.keys(o.decisions).forEach(function(k){
-      if(!/^(0|[1-9][0-9]{0,11})$/.test(k))return;   /* a job id is a plain number: a hand-edited key such as "1e6" used to stop the whole restore */
+      if(!/^(0|[1-9][0-9]{0,15})$/.test(k))return;   /* a job id is a plain number: a hand-edited key such as "1e6" used to stop the whole restore */
       var x=o.decisions[k];if(!x||(x.s!=="applied"&&x.s!=="passed"))return;
       var rc=w.__uaplyRowStub?w.__uaplyRowStub(k,x.row):null;
       if(!known[k]){if(!rc||!rc.job){if(x.s==="applied")restoreLost++;return}stubs.push(rc.job);known[k]=1}
