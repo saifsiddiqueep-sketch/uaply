@@ -2839,7 +2839,9 @@ function apply(w,host){
     wzPrev.innerHTML='<div class="pvh">What employers see</div><div class="pv"><div class="pvTop"><span class="pvAv" aria-hidden="true">'+E(ini)+'</span><div><b>'+E(name||"Your name")+'</b><span>'+E(head||"Your title or headline")+'</span></div></div>'+
       (skills.length?'<div class="chips">'+skills.slice(0,8).map(function(s){return '<span class="chip">'+E(s)+'</span>'}).join("")+(skills.length>8?'<span class="chip">+'+(skills.length-8)+' more</span>':"")+'</div>':'<div class="pvMeta">No skills added yet</div>')+
       '<ul>'+rows.map(function(r){return '<li class="'+(r[1]?"":"no")+'"><span>'+r[0]+'</span><span>'+(r[1]?E(r[1]):"Not added yet")+'</span></li>'}).join("")+'</ul></div>'+
-      '<p class="note">This is what an employer receives when you swipe right on a listing from an employer that accepts applications through UAply. Never sent: your street address, your resume file (it stays on this device, so add a link above), and your voluntary answers. Your expected pay goes only to an employer whose own form requires it.</p>';
+      '<p class="note">This is what an employer receives when you swipe right on a listing from an employer that accepts applications through UAply. '+E(acct.resumeName?"Your resume file "+acct.resumeName+" is kept on this device and goes with each of these applications: attached to the email, or into the employer's hiring system when its form takes a file."
+        :resumeLinkOf()?"No resume file is added, so these applications send your resume link instead.":"No resume file or link is added yet.")+
+      ' When an employer takes applications only on its own site, UAply sends it nothing: you finish there. Never sent: your street address and your voluntary answers. Your expected pay goes only to an employer whose own form requires it.</p>';
   }
   function wzPaint(){
     var S=STEPS[wz.i],cl=checklist(),done=cl.filter(function(c){return c[1]}).length,pct=Math.round(done/cl.length*100);
