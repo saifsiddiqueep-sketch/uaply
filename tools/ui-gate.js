@@ -198,10 +198,17 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
     await typeIn(".sg-code input", code); await sleep(2000);
     t = await ev("(" + q("#acctSec") + ").innerText");
   }
-  check("the sign-up lands on the two questions (Account created, Gale. 1 of 2), still behind the gate", /Account created, Gale/.test(t) && /1 of 2/i.test(t) && (await gated()), t.slice(0, 300));
+  // October 30 (card 181): the questions start with the resume (1 of 4: resume, work, where, phone), still behind the gate
+  check("the sign-up lands on the questions, resume first (Account created, Gale. 1 of 4, Start with your resume), still behind the gate",
+    /Account created, Gale/.test(t) && /1 of 4/i.test(t) && /Start with your resume/i.test(t) && (await gated()), t.slice(0, 300));
   check("signed in as the new account", (await me()) === email);
   s = await seen(); check("during the questions nothing behind the card is drawn either", nothingBehind(s), JSON.stringify(s));
-  await click(".sg-next"); await sleep(400); await click(".sg-next"); await sleep(500); await click(".sg-next"); await sleep(1200);
+  // I don't have one right now, then Skip on work, where and the phone, then Show me jobs
+  await click(".sg-next"); await sleep(500);
+  t = await ev("(" + q("#acctSec") + ").innerText");
+  check("I don't have one right now: the work question next, still behind the gate", /What kind of work/i.test(t) && (await gated()), t.slice(0, 300));
+  for (let i = 0; i < 3; i++) { await click(".sg-next"); await sleep(500); }
+  await click(".sg-next"); await sleep(1200);
   check("after the questions the gate is gone and the cards are on screen", !(await gated()) && (await ev("!" + F + ".getElementById('pane-swipe').hidden")) && (await ev("!!" + q("#bnav") + "&&" + q("#bnav") + ".getClientRects().length>0")));
   const consent = await ev("(()=>{const b=" + q("#kitConsent") + ";return b?b.innerText:''})()");
   check("the first-swipe agreement does not ask the age again (the sign-up tick did), and keeps the authorization sentence",
