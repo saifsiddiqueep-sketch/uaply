@@ -8,15 +8,26 @@ description: Save where an area stands so the next chat — on either founder's 
 The area = this chat's title minus anything after " — " (e.g. "Job Feeds — Rumman" → Job Feeds). Never ask the user
 for a card number; cards are found by name in the "📍 Areas" list on board "UAply Team Board" (trello.com/b/TUiuK5fz).
 
+0. Before writing — leave nothing stranded on this laptop, and lose no decision:
+   - **WIP.** Run `bash tools/lite/run.sh trello.py wip "<area>" <every worktree this area used>` (e.g. `. ../wt-c34`;
+     default `.`). For each one it commits uncommitted changes as `WIP: <area> handoff` on that worktree's OWN branch
+     and pushes it — never sandbox/dev/main, never force, no PR. It runs `tools/audit-files.py` plus key/.env/user-data
+     checks first; anything suspicious is NOT committed or pushed and is named instead. Paste its two lines into the note
+     as they are. Never push by hand to get round a block — fix the file or leave it local and say why.
+   - **Decisions.** Run `bash tools/lite/run.sh trello.py decisions "<area>"` (with A: read the newest `AREA:` comment
+     on the card yourself). Carry forward every OPEN DECISION it lists — i.e. not marked `resolved`, ✅ or `[x]` — plus
+     any new ones. Mark one `✅ resolved` only when it was actually settled in this chat.
 1. Write the note (under 200 words, facts only, no secrets/user data):
 ```
 AREA: <name>   BY: <Mohammed|Saif>   DATE: <local time>
 GOAL:
 DONE (with evidence): commits/PRs/test output lines
 NEXT: next 3 steps, in order
-OPEN DECISIONS: who decides
+OPEN DECISIONS: who decides — carried + new; settled ones end "✅ resolved"
 FILES THAT MATTER: paths only
 LOCKS HELD: (queue.py status) — release before leaving unless mid-merge
+WIP BRANCHES: <branch → last commit>                       (from step 0)
+UNPUSHED WORK: none (checked) | <what's still local and why> (from step 0)
 — <FOUNDER> via Claude
 ```
 2. Post it — try A, then B:

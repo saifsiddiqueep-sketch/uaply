@@ -8,6 +8,8 @@
   python tools/lite/trello.py gh-event                                   # used by the GitHub Action
   python tools/lite/trello.py areas                                      # the 12 area cards + numbers
   python tools/lite/trello.py handoff "Job Feeds — Rumman" --file note.md   # post + verify a handoff
+  python tools/lite/trello.py wip "Job Feeds" . ../wt-c34                  # commit+push WIP on each worktree's own branch
+  python tools/lite/trello.py decisions "Job Feeds"                          # OPEN DECISIONS still open in the last handoff
 
 Branch naming that makes auto-sync work: c<card#>-<slug>, e.g. c34-swipe-trace.
 Board defaults to UAply Team Board (TUiuK5fz); override with TRELLO_BOARD.
@@ -228,6 +230,53 @@ def handoff(query, note_file):
     return f"POSTED ✓ {c['name']} {c.get('shortUrl', '')}".rstrip()
 
 
+NOTE_HEADS = re.compile(r"^(AREA|GOAL|DONE|NEXT|OPEN DECISIONS|FILES THAT MATTER|LOCKS HELD|WIP BRANCHES|UNPUSHED WORK)"
+                        r"(?:\s*\([^)]*\))?\s*:")                    # exact headings only: "Next release date:" isn't one
+# only a marker at the start/end counts: "to be resolved Friday" or "keep the ✅ badge?" stay open
+RESOLVED = re.compile(r"^\s*(?:\[x\]|✅)|(?:\[x\]|✅)\s*$|✅\s*resolved\b|[—–-]\s*resolved\b[^—–;]*$|\(resolved[^)]*\)\s*$", re.I)
+
+
+def open_decisions(text):
+    """Items under OPEN DECISIONS in a handoff note that aren't marked resolved (✅, [x] or a trailing '— resolved')."""
+    items, inside = [], False
+    for line in (text or "").splitlines():
+        bare = re.sub(r"^[\s*#_>]+", "", line)                       # "**OPEN DECISIONS:**", "## NEXT:" are headings too
+        head = NOTE_HEADS.match(bare)
+        if head:
+            inside = head.group(1).upper() == "OPEN DECISIONS"
+            line = re.sub(r"^[\s*_]+", "", bare[head.end():])
+            parts = [x for x in re.split(r"\s*;\s*", line) if x.strip()] if inside else []
+        elif inside and line.strip().startswith("— ") and line.strip().endswith("via Claude"):
+            break                                                    # the signature ends the note
+        else:
+            parts = [line] if inside else []
+        for x in parts:
+            x = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", x).strip()
+            if x and not RESOLVED.search(x) and x.lower().rstrip(".") not in ("none", "n/a", "-", "nothing"):
+                items.append(x)
+    return items
+
+
+def decisions_cmd(query):
+    """Print the still-open decisions from the area card's latest handoff, ready to paste under OPEN DECISIONS."""
+    miss = missing_keys()
+    if miss:
+        raise HandoffError(_keys_msg(miss))
+    try:
+        c = match_area(query, area_cards())
+        acts = trello("GET", f"/cards/{c['id']}/actions", {"filter": "commentCard", "limit": "50"}) or []
+    except Exception as e:  # noqa: BLE001
+        raise HandoffError(_explain(e)) from e
+    notes = [x["data"]["text"] for x in acts if x["data"]["text"].lstrip().startswith("AREA:")]
+    if not notes:
+        print(f"(no earlier handoff on {c['name']} — nothing to carry forward)")
+        return
+    items = open_decisions(notes[0])
+    print(f"Carried from the last handoff on {c['name']} ({len(items)} open):")
+    for x in items:
+        print(f"- {x}")
+
+
 def areas_cmd():
     miss = missing_keys()
     if miss:
@@ -252,11 +301,21 @@ def main():
     h.add_argument("area", help='area name or chat title, e.g. "Job Feeds — Rumman"')
     h.add_argument("--file", required=True, help="note file (UTF-8; avoids shell quoting)")
     sub.add_parser("areas", help="list the area cards")
+    w = sub.add_parser("wip", help="commit + push uncommitted work on each worktree's own branch (handoff step 0)")
+    w.add_argument("area"); w.add_argument("worktrees", nargs="*", help="worktree folders this area used (default: .)")
+    d = sub.add_parser("decisions", help="OPEN DECISIONS from the area's last handoff that aren't resolved")
+    d.add_argument("area")
     a = p.parse_args()
-    if a.cmd in ("handoff", "areas"):
+    if a.cmd == "wip":
+        import handoff_wip  # noqa: E402 — git only, no Trello keys needed
+        area = re.split(r"\s+[—–]\s+", a.area.strip(), maxsplit=1)[0]     # drop the " — Rumman" chat suffix
+        sys.exit(handoff_wip.wip(area, a.worktrees))
+    if a.cmd in ("handoff", "areas", "decisions"):
         try:
             if a.cmd == "handoff":
                 print(handoff(a.area, a.file))
+            elif a.cmd == "decisions":
+                decisions_cmd(a.area)
             else:
                 areas_cmd()
         except HandoffError as e:
