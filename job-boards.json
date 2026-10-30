@@ -18833,6 +18833,33 @@
    "checked": "2026-10-30"
   },
   {
+   "kind": "recruitee",
+   "token": "aetherflux",
+   "name": "Aetherflux",
+   "total": 6,
+   "us": 6,
+   "tri": 0,
+   "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "certus",
+   "name": "Certus",
+   "total": 5,
+   "us": 5,
+   "tri": 0,
+   "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "miaplaza",
+   "name": "Miaplaza",
+   "total": 6,
+   "us": 5,
+   "tri": 0,
+   "checked": "2026-10-30"
+  },
+  {
    "kind": "greenhouse",
    "token": "veterinaryemergencygroupst",
    "name": "Veterinary Emergency Group (VEG)",
