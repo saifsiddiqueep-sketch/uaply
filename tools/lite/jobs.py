@@ -8,6 +8,7 @@ Hooks call it automatically:
 You can run:
   python tools/lite/jobs.py list          # running + last 10 finished
   python tools/lite/jobs.py clear <id>    # mark an orphan as handled
+  python tools/lite/jobs.py clear-mine    # /handoff: drop THIS chat's finished bots (session from $CLAUDE_CODE_SESSION_ID)
 """
 import json
 import os
@@ -51,7 +52,7 @@ def running(exclude_session=None):
 
 def main(a):
     cmd = a[0] if a else "list"
-    if cmd in ("start", "stop", "clear"):
+    if cmd in ("start", "stop", "clear", "clear-mine"):
         with _Lock(LEDGER):
             return _locked(cmd, a)
     if cmd == "list":
@@ -82,6 +83,20 @@ def _locked(cmd, a):
         for k, v in sorted(d.items(), key=lambda kv: -kv[1].get("started", 0))[:15]:
             age = int((time.time() - v.get("started", 0)) / 60)
             print(f"{v['status']:8} {v.get('type', '?'):12} {age:>4} min ago  {k}  {v.get('result', '')}")
+    elif cmd == "clear-mine":
+        sid = a[1] if len(a) > 1 else (os.environ.get("CLAUDE_CODE_SESSION_ID") or os.environ.get("CLAUDE_SESSION_ID"))
+        if not sid:
+            print("No session id (CLAUDE_CODE_SESSION_ID unset) — nothing cleared.")
+            sys.exit(0)
+        d = load()
+        mine = [k for k, v in d.items() if v.get("session") == sid]
+        gone = [k for k in mine if d[k].get("status") != "RUNNING"]
+        for k in gone:
+            del d[k]
+        save(d)
+        still = len(mine) - len(gone)
+        print(f"Cleared {len(gone)} finished bot record(s) from this chat."
+              + (f" {still} still RUNNING — say so in the handoff." if still else ""))
     elif cmd == "clear" and len(a) > 1:
         d = load()
         if a[1] in d:
