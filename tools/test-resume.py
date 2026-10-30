@@ -1,7 +1,7 @@
-"""Fill from your resume (resume_parse.py and POST /api/profile/resume): the parser on thirteen made-up resumes, the layouts and date styles
+"""Fill from your resume (resume_parse.py and POST /api/profile/resume): the parser on fourteen made-up resumes, the layouts and date styles
 resumes use, every file it must refuse with a plain sentence, and the endpoint on a real server.
   python tools/test-resume.py [PORT]
-The thirteen resumes are in tools/fixtures/resumes/ (written by tools/make-resume-fixtures.py) with the right answers in expected.json.
+The fourteen resumes are in tools/fixtures/resumes/ (written by tools/make-resume-fixtures.py) with the right answers in expected.json.
 PDF cases need pypdf (pip install pypdf); without it they are skipped with a message and the rest still runs."""
 import base64
 import io
@@ -63,7 +63,7 @@ def val(f, k):
 
 
 # ---------------------------------------------------------------------------------------------------------------------------------
-print("== The thirteen made-up resumes")
+print("== The fourteen made-up resumes")
 EXPECTED = json.load(open(os.path.join(FIX, "expected.json"), encoding="utf-8"))
 ACCURACY = []
 
