@@ -78,6 +78,11 @@ module.exports = async ({ ev, sleep, nav, send, shot, logs }) => {
   // 1. a finger swipe right (Saif, October 24: an incomplete profile never blocks it): saved to Job Tracker, and one line says so
   await q("try{w.sessionStorage.removeItem('uaply.np')}catch(e){}w.__uaplyNPTold=false;return 1");
   await swipeRight();
+  // October 30: first the sheet asks for a resume or a phone number (never send nothing); Not now keeps the job as Needs profile
+  const sheet = await waitFor("const s=d.querySelector('.rkSheet');return s?s.querySelector('h2').textContent:''", 6000);
+  check("1. the swipe first opens the sheet asking for a resume or a phone number", !!sheet && !String(sheet).startsWith("ERR"), sheet);
+  await snap("1b-sheet");
+  await tap("d.querySelector('.rkSheet [data-sh=no]')"); await sleep(600);
   const line = await waitFor("const t=d.getElementById('kitToast');return t?t.innerText:''", 6000);
   check("1. a swipe right saves it: 'Saved to your Job Tracker. Complete your profile, then send them from Job Tracker.' with Complete profile",
     String(line).startsWith("Saved to your Job Tracker. Complete your profile, then send them from Job Tracker.") && String(line).indexOf("Complete profile") > -1, line);

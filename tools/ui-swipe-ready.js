@@ -98,7 +98,11 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   check("below-min", "the top card (" + topJob + ") has no profile badge (no per-card nagging)", badge === "" && (await q("return +d.querySelector('#deck .card.top').getAttribute('data-id')")) === topJob, badge);
   const before = await received(), top0 = await q("return +d.querySelector('#deck .card.top').getAttribute('data-id')");
   // Saif, October 24: an incomplete profile never blocks a swipe. A swipe right saves it to Job Tracker as "Needs profile", and one line says so
-  await q("try{w.sessionStorage.removeItem('uaply.np')}catch(e){}w.__uaplyNPTold=false;d.getElementById('btnYes').click();return 1"); await sleep(1500);
+  await q("try{w.sessionStorage.removeItem('uaply.np')}catch(e){}w.__uaplyNPTold=false;d.getElementById('btnYes').click();return 1");
+  // October 30: first the sheet asks for a resume or a phone number (never send nothing); Not now keeps it as Needs profile, as before
+  const sheet0 = await waitFor("return d.querySelector('.rkSheet [data-sh=no]')?'yes':''", 6000);
+  check("below-min", "a swipe right first opens the sheet asking for a resume or a phone number", sheet0 === "yes", sheet0);
+  await q("const b=d.querySelector('.rkSheet [data-sh=no]');if(b)b.click();return 1"); await sleep(1500);
   const msg = await q("const t=d.getElementById('kitToast');return t?t.innerText:''");
   check("below-min", "a swipe right saves it and says so: 'Saved to your Job Tracker. Complete your profile, then send them from Job Tracker.' with Complete profile",
     String(msg).startsWith("Saved to your Job Tracker. Complete your profile, then send them from Job Tracker.") && String(msg).indexOf("Complete profile") > -1, msg);
@@ -144,7 +148,7 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
       let got = "", asked = "";
       if (r === "gated") got = "profile";
       else {
-        const seen = await waitFor("if(d.getElementById('kitAsk'))return 'ask';const x=w.__uaply.S.decisions[" + id + "];return x&&x.sent&&x.sent.status&&x.sent.status!=='pending'?x.sent.status:''", 25000);   // a busy computer: the employer's form is read first
+        const seen = await waitFor("const sh=d.querySelector('.rkSheet [data-sh=no]');if(sh){sh.click();return ''}if(d.getElementById('kitAsk'))return 'ask';const x=w.__uaply.S.decisions[" + id + "];return x&&x.sent&&x.sent.status&&x.sent.status!=='pending'?x.sent.status:''", 25000);   // a busy computer: the employer's form is read first
         if (seen === "ask") {
           asked = await q("return d.getElementById('kitAsk').innerText.replace(/\\s+/g,' ').slice(0,400)");
           const file = await q("return d.getElementById('kaYes').textContent");
