@@ -1,5 +1,5 @@
 {
-  "about": "What a person reading each made-up resume would fill in. tools/test-resume.py compares resume_parse.py against it. A list means any of those answers is right; skills lists the ones that must be found (others may be added); summary is compared on its first 40 characters. A field missing here is not in that resume, so finding one is counted as a wrong answer.",
+  "about": "What a person reading each made-up resume would fill in. tools/test-resume.py compares resume_parse.py against it. A list means any of those answers is right; skills lists the ones that must be found (others may be added); summary is compared on its first 40 characters. Dates are only what is written: a year alone or a season stays a year, no month is made up. A field missing here is not in that resume, so finding one is counted as a wrong answer.",
   "student.txt": {
     "name": "Maya Patel", "email": "maya.patel@example.edu", "phone": "(215) 555-0134",
     "linkedin": "https://www.linkedin.com/in/maya-patel-example", "portfolio": "https://github.com/mayapatel-example",
@@ -19,7 +19,7 @@
   "twocolumn.pdf": {
     "name": "Sam Okafor", "email": "sam.okafor@example.com", "phone": "(312) 555-0148", "linkedin": "https://www.linkedin.com/in/samokafor-example",
     "headline": "Backend Engineer", "summary": "Backend engineer with six years of experience",
-    "school": ["University of Illinois", "University of Illinois Urbana-Champaign"], "major": "Computer Engineering", "grad": "2018-05",
+    "school": ["University of Illinois", "University of Illinois Urbana-Champaign"], "major": "Computer Engineering", "grad": "2018",
     "employer": "Lakeshore Payments", "job_title": "Senior Software Engineer", "job_start": "2022-03", "job_end": "present",
     "skills": ["TypeScript", "Node.js", "PostgreSQL", "AWS", "Kubernetes", "GraphQL"],
     "location": {"city": "Chicago", "state": "IL", "zip": "60607"}
@@ -27,7 +27,7 @@
   "datesfirst.pdf": {
     "name": "Chris Nakamura", "email": "chris.nakamura@example.com", "phone": "(206) 555-0172", "portfolio": "https://chrisnakamura-example.design",
     "headline": "Product Designer", "summary": "Product designer who has shipped mobile banking",
-    "school": "University of Washington", "major": "Interaction Design", "grad": "2020-05",
+    "school": "University of Washington", "major": "Interaction Design", "grad": "2020",
     "employer": ["Evergreen Health Inc", "Evergreen Health Inc."], "job_title": "Senior Product Designer", "job_start": "2023", "job_end": "present",
     "skills": ["Figma", "Prototyping", "User Research", "Accessibility", "HTML", "CSS"],
     "location": {"city": "Seattle", "state": "WA", "zip": "98101"}
@@ -35,7 +35,7 @@
   "international.txt": {
     "name": "Aarav Sharma", "email": "aarav.sharma@example.co.uk", "phone": "+44 20 7946 0958", "portfolio": "https://aaravsharma-example.dev",
     "headline": ["Data Analyst", "Data Analyst | Python · SQL · Tableau"], "summary": "Data analyst with three years of experience",
-    "school": "University of Manchester", "major": "Business Analytics", "grad": "2021-05",
+    "school": "University of Manchester", "major": "Business Analytics", "grad": "2021",
     "employer": "Northwind Logistics Ltd", "job_title": "Data Analyst", "job_start": "2023-09", "job_end": "present",
     "skills": ["Python", "SQL", "Tableau", "Excel", "Power BI"],
     "location": {"city": "London", "state": "", "zip": ""}
@@ -43,7 +43,7 @@
   "messy.txt": {
     "name": "Jordan O'Neil-Reyes", "email": "jordan.oneil.reyes@example.com", "phone": "267.555.0199",
     "summary": "i am a hard working person who likes customers",
-    "school": "Austin Community College", "major": "Network Administration", "grad": "2021-05",
+    "school": "Austin Community College", "major": "Network Administration", "grad": "2021",
     "employer": "Lone Star Credit Union", "job_title": ["Help Desk Technician", "help desk technician"], "job_start": "2022", "job_end": "present",
     "skills": ["Windows", "Active Directory", "Excel", "Networking"],
     "location": {"city": "Austin", "state": "TX", "zip": "78701"}
@@ -55,5 +55,45 @@
     "employer": ["Lancaster Avenue Coffee Co", "Lancaster Avenue Coffee Co."], "job_title": "Barista and Shift Lead (part-time)", "job_start": "2023-09", "job_end": "present",
     "skills": ["Excel", "Tableau", "SQL", "Canva", "HubSpot"],
     "location": {"city": "Philadelphia", "state": "PA", "zip": "19104"}
+  },
+  "firstjob.pdf": {
+    "name": "Destiny Williams", "email": "destiny.williams@example.com", "phone": "+1 215.555.0134",
+    "summary": "High school senior looking for a part-time job",
+    "school": "Central High School", "grad": "2027-06",
+    "skills": ["Customer Service", "Cash Handling", "Excel", "Spanish", "Teamwork"],
+    "location": {"city": "Philadelphia", "state": "PA", "zip": "19104"}
+  },
+  "sparse.txt": {
+    "name": "Riley Morgan", "email": "riley.morgan@example.com"
+  },
+  "senior5page.pdf": {
+    "name": "Priya Raman", "email": "priya.raman@example.com", "phone": "(412) 555-0163",
+    "linkedin": "https://www.linkedin.com/in/priya-raman-example", "headline": "Director of Supply Chain Operations",
+    "summary": "Operations leader with eighteen years of experience",
+    "school": "Carnegie Mellon University", "grad": "2011-05",
+    "employer": "Allegheny Freight Systems", "job_title": "Director of Supply Chain Operations", "job_start": "2021-01", "job_end": "present",
+    "skills": ["Lean Six Sigma", "SAP", "SQL", "Excel", "Tableau", "Forecasting", "Budgeting"],
+    "location": {"city": "Pittsburgh", "state": "PA", "zip": "15222"}
+  },
+  "retail.pdf": {
+    "name": "Marcus Bell", "email": "marcus.bell@example.com", "phone": "856-555-0127",
+    "school": "Camden High School", "grad": "2021-06",
+    "employer": "Riverside Outfitters", "job_title": "Sales Associate", "job_start": "2023-06", "job_end": "present",
+    "skills": ["Cash Handling", "Customer Service", "Inventory", "Spanish"],
+    "location": {"city": "Camden", "state": "NJ", "zip": "08102"}
+  },
+  "nunez.txt": {
+    "name": "José Núñez", "email": "jose.nunez@example.com", "phone": "(305) 555-0119", "headline": "Line Cook",
+    "school": "Miami Dade College", "major": "Culinary Arts", "grad": "2019",
+    "employer": "Calle Ocho Kitchen", "job_title": "Line Cook", "job_start": "2022-03", "job_end": "present",
+    "skills": ["Food Safety", "Knife Skills", "Inventory", "Spanish"],
+    "location": {"city": "Miami", "state": "FL", "zip": "33130"}
+  },
+  "lantable.docx": {
+    "name": "Nguyễn Thị Lan", "email": "lan.nguyen@example.com", "linkedin": "https://www.linkedin.com/in/lan-nguyen-example",
+    "school": "Houston Community College", "major": "Pharmacy Technology", "grad": "2022-05",
+    "employer": "Bayou City Pharmacy", "job_title": "Pharmacy Technician", "job_start": "2022-08", "job_end": "present",
+    "skills": ["Inventory", "Customer Service", "Vietnamese", "Excel"],
+    "location": {"city": "Houston", "state": "TX", "zip": "77036"}
   }
 }

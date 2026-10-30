@@ -96,17 +96,29 @@ for fname, want in EXPECTED.items():
             t("%s: %s = %s" % (fname, k, g and g["value"]), g["value"] if good else (g and g["value"]), g["value"] if good else options)
         if g:
             t("%s: %s says how sure it is and which line it came from" % (fname, k), (g.get("confidence") in ("high", "medium", "low"), bool(g.get("line"))), (True, True))
+        if g and not good:
+            WRONG.append((fname, k, g.get("confidence")))
         hits += 1 if good else 0
+        GOOD[(fname, k)] = good
     extra = sorted(k for k in got if k not in want)
     t("%s: nothing found that is not in the resume" % fname, extra, [])
+    WRONG.extend((fname, k, got[k].get("confidence")) for k in extra)
     ACCURACY.append((fname, hits, len(want), extra))
+    # only what is on the resume (card 181): every answer can be found in the resume's own text, as written or trivially reformatted
+    untraced = [(k, got[k]["value"]) for k in got if not traceable(k, got[k], res["text"])]
+    t("%s: every answer is in the resume's own words (nothing guessed, inferred or padded)" % fname, untraced, [])
+    t("%s: no answer is confidently wrong (a wrong one must be marked low)" % fname, [(k, c) for f_, k, c in WRONG if f_ == fname and c != "low"], [])
+    TABLE.append((fname, want, got))
+
+t("sparse.txt (a name and an email only): everything else comes back empty",
+  sorted(rp.parse(open(os.path.join(FIX, "sparse.txt"), "rb").read(), "sparse.txt")["fields"]), ["email", "name"])
 
 # ---------------------------------------------------------------------------------------------------------------------------------
 print("\n== Layouts, headings and dates")
 f = fields_of("Pat Lee\npat@example.com\n\nE X P E R I E N C E\nBarista   January 2023 to Current\nRiver Cafe\n\nE D U C A T I O N\nCity College\nB.A. in History, 2022")
 t("letter-spaced headings and 'January 2023 to Current'", (val(f, "job_title"), val(f, "employer"), val(f, "job_start"), val(f, "job_end"), val(f, "school")),
   ("Barista", "River Cafe", "2023-01", "present", "City College"))
-for txt, start, end in (("01/2024 - 05/2025", "2024-01", "2025-05"), ("2024-01 – 2025-03", "2024-01", "2025-03"), ("Summer 2024 - Fall 2024", "2024-08", "2024-12"),
+for txt, start, end in (("01/2024 - 05/2025", "2024-01", "2025-05"), ("2024-01 – 2025-03", "2024-01", "2025-03"), ("Summer 2024 - Fall 2024", "2024", "2024"),
                         ("2023–2025", "2023", "2025"), ("Jan '24 – Present", "2024-01", "present"), ("Sept. 2021 — Now", "2021-09", "present"),
                         ("Mar 2020 until Jun 2021", "2020-03", "2021-06")):
     f = fields_of("Kim Diaz\nkim@example.com\n\nWork Experience\nSales Associate, Target Corporation   %s\n- helped customers" % txt)

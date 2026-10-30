@@ -292,10 +292,12 @@ SECTIONS = {
                "skills & languages", "skills and languages"],
     "projects": ["projects", "selected projects", "academic projects", "personal projects", "key projects", "project experience",
                  "side projects", "portfolio"],
+    # a "Contact" box (often a sidebar or a table cell): the home city in it is where the person lives
+    "contact": ["contact", "contact information", "contact info", "contact details"],
     "other": ["certifications", "certificates", "licenses", "licenses and certifications", "licenses & certifications", "awards", "honors",
               "honors and awards", "honors & awards", "achievements", "activities", "leadership", "leadership experience",
               "volunteer", "volunteering", "volunteer experience", "community involvement", "publications", "languages", "interests",
-              "hobbies", "references", "coursework", "relevant coursework", "contact", "contact information", "contact info", "links",
+              "hobbies", "references", "coursework", "relevant coursework", "links",
               "extracurricular activities", "extracurriculars", "affiliations", "memberships", "research", "research experience",
               "conferences", "presentations", "additional information", "additional", "personal details", "details",
               # a student's clubs and offices: "Vice President, Marketing Club 2024 - Present" is not their most recent job
@@ -472,6 +474,8 @@ def _ym(text):
         y = int(m.group(2))
         y = y + 2000 if y < 50 else y + 1900 if y < 100 else y
         key = m.group(1).lower()
+        if key in ("spring", "summer", "fall", "autumn", "winter"):   # a season names no month: the year alone, nothing made up
+            return (y, None)
         return (y, MONTHS.get(key) or MONTHS[key[:3]])
     m = re.match(r"^(\d{1,2})\s*[/.]\s*(\d{4})$", t)
     if m:
@@ -936,7 +940,8 @@ def extract(text):
         f["skills"] = _field([s for s, _c, _l in sk], conf, sk[0][2])
         f["skills"]["lines"] = list(dict.fromkeys(re.sub(r"\s+", " ", l).strip()[:200] for _s, _c, l in sk))[:6]
     top_set = set(secs.get("top", []))
-    loc = _location(lines, [i for i in contact_order if i in top_set] if top_set else contact_order[:25])   # where the person lives, not a job's city
+    contact_set = set(secs.get("contact", []))
+    loc = _location(lines, [i for i in contact_order if i in top_set or i in contact_set] if (top_set or contact_set) else contact_order[:25])   # where the person lives, not a job's city
     if loc:
         f["location"] = loc
     return f
