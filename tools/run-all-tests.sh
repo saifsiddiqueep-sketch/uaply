@@ -69,6 +69,7 @@ run "sign-up v2: no password, an emailed code, the 18+ tick recorded; the sandbo
 
 step "Delivery to employers (email with resume, signed webhook, retries, opt-in only) and the Connect Gmail form"
 run "delivery channels" python tools/test-delivery.py
+run "the intent ledger: \"sending\" on disk before any employer is called; a send cut off by a restart is \"unknown\", never resent, counted; the dry run lists it" python tools/test-intent-ledger.py
 run "Connect Gmail form" python tools/test-setup.py
 
 step "Swipe-right emails (content, test label, safety, real send)"

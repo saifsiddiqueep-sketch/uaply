@@ -157,9 +157,51 @@ def _append(name, obj):
     append_line(os.path.join(DATA, name), json.dumps(obj))        # keep working from memory if the disk is not writable
 
 
+# An application that leaves UAply (an employer's webhook or hiring system, Recruitee, email) is written to applications.jsonl twice under one
+# id: first as "sending", before anything is called, then again with how it ended (sent, failed, handoff). The file stays append-only and
+# the last line per id wins when it is read. A server that stopped mid-send leaves an attempt whose last line is "sending": it is read as
+# "unknown" (it may or may not have reached the employer), is never sent again by itself, and counts like a sent one for duplicates and the
+# daily limit. tools/recover-applications.py lists them without changing anything.
+UNKNOWN = "unknown"
+LIVE_COUNTED = ("sent", "sending", UNKNOWN)        # what counts toward the daily sending limit and an employer domain's share
+UNKNOWN_NOTE = ("UAply started sending this application, but the server stopped before it heard back, so it may or may not have reached "
+                "the employer. It was not sent again, so it cannot arrive twice. Check with the employer or finish on their site.")
+
+
+def _fold(rows):
+    """Rows of applications.jsonl as records: the last line per id wins, kept at the place of the first (so the order stays the order the
+    applications were made). Rows without an id (older files) stay as they are. An attempt still "sending" becomes "unknown"."""
+    out, at = [], {}
+    for r in rows:
+        k = r.get("id")
+        if isinstance(k, str) and k in at:
+            out[at[k]] = r
+            continue
+        if isinstance(k, str) and k:
+            at[k] = len(out)
+        out.append(r)
+    for r in out:
+        if r.get("status") == "sending":
+            r["status"] = UNKNOWN
+    return out
+
+
 def _load():
-    for name, store in (("applications.jsonl", APPS), ("decisions.jsonl", DECISIONS)):
-        store.extend(read_lines(os.path.join(DATA, name)))
+    APPS.extend(_fold(read_lines(os.path.join(DATA, "applications.jsonl"))))
+    DECISIONS.extend(read_lines(os.path.join(DATA, "decisions.jsonl")))
+
+
+def uncertain(instance=None):
+    """The attempts whose outcome is unknown (the server stopped mid-send), read from an instance's own file (this one's when None).
+    A dry run: nothing is written, resent or changed, in the file or in memory."""
+    folder = os.path.join(data_root(), re.sub(r"[^A-Za-z0-9_-]", "", instance) or "default") if instance is not None else DATA
+    out = []
+    for r in _fold(read_lines(os.path.join(folder, "applications.jsonl"))):
+        if r.get("status") == UNKNOWN:
+            j = r.get("job") if isinstance(r.get("job"), dict) else {}
+            out.append({"id": r.get("id"), "at": r.get("at"), "mode": r.get("mode"), "route": r.get("route") or "", "to": r.get("to") or "",
+                        "jobId": j.get("id"), "co": j.get("co") or "", "role": j.get("role") or "", "user": r.get("user")})
+    return out
 
 
 PUBLIC = False             # serve.py sets this on a hosted server (the live site): see _mail_ctx
@@ -1151,7 +1193,10 @@ def submit(p, user=None, site=""):
         for a in APPS:
             if a["job"]["id"] == job["id"] and a["candidate"]["email"] == cand["email"] and a["status"] != "failed":
                 # "was" is what happened the first time, so the app can show it again (after an undo, or on another device)
-                return 200, {"status": "duplicate", "id": a["id"], "to": a.get("to", ""), "mode": a["mode"], "was": a["status"], "preview": a.get("preview") is True}
+                out = {"status": "duplicate", "id": a["id"], "to": a.get("to", ""), "mode": a["mode"], "was": a["status"], "preview": a.get("preview") is True}
+                if a["status"] == UNKNOWN:           # the server stopped mid-send: say plainly it may or may not have arrived
+                    out["note"] = UNKNOWN_NOTE
+                return 200, out
         return None
 
     with _lock:
@@ -1252,10 +1297,11 @@ def submit(p, user=None, site=""):
                 _append("applications.jsonl", rec)
             else:
                 today = time.time() - 86400
-                if sum(1 for a in APPS if a["mode"] == "live" and a["status"] in ("sent", "sending") and a["at"] > today) >= int(cfg.get("daily_limit", 20)):
+                if sum(1 for a in APPS if a["mode"] == "live" and a["status"] in LIVE_COUNTED and a["at"] > today) >= int(cfg.get("daily_limit", 20)):
                     return 429, {"error": "Daily sending limit reached."}
                 rec["to"], rec["status"] = "%s on Recruitee" % job["co"], "sending"      # reserved now, so a double tap cannot send twice
                 APPS.append(rec)
+                _append("applications.jsonl", rec)       # the intent, on disk before Recruitee is called (a restart reads it as "unknown")
                 rsend = (rref["board"], rref["id"])
         elif mode == "test":
             # the same channels the live app would use: email only when the employer gave an address (or, for an example listing, has no
@@ -1281,11 +1327,12 @@ def submit(p, user=None, site=""):
                 _append("applications.jsonl", rec)
             elif (target and _smtp_ready(cfg)) or hook or ats:
                 today = time.time() - 86400
-                sent_today = sum(1 for a in APPS if a["mode"] == "live" and a["status"] in ("sent", "sending") and a["at"] > today)
+                sent_today = sum(1 for a in APPS if a["mode"] == "live" and a["status"] in LIVE_COUNTED and a["at"] > today)
                 if sent_today >= int(cfg.get("daily_limit", 20)):
                     return 429, {"error": "Daily sending limit reached."}
                 rec["to"], rec["status"] = target, "sending"      # reserved now, so a double tap cannot send twice
                 APPS.append(rec)
+                _append("applications.jsonl", rec)       # the intent, on disk before anything is called (a restart reads it as "unknown")
                 send_args = (cfg, target if _smtp_ready(cfg) else "", dict(cand, answers=answers, job={"co": job["co"], "role": job["role"]}) if ats else cand,
                              job, note, contact,
                              resume_meta, resume_bytes, hook, rec, ats, stop_link(site, contact) if policy == "email" else "")
@@ -1441,7 +1488,7 @@ def _email_route_full(cfg, addr):
     with _lock held (it reads APPS)."""
     day = time.time() - 86400
     dom = str(addr or "").rsplit("@", 1)[-1].lower()
-    live = [a for a in APPS if a["mode"] == "live" and a["status"] in ("sent", "sending") and a["at"] > day]
+    live = [a for a in APPS if a["mode"] == "live" and a["status"] in LIVE_COUNTED and a["at"] > day]
     try:
         per = max(1, int(cfg.get("email_domain_daily", EMAIL_DOMAIN_PER_DAY)))
     except (TypeError, ValueError):
@@ -1545,7 +1592,7 @@ def outbox_html():
     rows = []
     for a in apps:
         j, c = a["job"], a["candidate"]
-        badge = {"delivered_test": "TEST", "sent": "SENT", "handoff": "HANDOFF", "failed": "FAILED"}.get(a["status"], a["status"].upper())
+        badge = {"delivered_test": "TEST", "sent": "SENT", "handoff": "HANDOFF", "failed": "FAILED", UNKNOWN: "MAYBE SENT"}.get(a["status"], a["status"].upper())
         rows.append(
             '<article><header><span class="b">%s</span><b>%s</b> to %s%s<time>%s</time></header>'
             '<p class="m">From %s &lt;%s&gt; · %s, %s yrs · match %d%% · <a href="%s" target="_blank" rel="noopener noreferrer">posting</a></p>'
