@@ -2967,8 +2967,9 @@ def _fetch_source(src):
                         else:
                             j = _normalize(f, kind, name, token)
                             seen = f.get("_seen")
-                            if seen:
-                                (_gh_seen if j else _gh_skip)[seen[:2]] = seen[2]
+                            if seen:                 # under _lock: another board's thread may be pruning these maps (below)
+                                with _lock:
+                                    (_gh_seen if j else _gh_skip)[seen[:2]] = seen[2]
                         if not j:
                             continue
                         bucket, cap = (other, PER_SOURCE) if j["type"] == "job" else (student, STUDENT_PER_SOURCE)
