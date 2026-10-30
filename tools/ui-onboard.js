@@ -188,7 +188,10 @@ module.exports = async ({ ev, sleep, nav, shot }) => {
   await q("w.__uaplyOpenProf('back');return 1"); await sleep(900);
   const rowA = await q("const r=d.getElementById('resNow');if(r&&r.scrollIntoView)r.scrollIntoView({block:'center'});return r?r.innerText.replace(/\\s+/g,' '):''");
   check("...Profile shows the saved resume by name, with Download and Remove (replacing it is optional)", /student\.txt/.test(rowA) && /Remove/.test(rowA) && /Download/.test(rowA), rowA);
-  if (SHOTS) { await sleep(400); await shot(path.join(SHOTS, "ask-3-profile-resume.png")); }
+  if (SHOTS) {   // the picture shows the Profile row, not the rating question or a toast that the three applications happened to raise
+    await q("const n=d.getElementById('uaNudge');if(n)n.hidden=true;d.querySelectorAll('.toast').forEach(t=>t.remove());return 1");
+    await sleep(400); await shot(path.join(SHOTS, "ask-3-profile-resume.png"));
+  }
   // the same account on a new device (this browser's storage cleared, still signed in): the account brings the resume's name, not the file
   await nav(BASE + "/legal/privacy.html"); await ev("(()=>{localStorage.clear();sessionStorage.clear();return 1})()");
   await nav(BASE + "/"); await resumeOn();
