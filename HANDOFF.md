@@ -91,7 +91,7 @@ next section lists where it is out of date.
 11. Owner: a real sign-up with a real code (6), then a real Google sign-in (7). New this time: the first swipe right shows the
     agreement box (version 4); after agreeing, `/api/auth/me` shows `consent` with `"v": 4`. **Swipe right only on a job that says
     Finish on their site, or use Pass**: a Ready job may now email the employer for real (apply by email).
-12. Within an hour of step 7: `/api/feed-health` (owner) lists 55 sources named `recruitee/...`, most of them with jobs and
+12. Within an hour of step 7: `/api/feed-health` (owner) lists 65 sources named `recruitee/...`, most of them with jobs and
     none `off`.
 13. Coordinator: the computer's own servers (10). Say so in chat first, `git pull --ff-only`, close the 8765, 8766 and 8767 windows,
     double-click `start-uaply.bat`; good: `/healthz` on 8766 and 8767 answer `{"ok": true}` and each window's first line names the

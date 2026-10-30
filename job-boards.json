@@ -17418,6 +17418,96 @@
    "us": 5,
    "tri": 0,
    "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "bluestonelogic",
+   "name": "BluestoneLogic",
+   "total": 6,
+   "us": 6,
+   "tri": 0,
+   "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "castolin",
+   "name": "Castolin Eutectic",
+   "total": 21,
+   "us": 5,
+   "tri": 0,
+   "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "civiltecengineering",
+   "name": "Civiltec Engineering, Inc",
+   "total": 10,
+   "us": 10,
+   "tri": 0,
+   "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "cjbarrymores",
+   "name": "CJ Barrymore's Sports & Entertainment",
+   "total": 8,
+   "us": 8,
+   "tri": 0,
+   "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "globalwindservice",
+   "name": "Global Wind Service",
+   "total": 24,
+   "us": 6,
+   "tri": 0,
+   "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "highspiritshospitality",
+   "name": "High Spirits Hospitality",
+   "total": 15,
+   "us": 15,
+   "tri": 0,
+   "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "otovo",
+   "name": "Otovo",
+   "total": 50,
+   "us": 38,
+   "tri": 4,
+   "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "properfood",
+   "name": "Proper Food",
+   "total": 8,
+   "us": 8,
+   "tri": 0,
+   "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "techbizglobal",
+   "name": "TechBiz Global GmbH",
+   "total": 213,
+   "us": 22,
+   "tri": 0,
+   "checked": "2026-10-30"
+  },
+  {
+   "kind": "recruitee",
+   "token": "themortgagetalentnetwork",
+   "name": "The Mortgage Talent Network",
+   "total": 11,
+   "us": 11,
+   "tri": 0,
+   "checked": "2026-10-30"
   }
  ],
  "note": "Employer boards found and checked live with tools/find-boards.py (Recruitee: tools/find-recruitee.py) (counts on the day checked). Read by jobs_api.py after the hand-picked boards in SOURCES. Remove a row to stop reading a board."
