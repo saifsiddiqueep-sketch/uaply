@@ -30,11 +30,19 @@ module.exports = async ({ ev, sleep, nav }) => {
     await q("const a=d.querySelector('.sg-su .sg-ag');if(a&&!a.checked)a.click();d.querySelector('.sg-su [type=submit]').click();return 1");
     return waitFor("const h=d.querySelector('#acctSec .sg-qs h2');return h&&/resume/.test(h.textContent)?h.textContent:''", 15000);
   };
+  // the resume experiment (FEATURES.resume) on at the start: its switch in the sandbox controls, pressed if it is off (a press reloads the app)
+  const resumeOn = async () => {
+    await sleep(300);
+    const was = await ev("(()=>{const b=document.querySelector('#feats button[data-k=resume]');if(!b)return 'none';const p=b.getAttribute('aria-pressed');if(p!=='true')b.click();return p})()");
+    if (was !== "true") await sleep(500);
+    return ev("(()=>{const b=document.querySelector('#feats button[data-k=resume]');return b?b.getAttribute('aria-pressed'):'none'})()");
+  };
   const consent = () => q("const y=d.getElementById('kcYes');if(y){d.querySelectorAll('.kcTick').forEach(c=>{c.checked=true});y.disabled=false;y.click()}const t=d.getElementById('tipsClose');if(t)t.click();return 1");
 
   // ---------- person B: no resume ----------
   await nav(BASE + "/legal/privacy.html"); await ev("(()=>{localStorage.clear();sessionStorage.clear();return 1})()");
   await nav(BASE + "/");
+  check("the resume experiment is on (FEATURES.resume)", (await resumeOn()) === "true");
   const first = await signUp(email("b"));
   check("the first question after sign-up is the resume", first === "Start with your resume — we’ll fill in the rest", first);
   const r1 = JSON.parse(await q("const s=d.querySelector('#acctSec .sg-qs');return JSON.stringify({eb:(s.querySelector('.sg-eyebrow')||{}).textContent,sub:(s.querySelector('.sg-sub')||{}).textContent," +
@@ -46,7 +54,7 @@ module.exports = async ({ ev, sleep, nav }) => {
   check("skip: the questions follow (What kind of work)", /What kind of work/.test(await h2()), await h2());
   await q("[...d.querySelectorAll('.sg-chip')].find(b=>b.textContent==='Retail').click();return 1"); await sleep(200);
   // a reload in the middle: the same step, the answer kept, the gate still up
-  await nav(BASE + "/");
+  await nav(BASE + "/"); await resumeOn();
   const back = await waitFor("const h=d.querySelector('#acctSec .sg-qs h2');return h?h.textContent:''", 15000);
   const kept = await q("const c=[...d.querySelectorAll('.sg-chip')].find(b=>b.textContent==='Retail');return c?c.getAttribute('aria-pressed'):''");
   check("a reload comes back to the same step with the answer kept (What kind of work, Retail picked), behind the gate", /What kind of work/.test(back) && kept === "true" && (await gated()) === true, back + " / " + kept);
@@ -93,7 +101,7 @@ module.exports = async ({ ev, sleep, nav }) => {
   // sign out on the server and start the device fresh (the same way ui-apply-paths.js does)
   await ev("fetch('/api/auth/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.status)");
   await nav(BASE + "/legal/privacy.html"); await ev("(()=>{localStorage.clear();sessionStorage.clear();return 1})()");
-  await nav(BASE + "/");
+  await nav(BASE + "/"); await resumeOn();
   const h0 = await signUp(email("a"));
   check("a second person: the resume question first again", /Start with your resume/.test(h0), h0);
   const choose = (name, text, type) => q("const i=d.querySelector('.sg-rk input[type=file]');const dt=new w.DataTransfer();dt.items.add(new w.File([" + JSON.stringify(text) + "]," + JSON.stringify(name) + ",{type:" + JSON.stringify(type) + "}));i.files=dt.files;i.dispatchEvent(new w.Event('change',{bubbles:true}));return 1");
