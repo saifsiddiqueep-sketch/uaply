@@ -146,7 +146,7 @@ body{padding-bottom:calc(12px + var(--safe-b))}
 #pane-track .row{flex-wrap:wrap}
 #pane-track .acts{display:flex;gap:6px;flex-wrap:wrap;flex-basis:100%}
 #pane-track .acts .btn{padding:6px 12px;font-size:14px}
-#legalbar{flex:none;text-align:center;font-size:14px;color:var(--muted);padding-bottom:2px}#legalbar a{color:inherit;text-underline-offset:2px}
+#legalbar{flex:none;text-align:center;font-size:14px;color:var(--muted);padding-bottom:2px}#legalbar a{color:inherit;text-underline-offset:2px;display:inline-block;min-width:44px;min-height:24px;line-height:24px;text-align:center}
 #acctSec{display:flex;flex-direction:column;gap:14px}
 #acctSec h3{margin:0}
 #acctSec textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;min-height:96px;resize:vertical;width:100%}
@@ -178,7 +178,7 @@ body{padding-bottom:calc(12px + var(--safe-b))}
 #paywall{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.45)}
 #paywall>div{background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:22px;max-width:400px;width:100%;box-shadow:var(--shadow)}
 /* Report this job: a quiet link at the end of the job card, and its box (the same look as the plan box above) */
-.urep{position:absolute;top:8px;right:52px;z-index:1;margin:0}.urep .linkbtn{width:44px;height:44px;padding:0;border-radius:50%;display:grid;place-items:center;border:4px solid transparent;background:color-mix(in srgb,var(--surface) 80%,transparent) padding-box;box-shadow:inset 0 0 0 1px var(--line);color:var(--ink)}.card:has(.urep) .chead{padding-right:96px}
+.urep{position:absolute;top:8px;right:54px;z-index:1;margin:0}.urep .linkbtn{width:44px;height:44px;padding:0;border-radius:50%;display:grid;place-items:center;border:4px solid transparent;background:color-mix(in srgb,var(--surface) 80%,transparent) padding-box;box-shadow:inset 0 0 0 1px var(--line);color:var(--ink)}.card:has(.urep) .chead{padding-right:100px}
 #urepBox{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.45)}
 #urepBox>div{background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:22px;max-width:420px;width:100%;max-height:calc(100% - 32px);overflow:auto;box-shadow:var(--shadow)}
 #urepBox fieldset{border:0;margin:0 0 12px;padding:0;display:grid;gap:4px}#urepBox legend{padding:0;margin:0 0 6px;font-weight:700}
@@ -294,7 +294,7 @@ body{padding-bottom:calc(12px + var(--safe-b))}
  #form.wz>#wzPrev{display:flex;grid-column:2;grid-row:1 / span 8;position:sticky;top:8px;margin:0}
  #form.wz .grid{grid-template-columns:1fr 1fr}
 }
-@media (prefers-reduced-motion:reduce){.wzBar i{transition:none}}
+@media (prefers-reduced-motion:reduce){.wzBar i{transition:none}.field input,.field select,#acctSec textarea,#acctSec input{transition:none!important}}
 /* controls that were left unstyled (password, month, link, file) now match the rest, with 44px targets */
 #form input[type=month],#form input[type=url],#form input[type=email],#form textarea,#acctSec input[type=password],#acctSec input[type=email]{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;color:var(--ink);font:inherit;width:100%;min-height:44px}
 #form input[type=text],#form input[type=number],#form input[type=tel],#form select,#acctSec input[type=text],#acctSec input[type=password],#acctSec select{min-height:44px}
