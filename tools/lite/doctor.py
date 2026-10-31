@@ -60,6 +60,7 @@ PROTECTED_RULES = [
     ("never invent facts", "docs/handbook/07-conventions.md", "Never invent an answer"),
     ("big-chat block stays at ≤150k", "tools/lite/hook_prompt.py", ("BIG_K", 150)),
     ("idle block stays at ≤60 min", "tools/lite/hook_prompt.py", ("IDLE_MIN", 60)),
+    ("idle block starts at ≤20k", "tools/lite/hook_prompt.py", ("IDLE_MIN_K", 20)),
     ("100k warning stays at ≤100k", "tools/lite/hook_prompt.py", ("WARN_K", 100)),
 ]
 
