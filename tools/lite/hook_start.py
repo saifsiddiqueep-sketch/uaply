@@ -10,7 +10,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(__file__))
-from _common import read_stdin_json, founder, git, read_sess, write_sess, write_state  # noqa: E402
+from _common import log_event, read_stdin_json, founder, git, read_sess, write_sess, write_state  # noqa: E402
 
 
 def safe(*a, timeout=5):
@@ -33,6 +33,7 @@ def fetch_ok():
 def main():
     d = read_stdin_json()
     sess, source = d.get("session_id"), d.get("source", "startup")
+    log_event("session", source=source)       # startup / resume / clear / compact → cold resumes + compactions
 
     root = safe("rev-parse", "--show-toplevel")
     if not root:

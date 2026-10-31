@@ -20,7 +20,7 @@ import time
 from datetime import datetime, timezone
 
 sys.path.insert(0, __import__("os").path.dirname(__file__))
-from _common import die, founder, git, load_env, trello  # noqa: E402
+from _common import die, founder, git, load_env, log_event, trello  # noqa: E402
 
 TARGETS = {"sandbox", "live"}
 STALE_MIN = 45
@@ -80,6 +80,7 @@ def take(t, note):
     if r.returncode != 0:
         print(status_line(t))
         return False
+    log_event("lock", target=t, action="take")
     print(f"{t}: TAKEN by {msg}. Merge now, then run: queue.py release {t}")
     mirror(f"🔒 {t} taken — {msg}")
     return True
@@ -94,6 +95,7 @@ def release(t, force=False):
     if not force and not msg.lower().startswith(founder().lower()):
         die(f"{t} is held by {msg}, not you. Use `break {t} --yes` only after checking with them.")
     git("push", "-q", f"--force-with-lease={ref(t)}:{sha}", "origin", f":{ref(t)}", timeout=PUSH_TIMEOUT)
+    log_event("lock", target=t, action="break" if force else "release", held_min=age)
     print(f"{t}: RELEASED (was {msg}, {age} min)")
     mirror(f"🔓 {t} released by {founder()} (was {msg})")
 
@@ -113,12 +115,15 @@ def main(a):
     if cmd == "take":
         sys.exit(0 if take(t, note) else 2)
     elif cmd == "wait":
-        deadline = time.time() + 60 * 60
+        start = time.time()
+        deadline = start + 60 * 60
         print(f"In line for {t}. Checking every 20s (max 60 min)...")
         while time.time() < deadline:
             if take(t, note):
+                log_event("lock", target=t, action="wait", wait_s=round(time.time() - start))
                 return
             time.sleep(20)
+        log_event("lock", target=t, action="timeout", wait_s=round(time.time() - start))
         die(f"Gave up after 60 min. {status_line(t)}", 2)
     elif cmd == "release":
         release(t)
