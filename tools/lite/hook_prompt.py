@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """UserPromptSubmit hook — runs BEFORE your message reaches Claude (costs 0 tokens when it blocks).
 
-BIG-CHAT BLOCKER: if this chat is ≥150k tokens, or it was idle >60 min, the message is stopped before Claude
-re-reads the whole chat. Choose: /handoff, /clear, /pickup <area> (cheapest restart) or start the message with
-go!  to send it anyway.   [fix 4: was "!go", but "!" means shell mode in Claude Code]
+BIG-CHAT BLOCKER: if this chat is ≥150k tokens, or it was idle >60 min at ≥20k, the message is stopped before Claude
+re-reads the whole chat (idle under 20k only prints a one-line note — a re-read that small is cheap). Choose: /handoff, /clear, /pickup <area> (cheapest restart) or start the message with
+go!  to send it anyway — ANY prompt starting with "go!" always passes and logs override=true.
+[fix 4: was "!go", but "!" means shell mode in Claude Code]
 Otherwise adds one [lite] line (model · effort · context) for the MODE check, plus at most one line each for:
 ≥100k context (finish, /handoff, /clear), Opus on a routine prompt (/model sonnet), and a session after 1 AM.
 Every prompt appends one event (numbers only, never prompt text) to ~/.uaply/state/events.jsonl.
@@ -15,11 +16,13 @@ import os
 import re
 import sys
 import time
+import unicodedata
 
 sys.path.insert(0, os.path.dirname(__file__))
 from _common import log_event, read_stdin_json, read_sess, read_state, write_sess  # noqa: E402
 
 BIG_K, WARN_K, IDLE_MIN = 150, 100, 60
+IDLE_MIN_K = 20                          # idle block only fires at ≥20k; below it a re-read is cheap
 LATE_HOURS = range(1, 5)                 # 1:00–4:59 local time
 ESCAPE = "go!"
 BRIEF_WORDS, BRIEF_ASKS = 80, 3
@@ -30,6 +33,7 @@ ASK_LINE = re.compile(r"^\s*(?:\d+[.)]|[-*•])\s+", re.M)
 ASK_JOIN = re.compile(r"\b(?:also|and then|another thing)\b", re.I)
 
 
+IDLE_NOTE = "[lite] Idle {idle} min, but this chat is only {ctx}k — sent (the idle block starts at 20k)."
 WARN_LINE = "[lite] This chat is {ctx}k — finish the current step, then /handoff and /clear (blocked at 150k)."
 OPUS_LINE = "[lite] Routine prompt on Opus — /model sonnet saves ~60% here."
 LATE_LINE = "[lite] Late session — consider /handoff now so tomorrow's chat starts cheap."
@@ -38,6 +42,17 @@ ROUTINE = re.compile(r"\b(trello|card|rename|typo|copy|wording|reword|label|move
 SENSITIVE = re.compile(r"(consent|secur|auth|login|password|token|secret|payment|billing|stripe|money|refund|legal|"
                        r"privacy|gdpr|terms|bug|crash|error|fail|broken|migrat|live|prod)", re.I)
 PICKUP = re.compile(r"^/pickup\s+([A-Za-z&-]+)", re.I)
+
+
+def clean(prompt):
+    """Prompt text as typed: NFKC (full-width ！ → !), zero-width chars and BOMs dropped, spaces trimmed."""
+    s = unicodedata.normalize("NFKC", str(prompt or ""))
+    return "".join(c for c in s if c not in "​‌‍⁠﻿").strip()
+
+
+def forced(prompt):
+    """True for any prompt starting with go! — it always passes every guard."""
+    return clean(prompt).lower().startswith(ESCAPE)
 
 
 def now():
@@ -52,7 +67,7 @@ def opus_nudge(model, prompt):
 
 def needs_brief(prompt):
     """True for a long or multi-ask prompt that /brief should rewrite first."""
-    if not prompt or prompt.startswith("/") or prompt.lower().startswith(ESCAPE):
+    if not prompt or prompt.startswith("/") or forced(prompt):
         return False
     if len(prompt.split()) >= BRIEF_WORDS:
         return True
@@ -64,7 +79,7 @@ def needs_brief(prompt):
 def main():
     d = read_stdin_json()
     sid = d.get("session_id")
-    prompt = (d.get("prompt") or "").strip()
+    prompt = clean(d.get("prompt") or d.get("user_prompt"))
     s, g = read_sess(sid), read_state()
     t = now()
     ctx = int(s.get("ctx_k") or 0)
@@ -75,10 +90,12 @@ def main():
     model = s.get("model") or g.get("model", "unknown (status line not running)")
     ev = dict(area=area, model=model.split(" ")[0], ctx_k=ctx, idle_min=idle, blocked=False, override=False, nudge="")
 
-    forced = prompt.lower().startswith(ESCAPE)
-    exempt = forced or prompt.startswith("/")
-    ev["override"] = forced and (ctx >= BIG_K or idle > IDLE_MIN)
-    if not exempt and (ctx >= BIG_K or idle > IDLE_MIN):
+    go = forced(prompt)
+    ev["override"] = go
+    # no prompt text at all (unexpected payload) → can't see a go!, so never block on it
+    exempt = go or not prompt or prompt.startswith("/")
+    idle_block = idle > IDLE_MIN and ctx >= IDLE_MIN_K
+    if not exempt and (ctx >= BIG_K or idle_block):
         why = f"this chat is {ctx}k tokens" if ctx >= BIG_K else f"you were away {idle} min (the cache is cold) and this chat is {ctx}k"
         log_event("prompt", **dict(ev, blocked=True))
         print(f"⛔ Workflow Lite stopped this message to save tokens: {why}, so sending it would re-read the whole chat.\n"
@@ -93,6 +110,9 @@ def main():
     effort = effort or s.get("effort") or g.get("effort", "unknown")
     upd = {"last_prompt_at": t, "area": area}
     lines = [f"[lite] running {model} · effort {effort} · context {ctx}k"]
+    if idle > IDLE_MIN and ctx < IDLE_MIN_K and not go:
+        lines.append(IDLE_NOTE.format(idle=idle, ctx=ctx))
+        ev["nudge"] += "idle_small "
     if needs_brief(prompt):
         lines.append(BRIEF_LINE)
     if ctx >= WARN_K:
