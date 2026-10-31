@@ -169,6 +169,8 @@ if api:
     jobs_api.link_check_on = PUBLIC          # a hosted server checks every source's apply links in the background (UAPLY_LINK_CHECK=0: off)
     uaply_api.PUBLIC = PUBLIC                                   # the live site never labels a real hand-off email [TEST]
     jobs_api.RECRUITEE_SUBMIT[0] = uaply_api.recruitee_on()     # Recruitee postings say Ready while the owner's switch is on
+    if os.environ.get("UAPLY_JOBS_FIXTURE") and "RENDER" not in os.environ:   # the test runner: a checked-in job list, no feed is read (never on a hosted server)
+        print("[uaply] jobs from the fixture %s: %d jobs, no feeds" % (os.environ["UAPLY_JOBS_FIXTURE"], jobs_api.use_fixture(os.environ["UAPLY_JOBS_FIXTURE"])))
     import connect_api
     jobs_api.CONNECTIONS_FILE[0] = connect_api.path()           # keys employers gave on the connect page (/employers/connect)
     uaply_api.start_mail_worker()                               # sends receipts and copies held back by the daily email limit (mailer.py)
