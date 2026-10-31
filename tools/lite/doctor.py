@@ -122,7 +122,9 @@ def ccusage_days():
         out = []
         for d in json.loads(raw).get("daily", []):
             opus = sum(m.get("cost", 0) for m in d.get("modelBreakdowns", []) if "opus" in str(m.get("modelName", "")).lower())
-            out.append({"date": d.get("date", ""), "cost": float(d.get("totalCost", 0) or 0), "opus": float(opus)})
+            day = str(d.get("date") or d.get("period") or "")[:10]   # ccusage ≥20 calls it "period"
+            if day:
+                out.append({"date": day, "cost": float(d.get("totalCost", 0) or 0), "opus": float(opus)})
         return out
     except Exception:
         return []

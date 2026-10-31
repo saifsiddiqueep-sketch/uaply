@@ -147,6 +147,20 @@ try:
     check(re.search(r"lock timeouts\s+1\s+\(last 0\)", out), "lock timeouts = 1 this week, 0 last week")
     check(re.search(r"\$/day\s+\$1\.79\s+\(last \$1\.14\)", out), "$/day 1.79 vs 1.14 from fake ccusage")
     check(re.search(r"cold resumes\s+1\s", out), "a blocked idle prompt + its go! count as ONE cold restart")
+    # ccusage ≥20 names the day "period" (not "date"); undated rows must not hide the "ccusage n/a" notice
+    cc20 = TMP / "ccusage20.json"
+    cc20.write_text(json.dumps({"daily": [
+        {"period": "2026-10-30", "totalCost": 12.5, "modelBreakdowns": [{"modelName": "claude-opus-5-5", "cost": 10.0},
+                                                                       {"modelName": "claude-sonnet-5-5", "cost": 2.5}]},
+        {"period": "2026-10-22", "totalCost": 8.0, "modelBreakdowns": [{"modelName": "claude-sonnet-5-5", "cost": 8.0}]},
+    ], "totals": {}}), encoding="utf-8")
+    code, out = doctor("--weekly", "--today", monday, UAPLY_EVENTS_FILE=wk_events, UAPLY_CCUSAGE_JSON=cc20)
+    check(re.search(r"\$/day\s+\$1\.79\s+\(last \$1\.14\)", out), "ccusage 20 'period' key read: $/day 1.79 vs 1.14")
+    check(re.search(r"Opus share\s+80%", out), "ccusage 20: Opus share 80% from modelBreakdowns")
+    cc_bad = TMP / "ccusage-undated.json"
+    cc_bad.write_text(json.dumps({"daily": [{"day": "2026-10-30", "totalCost": 5.0}]}), encoding="utf-8")
+    code, out = doctor("--weekly", "--today", monday, UAPLY_EVENTS_FILE=wk_events, UAPLY_CCUSAGE_JSON=cc_bad)
+    check("ccusage n/a" in out, "rows with no date/period → the 'ccusage n/a' notice shows (not silent n/a)")
     code, out = doctor("--weekly", "--today", "2026-11-04", UAPLY_EVENTS_FILE=wk_events, UAPLY_CCUSAGE_JSON=cc)
     check("Monday review" not in out, "no Monday line on a Wednesday")
 
