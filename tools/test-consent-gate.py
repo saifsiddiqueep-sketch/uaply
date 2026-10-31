@@ -52,11 +52,6 @@ def t(name, got, want):
     print(("PASS " if ok else "FAIL ") + name + ("" if ok else "  -> got %r, wanted %r" % (got, want)))
 
 
-import ats_api  # noqa: E402
-import jobs_api  # noqa: E402
-import consent_api  # noqa: E402
-
-import ats_api  # noqa: E402
 import jobs_api  # noqa: E402
 import consent_api  # noqa: E402
 
