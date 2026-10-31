@@ -4,6 +4,7 @@ secrets, `doctor.py --weekly` prints all four sections, and `doctor.py --protect
 loosened. Uses a temp events file, a pinned clock and fake ccusage data — touches nothing real."""
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -113,6 +114,12 @@ try:
     check(last.get("kind") == "probe" and last.get("card") == "189", "log_event keeps plain fields")
     check(not {"token", "prompt", "api_key"} & set(last), "log_event drops token/prompt/key fields")
     check(len(str(last.get("note"))) <= 80, "log_event caps long values")
+    rot = TMP / "rot.jsonl"
+    rot.write_text("x" * (5 * 1024 * 1024 + 10), encoding="utf-8")
+    os.environ["UAPLY_EVENTS_FILE"] = str(rot)
+    log_event("probe", card="1")
+    os.environ["UAPLY_EVENTS_FILE"] = str(EVENTS)
+    check((TMP / "rot.jsonl.1").exists() and rot.stat().st_size < 1000, "events log rotates past 5 MB")
 
     # (g) doctor --weekly: seeded events + fake ccusage → all four sections and the Monday lines
     monday = "2026-11-02"
@@ -120,6 +127,8 @@ try:
     seed = [{"ts": mon_t - 3 * 86400, "kind": "ship", "card": "189", "stage": "start"},
             {"ts": mon_t - 2 * 86400, "kind": "ship", "card": "189", "stage": "sandbox", "pr": 107},
             {"ts": mon_t - 86400, "kind": "lock", "target": "sandbox", "action": "timeout"},
+            {"ts": mon_t - 86400, "kind": "prompt", "blocked": True, "idle_min": 70},
+            {"ts": mon_t - 86400 + 5, "kind": "prompt", "blocked": False, "idle_min": 70},
             {"ts": mon_t - 9 * 86400, "kind": "ship", "card": "180", "stage": "sandbox", "pr": 99}]
     wk_events = TMP / "weekly.jsonl"
     wk_events.write_text("".join(json.dumps(e) + "\n" for e in seed), encoding="utf-8")
@@ -134,10 +143,28 @@ try:
     check(all(h in out for h in ("EFFICIENCY", "PRODUCTIVITY", "EFFECTIVENESS", "RELIABILITY")), "all four sections")
     check("$/day" in out and "(last" in out, "cost line with last-week comparison")
     check("Monday review" in out and "30-day review" in out, "Monday + first-Monday lines on 2026-11-02")
+    check(re.search(r"PRs merged to sandbox\s+1\s+\(last 1\)", out), "merged = 1 this week, 1 last week")
+    check(re.search(r"lock timeouts\s+1\s+\(last 0\)", out), "lock timeouts = 1 this week, 0 last week")
+    check(re.search(r"\$/day\s+\$1\.79\s+\(last \$1\.14\)", out), "$/day 1.79 vs 1.14 from fake ccusage")
+    check(re.search(r"cold resumes\s+1\s", out), "a blocked idle prompt + its go! count as ONE cold restart")
     code, out = doctor("--weekly", "--today", "2026-11-04", UAPLY_EVENTS_FILE=wk_events, UAPLY_CCUSAGE_JSON=cc)
     check("Monday review" not in out, "no Monday line on a Wednesday")
 
-    # (h) protected rules: intact on the real repo; loosening one fails
+    # (h) protected rules: intact on the real repo; loosening one fails. The expected list lives HERE, not only in
+    # doctor.py, so a proposal that deletes a rule or raises a limit in doctor.py fails this test too.
+    expected = {("shared/uaply-assist.js", "the person ticks it"), ("docs/apply-by-email.md", "never submits automatically"),
+                ("CLAUDE.md", "**UI GATE:"), ("CLAUDE.md", "REAL APP ONLY"), ("CLAUDE.md", "until Mohammed gives an explicit"),
+                ("CLAUDE.md", "Live: Saif only"), ("tools/lite/queue.py", "live promotion is Saif-only"),
+                ("tools/lite/handoff_wip.py", "an AI provider API key"), ("CLAUDE.md", "never commit secrets"),
+                ("CLAUDE.md", "`queue.py take sandbox`"), ("tools/lite/queue.py", "def take("),
+                ("docs/assisted-apply.md", "the person answers"), ("shared/uaply-assist.js", "humanCheck"),
+                ("docs/handbook/07-conventions.md", "Never invent an answer")}
+    limits = {"BIG_K": 150, "IDLE_MIN": 60, "WARN_K": 100}
+    doc = __import__("doctor")
+    have = {(rel, r) for _, rel, r in doc.PROTECTED_RULES if isinstance(r, str)}
+    check(expected <= have, "doctor.py still lists every protected text rule")
+    have_lim = {r[0]: r[1] for _, rel, r in doc.PROTECTED_RULES if isinstance(r, tuple)}
+    check(all(k in have_lim and have_lim[k] <= v for k, v in limits.items()), "doctor.py limits are not raised")
     code, out = doctor("--protected")
     check(code == 0 and "FAIL" not in out, "protected rules intact on this repo")
     files = sorted({rel for _, rel, _ in __import__("doctor").PROTECTED_RULES})
@@ -155,6 +182,9 @@ try:
     hp.write_text(hp.read_text(encoding="utf-8").replace("BIG_K, WARN_K, IDLE_MIN = 150, 100, 60",
                                                          "BIG_K, WARN_K, IDLE_MIN = 120, 80, 45"), encoding="utf-8")
     check(doctor("--protected", UAPLY_ROOT=copy)[0] == 0, "making thresholds stricter still passes")
+    hp.write_text(hp.read_text(encoding="utf-8") + "\nBIG_K = 500\n", encoding="utf-8")
+    check(doctor("--protected", UAPLY_ROOT=copy)[0] == 1, "a second, looser BIG_K assignment fails --protected")
+    shutil.copy(ROOT / "tools/lite/hook_prompt.py", hp)
     md = copy / "CLAUDE.md"
     md.write_text(md.read_text(encoding="utf-8").replace("REAL APP ONLY", "MOCKUPS OK"), encoding="utf-8")
     code, out = doctor("--protected", UAPLY_ROOT=copy)

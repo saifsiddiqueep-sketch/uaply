@@ -71,7 +71,8 @@ def main(a):
         with _Lock(LEDGER):
             return _locked(cmd, a)
     if cmd == "list":
-        return _locked(cmd, a)
+        with _Lock(LEDGER):          # list may save (mark_stale), so it takes the lock too
+            return _locked(cmd, a)
     print(__doc__)
 
 

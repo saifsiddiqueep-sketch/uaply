@@ -11,6 +11,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -32,8 +33,10 @@ def run_hook(script, payload):
     bash = shutil.which("bash")
     if not bash:
         return 127, "", "bash not found"
+    # the self-test's fake prompts go to a temp events file, never the real scorecard log
+    env = dict(os.environ, UAPLY_EVENTS_FILE=str(Path(tempfile.gettempdir()) / "uaply-doctor-events.jsonl"))
     r = subprocess.run([bash, str(HERE / "run.sh"), script], input=json.dumps(payload), capture_output=True,
-                       text=True, encoding="utf-8", errors="replace", timeout=30)
+                       text=True, encoding="utf-8", errors="replace", timeout=30, env=env)
     return r.returncode, r.stdout, r.stderr
 
 
@@ -66,7 +69,9 @@ def repo_root():
 
 
 def _const(text, name):
-    """Value of NAME in 'NAME = 1' or 'A, NAME, C = 1, 2, 3' (the hook_prompt.py style)."""
+    """Value of NAME in 'NAME = 1' or 'A, NAME, C = 1, 2, 3' (the hook_prompt.py style).
+    None (→ FAIL) unless NAME is assigned exactly once, so a later 'BIG_K = 500' can't slip past."""
+    hits = []
     for line in text.splitlines():
         if "=" not in line or line.lstrip().startswith("#"):
             continue
@@ -75,10 +80,10 @@ def _const(text, name):
         if name in names:
             vals = [x.strip() for x in right.split(",")]
             try:
-                return float(vals[names.index(name)])
+                hits.append(float(vals[names.index(name)]))
             except (ValueError, IndexError):
                 return None
-    return None
+    return hits[0] if len(hits) == 1 else None
 
 
 def protected(root=None):
@@ -101,6 +106,7 @@ def protected(root=None):
 
 
 # ---- weekly scorecard: events.jsonl + ccusage, this week vs last week ----------------------------
+CCUSAGE = "ccusage@20.0.46"      # pinned: npx must not fetch whatever is newest on npm
 def ccusage_days():
     """[{date, cost, opus}] from `npx ccusage daily --json` (or the UAPLY_CCUSAGE_JSON file in tests). [] if n/a."""
     try:
@@ -111,7 +117,7 @@ def ccusage_days():
             npx = shutil.which("npx")
             if not npx:
                 return []
-            raw = subprocess.run([npx, "--yes", "ccusage", "daily", "--json"], capture_output=True, text=True,
+            raw = subprocess.run([npx, "--yes", CCUSAGE, "daily", "--json"], capture_output=True, text=True,
                                  encoding="utf-8", errors="replace", timeout=120).stdout
         out = []
         for d in json.loads(raw).get("daily", []):
@@ -151,7 +157,7 @@ def week_stats(ev, days, t0, t1, card_start):
     return {
         "cost_day": (cost / 7) if cd else None, "cost_pr": (cost / len(merged)) if cd and merged else None,
         "opus_share": (sum(d["opus"] for d in cd) / cost) if cost else None,
-        "cold": len(k("session", source="resume")) + sum(1 for e in k("prompt") if e.get("idle_min", 0) > 60),
+        "cold": len(k("session", source="resume")) + sum(1 for e in k("prompt") if e.get("blocked") and e.get("idle_min", 0) > 60),
         "compactions": len(k("session", source="compact")),
         "merged": len(merged), "completed": len([e for e in k("card", action="move") if "complet" in str(e.get("to", "")).lower()]),
         "to_sandbox": _median(to_sb), "to_live": _median(to_live),
