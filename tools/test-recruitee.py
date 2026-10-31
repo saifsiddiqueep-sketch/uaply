@@ -92,6 +92,7 @@ t("six boards of one family at once: at most 2 requests in flight, starts at lea
 GOT = []
 
 
+REFUSED = []      # posts the stand-in refused as a rate-limited or blocked board
 TUNNELS = []      # hosts a test server tried to reach through this stand-in as its HTTPS proxy (the real-site trap below)
 
 
@@ -109,6 +110,9 @@ class Fake(http.server.BaseHTTPRequestHandler):
         m = re.match(r"^/([a-z0-9-]+)/api/offers/([a-z0-9-]+)/candidates$", self.path)
         if not m:
             self.send_response(404); self.end_headers(); return
+        if m.group(2) in ("busy-role", "blocked-role"):    # a rate-limited or blocked board (card 213): refused before anything is taken
+            REFUSED.append(m.group(2))
+            self.send_response(429 if m.group(2) == "busy-role" else 403); self.end_headers(); return
         fields = dict(re.findall(r'name="(candidate\[[a-z]+\])"\r\n\r\n([^\r]*)\r\n', body))
         cv = re.search(r'name="candidate\[cv\]"; filename="([^"]+)"', body)
         GOT.append({"company": m.group(1), "slug": m.group(2), "fields": fields, "cv": cv.group(1) if cv else "", "type": self.headers.get("Content-Type", "")})
@@ -133,6 +137,7 @@ def offer(oid, slug, title):
 P1, P2, P3, P4 = offer(901, "data-analyst", "Data Analyst"), offer(902, "broken-role", "Data Engineer"), offer(903, "data-intern", "Data Intern"), offer(904, "data-lead", "Data Lead")
 P5 = offer(905, "data-scientist", "Data Scientist")
 P5 = dict(P5, ats=dict(P5["ats"], id="Bad Slug!"))     # an offer slug recruitee_url refuses
+P6, P7 = offer(906, "busy-role", "Data Analyst II"), offer(907, "blocked-role", "Data Analyst III")
 t("a Recruitee posting carries its company and offer slug as the hiring system it lives in", P1["ats"], {"kind": "recruitee", "board": SRC[1], "id": "data-analyst"})
 
 
@@ -142,7 +147,7 @@ def seed(data):
     for kind, board, name in jobs_api.SOURCES:
         if kind == "recruitee":
             cache["%s|%s|%s" % (kind, board, name)] = {"at": time.time(), "jobs": [], "status": "0 jobs"}
-    cache["recruitee|%s|%s" % SRC[1:]]["jobs"] = [P1, P2, P3, P4, P5]
+    cache["recruitee|%s|%s" % SRC[1:]]["jobs"] = [P1, P2, P3, P4, P5, P6, P7]
     with open(os.path.join(data, "jobs-cache.json"), "w", encoding="utf-8") as f:
         json.dump(cache, f)
 
@@ -230,6 +235,11 @@ try:
     req(PORT, "POST", "/api/auth/send-for-me", {"on": True}, a)
     s, ob, _ = req(PORT, "GET", "/api/outbox")
     rec = [x for x in ob.get("applications", []) if x.get("job", {}).get("id") == P1["id"]]
+    for pj, code in ((P6, 429), (P7, 403)):
+        s, out = apply(PORT, a, pj, "rae@example.org")
+        t("Recruitee answering HTTP %d (rate limit or blocked): a hand-off, finish on their site, not a failure" % code, (out.get("status"), out.get("via")), ("handoff", "handoff"))
+    t("...each refused board was asked once, never retried", REFUSED, ["busy-role", "blocked-role"])
+    t("...and a swipe right again is the same application, nothing re-sent", (apply(PORT, a, P6, "rae@example.org")[1].get("status"), REFUSED), ("duplicate", ["busy-role", "blocked-role"]))
     t("the record says where it went (the hiring system channel)", (rec[0].get("status"), rec[0].get("channels")) if rec else None, ("sent", ["hiring system"]))
     for p in PROCS:
         p.terminate()
