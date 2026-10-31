@@ -585,8 +585,10 @@ try:
     has = [timed("/api/auth/code/send", {"email": "has%d@example.com" % i}) for i in range(3)]
     none = [timed("/api/auth/code/send", {"email": "none%d@example.com" % i}) for i in range(3)]
     t("finding 4: Email me a code answers 200 for all six", [x[0] for x in has + none], [200] * 6)
-    t("finding 4: ...and as fast with an account as without (each under 0.2 s; the mail server takes 0.3 s)",
-      (max(x[1] for x in has) < 0.2, max(x[1] for x in none) < 0.2), (True, True))
+    # compared with each other, not with a fixed time: a busy computer slows both alike, but waiting on the mail server adds 0.3 s to one
+    med = lambda xs: sorted(x[1] for x in xs)[len(xs) // 2]     # noqa: E731
+    t("finding 4: ...and as fast with an account as without (the middle times differ by under 0.2 s; the mail server takes 0.3 s)",
+      (med(has) - med(none) < 0.2, max(x[1] for x in has + none) < 3), (True, True))
     print("     timings with an account %s, without %s" % (["%.3f" % x[1] for x in has], ["%.3f" % x[1] for x in none]))
     time.sleep(1.5)
     t("finding 4: ...the codes still arrive, one per address with an account, none for the others",
@@ -594,9 +596,10 @@ try:
     code = sink.code_for("has0@example.com")
     s, j, ck = req(SP, "POST", "/api/auth/code/verify", {"email": "has0@example.com", "code": code, "agree": True})
     t("finding 4: ...and the code from the slow mail server signs in", s, 200)
-    f1 = timed("/api/auth/forgot", {"email": "has1@example.com"})
-    f2 = timed("/api/auth/forgot", {"email": "none1@example.com"})
-    t("finding 4: Forgot password on the sandbox answers as fast either way", (f1[0], f2[0], f1[1] < 0.2, f2[1] < 0.2), (200, 200, True, True))
+    f1 = [timed("/api/auth/forgot", {"email": "has%d@example.com" % i}) for i in (1, 2, 1)]
+    f2 = [timed("/api/auth/forgot", {"email": "none%d@example.com" % i}) for i in (1, 2, 1)]
+    t("finding 4: Forgot password on the sandbox answers as fast either way",
+      ({x[0] for x in f1 + f2}, med(f1) - med(f2) < 0.2), ({200}, True))
 
     # finding 6 over HTTP: the full Google trip against the stand-in (tools/mock-google.py), on a sandbox and on dev
     MG = PORT + 7
