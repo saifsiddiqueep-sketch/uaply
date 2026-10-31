@@ -34,7 +34,7 @@ module.exports = async ({ ev, sleep, nav }) => {
     "A.S.decisions[" + ID + "]={s:'applied',at:Date.now(),pct:80,as:'Sam Rivera',title:'Data Analyst',sent:{at:Date.now(),to:'',status:'handoff'}};A.S.history.push(" + ID + ");A.save();A.renderAll()})()");
   const openApplied = async () => {
     await ev("(()=>{const b=" + F + ".getElementById('nb-dash');b.click()})()"); await sleep(400);
-    await ev("(()=>{const e=[...(" + F + ").querySelectorAll('.nitem')].find(b=>b.innerText.trim().startsWith('Applied'));if(e)e.click()})()"); await sleep(700);
+    await ev("(()=>{const e=[...(" + F + ").querySelectorAll('#pane-track [data-filt=all]')][0];if(e)e.click()})()"); await sleep(700);
   };
   const row = () => ev("(()=>{const b=" + F + ".querySelector('[data-id=\"" + ID + "\"]');const r=b&&b.closest('.row');return r?r.innerText.replace(/\\s+/g,' '):''})()");
   const finish = () => ev("(()=>{const b=" + F + ".querySelector('[data-finish=\"" + ID + "\"]');if(!b)return false;b.click();return true})()");

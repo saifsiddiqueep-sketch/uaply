@@ -79,6 +79,7 @@ async function main(api) {
   const snap = async (name) => { if (OUT) { fs.mkdirSync(OUT, { recursive: true }); await shot(path.join(OUT, name + ".png")); } };
   const waitFor = async (fn, ms) => { const end = Date.now() + ms; let v; while (Date.now() < end) { v = await fn(); if (v) return v; await sleep(500); } return v; };
   const menu = async (tab, item) => {                 // open a bottom-bar menu and pick an item, the way a tap does
+    if (tab === "nb-dash") { const ok = await click("#nb-dash"); await sleep(900); return ok; }   // card 182: Job Tracker opens its Overview, no menu
     await click("#" + tab); await sleep(450);
     let ok = await click(".nwrap[data-k=" + tab.replace("nb-", "") + "] .nitem[data-v=" + item + "]");
     if (!ok) ok = await ev("(()=>{const e=[...(" + F + ").querySelectorAll('.nitem')].find(b=>b.offsetParent&&b.getAttribute('data-v')===" + JSON.stringify(item) + ");if(!e)return false;e.click();return true})()");

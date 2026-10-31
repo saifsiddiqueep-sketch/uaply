@@ -132,6 +132,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
 
   // ------------------------------------------------------------------ screens
   const menu = (k, v) => ev(`(()=>{const d=${F};if(d.body.classList.contains('hire')){const s=d.getElementById('modeSw');if(s)s.click()}
+    if('${k}'==='dash'){d.getElementById('nb-dash').click();const c=d.querySelector('#pane-track [data-filt=${v}]');if(c)c.click();return !!c}   /* card 182: Job Tracker opens its Overview; v is a chip */
     const w=d.querySelector('.nwrap[data-k=${k}]');if(w.querySelector('.nmenu').hidden)d.getElementById('nb-${k}').click();const i=w.querySelector('.nitem[data-v=${v}]');if(i){i.click();return true}return false})()`);
   const closeAll = async () => {
     await ev(`(()=>{const d=${F};if(!d)return;const c=d.getElementById('uaChat');if(c&&!c.hidden){const x=c.querySelector('[data-x],.x,#uaChatClose,[aria-label=Close]');if(x)x.click()}
@@ -157,7 +158,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
   const svc = [["job", "Full-time"], ["parttime", "Part-time"], ["internship", "Internships"], ["coop", "Coop"]];
   for (const [v, l] of svc) add("Services › " + l, "#pane-swipe", async () => { await menu("svc", v); }, { reset: () => ev("(()=>{const A=" + FW + ".__uaply;if(A.getFilter()!=='all')A.setFilter('all')})()") });
   add("Message after a swipe", "#toastHost,#kitToast", async () => { await menu("svc", "job"); await sleep(300); await ev("(" + F + ").getElementById('btnNo').click()"); await sleep(700); }, { fresh: true });
-  for (const [v, l] of [["overview", "Overview"], ["applied", "Applied"], ["interview", "Interviews"], ["accepted", "Accepted"], ["rejected", "Rejected"]])
+  for (const [v, l] of [["all", "All"], ["needs", "Needs you"], ["sent", "Sent"], ["heard", "Heard back"], ["passed", "Jobs you passed on"]])
     add("Job Tracker › " + l, "#pane-track", async () => { await seed(); await menu("dash", v); });
   for (let i = 0; i < 5; i++) add("Profile setup › step " + (i + 1), "#pane-profile", async () => { await menu("prof", "settings"); await sleep(300); await ev("(()=>{const b=" + F + ".querySelector('.wzDots button[data-step=\"" + i + "\"]');if(b)b.click()})()"); });
   add("Profile › Filters", "main > section:not([hidden])", async () => { await menu("prof", "filters"); }, { details: true });
@@ -278,7 +279,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
   // ---- the bottom menus: each button opens its menu, each item opens its screen
   if (!ONLY || ONLY.test("Bottom menus")) {
     for (const how of HOW) {
-      for (const [k, items] of [["svc", ["job", "parttime", "internship", "coop"]], ["dash", ["overview", "applied", "accepted", "rejected", "interview"]], ["prof", ["settings", "filters", "account", "plan", "data"]]]) {
+      for (const [k, items] of [["svc", ["job", "parttime", "internship", "coop"]], ["prof", ["settings", "filters", "account", "plan", "data"]]]) {
         for (const v of items) {
           await closeAll();
           const b = JSON.parse(await ev("JSON.stringify((()=>{const d=" + F + ",f=document.querySelector('iframe').getBoundingClientRect(),r=d.getElementById('nb-" + k + "').getBoundingClientRect();return {x:f.left+r.left+r.width/2,y:f.top+r.top+r.height/2}})())"));
@@ -299,7 +300,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
 
   // ---- header, footer, help button (the same on every screen)
   // (opened from Job Tracker, so the UAply logo, which goes home to the job cards, has somewhere to go)
-  await walk({ name: "Header and footer", root: ".bar,#legalbar,#uaChatBtn,#bnav", open: async () => { await menu("dash", "overview"); }, fresh: true, noShot: true,
+  await walk({ name: "Header and footer", root: ".bar,#legalbar,#uaChatBtn,#bnav", open: async () => { await menu("dash", "all"); }, fresh: true, noShot: true,
     skip: /^Services|^Job Tracker|^Profile/, skipWhy: "the bottom menu buttons are pressed above with each of their items" });
   // keyboard in Hiring mode must never swipe the job deck hidden under it
   if (sandbox) {

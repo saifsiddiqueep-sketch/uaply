@@ -268,7 +268,7 @@ module.exports = async ({ ev, sleep, nav, send, on, shot, logs }) => {
     "A.S.decisions[1200002]={s:'applied',at:now,pct:80,as:'You',title:'',st:'applied',sent:{at:now,to:'',status:'handoff'}};" +
     "A.S.decisions[1200006]={s:'applied',at:now-1000,pct:70,as:'You',title:'',st:'applied',sent:{at:now,to:'Harbor Health',status:'sent'}};A.save();A.renderAll();return true})()");
   await ev(F + ".getElementById('nb-dash').click()"); await sleep(500);
-  await ev("(()=>{const e=[...(" + F + ").querySelectorAll('.nitem')].find(b=>b.innerText.trim().startsWith('Applied'));if(e)e.click()})()"); await sleep(900);
+  await ev("(()=>{const e=[...(" + F + ").querySelectorAll('#pane-track [data-filt=all]')][0];if(e)e.click()})()"); await sleep(900);
   const ri = await J("(()=>{const d=" + F + ",b=d.querySelector('#pane-track .ushr-rowic');if(!b)return null;const r=b.closest('.row'),k=b.getBoundingClientRect();" +
     "return {label:b.getAttribute('aria-label'),id:b.getAttribute('data-id'),row:r.innerText.replace(/\\s+/g,' ').slice(0,160),w:Math.round(k.width),glyph:b.querySelector('svg').innerHTML===d.querySelector('.ushr-ic svg')?.innerHTML||b.querySelector('svg path').getAttribute('d')==='M12 3v12'," +
     "n:d.querySelectorAll('#pane-track .ushr-rowic').length}})()");
