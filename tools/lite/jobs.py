@@ -16,7 +16,9 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(__file__))
-from _common import LITE_DIR, _Lock  # noqa: E402
+from _common import LITE_DIR, _Lock, log_event  # noqa: E402
+
+STALE_MIN = 120          # a bot RUNNING this long is logged once as stale
 
 LEDGER = LITE_DIR / "jobs.json"
 
@@ -50,13 +52,27 @@ def running(exclude_session=None):
             if v.get("status") == "RUNNING" and v.get("session") != exclude_session]
 
 
+def mark_stale(d):
+    """Log (once) every bot still RUNNING after STALE_MIN minutes — the handoff/doctor stale-bot count."""
+    hit = False
+    for v in d.values():
+        if v.get("status") == "RUNNING" and not v.get("stale_logged") and time.time() - v.get("started", 0) > STALE_MIN * 60:
+            v["stale_logged"] = True
+            hit = True
+            log_event("bot", action="stale", bot_type=v.get("type"), model=v.get("model"),
+                      minutes=round((time.time() - v.get("started", 0)) / 60))
+    if hit:
+        save(d)
+
+
 def main(a):
     cmd = a[0] if a else "list"
     if cmd in ("start", "stop", "clear", "clear-mine"):
         with _Lock(LEDGER):
             return _locked(cmd, a)
     if cmd == "list":
-        return _locked(cmd, a)
+        with _Lock(LEDGER):          # list may save (mark_stale), so it takes the lock too
+            return _locked(cmd, a)
     print(__doc__)
 
 
@@ -66,8 +82,9 @@ def _locked(cmd, a):
         jid = p.get("agent_id") or f"job-{int(time.time())}"
         d = load()
         d[jid] = {"type": p.get("agent_type", "?"), "session": p.get("session_id"), "cwd": p.get("cwd"),
-                  "started": time.time(), "status": "RUNNING"}
+                  "started": time.time(), "status": "RUNNING", "model": p.get("model")}
         save(d)
+        log_event("bot", action="start", bot_type=d[jid]["type"], model=p.get("model"))
     elif cmd == "stop":
         p = payload()
         jid = p.get("agent_id")
@@ -76,8 +93,11 @@ def _locked(cmd, a):
             msg = (p.get("last_assistant_message") or "").strip().splitlines()
             d[jid].update(status="DONE", ended=time.time(), result=(msg[0][:120] if msg else ""))
             save(d)
+            log_event("bot", action="finish", bot_type=d[jid].get("type"), model=d[jid].get("model"),
+                      minutes=round((d[jid]["ended"] - d[jid].get("started", d[jid]["ended"])) / 60, 1))
     elif cmd == "list":
         d = load()
+        mark_stale(d)
         if not d:
             print("No bots recorded.")
         for k, v in sorted(d.items(), key=lambda kv: -kv[1].get("started", 0))[:15]:

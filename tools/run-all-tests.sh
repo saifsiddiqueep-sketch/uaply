@@ -7,8 +7,20 @@ cd "$(dirname "$0")/.." || exit 1
 TMP="${TMPDIR:-/tmp}/uaply-tests-$$"
 mkdir -p "$TMP"
 FAILS=0
+FAILED=""
 PIDS=""
-trap 'for p in $PIDS; do kill "$p" 2>/dev/null; done; rm -rf "$TMP"' EXIT
+# self-measurement (tools/lite/_common.py log_event → ~/.uaply/state/events.jsonl): start, end, duration, failing groups.
+# A marker file notices a second full suite running at the same time on this computer (CLAUDE.md: one at a time).
+SUITE_MARK="$HOME/.uaply/state/suite.running"
+SUITE_T0=$(date +%s)
+ev() { python -c 'import sys; sys.path.insert(0, "tools/lite"); from _common import log_event; a = sys.argv[1:]; log_event("suite", **dict(zip(a[::2], [int(v) if v.lstrip("-").isdigit() else v for v in a[1::2]])))' "$@" >/dev/null 2>&1 || true; }
+CONCURRENT=0
+if [ -f "$SUITE_MARK" ] && kill -0 "$(cat "$SUITE_MARK" 2>/dev/null)" 2>/dev/null; then
+  CONCURRENT=1; echo "  ⚠ another full test run is already going on this computer (pid $(cat "$SUITE_MARK")) — results may clash"
+fi
+mkdir -p "$(dirname "$SUITE_MARK")" && echo $$ > "$SUITE_MARK"
+ev action start concurrent "$CONCURRENT"
+trap 'for p in $PIDS; do kill "$p" 2>/dev/null; done; rm -rf "$TMP"; [ "$(cat "$SUITE_MARK" 2>/dev/null)" = "$$" ] && rm -f "$SUITE_MARK"' EXIT
 
 step() { printf "\n== %s\n" "$1"; }
 run() {   # run <label> <command...>: pass if exit 0
@@ -16,7 +28,7 @@ run() {   # run <label> <command...>: pass if exit 0
   if out=$(timeout 600 "$@" 2>&1); then          # no single check may hang the run (a sleeping computer once froze one for hours)
     n=$(echo "$out" | grep -Eo '^[0-9]+ / [0-9]+$' | tail -1)          # the test's own "passed / total" line, so the count here is never stale
     printf "  PASS  %s%s\n" "$label" "${n:+ ($n)}"
-  else printf "  FAIL  %s\n" "$label"; echo "$out" | tail -15 | sed 's/^/        /'; FAILS=$((FAILS+1)); fi
+  else printf "  FAIL  %s\n" "$label"; echo "$out" | tail -15 | sed 's/^/        /'; FAILS=$((FAILS+1)); FAILED="$FAILED${FAILED:+|}${label:0:30}"; fi
 }
 start() { ( "$@" >/dev/null 2>&1 & echo $! ) ; }
 wait_port() { for _ in $(seq 1 60); do curl -s -o /dev/null "http://127.0.0.1:$1/healthz" 2>/dev/null && return 0; curl -s -o /dev/null "http://127.0.0.1:$1/" 2>/dev/null && return 0; sleep 0.5; done; return 1; }
@@ -39,6 +51,7 @@ run "assisted apply against hostile pages: a page's own UAplyAssist, a redirect 
 run "handoff: WIP commits/pushes only on its own branch, blocks keys/.env/user data, carries open decisions" python tools/test-lite-handoff.py
 run "areas: area cards never move between columns; /handoff clears this chat's finished bots" python tools/test-lite-areas.py
 run "prompt hook: long or 3+-ask prompts get the /brief line; short, / and go! don't; big-chat blocker unchanged" python tools/test-lite-prompt-hook.py
+run "lite scorecard: idle/100k/Opus/late guards, event log has no prompt text, doctor --weekly, protected rules only get stricter" python tools/test-lite-scorecard.py
 run "Google Play listing pack: picture sizes and formats, text lengths, the Data safety and App content answers" python tools/test-play-listing.py
 run "phone app permissions: iPhone location text, Android location and notifications, every plugin the web code calls" python tools/test-mobile-perms.py
 if python -m ruff --version >/dev/null 2>&1; then run "Python syntax errors and undefined names (Ruff)" python -m ruff check --select E9,F63,F7,F82 .; fi
@@ -258,5 +271,6 @@ run "ui-live.js, all on: Google button and redirect, buy buttons, sign-up by ema
 run "Plan & billing, yearly (390x844): the Monthly / Yearly toggle, 2 months free, the 7-day refund line, Choose on Yearly opens Checkout with the yearly price" env W=390 H=844 PORT=$((LP+1)) MOCK_STRIPE=$((LP+4)) node tools/cdp.js tools/ui-billing-plans.js
 
 printf "\n"
+ev action end fails "$FAILS" duration_s $(( $(date +%s) - SUITE_T0 )) failing "${FAILED:-none}" concurrent "$CONCURRENT"
 if [ "$FAILS" -eq 0 ]; then echo "ALL TESTS PASSED"; else echo "$FAILS test group(s) FAILED"; fi
 exit "$FAILS"

@@ -204,5 +204,10 @@ def wip(area, paths):
         if u:
             local.append(u)
     print("WIP BRANCHES: " + ("; ".join(wips) if wips else "none"))
+    try:
+        from _common import log_event
+        log_event("handoff", action="wip_pushed", branches=len(wips), unpushed=len(local))
+    except Exception:
+        pass
     print("UNPUSHED WORK: " + ("; ".join(local) if local else "none (checked)"))
     return 1 if local else 0

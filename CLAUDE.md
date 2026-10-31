@@ -42,7 +42,7 @@ checkable done-when. If briefing the bot would take longer than doing it, or the
 ## Token discipline
 - Workflows/ultracode were 59% of our spend: never start one unless the user typed `ultracode`; keep it <5 agents.
 - The main chat stays small: delegate reading/writing, keep only bot summaries here.
-- Big/idle chats are blocked by the hook before they re-read (≥150k, or idle ≥60 min and ≥30k): the user picks /clear,
+- Big/idle chats are blocked by the hook before they re-read (≥150k, or idle >60 min at any size; a warning at ≥100k): the user picks /clear,
   /handoff or `go!`. Auto-compact at 150k is the backstop. Before a /clear, make sure state is in git/Trello/HANDOFF.
 - Never re-read a file already read unless it changed; grep and line ranges, not whole files. No pasted logs.
 - Text checks over screenshots; one screenshot per decision. Answers ≤150 words unless the deliverable is longer.

@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import uuid
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -25,7 +26,8 @@ def check(cond, what):
 def hook(prompt, sid):
     r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "lite", "hook_prompt.py")],
                        input=json.dumps({"session_id": sid, "prompt": prompt}), capture_output=True,
-                       text=True, encoding="utf-8", errors="replace", timeout=30)
+                       text=True, encoding="utf-8", errors="replace", timeout=30,
+                       env=dict(os.environ, UAPLY_EVENTS_FILE=os.path.join(tempfile.gettempdir(), "uaply-test-events.jsonl")))
     return r.returncode, r.stdout, r.stderr
 
 

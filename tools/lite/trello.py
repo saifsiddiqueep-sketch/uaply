@@ -25,7 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(__file__))
 import _common  # noqa: E402
-from _common import DEFAULT_BOARD, ENV_FILE, die, load_env, trello  # noqa: E402
+from _common import DEFAULT_BOARD, ENV_FILE, die, load_env, log_event, trello  # noqa: E402
 
 AREAS_LIST = "📍 Areas"
 MAX_COMMENT = 16000
@@ -77,6 +77,7 @@ def update(num, to_list=None, comment=None, check=None):
         else:
             trello("PUT", f"/cards/{c['id']}", {"idList": list_id(to_list)})
             done.append(f"→ {to_list}")
+            log_event("card", action="move", card=str(num), to=to_list)
     if comment:
         trello("POST", f"/cards/{c['id']}/actions/comments", {"text": sign(comment)})
         done.append("+comment")
@@ -322,19 +323,26 @@ def main():
     if a.cmd == "wip":
         import handoff_wip  # noqa: E402 — git only, no Trello keys needed
         area = re.split(r"\s+[—–]\s+", a.area.strip(), maxsplit=1)[0]     # drop the " — Rumman" chat suffix
-        sys.exit(handoff_wip.wip(area, a.worktrees))
+        rc = handoff_wip.wip(area, a.worktrees)
+        log_event("handoff", action="wip", area=area, ok=rc == 0)
+        sys.exit(rc)
     if a.cmd in ("handoff", "areas", "decisions"):
         try:
             if a.cmd == "handoff":
                 print(handoff(a.area, a.file))
+                log_event("handoff", action="post", area=a.area.split(" ")[0], ok=True)
             elif a.cmd == "decisions":
                 decisions_cmd(a.area)
             else:
                 areas_cmd()
         except HandoffError as e:
+            if a.cmd == "handoff":
+                log_event("handoff", action="post", area=a.area.split(" ")[0], ok=False)
             print(f"NOT POSTED ✗ {e}" if a.cmd == "handoff" else f"FAILED ✗ {e}", file=sys.stderr)
             sys.exit(e.code)
         except Exception as e:  # noqa: BLE001
+            if a.cmd == "handoff":
+                log_event("handoff", action="post", area=a.area.split(" ")[0], ok=False)
             print(f"NOT POSTED ✗ {_explain(e)}", file=sys.stderr)
             sys.exit(1)
         return

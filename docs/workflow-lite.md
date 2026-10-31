@@ -32,7 +32,7 @@ Full layer (area tabs, memory, backups) after launch. Expected: ~55–60% fewer 
 | `tools/lite/jobs.py` | Bot ledger (no forgotten bots) |
 | `tools/lite/hook_check.py` | Runs `node check.js` after edits; silent when it passes |
 | `tools/lite/trello.py` | Optional Trello updates (needs your own key/token) |
-| `tools/lite/doctor.py` | Self-test — runs the real hooks the way Claude Code does |
+| `tools/lite/doctor.py` | Self-test — runs the real hooks the way Claude Code does; `--weekly` scorecard; `--protected` rule guard; `--log` (used by /ship) |
 
 ## Install (≈20 min, Mohammed alone)
 Git Bash (Windows), inside the uaply repo:
@@ -59,6 +59,31 @@ Git Bash (Windows), inside the uaply repo:
 - Before merging: Claude takes the lock (`queue.py take sandbox`) and releases it after.
 - Status bar shows ⚠ or something looks off → `python tools/lite/doctor.py`.
 - Nov 4: `npx ccusage@latest weekly` and compare with the Oct 19 week ($1,687).
+
+## Self-measurement (zero tokens)
+Every tool appends short events (numbers and names only — never prompt text or secrets) to
+`~/.uaply/state/events.jsonl` (rotates at 5 MB to `events.jsonl.1`): prompts (area, model, context, idle, blocked,
+`go!` override, nudges), chat starts/resumes/compactions, merge lock take/release/wait/timeout, handoff WIP + post
+result, card moves, bots start/finish/stale, full test runs (duration, failing groups, a second run at the same time),
+and /ship stages (card start, merged to sandbox/dev, UI-gate result, review findings, fix rounds, reverts).
+
+Guards in `hook_prompt.py`: block at ≥150k or idle >60 min (choose /handoff, /clear, /pickup <area> or `go!`) ·
+warn at ≥100k · "/model sonnet" once per chat for a routine prompt on Opus (never for consent, security, auth,
+payment, legal or bug work) · "late session" once per chat between 1 and 5 AM.
+
+- `python tools/lite/doctor.py --weekly` — EFFICIENCY · PRODUCTIVITY · EFFECTIVENESS · RELIABILITY, this week vs last.
+- `python tools/lite/doctor.py --protected` — the protected rules (consent/auto-submit, UI gate, live = Saif only,
+  secrets guard, merge lock, no CAPTCHA/login bypass, never invent facts, the 150k/100k/60-min thresholds). A proposal
+  may only make them stricter; loosening one fails this check and `tools/test-lite-scorecard.py`.
+- Monday review: `/pickup release` on a Monday (see the pickup skill). Proposals go in one PR Mohammed approves.
+
+## Experiments
+One line per tweak from a Monday review: `<date> · tweak · metric · predicted effect · undo · result: keep|revert|extend`.
+- (none yet)
+
+## Incidents
+One line per workflow failure from /handoff: `<date> · what happened · proposed rule · test · open|done`.
+- (none yet)
 
 ## Not in Core (comes in v1.6 Full, after launch + Saif's card #38)
 Area tabs + "continue" memory · autosave/backups to the private uaply-brain · Trello auto-sync Action · daily status post.
