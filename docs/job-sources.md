@@ -18,7 +18,7 @@ CareerOneStop 100 per search. USAJOBS keeps every job each search lists (every p
 
 ## Coverage
 
-* **Anywhere in the US:** 2,558 employer sources: 1,171 Greenhouse, 565 Ashby, 230 Lever, 184 SmartRecruiters and 98 Workable boards
+* **Anywhere in the US:** 4,485 employer sources: 2,254 Greenhouse, 1,409 Ashby, 230 Lever, 184 SmartRecruiters and 98 Workable boards
   (80 of them hand-picked in `SOURCES`, the rest from `job-boards.json`) and 310 employers' own careers sites (298 on Workday, 12 on
   iCIMS); remote jobs from Jobicy (15 industries), Himalayas (all, internships, part-time) and Remote OK; internships and co-ops from
   the Simplify / Pitt CSC lists. A remote job open to the US is shown to everyone; the distance filter never hides it (except "remote
@@ -76,6 +76,15 @@ Training), 10 staffing or recruiting firms and talent pools, 4 internal or refer
 38 names already listed or too generic to tell apart, 38 Ashby tokens with spaces, and Bjak (a global remote board).
 2,015 further qualifying boards wait for stage 2.
 
+Round 2, stage 2 (October 30, 2026): the 2,015 qualifying boards left after stage 1 were checked against the live titles of every
+listed board. Stage 2 adds 1,927 of them: 1,083 Greenhouse and 844 Ashby boards (20,150 US jobs, 453 in PA, NJ or DE), so the
+employer sources went from 2,558 to 4,485. Left out: 39 boards that share more than a quarter of their titles with a board already
+listed (Harry's brands such as Lume Deodorant and Flamingo, Artefact, The Orchard, Cleo's India board), 17 employers that post one role at many sites
+(A Place for Mom, Interview Engineering, Brooklyn Health), 12 venture fund or accelerator boards (Broadway Ventures, Forum
+Ventures, Montauk Capital), 5 internal or referral-only boards (Misfits Market, Sprout, Thoughtworks), 3 recruiting boards and
+talent pools (Birgo, a dev talent network, an internship pool), 11 names already listed (SingleStore, Coursera, Charlie Health)
+and Ashby's demo board.
+
 ## Where a job is
 
 Each job carries `geo` ([lat, lng], two decimals) when its place names a US city, town, borough, CDP or township with its state
@@ -116,7 +125,7 @@ clearly cover a third party showing it; **High** = terms that forbid our use (no
 | Workable (`workable`) | Employers' own public jobs feed | https://help.workable.com/hc/en-us/articles/115012771647 | Documented for custom careers pages | "via Acme on Workable" | 30 min | Employer's posting | `employment_type` | **Medium**: same reason |
 | SmartRecruiters (`smartrecruiters`) | City of Philadelphia (whole list) and employer boards (Equinox, Red Bull) | https://developers.smartrecruiters.com/docs/posting-api | Public Posting API, no key | "via City of Philadelphia on SmartRecruiters" | 1 h (an employer board: at most 24 descriptions, each read again after a day or when re-released) | Employer's posting | `typeOfEmployment` | **Low** for the City (public body's own postings); **Medium** for employers |
 | USAJOBS (`usajobs`) | Federal jobs around 5 tri-state cities, plus Pathways and part-time searches: 15 searches every 3 h = 120 requests a day | https://developer.usajobs.gov/general/terms-of-service | Public data, may be copied and republished, commercial use included | "via USAJOBS; apply on the official announcement" | 3 h | The announcement on usajobs.gov | Schedule (part-time), Pathways = internship, Temporary offering | **Low**: the government's own API; we credit it and link to the announcement |
-| CareerOneStop (`careeronestop`) | The National Labor Exchange (the PA, NJ and DE state job banks' jobs) around 5 tri-state cities (all, internship, part-time) plus remote: 16 searches every 3 h = 128 requests a day, the last 7 days | License shown on https://www.careeronestop.org/Developers/WebAPI/registration.aspx ; API https://www.careeronestop.org/Developers/WebAPI/Jobs/list-jobs.aspx | Royalty-free for the purpose stated at registration; no altering the data; credit both the U.S. Department of Labor ETA and Minnesota DEED on every page that shows it; key kept secret; license lasts 36 months | "via CareerOneStop (U.S. Department of Labor ETA and Minnesota DEED)" | 3 h | The posting on the NLx (jobsyn.org) | Title words, "part-time" in the summary | **Low**: public, free, attribution only. Note: new Jobs API access now goes through the NLx Research Hub (see the key list) |
+| CareerOneStop (`careeronestop`) | The National Labor Exchange (the PA, NJ and DE state job banks' jobs) around 5 tri-state cities (all, internship, part-time) plus remote: 16 searches every 3 h = 128 requests a day, the last 7 days | License shown on https://www.careeronestop.org/Developers/WebAPI/registration.aspx ; API https://www.careeronestop.org/Developers/WebAPI/Jobs/list-jobs.aspx | Royalty-free for the purpose stated at registration; no altering the data; credit both the U.S. Department of Labor ETA and Minnesota DEED on every page that shows it; key kept secret; license lasts 36 months | "via CareerOneStop (U.S. Department of Labor ETA and Minnesota DEED)" | 3 h | The posting on the NLx (jobsyn.org) | Title words, "part-time" in the summary | **Low**: public, free, attribution only. Note: new Jobs API access now goes through the NLx Research Hub; requested Oct 27, 2026 (ticket NLX-87), on hold while the NLx changes systems (see the key list) |
 | Jobicy (`jobicy`) | Remote jobs open to the US, 15 industries | https://jobicy.com/jobs-rss-feed | Free; credit Jobicy, link to the job on Jobicy, at most one sync pass an hour | "via Jobicy" | 1 h | The job on Jobicy | `jobType` | **Low**: the source's own published conditions, followed |
 | The Muse (`muse`) | Internship and entry-level jobs | https://www.themuse.com/developers/api/v2 | Public API; register an app (key) for production use | "via The Muse" | 30 min | The job on The Muse | The Internship level | **Medium** until the app is registered (key), then **Low** |
 | Simplify and Pitt CSC lists (`simplify`) | GitHub lists of internships and co-ops, https://github.com/SimplifyJobs/Summer2027-Internships (README.md, README-Off-Season.md) | No license file, no reuse terms | Rows are facts (company, title, place, link); only rows linking to a Greenhouse, Lever or SmartRecruiters posting are used, each read from the employer's own board | "via Acme on Greenhouse, listed by Simplify and Pitt CSC" | 6 h (each posting checked daily) | Employer's own posting | Internship or co-op | **Medium**: no license; we credit the list and show only the employer's own data |
@@ -167,7 +176,10 @@ unknown user id, a rate limit) and `tools/check-careeronestop.py` to check the k
    Development" on every screen that shows them. We do not resell the data or pass it to other sites.* **Important:** CareerOneStop's
    page says new Jobs API access is now approved by the NLx Research Hub (National Association of State Workforce Agencies): if the
    registration does not include the Jobs API, send the same text as a data request at https://nlxresearchhub.org or to
-   nlxresearchhub@naswa.org . When the user ID and token arrive: Render, Environment, `UAPLY_COS_USER_ID` and `UAPLY_COS_TOKEN`, and add
+   nlxresearchhub@naswa.org . **Status (Oct 30, 2026):** requested on Oct 27, 2026 from uaplytechnologies@gmail.com (NLx ticket
+   NLX-87, "Job Feed syndicated partner request"); the NLx replied that it has paused Job Feed requests while it moves to a new
+   access system, so the request is on hold on their side. The CareerOneStop key email was drafted but never sent; there is no need
+   to send it, since Jobs API access goes through the NLx. When the user ID and token arrive: Render, Environment, `UAPLY_COS_USER_ID` and `UAPLY_COS_TOKEN`, and add
    `careeronestop` to `UAPLY_FEEDS`. Until then the 16 searches show "no key". If the NLx issues a different API shape, the client
    (`_careeronestop` in `jobs_api.py`) needs a small change. Expected volume once on (an estimate, not measured: there is no key yet): 16
    searches x up to 100 postings from the last 7 days = at most 1,600; the five areas overlap (Camden lies inside Philadelphia's 50 miles),
