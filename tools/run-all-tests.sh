@@ -92,6 +92,7 @@ run "email as the mail service sees it: headers, daily quota (250/300), refusals
 run "help requests from the assistant reach the support inbox" python tools/test-support.py
 run "the sign-in contract: password sign-up with names, the code to verify and to sign in, the gate, the test mode, items 12 to 23" python tools/test-signin-contract.py 18964
 run "the consent record: the box's words are the server's, kept on the account with the time, the address and their SHA-256; nothing is sent without it" python tools/test-consent.py 18970
+run "Canada, switched off by default: the three /api/legal routes 404, the US agreement byte for byte the same; switched on: the ledger, Quebec, the waitlist" python tools/test-canada-legal.py 18990
 run "apply by email: only a posting's own \"send your resume to\" address at the employer's domain; reply-to, receipt, limits, the stop link, bounces, test mode" python tools/test-email-route.py 18973
 run "the outreach queue: who to invite each week, and it can never send" python tools/test-outreach-queue.py
 run "Recruitee: a swipe right through the careers site's own apply endpoint, the switch, the consent record, Send applications for me" python tools/test-recruitee.py
