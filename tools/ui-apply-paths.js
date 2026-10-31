@@ -52,7 +52,7 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
   const undoBtn = () => ev("(()=>{const b=" + F + ".getElementById('btnUndo');if(!b)return false;b.click();return true})()");
   const openApplied = async () => {
     await ev("(()=>{const b=" + F + ".getElementById('nb-dash');b.click()})()"); await sleep(400);
-    await ev("(()=>{const e=[...(" + F + ").querySelectorAll('.nitem')].find(b=>b.innerText.trim().startsWith('Applied'));if(e)e.click()})()"); await sleep(700);
+    await ev("(()=>{const e=" + F + ".querySelector('#pane-track [data-filt=all]');if(e)e.click()})()"); await sleep(700);   // card 182: the Overview's All chip
   };
   async function row(id) {
     await openApplied();

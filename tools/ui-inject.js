@@ -16,6 +16,7 @@ module.exports = async ({ ev, sleep, nav }) => {
   const P4 = "'><svg onload=" + XSS + ">";
   const goto = async (nb, label) => {
     await ev(F + ".getElementById('" + nb + "').click()"); await sleep(350);
+    if (nb === "nb-dash" && label === "Overview") { await sleep(600); return true; }   // card 182: the button opens the Overview, no menu
     let ok = await click(label);
     if (!ok) { await ev(F + ".getElementById('" + nb + "').click()"); await sleep(350); ok = await click(label); }
     await sleep(600);
@@ -48,7 +49,7 @@ module.exports = async ({ ev, sleep, nav }) => {
   await nav("http://127.0.0.1:" + PORT + "/");
   await sleep(3500);
   for (const [nb, label] of [["nb-prof", "Account"], ["nb-prof", "Profile setup"], ["nb-prof", "Filters"], ["nb-prof", "Data"],
-                             ["nb-dash", "Overview"], ["nb-dash", "Applied"], ["nb-dash", "Interviews"], ["nb-svc", "Internships"], ["nb-svc", "Coop"], ["nb-svc", "Full-time"]]) {
+                             ["nb-dash", "Overview"], ["nb-dash", "Sent"], ["nb-dash", "Heard back"], ["nb-svc", "Internships"], ["nb-svc", "Coop"], ["nb-svc", "Full-time"]]) {
     await goto(nb, label);
     r = JSON.parse(await injected());
     check("after reload, " + label + " runs and shows nothing injected", r.xss === 0 && r.imgs === 0 && r.svgs === 0 && r.scripts === 0 && r.handlers === 0, r.xss || r.imgs || r.handlers ? JSON.stringify(r) : "");
@@ -87,7 +88,7 @@ module.exports = async ({ ev, sleep, nav }) => {
   await ev(F + ".getElementById('saveBtn').click()"); await sleep(800);
   r = JSON.parse(await injected());
   check("a hostile job title typed and saved runs nothing", r.xss === 0 && r.imgs === 0 && r.scripts === 0 && r.handlers === 0, JSON.stringify(r));
-  await goto("nb-dash", "Applied");
+  await goto("nb-dash", "Overview");
   r = JSON.parse(await injected());
   check("the Applied list shows nothing injected", r.xss === 0 && r.imgs === 0 && r.handlers === 0, JSON.stringify(r));
   await nav("http://127.0.0.1:" + PORT + "/outbox");

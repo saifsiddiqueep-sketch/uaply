@@ -145,7 +145,7 @@ module.exports = async ({ ev, sleep, nav, send, on, logs }) => {
 
   // ---- 4. Job Tracker lists the passed jobs ----
   await ev("(()=>{const b=" + F + ".getElementById('nb-dash');if(b)b.click()})()"); await sleep(400);
-  await ev("(()=>{const e=[...(" + F + ").querySelectorAll('.nitem')].find(b=>b.innerText.trim().startsWith('Applied'));if(e)e.click()})()"); await sleep(900);
+  await ev("(()=>{const e=[...(" + F + ").querySelectorAll('#pane-track [data-filt=passed]')][0];if(e)e.click()})()"); await sleep(900);   // card 182: passed jobs sit behind the Overview's link
   const rows = await ev("(" + F + ").querySelectorAll('#pane-track .row').length");
   check("Job Tracker lists the passed jobs (" + rows + " rows)", rows >= 10, rows);
 

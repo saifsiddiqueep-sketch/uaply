@@ -40,7 +40,7 @@ module.exports = async ({ ev, sleep, nav, logs, send, on, shot }) => {
     check("[" + m + "] no 'undefined', 'NaN' or raw error text on the first screen", !BADTOK.test(t1), BADTOK.test(t1) ? t1.match(BADTOK)[0] : "");
     console.log("   first screen says:", t1.slice(0, 170));
     // every menu screen must still render something sensible
-    for (const [nb, label] of [["nb-svc", "Coop"], ["nb-dash", "Applied"], ["nb-prof", "Account"], ["nb-prof", "Profile setup"], ["nb-prof", "Data"]]) {
+    for (const [nb, label] of [["nb-svc", "Coop"], ["nb-dash", "Heard back"], ["nb-prof", "Account"], ["nb-prof", "Profile setup"], ["nb-prof", "Data"]]) {
       await ev(F + ".getElementById('" + nb + "').click()"); await sleep(350);
       let ok = await click(label);
       if (!ok) { await ev(F + ".getElementById('" + nb + "').click()"); await sleep(350); ok = await click(label); }

@@ -187,6 +187,7 @@ module.exports = async ({ ev, sleep, nav, send }) => {
   // a tab opens its menu, and a second tap closes it: the tab is tapped only while its menu is shut, and again if the item is not on show
   // (a walk that tapped Profile with its menu already open closed it, so Account never opened, October 23)
   const menu = async (tab, item) => {
+    if (tab === "nb-dash") { await tap("d.getElementById('nb-dash')"); await sleep(600); return true; }   // card 182: Job Tracker opens its Overview, no menu
     const shown = "[...d.querySelectorAll('.nitem')].find(b=>b.offsetParent&&b.getAttribute('data-v')==='" + item + "')";
     for (let k = 0; k < 2; k++) {
       if (!(await q("return " + shown + "?'yes':''"))) { await tap("d.getElementById('" + tab + "')"); await sleep(500); }

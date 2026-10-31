@@ -76,6 +76,8 @@ module.exports = async ({ ev, sleep, nav, shot, logs, send }) => {
   const clearToasts = () => ev("[...(" + F + ").querySelectorAll('.toast')].forEach(t=>t.remove())");
   const menuItem = async (k, v) => {
     await ev(F + ".getElementById('nb-" + k + "').click()"); await sleep(350);
+    // card 182: Job Tracker has no menu; its button opens the Overview, whose chips filter the one list
+    if (k === "dash") { await ev("(()=>{const c=" + F + ".querySelector('#pane-track [data-filt=" + ({overview:'all',applied:'all',interview:'heard',accepted:'heard',rejected:'heard',passed:'passed'}[v] || "all") + "]');if(c)c.click()})()"); await sleep(700); return; }
     await ev("(()=>{const b=" + F + ".querySelector('#bnav .nwrap[data-k=" + k + "] .nitem[data-v=" + v + "]');if(b)b.click()})()"); await sleep(700);
   };
   const click = (txt) => ev("(()=>{const e=[...(" + F + ").querySelectorAll('button')].find(b=>b.offsetParent&&b.innerText.replace(/\\s+/g,' ').trim().startsWith(" + JSON.stringify(txt) + "));if(!e)return false;e.click();return true})()");
@@ -113,7 +115,7 @@ module.exports = async ({ ev, sleep, nav, shot, logs, send }) => {
   await back();
   check("a second press within 2 seconds leaves the app (App.exitApp)", (await log("exit")).length === 1);
 
-  await ev(F + ".getElementById('nb-dash').click()"); await sleep(350);
+  await ev(F + ".getElementById('nb-prof').click()"); await sleep(350);
   check("(a bottom-bar menu is open)", await ev("[...(" + F + ").querySelectorAll('#bnav .nmenu')].some(m=>!m.hidden)"));
   await back();
   check("Back with a bottom-bar menu open closes the menu", await ev("[...(" + F + ").querySelectorAll('#bnav .nmenu')].every(m=>m.hidden)"));
@@ -249,7 +251,7 @@ module.exports = async ({ ev, sleep, nav, shot, logs, send }) => {
   await back();
   check("...and ONE press on the job cards only asks, it does not leave", (await log("exit")).length === exitsWipe && /Press Back again/.test(await toast()), await toast());
 
-  // the calendar file: an interview with a time on job 1 (a sample job), then Job Tracker > Interviews > Add to calendar
+  // the calendar file: an interview with a time on job 1 (a sample job), then Job Tracker > Heard back > Add to calendar
   await ev("(()=>{const w=" + W + ",K=w.__uaplyKey,a=JSON.parse(w.localStorage.getItem(K+'.acct')||'{}');a.apps=a.apps||{};a.apps['1']={when:'2030-03-04T10:30'};w.localStorage.setItem(K+'.acct',JSON.stringify(a));" +
     "w.localStorage.setItem(K,JSON.stringify({profile:{name:'Test Person'},decisions:{'1':{s:'applied',at:Date.now(),pct:80,st:'interview'}}}))})()");
   await nav(BASE + "/"); await ready();
