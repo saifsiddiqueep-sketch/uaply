@@ -11,7 +11,10 @@ secrets, or >5 files. Everything else is **Fast**. Unsure → Risky.
 ## Fast lane (most cards)
 1. `python tools/lite/trello.py show <#>` — read the card (only this card). Its first line `AREA: …` says which part of the app this is.
    Before the first edit print: `AREA x · ENV sandbox · BRANCH c<#>-… · TOUCHING <files>`.
-2. `git fetch -q origin && git switch -c c<#>-<slug> origin/sandbox` (works inside an area tab folder)
+2. `git fetch -q origin && git switch -c c<#>-<slug> origin/sandbox` (works inside an area tab folder), then
+   `python tools/lite/doctor.py --log ship card=<#> stage=start` (0 tokens; feeds the Monday scorecard).
+   Later log lines, same command with: `ui_gate=approve|reject card=<#>` · `stage=review findings=<n> pr=<PR#>` ·
+   `stage=fix pr=<PR#>` (each fix round after review) · `stage=revert pr=<PR#>`.
 3. TPD writes the builder brief (card goal, files, done-when). Launch `builder` (fast lane) or `builder-deep` (risky lane).
    Tiny one-line fixes: TPD does them itself.
 4. Check the builder's proof: `node check.js` + the named test, command + last lines of output. No output = not done.
@@ -26,6 +29,7 @@ secrets, or >5 files. Everything else is **Fast**. Unsure → Risky.
 5. TPD opens the PR into `sandbox` (`gh pr create --base sandbox --title "c<#>: ..."`).
 6. `python tools/lite/queue.py take sandbox "c<#> <slug>"` → merge PR (`gh pr merge --squash`) → `queue.py release sandbox`.
    If taken: `queue.py wait sandbox "c<#> <slug>"`. Never merge without holding the lock.
+   After the merge: `python tools/lite/doctor.py --log ship card=<#> pr=<PR#> stage=sandbox`.
 7. Trello (ONE call): `trello.py update <#> --comment "<what changed, PR link, test evidence>"`, then move the card to
    "Waiting on someone" (connector, signed). Never Completed here.
 
@@ -37,7 +41,8 @@ secrets, or >5 files. Everything else is **Fast**. Unsure → Risky.
 
 ## Live release (sandbox → dev) — Saif only
 `queue.py take live "release <date>"` → PR sandbox→dev → CI green → Saif merges → verify Render shows the new SHA
-→ smoke test sign-up/sign-in/apply → `queue.py release live` → move each released card to "Completed" with a signed comment.
+→ smoke test sign-up/sign-in/apply → `queue.py release live` → move each released card to "Completed" with a signed comment
+→ `python tools/lite/doctor.py --log ship card=<#> stage=dev` for each released card.
 
 ## Roles
 Need a specialist lens? Read only that section of `roles.md` in this folder. The main chat wears the hat;
