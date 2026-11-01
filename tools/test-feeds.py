@@ -375,11 +375,13 @@ t("partner and Hiring mode jobs carry no feed credit", [j for j in J.partner_job
 # ---------------- Workday, Rippling, Breezy HR, Teamtailor: each careers site's own public list (answers built inline, no network) ----------------
 NK_CALLS = []
 NK_ANS = {}
+NK_OPENERS = []
 real_get, real_robots = J._get, J._robots_for
 
 
 def nk_get(url, headers=None, as_text=False, opener=None, data=None):
     NK_CALLS.append((url, dict(headers or {}), json.loads(data) if data else None))
+    NK_OPENERS.append(opener)
     ans = NK_ANS.get(url)
     if callable(ans):
         return ans(json.loads(data) if data else None)
@@ -391,7 +393,8 @@ def nk_get(url, headers=None, as_text=False, opener=None, data=None):
 def nk_robots(host):
     NK_CALLS.append(("robots", host))
     rp = J.RobotsTxt()
-    rp.parse(["User-agent: *", "Disallow: /private/"] if host != "closed.breezy.hr" else ["User-agent: *", "Disallow: /"])
+    rp.parse(["User-agent: *", "Disallow: /private/"] if host not in ("closed.breezy.hr", "uaonly.breezy.hr") else
+             ["User-agent: UAply-jobs", "Disallow: /"] if host == "uaonly.breezy.hr" else ["User-agent: *", "Disallow: /"])
     return rp
 
 
@@ -431,7 +434,7 @@ t("Workday: every posting once (one repeated on page 2 is not read twice)", len(
 by_wd = {r["id"]: r for r in wraw}
 t("Workday: a posting in '3 Locations' is placed in the place its address names; Remote in its address is remote",
   (by_wd["/job/US-TX-Austin/Data-Analyst-Intern_JR1"]["loc"], by_wd["/job/US-NC-Remote/Network-Engineer_JR2"]["loc"], by_wd["/job/US-NC-Remote/Network-Engineer_JR2"]["remote"]),
-  ("US, TX, Austin", "US, NC, Remote", True))
+  ("Austin, TX", "Remote, NC", True))
 t("Workday: the link is the posting on the careers site", by_wd["/job/US-TX-Austin/Data-Analyst-Intern_JR1"]["url"],
   "https://acme.wd5.myworkdayjobs.com/AcmeCareers/job/US-TX-Austin/Data-Analyst-Intern_JR1")
 now = time.time()
@@ -451,6 +454,34 @@ NK_CALLS.clear()
 bad = nk_fetch(("workday", "acme", "Bad Token"))
 t("Workday: a bad token asks for nothing and logs one failure line", (bad[0], NK_CALLS, bad[2].strip()),
   ([], [], "[uaply] job feed workday/acme/Bad Token failed: not a Workday site"))
+t("Workday: a token with a trailing newline or a non-ASCII digit is refused (fullmatch, [0-9])",
+  [J._board_token_ok("workday", x) for x in ("acme.wd5/AcmeCareers\n", "acme.wd\u0665/AcmeCareers")] + [J._board_token_ok("breezy", "acme\n")],
+  [False, False, False])
+WD2 = "https://geo.wd1.myworkdayjobs.com/wday/cxs/geo/Ext/jobs"
+NK_ANS[WD2] = {"total": 2, "jobPostings": [
+    dict(title="Analyst", externalPath="/job/Santa-Clara/Analyst_JR10", locationsText="US, CA, Santa Clara", postedOn="Posted Today"),
+    dict(title="Nurse", externalPath="/job/US-PA-Philadelphia/Nurse_JR11", locationsText="2 Locations", postedOn="Posted Today")]}
+geo_raw = list(J._iter_raw("workday", "geo.wd1/Ext", "Geo"))
+t("Workday: 'US, CA, Santa Clara' (list text) and 'US-PA-Philadelphia' (address) become 'City, ST' and get a map point",
+  [(r["loc"], bool(J.job_geo(r["loc"]))) for r in geo_raw], [("Santa Clara, CA", True), ("Philadelphia, PA", True)])
+t("Workday: job_geo has a point for 'Santa Clara, CA' and 'Philadelphia, PA'", [J.job_geo(x) is not None for x in ("Santa Clara, CA", "Philadelphia, PA")], [True, True])
+NK_CALLS.clear()
+NK_ANS[WD] = lambda body: {"jobPostings": [dict(title="Engineer", externalPath="/job/US-CA-X/E_%d" % (body["offset"] + i), locationsText="US, CA, X",
+                                                 postedOn="Posted Today") for i in range(20 if body["offset"] < 40 else 5)]}
+t("Workday: a first page with no total is read on until a short page (still at most 10 searches)",
+  (len(list(J._iter_raw(*WDS))), [c[2]["offset"] for c in NK_CALLS if c[0] == WD]), (45, [0, 20, 40]))
+NK_CALLS.clear()
+real_deadline, J.WORKDAY_DEADLINE = J.WORKDAY_DEADLINE, -1
+t("Workday: past WORKDAY_DEADLINE no further search is started (what was read is kept)",
+  (len(list(J._iter_raw(*WDS))), len([c for c in NK_CALLS if c[0] == WD])), (20, 1))
+J.WORKDAY_DEADLINE = real_deadline
+NK_ANS["https://bad.wd1.myworkdayjobs.com/wday/cxs/bad/Ext/jobs"] = lambda body: (
+    {"jobPostings": [dict(title="E", externalPath="/job/US-CA-X/E_%d" % i, locationsText="US, CA, X") for i in range(20)]} if body["offset"] == 0
+    else {"errorCode": "HTTP_500"})
+bad_wd = nk_fetch(("workday", "bad.wd1/Ext", "Bad WD"))
+t("Workday: a full first page with no total, then an answer with no jobPostings: the source is marked failed, nothing raised",
+  (bad_wd[0], bad_wd[1].startswith("error:"), "[uaply] job feed workday/bad.wd1/Ext/Bad WD failed: the answer has no jobPostings list" in bad_wd[2]),
+  ([], True, True))
 
 RP = "https://api.rippling.com/platform/api/ats/v1/board/acme/jobs"
 NK_ANS[RP] = [
@@ -545,6 +576,21 @@ t("Teamtailor: a feed with an external entity or any <!ENTITY / <!DOCTYPE is ref
   (xx[0], xe[0], xx[2].strip(), xe[2].strip()),
   ([], [], "[uaply] job feed teamtailor/evil/Evil failed: the feed declares entities; refused",
    "[uaply] job feed teamtailor/lol/Lol failed: the feed declares entities; refused"))
+NK_ANS["https://broken.teamtailor.com/jobs.rss"] = "<rss><channel><item><title>Half"
+NK_ANS["https://api.rippling.com/platform/api/ats/v1/board/notalist/jobs"] = {"jobs": []}
+NK_ANS["https://notjson.breezy.hr/json"] = lambda body: json.loads("<html>not json</html>")
+bad_kinds = [nk_fetch(s) for s in (("teamtailor", "broken", "Broken TT"), ("rippling", "notalist", "Not A List"), ("breezy", "notjson", "Not JSON"))]
+t("Teamtailor bad XML, Rippling JSON that is not a list, Breezy non-JSON: each source marked failed with one line, nothing raised",
+  [(b[0], b[1].startswith("error:"), b[2].count("[uaply] job feed ")) for b in bad_kinds], [([], True, 1)] * 3)
+t("Teamtailor: a pubDate ending '-0000' (no zone given) is read as UTC",
+  J._teamtailor_raw(J.ET.fromstring('<item><title>T</title><link>https://a.teamtailor.com/jobs/1</link><guid>abc-1</guid>'
+                                    '<pubDate>Thu, 29 Oct 2026 13:25:57 -0000</pubDate></item>'), "A")["posted"], J._ts("2026-10-29T13:25:57Z"))
+NK_CALLS.clear()
+uaonly = nk_fetch(("breezy", "uaonly", "UA Only"))
+t("robots.txt is checked for the User-Agent the list is asked for with (UAply-jobs), not the careers-site crawler's",
+  (uaonly[0], NK_CALLS, "robots.txt does not allow it" in uaonly[2]), ([], [("robots", "uaonly.breezy.hr")], True))
+t("Workday, Rippling, Breezy, Teamtailor: every list is asked for with the careers-site opener (public hosts and redirects only)",
+  (len(NK_OPENERS) > 20, set(NK_OPENERS)), (True, {J._cp_open}))
 J._get, J._robots_for = real_get, real_robots
 t("the four new kinds are board kinds with an ats reference and a 'via' credit",
   [(k in J.BOARD_KINDS, k in J.ATS_REF_KINDS, k in J.VIA) for k in ("workday", "rippling", "breezy", "teamtailor")], [(True, True, True)] * 4)

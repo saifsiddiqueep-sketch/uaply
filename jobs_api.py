@@ -235,8 +235,8 @@ ATS_REF_KINDS = ats_api.KINDS + ("recruitee", "workday", "rippling", "breezy", "
 CONNECTIONS_FILE = [""]          # the connect page's own keys (connect_api.path), set by serve.py at the start
 RECRUITEE_SUBMIT = [False]       # the owner's "recruitee_submit" switch, set by serve.py at the start (uaply_api.recruitee_on)
 BOARD_TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$")    # a board's name in its system's address (Lever and Ashby allow dots: "thea.energy")
-WORKDAY_TOKEN_RE = re.compile(r"^([a-z0-9][a-z0-9-]{0,62})\.wd(\d{1,2})/([A-Za-z0-9_-]{1,80})$")   # "{company}.wd{n}/{SiteName}": nvidia.wd5/NVIDIAExternalCareerSite
-SUBDOMAIN_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")   # one label of a careers site's own subdomain (Breezy, Teamtailor)
+WORKDAY_TOKEN_RE = re.compile(r"([a-z0-9][a-z0-9-]{0,62})\.wd([0-9]{1,2})/([A-Za-z0-9_-]{1,80})")   # "{company}.wd{n}/{SiteName}" (fullmatch): nvidia.wd5/NVIDIAExternalCareerSite
+SUBDOMAIN_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")   # (fullmatch) one label of a careers site's own subdomain (Breezy, Teamtailor)
 
 
 def _board_token_ok(kind, token):
@@ -244,9 +244,9 @@ def _board_token_ok(kind, token):
     Teamtailor careers site one subdomain label, every other board one name (BOARD_TOKEN_RE, never "..")."""
     token = token if isinstance(token, str) else ""
     if kind == "workday":
-        return bool(WORKDAY_TOKEN_RE.match(token))
+        return bool(WORKDAY_TOKEN_RE.fullmatch(token))
     if kind in ("breezy", "teamtailor"):
-        return bool(SUBDOMAIN_RE.match(token))
+        return bool(SUBDOMAIN_RE.fullmatch(token))
     return bool(BOARD_TOKEN_RE.match(token)) and ".." not in token
 
 
@@ -1288,6 +1288,8 @@ WORKDAY_PAGE = 20                    # postings per Workday job search (what its
 WORKDAY_CAP = 200                    # postings read from one Workday site per refresh: 10 searches at most
 WORKDAY_PLACE_RE = re.compile(r"^/job/([^/]{1,120})/")
 WORKDAY_US_PLACE_RE = re.compile(r"^(?:US|USA)-([A-Z]{2})-(.+)$")
+WORKDAY_US_LOC_RE = re.compile(r"^(?:US|USA)[-, ]+([A-Z]{2})[-, ]+(.+)$")     # "US, CA, Santa Clara": read as "Santa Clara, CA" (job_geo)
+WORKDAY_DEADLINE = 120               # seconds one Workday site may take across all its searches: past that the rest is left for the next refresh
 WORKDAY_AGE_RE = re.compile(r"(\d{1,3})\+?\s+Days?\s+Ago", re.I)
 US_COUNTRY = ("US", "USA", "UNITED STATES", "UNITED STATES OF AMERICA")
 
@@ -1297,7 +1299,7 @@ def _feed_robots(host, url):
     rp = _robots_for(host)
     if rp is None:
         raise PermissionError("robots.txt could not be read")
-    if not rp.can_fetch(CP_UA, url):
+    if not rp.can_fetch(FEED_UA, url):             # checked for the User-Agent the list is actually asked for with
         raise PermissionError("robots.txt does not allow it")
 
 
@@ -1319,7 +1321,7 @@ def _workday_posted(s, now=None):
 def _workday_raw(j, host, site, name):
     """One posting of a Workday careers site's job search as a raw posting, or None. The list has no description (that is one more
     request per posting), so the title carries the skills and "Jobs" stands for the rest. A posting open in several places says only
-    "3 Locations": it is placed in the first one, which its own address names ("/job/US-CA-Santa-Clara/..." is "US, CA, Santa Clara")."""
+    "3 Locations": it is placed in the first one, which its own address names ("/job/US-CA-Santa-Clara/..." is "Santa Clara, CA")."""
     if not isinstance(j, dict) or not j.get("title") or not isinstance(j.get("externalPath"), str):
         return None
     path = j["externalPath"]
@@ -1331,6 +1333,9 @@ def _workday_raw(j, host, site, name):
         place = m.group(1) if m else ""
         us = WORKDAY_US_PLACE_RE.match(place)
         loc = "US, %s, %s" % (us.group(1), us.group(2).replace("-", " ")) if us else place.replace("-", " ")
+    us = WORKDAY_US_LOC_RE.match(loc)
+    if us and us.group(1) in STATES:         # "US, CA, Santa Clara" (the list's own text or the address) is "Santa Clara, CA"
+        loc = "%s, %s" % (us.group(2).strip(" ,-"), us.group(1))
     rt = str(j.get("remoteType") or "")
     remote = True if re.search(r"\bremote\b", rt + " " + loc, re.I) and not re.search(r"hybrid", rt, re.I) else None
     return dict(id=path, title=str(j["title"]).strip(), company=name, loc=loc, remote=remote, text="",
@@ -1341,22 +1346,24 @@ def _workday_raw(j, host, site, name):
 def _workday(token, name):
     """A Workday careers site's own job search (POST https://{company}.wd{n}.myworkdayjobs.com/wday/cxs/{company}/{site}/jobs, no key;
     what the site's own page asks for), 20 at a time up to WORKDAY_CAP. token: "{company}.wd{n}/{site}"."""
-    m = WORKDAY_TOKEN_RE.match(token or "")
+    m = WORKDAY_TOKEN_RE.fullmatch(token or "")
     if not m:
         raise ValueError("not a Workday site")
     company, n, site = m.groups()
     host = "%s.wd%s.myworkdayjobs.com" % (company, n)
     url = "https://%s/wday/cxs/%s/%s/jobs" % (host, company, site)
     _feed_robots(host, url)
-    seen, total, offset = set(), None, 0
+    seen, total, offset, started = set(), None, 0, time.monotonic()
     while offset < WORKDAY_CAP:
+        if offset and time.monotonic() - started > WORKDAY_DEADLINE:
+            break                            # one slow site does not hold a shared reader: the rest waits for the next refresh
         page = _get(url, {"User-Agent": FEED_UA, "Content-Type": "application/json"},
-                    data=json.dumps({"limit": WORKDAY_PAGE, "offset": offset, "searchText": ""}).encode())
+                    data=json.dumps({"limit": WORKDAY_PAGE, "offset": offset, "searchText": ""}).encode(), opener=_cp_open)
         rows = page.get("jobPostings") if isinstance(page, dict) else None
         if not isinstance(rows, list):
             raise ValueError("the answer has no jobPostings list")
-        if total is None:                    # Workday gives the total on the first page only
-            total = page.get("total") if isinstance(page.get("total"), int) else 0
+        if total is None:                    # Workday gives the total on the first page only; none there: read on until a short page
+            total = page.get("total") if isinstance(page.get("total"), int) and page.get("total") > 0 else WORKDAY_CAP
         for j in rows:
             r = _workday_raw(j, host, site, name)
             if r and r["id"] not in seen:
@@ -1378,7 +1385,7 @@ def _rippling(token, name):
     row per place a job is open in: the rows of one job (its uuid) are one posting with all its places."""
     url = "https://api.rippling.com/platform/api/ats/v1/board/%s/jobs" % urllib.parse.quote(token, safe="")
     _feed_robots("api.rippling.com", url)
-    rows = _get(url, {"User-Agent": FEED_UA})
+    rows = _get(url, {"User-Agent": FEED_UA}, opener=_cp_open)
     if not isinstance(rows, list):
         raise ValueError("the answer is not a list of jobs")
     jobs = {}
@@ -1430,7 +1437,7 @@ def _breezy(token, name):
     host = "%s.breezy.hr" % token.lower()
     url = "https://%s/json" % host
     _feed_robots(host, url)
-    rows = _get(url, {"User-Agent": FEED_UA})
+    rows = _get(url, {"User-Agent": FEED_UA}, opener=_cp_open)
     if not isinstance(rows, list):
         raise ValueError("the answer is not a list of positions")
     for j in rows:
@@ -1465,7 +1472,8 @@ def _teamtailor_raw(item, name):
     elif status == "hybrid" and loc:
         loc += " (hybrid)"
     try:
-        posted = int(email.utils.parsedate_to_datetime(get("pubDate")).timestamp() * 1000)
+        d = email.utils.parsedate_to_datetime(get("pubDate"))
+        posted = int((d if d.tzinfo else d.replace(tzinfo=datetime.timezone.utc)).timestamp() * 1000)     # "-0000": no zone given, read as UTC
     except Exception:
         posted = 0
     return dict(id=guid, title=title, company=name, loc=loc, remote=remote, country=country, text=_text(get("description")), url=link,
@@ -1478,7 +1486,7 @@ def _teamtailor(token, name):
     host = "%s.teamtailor.com" % token.lower()
     url = "https://%s/jobs.rss" % host
     _feed_robots(host, url)
-    text = _get(url, {"User-Agent": FEED_UA, "Accept": "application/rss+xml, application/xml;q=0.9"}, as_text=True)
+    text = _get(url, {"User-Agent": FEED_UA, "Accept": "application/rss+xml, application/xml;q=0.9"}, as_text=True, opener=_cp_open)
     if re.search(r"<!(?:ENTITY|DOCTYPE)", text, re.I):
         raise ValueError("the feed declares entities; refused")
     root = ET.fromstring(text)
