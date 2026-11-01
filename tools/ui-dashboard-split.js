@@ -2,10 +2,9 @@
 //   PORT=<sandbox port, any job feed> W=390 H=844 node tools/cdp.js tools/ui-dashboard-split.js      (SHOTS=<folder> also saves screenshots)
 // Seeds this browser with one application of every kind (sent by UAply, sent on the employer's own page, marked as applied by the person,
 // hand-offs, a question only the person can answer, one waiting for the connection, a send that failed, one that went to the test inbox,
-// and an interview, an offer and a rejection), then opens Job Tracker. Overview and the Applied list must show "Sent" and "To finish" as
-// two counts, never one "Applied", "Applications" or "Waiting" count that adds the hand-offs in; a test-inbox send ("Sent (test)", nothing
-// reached the employer) is never counted as Sent; and each count must equal the rows the Applied list labels the same way (its "Sent",
-// "Sent (by you)" and "Finish on their site" chips), so the numbers and the rows can never disagree. "Mark as applied" is clicked on a
+// and an interview, an offer and a rejection), then opens Job Tracker, which goes straight to the Overview (card 182). Its counts (Needs you, Sent, Heard back,
+// Passed) never add the hand-offs into Sent; a test-inbox send ("Sent (test)", nothing reached the employer) is never counted as Sent; and
+// each chip shows exactly the rows its count says, so the numbers and the rows can never disagree. "Mark as applied" is clicked on a
 // real row. On the code before the fix the overview read "Applications 13" and "Waiting 10", and the Applied list "Applied 10".
 const fs = require("fs"), path = require("path");
 const gateSignup = require("./gate-signup.js");   // the test person signs up first (the app opens behind the sign-in gate)
@@ -47,58 +46,57 @@ module.exports = async ({ ev, sleep, nav, shot }) => {
     "localStorage.setItem(K,JSON.stringify(s));return 1})()");
   await nav(base); await ready(); await sleep(2500); await agree(); await sleep(300);
 
-  const open = async (v) => {
-    await inApp("d.getElementById('nb-dash').click();return 1"); await sleep(400);
-    await inApp("const b=[...d.querySelectorAll('.nitem')].find(b=>b.getAttribute('data-v')===" + JSON.stringify(v) + ");if(b)b.click();return 1"); await sleep(900);
-  };
+  // card 182: Job Tracker has one screen, the Overview, opened straight from its button (no menu); its chips filter one list
+  const open = async () => { await inApp("d.getElementById('nb-dash').click();return 1"); await sleep(900); };
+  const chip = async (f) => { await inApp("const b=d.querySelector('#pane-track [data-filt=" + JSON.stringify(f) + "]');if(b)b.click();return 1"); await sleep(400); };
   // every stat tile in the open Job Tracker view, as {label: number}; and the note under them
   const tiles = async () => JSON.parse(await inApp("const o={};d.querySelectorAll('#pane-track .stat').forEach(t=>{o[t.querySelector('small').textContent.trim()]=t.querySelector('b').textContent.trim()});return JSON.stringify(o)") || "{}");
   const noteText = () => inApp("const n=d.querySelector('#pane-track .stnote');return n?n.textContent:''");
+  // what each row the open chip shows says happened (the tracker's own chips)
+  const rowChips = async () => JSON.parse(await inApp("return JSON.stringify([...d.querySelectorAll('#pane-track .ovapps .row')].map(r=>{const c=r.querySelector('.stchip');return c?c.textContent:''}))") || "[]");
 
-  // ---- the Applied list: what each row says happened (the tracker's own chips) ----
-  await open("applied");
-  const chips = JSON.parse(await inApp("const h=[...d.querySelectorAll('#pane-track h3')].find(h=>/^Passed/.test(h.textContent));" +
-    "return JSON.stringify([...d.querySelectorAll('#pane-track .row')].filter(r=>!h||(h.compareDocumentPosition(r)&Node.DOCUMENT_POSITION_PRECEDING)).map(r=>{const c=r.querySelector('.stchip');return c?c.textContent:''}))") || "[]");
-  const chipSent = chips.filter((c) => c === "Sent" || c === "Sent (by you)").length, chipFinish = chips.filter((c) => c === "Finish on their site").length;
-  const chipTest = chips.filter((c) => c === "Sent (test)").length, chipNotYet = chips.filter((c) => c === "Waiting to send" || c === "Needs profile" || c === "Not sent" || c === "Not sent yet").length;
-  check("the Applied list has the 10 seeded applications still at Applied: 3 Sent, 3 Finish on their site, 1 Sent (test), 3 not sent (waiting, failed, a question)",
-    chips.length === 10 && chipSent === 3 && chipFinish === 3 && chipTest === 1 && chipNotYet === 3, JSON.stringify(chips));
-  const tl = await tiles();
-  check("the Applied list's counts: Sent and To finish, each equal to its rows' chips", tl["Sent"] === String(chipSent) && tl["To finish"] === String(chipFinish), JSON.stringify(tl));
-  check("...and no \"Applied\" count that adds the hand-offs in", !("Applied" in tl), JSON.stringify(tl));
-  check("...Interviews, Accepted and Rejected still counted", tl["Interviews"] === "1" && tl["Accepted"] === "1" && tl["Rejected"] === "1", JSON.stringify(tl));
-  const n1 = String(await noteText());
-  check("...the test-inbox send is not in Sent: Sent + To finish + not sent yet + test inbox = every row at Applied",
-    +tl["Sent"] + +tl["To finish"] + chipNotYet + chipTest === chips.length && tl["Sent"] === "3", JSON.stringify(tl));
-  check("...and the 3 not sent yet (a question to answer, one waiting for the connection, a failed send) and the 1 test-inbox send are said, not hidden or counted as sent",
-    /^3 not sent yet\b/.test(n1) && /\b1 went to the test inbox: nothing reached the employer\.$/.test(n1), n1);
-  if (SHOTS) { fs.mkdirSync(SHOTS, { recursive: true }); await shot(path.join(SHOTS, "applied-" + (process.env.W || 1100) + ".png")); }
-
-  // ---- Overview ----
-  await open("overview");
+  await open();
+  check("the Job Tracker button opens the Overview, no menu", (await inApp("return d.querySelector('#pane-track .overview')&&d.querySelector('.nwrap[data-k=\"dash\"] .nmenu').hidden?'y':'n'")) === "y");
+  const all = await rowChips();
+  check("All lists the 13 applications (10 at Applied, an interview, an offer, a rejection), not the 2 passed", all.length === 13, JSON.stringify(all));
+  check("...of them exactly 1 Sent (test) and 3 not sent yet (a question to answer, one waiting for the connection, a failed send)",
+    all.filter((c) => c === "Sent (test)").length === 1 && all.filter((c) => c === "Waiting to send" || c === "Needs profile" || c === "Not sent" || c === "Not sent yet").length === 3, JSON.stringify(all));
+  check("...and the test-inbox send has no status to set (nothing reached the employer)", (await inApp("const r=[...d.querySelectorAll('#pane-track .ovapps .row')].find(r=>r.querySelector('.stchip')&&r.querySelector('.stchip').textContent==='Sent (test)');return r&&!r.querySelector('.stsel')?'y':'n'")) === "y");
   const to = await tiles();
-  check("Overview: Sent " + chipSent + " and To finish " + chipFinish + ", the same as the Applied list's rows", to["Sent"] === String(chipSent) && to["To finish"] === String(chipFinish), JSON.stringify(to));
+  check("counts: Needs you 6 (3 to finish on their site, 3 not sent yet), Sent 3, Heard back 3, Passed 2", to["Needs you"] === "6" && to["Sent"] === "3" && to["Heard back"] === "3" && to["Passed"] === "2", JSON.stringify(to));
   check("...no \"Applications\", \"Applied\" or \"Waiting\" count that adds the hand-offs in", !("Applications" in to) && !("Applied" in to) && !("Waiting" in to), JSON.stringify(to));
-  check("...Interviews 1, Offers 1, Rejected 1, Passed 2", to["Interviews"] === "1" && to["Offers"] === "1" && to["Rejected"] === "1" && to["Passed"] === "2", JSON.stringify(to));
-  const n2 = String(await noteText());
-  check("...and the same \"3 not sent yet\" and test-inbox line", n2 === n1 && n2 !== "", n2);
-  if (SHOTS) await shot(path.join(SHOTS, "overview-" + (process.env.W || 1100) + ".png"));
+  await chip("sent");
+  const sent = await rowChips();
+  check("the Sent chip shows exactly the 3 rows labelled Sent / Sent (by you): the test-inbox send is not among them", sent.length === 3 && sent.every((c) => c === "Sent" || c === "Sent (by you)"), JSON.stringify(sent));
+  await chip("needs");
+  const needs = await rowChips();
+  check("Needs you shows the 3 to finish on their site and the 3 not sent yet", needs.length === 6 && needs.filter((c) => c === "Finish on their site").length === 3, JSON.stringify(needs));
+  check("...and none of them has a status to set (nothing reached the employer yet)", (await inApp("return d.querySelectorAll('#pane-track .ovapps .stsel').length")) === 0);
+  await chip("all");
+  const n1 = String(await noteText());
+  check("the 3 not sent yet and the 1 test-inbox send are said, not hidden or counted as sent",
+    /^3 not sent yet\b/.test(n1) && /\b1 went to the test inbox: nothing reached the employer\.$/.test(n1), n1);
+  if (SHOTS) { fs.mkdirSync(SHOTS, { recursive: true }); await shot(path.join(SHOTS, "overview-" + (process.env.W || 1100) + ".png")); }
 
-  // ---- a hand-off finished on the employer's site: the person clicks the row's real "Mark as applied"; it moves from To finish to Sent ----
-  await open("applied");
+  // ---- a hand-off finished on the employer's site: the person clicks the row's real "Mark as applied"; it moves from Needs you to Sent ----
   const clicked = await inApp("const b=d.querySelector('#pane-track [data-act=\"markapplied\"][data-id=\"9300004\"]');if(!b)return 'no button';b.click();return 'ok'");
   await sleep(500);
   const st4 = await inApp("return (w.__uaply.S.decisions[9300004].sent||{}).status||''");
-  const t3l = await tiles();
-  check("clicking the Handoff Co row's Mark as applied marks it \"self\", and the list's counts follow: Sent " + (chipSent + 1) + ", To finish " + (chipFinish - 1),
-    clicked === "ok" && st4 === "self" && t3l["Sent"] === String(chipSent + 1) && t3l["To finish"] === String(chipFinish - 1), clicked + " " + st4 + " " + JSON.stringify(t3l));
-  await open("overview");
   const t3 = await tiles();
-  check("...and so does Overview", t3["Sent"] === String(chipSent + 1) && t3["To finish"] === String(chipFinish - 1), JSON.stringify(t3));
+  check("clicking the Handoff Co row's Mark as applied marks it \"self\", and the counts follow: Sent 4, Needs you 5",
+    clicked === "ok" && st4 === "self" && t3["Sent"] === "4" && t3["Needs you"] === "5", clicked + " " + st4 + " " + JSON.stringify(t3));
+
+  // ---- the status field: Interview moves a sent row to Heard back, and its record is kept ----
+  const set = await inApp("const s=d.querySelector('#pane-track select[data-stsel][data-id=\"9300001\"]');if(!s)return 'no select';s.value='interview';s.dispatchEvent(new Event('change',{bubbles:true}));return 'ok'");
+  await sleep(500);
+  const t4 = await tiles();
+  const kept = await inApp("const x=w.__uaply.S.decisions[9300001];return x&&x.st==='interview'&&x.sent.status==='sent'?'y':'n'");
+  check("setting a sent row's status to Interview: Sent 3, Heard back 4, and its record is kept",
+    set === "ok" && t4["Sent"] === "3" && t4["Heard back"] === "4" && kept === "y", set + " " + kept + " " + JSON.stringify(t4));
 
   // ---- nothing outstanding: no "not sent yet" line at all ----
   await inApp("const A=w.__uaply;[9300007,9300008,9300012,9300013].forEach(id=>{A.S.decisions[id].sent={at:Date.now(),to:'X',status:'sent'}});A.save();return 1");
-  await open("overview");
+  await open();
   check("with nothing waiting, unanswered, failed or in the test inbox there is no line under the counts", (await noteText()) === "", await noteText());
 
   console.log("\n" + pass + " / " + (pass + fail));

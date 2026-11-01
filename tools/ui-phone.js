@@ -115,6 +115,10 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
 
   const screens = [];
   const menu = async (nb, item) => {
+    if (nb === "nb-dash") {                                                  // card 182: Job Tracker has no menu; a tap on it opens the Overview
+      await ev("(()=>{const r=" + F + ".getElementById('nb-dash').getBoundingClientRect(),f=document.querySelector('iframe').getBoundingClientRect();window.__tapAt=[f.left+r.left+r.width/2,f.top+r.top+r.height/2]})()");
+      const at = await ev("window.__tapAt"); await tap(at[0], at[1]); await sleep(700); return true;
+    }
     await ev("(()=>{const w=" + F + ".querySelector('.nwrap[data-k=" + nb.replace("nb-", "") + "]');if(!w||w.querySelector('.nb').getAttribute('aria-expanded')!=='true')" + F + ".getElementById('" + nb + "').click()})()"); await sleep(450);
     const ok = await ev("(()=>{const e=[...(" + F + ").querySelectorAll('.nitem')].find(b=>b.offsetParent&&b.innerText.trim().startsWith(" + JSON.stringify(item) + "));if(!e)return false;const r=e.getBoundingClientRect(),f=document.querySelector('iframe').getBoundingClientRect();window.__tapAt=[f.left+r.left+r.width/2,f.top+r.top+r.height/2];return true})()");
     if (!ok) return false;
@@ -123,7 +127,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, shot, on }) => {
     return true;
   };
   const before = await ev("(" + F + ").body.innerText.length");
-  const items = { "nb-svc": ["Full-time", "Part-time", "Internships", "Coop"], "nb-dash": ["Overview", "Applied", "Accepted", "Rejected", "Interviews"],
+  const items = { "nb-svc": ["Full-time", "Part-time", "Internships", "Coop"], "nb-dash": ["Job Tracker"],
                   "nb-prof": ["Profile setup", "Filters", "Account", "Plan", "Data"] };   // Settings, Resume and Preferences are now steps of Profile setup
   for (const [nb, list] of Object.entries(items)) {
     for (const it of list) {

@@ -23,7 +23,7 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
     }
   };
   const overview = async () => {
-    await ev("(()=>{const d=" + F + ";const w=d.querySelector('.nwrap[data-k=dash]');if(w.querySelector('.nmenu').hidden)d.getElementById('nb-dash').click();w.querySelector('.nitem[data-v=overview]').click()})()");
+    await ev("(()=>{const d=" + F + ";d.getElementById('nb-dash').click()})()");
     await sleep(600);
   };
   await nav("http://127.0.0.1:" + PORT + "/");

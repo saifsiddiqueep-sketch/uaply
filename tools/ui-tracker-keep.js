@@ -139,6 +139,10 @@ module.exports = async ({ ev, sleep, nav, send, on }) => {
     "o[k]=r?{chip:(r.querySelector('.stchip')||{}).textContent||'',mark:!!r.querySelector('[data-act=markapplied]'),text:r.innerText}:null});return o})())"));
   check("Job Tracker, Applied: the restored hand-off the person had marked says Sent (by you)", !!chips[9300001] && chips[9300001].chip === "Sent (by you)", JSON.stringify(chips[9300001]));
   check("a hand-off row with no link to the posting still offers Mark as applied", !!chips[9300004] && chips[9300004].chip === "Finish on their site" && chips[9300004].mark, JSON.stringify(chips[9300004]));
+  // card 182: passed jobs sit behind the Overview's "Jobs you passed on" link
+  await ev("(()=>{const b=" + F + ".querySelector('#pane-track [data-filt=passed]');if(b)b.click();return 1})()"); await sleep(400);
+  chips[9300005] = JSON.parse(await ev("JSON.stringify((()=>{const b=" + F + ".querySelector('#pane-track [data-id=\"9300005\"]');const r=b&&b.closest('.row');return r?{text:r.innerText}:null})())"));
+  await ev("(()=>{const b=" + F + ".querySelector('#pane-track [data-filt=all]');if(b)b.click();return 1})()"); await sleep(400);
   check("...and the restored pass is listed under Passed", !!chips[9300005] && /Restore Role 5/.test(chips[9300005].text), JSON.stringify(chips[9300005]));
   // Mark as applied is the strongest yes for what UAply learns (the same as going on to the employer's site); Undo takes it back
   await ev("(()=>{const L=" + FW + ".__uaplyLearn.state();L.ev.push({id:9300004,at:Date.now(),k:'R',d:0,a:['t:job','m:onsite']});return 1})()");

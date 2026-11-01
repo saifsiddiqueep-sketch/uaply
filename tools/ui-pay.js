@@ -58,7 +58,7 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
 
   // ---- Job Tracker: the three rows (passed) name no pay that the posting did not give ----
   await ev("(()=>{const b=" + F + ".getElementById('nb-dash');if(b)b.click()})()"); await sleep(500);
-  await ev("(()=>{const e=[...(" + F + ").querySelectorAll('.nitem')].find(b=>b.innerText.trim().startsWith('Applied'));if(e)e.click()})()"); await sleep(800);
+  await ev("(()=>{const e=" + F + ".querySelector('#pane-track [data-filt=passed]');if(e)e.click()})()"); await sleep(800);   // card 182: passed jobs sit behind the Overview's link
   const rows = JSON.parse(await ev("JSON.stringify([...(" + F + ").querySelectorAll('.row')].filter(r=>r.getClientRects().length).map(r=>r.innerText.replace(/\\s+/g,' ').trim()).filter(t=>/Yearly Co|Hourly Co|Unlisted Co/.test(t)))"));
   check("Job Tracker lists the three postings", rows.length === 3, JSON.stringify(rows));
   check("...and no row shows a pay figure the posting did not give (rows name no pay, or the pay as given)",

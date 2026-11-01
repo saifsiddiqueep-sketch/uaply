@@ -46,9 +46,8 @@ module.exports = async ({ ev, sleep, nav }) => {
     check(label + " builds a file", ok && got.length > 0 && got.some((g) => g.size > 0 || g.download), JSON.stringify(got));
   }
   await ev(F + ".getElementById('nb-dash').click()"); await sleep(500);
-  await click("Overview"); await sleep(400);
   await ev(W + ".__dl=[]");
-  const ok = await click("Export applications (CSV)"); await sleep(600);
+  const ok = await click("Export CSV"); await sleep(600);
   const got = JSON.parse(await ev("JSON.stringify(" + W + ".__dl)"));
   check("Export applications (CSV) builds a file", ok && got.length > 0 && got.some((g) => g.size > 0 || g.download), JSON.stringify(got));
   console.log(bad ? bad + " problem(s)" : "All good");
