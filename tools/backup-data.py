@@ -69,15 +69,79 @@ def files_to_back_up(data):
     return out
 
 
-def copy_sqlite(src, dst):
-    """A consistent copy of a database another process may be writing to (SQLite's online backup)."""
-    a = sqlite3.connect(pathlib.Path(os.path.abspath(src)).as_uri() + "?mode=ro", uri=True, timeout=30)
+SQLITE_READONLY_ROLLBACK = 776   # a read-only connection met a hot journal it is not allowed to roll back
+
+
+def _online_backup(src_uri, dst):
+    a = sqlite3.connect(src_uri, uri=True, timeout=30)
     b = sqlite3.connect(dst)
     try:
         a.backup(b)
     finally:
         b.close()
         a.close()
+
+
+def _file_state(path):
+    """Size, mtime and SHA-256 of a file (None when it is gone): shows that nothing wrote it while it was being copied."""
+    try:
+        st = os.stat(path)
+    except FileNotFoundError:
+        return None
+    return st.st_size, st.st_mtime_ns, sha256(path)
+
+
+def _needs_rollback(err, src):
+    code = getattr(err, "sqlite_errorcode", None)
+    return os.path.exists(src + "-journal") and (code == SQLITE_READONLY_ROLLBACK or (code is None and "readonly" in str(err)))
+
+
+def copy_sqlite(src, dst, tries=3):
+    """A consistent copy of a database another process may be writing to (SQLite's online backup). Returns a note when a journal
+    left by a crash had to be rolled back, else None.
+
+    A crash in the middle of a write leaves a hot <db>-journal, and the read-only connection used here may not roll it back. The live
+    database is never opened for writing to fix that (rolling back a journal that belongs to another copy of the file would damage it):
+    the database and its journal are copied into a private folder, the copy is recovered and checked there, and the copy is backed up.
+    The live files stay exactly as they were; the server rolls the journal back itself the next time it opens the database."""
+    src = os.path.abspath(src)
+    uri = pathlib.Path(src).as_uri() + "?mode=ro"
+    for _ in range(tries):
+        if os.path.exists(dst):
+            os.remove(dst)
+        try:
+            _online_backup(uri, dst)
+            return None
+        except sqlite3.DatabaseError as e:
+            if not _needs_rollback(e, src):
+                raise
+        work = tempfile.mkdtemp(prefix="uaply-recover-")
+        try:
+            copy = os.path.join(work, "recover.db")
+            before = (_file_state(src), _file_state(src + "-journal"))
+            if before[1] is None:                       # a writer rolled the journal back meanwhile: the plain way works again
+                continue
+            shutil.copyfile(src, copy)
+            shutil.copyfile(src + "-journal", copy + "-journal")
+            if (_file_state(src), _file_state(src + "-journal")) != before:
+                time.sleep(0.2)                         # something wrote the files while they were copied: start again
+                continue
+            c = sqlite3.connect(copy)                   # the first read of the private copy rolls its journal back
+            try:
+                ok = c.execute("PRAGMA integrity_check").fetchone()[0]
+            finally:
+                c.close()
+            if ok != "ok" or os.path.exists(copy + "-journal"):
+                sys.exit("[backup] refused: %s has a journal left by a crash, and rolling it back (in a private copy) gives a damaged "
+                         "database (%s). The live files were not changed. Ask Saif before anything opens it for writing." % (src, ok[:200]))
+            if os.path.exists(dst):
+                os.remove(dst)
+            _online_backup(pathlib.Path(copy).as_uri() + "?mode=ro", dst)
+            return "rolled back a journal left by a crash, in a private copy; the live database was not changed"
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+    sys.exit("[backup] refused: %s has a journal left by a crash, and it kept changing while it was copied (%d tries). "
+             "The live files were not changed; run the backup again in a minute." % (src, tries))
 
 
 def make_backup(data, out_dir, keep=4, encrypt=False, quiet=False, label=""):
@@ -96,8 +160,12 @@ def make_backup(data, out_dir, keep=4, encrypt=False, quiet=False, label=""):
                 src = os.path.join(data, rel)
                 if rel.endswith(".db"):
                     snap = os.path.join(work, "db-%d" % len(manifest["files"]))
-                    copy_sqlite(src, snap)
+                    note = copy_sqlite(src, snap)
                     src = snap
+                    if note:
+                        manifest.setdefault("notes", {})[rel] = note
+                        if not quiet:
+                            print("[backup] %s: %s" % (rel, note))
                 manifest["files"][rel] = {"bytes": os.path.getsize(src), "sha256": sha256(src)}
                 tar.add(src, arcname="data/" + rel, recursive=False)
             blob = json.dumps(manifest, indent=1, sort_keys=True).encode("utf-8")
