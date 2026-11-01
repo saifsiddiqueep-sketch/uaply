@@ -517,11 +517,36 @@ function apply(w,host){
       gated=on;w.__uaplyGateUp=on;d.body.classList.toggle("sgGated",on);try{d.documentElement.classList.toggle("sgGated",on)}catch(e){}
       /* up: the deck, Applied, the dashboard and Job Tracker are emptied. Down: they are drawn, and the job list is asked for now (the
          first time: uaply-live.js waits for this; the server answers 401 to a visitor with no account anyway) */
+      if(!on)ownRows();
       try{A.renderAll()}catch(e){}try{var tpn=d.getElementById("pane-track");if(on&&tpn)tpn.innerHTML="";else if(w.__uaplyTrack)w.__uaplyTrack()}catch(e){}
       if(!on&&w.__uaplyLoadJobs)try{w.__uaplyLoadJobs()}catch(e){}
     }
     if(on){try{B.account()}catch(e){}}
     else if(was===true){if(V.view==="signedin")resetV();try{B.cards()}catch(e){}}
+  }
+  /* Job Tracker rows (decisions, history, the apply log) belong to the account that made them. They live on this device only, so when a
+     different account signs in here, the last account's rows are set aside on this device and this account's own rows (or none) come
+     back. The same account, or a visitor's swipes before their first sign-in, keeps everything. Before this, B signing in after A on
+     one browser saw A's applications in B's Job Tracker. */
+  var ROWS=OWN+".rows";
+  try{if(!w.localStorage.getItem(ROWS)&&ownGet().email)w.localStorage.setItem(ROWS,JSON.stringify({owner:String(ownGet().email).toLowerCase(),stash:{}}))}catch(e){}   /* devices from before: the rows are the last owner's */
+  function ownRows(){
+    var u=srv().user,em=String(u&&u.email||"").toLowerCase();if(!em)return;
+    var r;try{r=JSON.parse(w.localStorage.getItem(ROWS))}catch(e){}if(!r||typeof r!=="object")r={};
+    var st=r.stash&&typeof r.stash==="object"?r.stash:{},was=String(r.owner||ownGet().email||"").toLowerCase();
+    if(was&&was!==em){
+      var apps={};try{B.acct(function(a){apps=a.apps||{}})}catch(e){}
+      st[was]={d:A.S.decisions||{},h:A.S.history||[],a:apps};
+      var mine=st[em]||{};delete st[em];
+      var ks=Object.keys(st);while(ks.length>3)delete st[ks.shift()];
+      A.S.decisions=mine.d&&typeof mine.d==="object"?mine.d:{};A.S.history=Array.isArray(mine.h)?mine.h:[];
+      try{B.acct(function(a){a.apps=mine.a&&typeof mine.a==="object"?mine.a:{}})}catch(e){}
+      try{A.save()}catch(e){}
+    }
+    try{w.localStorage.setItem(ROWS,JSON.stringify({owner:em,stash:st}))}catch(e){}
+    /* the Job Tracker lists a row only when its job is known, and jobs that left the feed are rebuilt from the saved rows once, when the
+       page starts: start again so the new owner's rows are shown (the next start finds the same owner, so this happens once) */
+    if(was&&was!==em)try{w.location.reload()}catch(e){}
   }
   /* any data route answering 401 "signin" (the session ended, or was never there): back to the gate */
   /* the app's own window and the page around it (shared/uaply-live.js reads the job list from there): each is watched once, and its

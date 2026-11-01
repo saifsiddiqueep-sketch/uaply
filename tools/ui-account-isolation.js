@@ -57,6 +57,23 @@ module.exports = async ({ ev, sleep, nav, send }) => {
   };
   const trackerShown = () => ev("(()=>{const p=" + F + ".getElementById('pane-track');return !!p&&!p.hidden&&p.querySelectorAll('*').length>0})()");
   const ALPHA = /Avery|Alpha|AlphaCorp/;
+  const pwLogin = async (email, pw) => {
+    const st = await ev("fetch('/api/auth/login',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:" + JSON.stringify(email) + ",password:" + JSON.stringify(pw) + "})}).then(r=>r.status)");
+    await load(); return st;
+  };
+  const addRows = async () => { const k = await KEY(), now = Date.now(); await ev("(()=>{const s=JSON.parse(localStorage.getItem(" + JSON.stringify(k) + ")||'{}');s.decisions=s.decisions||{};s.history=s.history||[];" +
+    "for(let i=0;i<3;i++){const id=9700001+i;s.decisions[id]={s:'applied',at:" + now + "-i*1000,pct:80,as:'Avery Alpha',title:'',row:{t:'Alpha Role '+i,c:'AlphaCorp',l:'Austin, TX',u:'https://example.com/alpha/'+i,ty:'job',m:'remote'}};if(s.history.indexOf(id)<0)s.history.push(id)}" +
+    "localStorage.setItem(" + JSON.stringify(k) + ",JSON.stringify(s));return 1})()"); await load(); };
+  const aBack = async (label, email, pw) => {
+    check(label + ": A signs in again by password", (await pwLogin(email, pw)) === 200);
+    await until(async () => ((await tracker()).match(/AlphaCorp/g) || []).length >= 3, 8000);
+    const ua = await me(), da = await device(), ta = await tracker();
+    check(label + ": A is the one signed in", ua && ua.email === email, JSON.stringify(ua));
+    check(label + ": A's own profile is back (Avery Alpha)", /Avery Alpha/.test(JSON.stringify(da.profile || {})) || /Avery Alpha/.test(await acctProfile()), JSON.stringify(da.profile || {}).slice(0, 160));
+    if ((ta.match(/AlphaCorp/g) || []).length < 3) console.log("NOTE [isolation " + PHASE + "] " + label + ": device rows " + Object.keys(da.decisions || {}).length + ", tracker text " + JSON.stringify(ta.slice(0, 300)) + ", row owner record " + await ev("(()=>{const o={};for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(/\.rows$/.test(k))o[k]=localStorage.getItem(k).slice(0,400)}return JSON.stringify(o)})()"));
+    check(label + ": A's own three Job Tracker rows are back", (ta.match(/AlphaCorp/g) || []).length >= 3, (ta.match(/AlphaCorp/g) || []).length + " AlphaCorp mentions");
+    check(label + ": A sees none of B's profile", !/Blake|Beta/.test(JSON.stringify(da.profile || {})), JSON.stringify(da.profile || {}).slice(0, 160));
+  };
   if (W < 700) await send("Emulation.setDeviceMetricsOverride", { width: W, height: H, deviceScaleFactor: 2, mobile: true });
   else await send("Emulation.setDeviceMetricsOverride", { width: W, height: H, deviceScaleFactor: 1, mobile: false });
 
@@ -113,19 +130,22 @@ module.exports = async ({ ev, sleep, nav, send }) => {
     console.log("NOTE [isolation 1] B's device profile: " + JSON.stringify(d1.profile || {}).slice(0, 200) + " | rows " + Object.keys(d1.decisions || {}).length + " | key " + (await KEY()));
     check("A's old cookie still cannot read anything while B is signed in", (await withCookie("/api/profile/data", cookieA)).status === 401);
     await signOut();
+    await aBack("back on browser 1", A.email, A.pw);
+    await signOut();
     if (STATE) fs.writeFileSync(STATE, JSON.stringify({ A: { email: A.email, pw: A.pw }, B }));
   } else {
     // ---- a second browser (fresh profile): A by password, then B by Google ----
     const S = JSON.parse(fs.readFileSync(STATE, "utf8"));
     await nav(base + "/legal/privacy.html"); await sleep(500);
-    const st = await ev("fetch('/api/auth/login',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:" + JSON.stringify(S.A.email) + ",password:" + JSON.stringify(S.A.pw) + "})}).then(r=>r.status)");
+    const st = await pwLogin(S.A.email, S.A.pw);
     check("A signs in by password in a second browser", st === 200, st);
-    await load();
     await until(async () => /Avery Alpha/.test(JSON.stringify((await device()).profile || {})), 8000);
     const ua = await me(), da = await device();
     check("A is the one signed in", ua && ua.email === S.A.email, JSON.stringify(ua));
     check("A's profile comes back from A's account in the new browser (Avery Alpha)", /Avery Alpha/.test(JSON.stringify(da.profile || {})), JSON.stringify(da.profile || {}));
     check("nothing of B's is on A's account", !(await acctProfile()).includes(S.B.email));
+    await addRows();                                    // A applies to three jobs on this browser too (rows live on the device only)
+    check("A's Job Tracker on browser 2 shows A's three AlphaCorp rows", ((await tracker()).match(/AlphaCorp/g) || []).length >= 3);
     await signOut();
     check("after Sign out nobody is signed in", (await me()) === null);
     await google(S.B.email, S.B.sub);
@@ -139,6 +159,8 @@ module.exports = async ({ ev, sleep, nav, send }) => {
     check("existing account B on A's browser: B's app shows no part of A's profile", !ALPHA.test(JSON.stringify(db.profile || {})), JSON.stringify(db.profile || {}));
     check("existing account B on A's browser: B's saved copy holds none of A's Job Tracker rows", !/AlphaCorp/.test(JSON.stringify(db.decisions || {})), Object.keys(db.decisions || {}).length + " rows");
     check("existing account B on A's browser: B's Job Tracker shows none of A's rows", !/AlphaCorp/.test(tb), (tb.match(/AlphaCorp/g) || []).length + " AlphaCorp mentions");
+    await signOut();
+    await aBack("back on browser 2", S.A.email, S.A.pw);
     await signOut();
   }
   console.log((bad ? "FAIL " : "") + "[isolation " + PHASE + "] " + (bad ? bad + " check(s) failed" : "all checks passed") + " at " + W + "x" + H);
