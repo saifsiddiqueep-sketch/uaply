@@ -23,6 +23,7 @@ import auth_api
 import billing_api
 import google_auth
 import jobs_api
+import mailer
 import uaply_api
 import ui_rules
 
@@ -344,6 +345,8 @@ def test_mail():
         return 200, {"ok": False, "message": "Email sending is not set up yet. Fill in the Connect email box on this page first."}
     if uaply_api.NO_MAIL:                       # test mode (UAPLY_SIGNUP_TEST=1): the settings are kept, but nothing leaves this server
         return 200, {"ok": False, "message": "Test mode is on (UAPLY_SIGNUP_TEST=1), so this server sends no email: every message is in the test inbox (/outbox). Start it without test mode to send a test."}
+    if mailer.test_run_blocks(s.get("host")):    # a test run (UAPLY_CONFIG_FILE=none) never reaches a real mail server
+        return 200, {"ok": False, "message": "This server was started for testing (UAPLY_CONFIG_FILE=none), so it only sends to a mail server on this computer."}
     if not uaply_api.mail_ready():
         return 200, {"ok": False, "message": "Email sending has no password or key yet. Add one in the Connect email box on this page."}
     if not to:
