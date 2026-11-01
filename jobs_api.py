@@ -42,6 +42,7 @@ import base64
 import codecs
 import collections
 import datetime
+import email.utils
 import hashlib
 import html
 import http.client
@@ -58,6 +59,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 
 import ats_api
@@ -100,7 +102,7 @@ AGE_EXEMPT = ("usajobs",)
 # An hourly part-time or seasonal posting on the employer's own board is usually evergreen: one posting per store or studio, open all
 # year (Insomnia Cookies: 852 of 1,063 part-time postings older than 60 days; solidcore coaches: years). Still listed on the employer's
 # own board means still hiring, so those are not aged out there. An aggregator's copy still is.
-EVERGREEN_KINDS = ("greenhouse", "lever", "ashby", "workable", "smartrecruiters", "recruitee", "careerpage")
+EVERGREEN_KINDS = ("greenhouse", "lever", "ashby", "workable", "smartrecruiters", "recruitee", "careerpage", "workday", "rippling", "breezy", "teamtailor")
 EVERGREEN_TYPES = ("part-time", "temporary")
 
 # (kind, board token, display name). Boards are the employer's own public careers feed.
@@ -224,14 +226,28 @@ SOURCES = [
     ("remoteok", "all", "Remote OK"),         # link back to the job on Remote OK and name Remote OK as the source
 ]
 BOARDS_FILE = os.path.join(ROOT, "job-boards.json")   # employer boards found and checked with tools/find-boards.py (see docs/job-sources.md)
-BOARD_KINDS = ("greenhouse", "lever", "ashby", "smartrecruiters", "workable", "recruitee")       # plus "careerpage": an employer's own careers site (see _career_pages)
+BOARD_KINDS = ("greenhouse", "lever", "ashby", "smartrecruiters", "workable", "recruitee",       # plus "careerpage": an employer's own careers site (see _career_pages)
+               "workday", "rippling", "breezy", "teamtailor")      # each careers site's own public list, no key (_workday, _rippling, _breezy, _teamtailor)
 # Hiring systems whose postings carry where they live in the system (job["ats"] = kind, board, posting id): the ones UAply can send an
 # application into once the employer connects (ats_api.KINDS), and Recruitee, whose public careers-site API takes an application with no
 # employer key (POST https://{company}.recruitee.com/api/offers/{slug}/candidates; the send itself is the apply side's, not built here)
-ATS_REF_KINDS = ats_api.KINDS + ("recruitee",)
+ATS_REF_KINDS = ats_api.KINDS + ("recruitee", "workday", "rippling", "breezy", "teamtailor")    # (a Workday site's token has a "/": no ats reference)
 CONNECTIONS_FILE = [""]          # the connect page's own keys (connect_api.path), set by serve.py at the start
 RECRUITEE_SUBMIT = [False]       # the owner's "recruitee_submit" switch, set by serve.py at the start (uaply_api.recruitee_on)
 BOARD_TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$")    # a board's name in its system's address (Lever and Ashby allow dots: "thea.energy")
+WORKDAY_TOKEN_RE = re.compile(r"^([a-z0-9][a-z0-9-]{0,62})\.wd(\d{1,2})/([A-Za-z0-9_-]{1,80})$")   # "{company}.wd{n}/{SiteName}": nvidia.wd5/NVIDIAExternalCareerSite
+SUBDOMAIN_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")   # one label of a careers site's own subdomain (Breezy, Teamtailor)
+
+
+def _board_token_ok(kind, token):
+    """Whether a board token is safe to put in its system's address: a Workday site is "{company}.wd{n}/{SiteName}", a Breezy or
+    Teamtailor careers site one subdomain label, every other board one name (BOARD_TOKEN_RE, never "..")."""
+    token = token if isinstance(token, str) else ""
+    if kind == "workday":
+        return bool(WORKDAY_TOKEN_RE.match(token))
+    if kind in ("breezy", "teamtailor"):
+        return bool(SUBDOMAIN_RE.match(token))
+    return bool(BOARD_TOKEN_RE.match(token)) and ".." not in token
 
 
 def _file_boards():
@@ -250,7 +266,7 @@ def _file_boards():
             if not (BOARD_TOKEN_RE.match(t) and n and _public_https(sm)) or (k, t.lower()) in have:
                 continue
             CAREER_PAGES[t] = sm
-        elif not (k in BOARD_KINDS and BOARD_TOKEN_RE.match(t) and ".." not in t and n and (k, t.lower()) not in have):
+        elif not (k in BOARD_KINDS and _board_token_ok(k, t) and n and (k, t.lower()) not in have):
             continue
         have.add((k, t.lower()))
         out.append((k, t, n))
@@ -443,7 +459,8 @@ load_human_checks()
 FILE_TTL = 2 * 3600            # a board from job-boards.json is read every 2 hours (the hand-picked ones every 30 minutes)
 
 VIA = {"greenhouse": "%s on Greenhouse", "lever": "%s on Lever", "ashby": "%s on Ashby", "smartrecruiters": "%s on SmartRecruiters", "workable": "%s on Workable",
-       "recruitee": "%s on Recruitee",
+       "recruitee": "%s on Recruitee", "workday": "%s on Workday", "rippling": "%s on Rippling", "breezy": "%s on Breezy HR",
+       "teamtailor": "%s on Teamtailor",
        "jobicy": "Jobicy", "muse": "The Muse", "usajobs": "USAJOBS", "remotive": "Remotive",
        "himalayas": "Himalayas", "remoteok": "Remote OK",
        # the CareerOneStop license: every page showing its data credits both the U.S. Department of Labor (ETA) and Minnesota DEED
@@ -815,7 +832,8 @@ HOST_PARALLEL_BY = {"boards-api.greenhouse.io": 10, "api.lever.co": 8, "api.ashb
 #                                      A system that gives every company its own subdomain ({company}.recruitee.com) is one service: all its
 #                                      subdomains share one family's places, and request starts are spaced (seconds apart), so hundreds of its
 #                                      boards are read one after another at a steady pace instead of eight at once on a fresh start
-HOST_FAMILY = {"recruitee.com": (2, 1.0)}                  # family -> (places at the same time, seconds between request starts)
+HOST_FAMILY = {"recruitee.com": (2, 1.0),                  # family -> (places at the same time, seconds between request starts)
+               "myworkdayjobs.com": (2, 0.5), "breezy.hr": (2, 0.5), "teamtailor.com": (2, 0.5)}   # (spaced less: they share the boards' readers)
 _host_sems, _host_sems_lock, _host_next = {}, threading.Lock(), {}
 
 
@@ -852,10 +870,10 @@ class _host_slot:
         return False
 
 
-def _get(url, headers=None, as_text=False, opener=None):
+def _get(url, headers=None, as_text=False, opener=None, data=None):
     """One feed answer, parsed as JSON (or the plain text with as_text=True), refused past MAX_FEED_BYTES. opener: _cp_open for a careers
-    site (every hop a public https address), else urllib's own."""
-    req = urllib.request.Request(url, headers=dict({"User-Agent": UA, "Accept": "text/plain" if as_text else "application/json"}, **(headers or {})))
+    site (every hop a public https address), else urllib's own. data: a POST body (Workday's job search), else a GET."""
+    req = urllib.request.Request(url, data=data, headers=dict({"User-Agent": UA, "Accept": "text/plain" if as_text else "application/json"}, **(headers or {})))
     parts, size = [], 0
     with _host_slot(url) as slot, (opener or urllib.request.urlopen)(req, timeout=FEED_TIMEOUT) as r:
         while True:                                     # in parts, so a feed that trickles is stopped at FEED_DEADLINE
@@ -1265,6 +1283,213 @@ def _recruitee_slug_ok(slug):
     return isinstance(slug, str) and bool(ats_api.ID_RE.match(slug))
 
 
+FEED_UA = "UAply-jobs/1.0 (+https://uaply.net)"     # how the Workday, Rippling, Breezy and Teamtailor lists are asked for
+WORKDAY_PAGE = 20                    # postings per Workday job search (what its own careers site asks for)
+WORKDAY_CAP = 200                    # postings read from one Workday site per refresh: 10 searches at most
+WORKDAY_PLACE_RE = re.compile(r"^/job/([^/]{1,120})/")
+WORKDAY_US_PLACE_RE = re.compile(r"^(?:US|USA)-([A-Z]{2})-(.+)$")
+WORKDAY_AGE_RE = re.compile(r"(\d{1,3})\+?\s+Days?\s+Ago", re.I)
+US_COUNTRY = ("US", "USA", "UNITED STATES", "UNITED STATES OF AMERICA")
+
+
+def _feed_robots(host, url):
+    """The site's own robots.txt first, as for Recruitee: nothing is read when it cannot be read or does not allow the list."""
+    rp = _robots_for(host)
+    if rp is None:
+        raise PermissionError("robots.txt could not be read")
+    if not rp.can_fetch(CP_UA, url):
+        raise PermissionError("robots.txt does not allow it")
+
+
+def _workday_posted(s, now=None):
+    """Workday's "Posted Today", "Posted Yesterday", "Posted 3 Days Ago" or "Posted 30+ Days Ago" as epoch ms (0: unreadable)."""
+    s, now = str(s or ""), time.time() if now is None else now
+    if re.search(r"\btoday\b", s, re.I):
+        days = 0
+    elif re.search(r"\byesterday\b", s, re.I):
+        days = 1
+    else:
+        m = WORKDAY_AGE_RE.search(s)
+        if not m:
+            return 0
+        days = int(m.group(1))
+    return int((now - days * 86400) * 1000)
+
+
+def _workday_raw(j, host, site, name):
+    """One posting of a Workday careers site's job search as a raw posting, or None. The list has no description (that is one more
+    request per posting), so the title carries the skills and "Jobs" stands for the rest. A posting open in several places says only
+    "3 Locations": it is placed in the first one, which its own address names ("/job/US-CA-Santa-Clara/..." is "US, CA, Santa Clara")."""
+    if not isinstance(j, dict) or not j.get("title") or not isinstance(j.get("externalPath"), str):
+        return None
+    path = j["externalPath"]
+    if not path.startswith("/job/") or ".." in path or "//" in path or len(path) > 300:
+        return None
+    loc = str(j.get("locationsText") or "").strip()
+    if not loc or re.match(r"^\d+ Locations?$", loc, re.I):
+        m = WORKDAY_PLACE_RE.match(path)
+        place = m.group(1) if m else ""
+        us = WORKDAY_US_PLACE_RE.match(place)
+        loc = "US, %s, %s" % (us.group(1), us.group(2).replace("-", " ")) if us else place.replace("-", " ")
+    rt = str(j.get("remoteType") or "")
+    remote = True if re.search(r"\bremote\b", rt + " " + loc, re.I) and not re.search(r"hybrid", rt, re.I) else None
+    return dict(id=path, title=str(j["title"]).strip(), company=name, loc=loc, remote=remote, text="",
+                url="https://%s/%s%s" % (host, site, path), salary_text="", posted=_workday_posted(j.get("postedOn")), emp=None,
+                fallback="Jobs")
+
+
+def _workday(token, name):
+    """A Workday careers site's own job search (POST https://{company}.wd{n}.myworkdayjobs.com/wday/cxs/{company}/{site}/jobs, no key;
+    what the site's own page asks for), 20 at a time up to WORKDAY_CAP. token: "{company}.wd{n}/{site}"."""
+    m = WORKDAY_TOKEN_RE.match(token or "")
+    if not m:
+        raise ValueError("not a Workday site")
+    company, n, site = m.groups()
+    host = "%s.wd%s.myworkdayjobs.com" % (company, n)
+    url = "https://%s/wday/cxs/%s/%s/jobs" % (host, company, site)
+    _feed_robots(host, url)
+    seen, total, offset = set(), None, 0
+    while offset < WORKDAY_CAP:
+        page = _get(url, {"User-Agent": FEED_UA, "Content-Type": "application/json"},
+                    data=json.dumps({"limit": WORKDAY_PAGE, "offset": offset, "searchText": ""}).encode())
+        rows = page.get("jobPostings") if isinstance(page, dict) else None
+        if not isinstance(rows, list):
+            raise ValueError("the answer has no jobPostings list")
+        if total is None:                    # Workday gives the total on the first page only
+            total = page.get("total") if isinstance(page.get("total"), int) else 0
+        for j in rows:
+            r = _workday_raw(j, host, site, name)
+            if r and r["id"] not in seen:
+                seen.add(r["id"])
+                yield r
+        offset += WORKDAY_PAGE
+        if len(rows) < WORKDAY_PAGE or offset >= total:
+            break
+
+
+def _rippling_place(label):
+    """A Rippling work location as a place: a bare state code ("AR") is that state in the United States."""
+    label = str(label or "").strip()
+    return "%s, United States" % label if label.upper() in STATES else label
+
+
+def _rippling(token, name):
+    """A Rippling job board's public list (GET https://api.rippling.com/platform/api/ats/v1/board/{slug}/jobs, no key). It has one
+    row per place a job is open in: the rows of one job (its uuid) are one posting with all its places."""
+    url = "https://api.rippling.com/platform/api/ats/v1/board/%s/jobs" % urllib.parse.quote(token, safe="")
+    _feed_robots("api.rippling.com", url)
+    rows = _get(url, {"User-Agent": FEED_UA})
+    if not isinstance(rows, list):
+        raise ValueError("the answer is not a list of jobs")
+    jobs = {}
+    for j in rows:
+        if not isinstance(j, dict) or not isinstance(j.get("uuid"), str) or not ats_api.ID_RE.match(j["uuid"]) or not j.get("name"):
+            continue
+        wl = j.get("workLocation")
+        place = _rippling_place(wl.get("label") if isinstance(wl, dict) else "")
+        got = jobs.setdefault(j["uuid"], (j, []))
+        if place and place not in got[1]:
+            got[1].append(place)
+    for uuid, (j, places) in jobs.items():
+        loc = "; ".join(places)
+        dept = j.get("department")
+        dept = dept.get("label") if isinstance(dept, dict) else dept
+        url = str(j.get("url") or "")
+        if not url.startswith("https://ats.rippling.com/"):
+            url = "https://ats.rippling.com/%s/jobs/%s" % (urllib.parse.quote(token, safe=""), uuid)
+        yield dict(id=uuid, title=str(j["name"]).strip(), company=name, loc=loc, remote=True if re.search(r"\bremote\b", loc, re.I) else None,
+                   text="", url=url, salary_text="", posted=0, emp=None, fallback=str(dept or "").strip() or "Jobs")
+
+
+def _breezy_raw(j, name):
+    """One position of a Breezy HR careers site's public list (GET https://{company}.breezy.hr/json, no key) as a raw posting, or None.
+    A position open in several places is placed in its first US one; one with none in the US is left out."""
+    if not isinstance(j, dict) or not isinstance(j.get("id"), str) or not ats_api.ID_RE.match(j["id"]) or not j.get("name"):
+        return None
+    places = [l for l in (j.get("locations") or []) if isinstance(l, dict)] or ([j["location"]] if isinstance(j.get("location"), dict) else [])
+    cc = lambda l: str((l.get("country") or {}).get("id") or "" if isinstance(l.get("country"), dict) else "").strip().upper()
+    us = [l for l in places if cc(l) in US_COUNTRY]
+    l = us[0] if us else (places[0] if places else {})
+    country = "us" if us else (cc(l).lower() or "other")
+    state = l.get("state")
+    state = state.get("id") if isinstance(state, dict) else state
+    loc = ", ".join(x for x in (str(l.get("city") or "").strip(), str(state or "").strip()) if x) or str(l.get("name") or "").strip()
+    loc = loc or ("United States" if country == "us" else "")
+    remote = True if l.get("is_remote") is True else None
+    if remote:
+        loc = "Remote - " + (loc or "United States")
+    typ = j.get("type") if isinstance(j.get("type"), dict) else {}
+    dept = j.get("department")
+    return dict(id=j["id"], title=str(j["name"]).strip(), company=name, loc=loc, remote=remote, country=country, text="",
+                url=str(j.get("url") or ""), salary_text=str(j.get("salary") or ""), posted=_ts(j.get("published_date")),
+                emp=str(typ.get("name") or ""), force_type="internship" if re.search(r"intern", str(typ.get("id") or ""), re.I) else None,
+                fallback=(dept.strip() if isinstance(dept, str) else "") or "Jobs")
+
+
+def _breezy(token, name):
+    host = "%s.breezy.hr" % token.lower()
+    url = "https://%s/json" % host
+    _feed_robots(host, url)
+    rows = _get(url, {"User-Agent": FEED_UA})
+    if not isinstance(rows, list):
+        raise ValueError("the answer is not a list of positions")
+    for j in rows:
+        r = _breezy_raw(j, name)
+        if r:
+            yield r
+
+
+def _local(tag):
+    return tag.rsplit("}", 1)[-1] if isinstance(tag, str) else ""
+
+
+def _teamtailor_raw(item, name):
+    """One <item> of a Teamtailor careers site's RSS feed as a raw posting, or None. Its places are tt:location elements (city and
+    country, no state): it is placed in its first US one; one with none in the US is left out."""
+    kids = {}
+    for c in item:
+        kids.setdefault(_local(c.tag), c)
+    get = lambda k: (kids[k].text or "").strip() if k in kids else ""
+    title, link, guid = get("title"), get("link"), get("guid")
+    if not title or not link.startswith("https://") or not ats_api.ID_RE.match(guid):
+        return None
+    places = [{_local(c.tag): (c.text or "").strip() for c in l} for l in item.iter() if _local(l.tag) == "location"]
+    us = [p for p in places if p.get("country", "").upper() in US_COUNTRY]
+    p = us[0] if us else {}
+    country = "us" if us else "other"
+    loc = ", ".join(x for x in (p.get("city") or p.get("name") or "", "United States") if x) if us else ""
+    status = get("remoteStatus").lower()
+    remote = True if status in ("fully", "remote") else None
+    if remote:
+        loc = "Remote - " + (loc or "United States")
+    elif status == "hybrid" and loc:
+        loc += " (hybrid)"
+    try:
+        posted = int(email.utils.parsedate_to_datetime(get("pubDate")).timestamp() * 1000)
+    except Exception:
+        posted = 0
+    return dict(id=guid, title=title, company=name, loc=loc, remote=remote, country=country, text=_text(get("description")), url=link,
+                salary_text="", posted=posted, emp=None, fallback=get("department") or None)
+
+
+def _teamtailor(token, name):
+    """A Teamtailor careers site's public job feed (GET https://{company}.teamtailor.com/jobs.rss, no key). Read with the standard XML
+    parser; a feed that declares entities (or a doctype) is refused before parsing."""
+    host = "%s.teamtailor.com" % token.lower()
+    url = "https://%s/jobs.rss" % host
+    _feed_robots(host, url)
+    text = _get(url, {"User-Agent": FEED_UA, "Accept": "application/rss+xml, application/xml;q=0.9"}, as_text=True)
+    if re.search(r"<!(?:ENTITY|DOCTYPE)", text, re.I):
+        raise ValueError("the feed declares entities; refused")
+    root = ET.fromstring(text)
+    del text
+    for item in root.iter():
+        if _local(item.tag) == "item":
+            r = _teamtailor_raw(item, name)
+            if r:
+                yield r
+
+
 def _iter_raw(kind, token, name):
     """The raw postings of one board, one at a time: dicts with id, title, company, loc, remote, text, url, salary_text. A generator, so a
     board's postings are worked through as they are read instead of all being held (each with up to 20,000 characters of text) first."""
@@ -1323,6 +1548,14 @@ def _iter_raw(kind, token, name):
             r = _recruitee_raw(j, name)
             if r:
                 yield r
+    elif kind == "workday":
+        yield from _workday(token, name)
+    elif kind == "rippling":
+        yield from _rippling(token, name)
+    elif kind == "breezy":
+        yield from _breezy(token, name)
+    elif kind == "teamtailor":
+        yield from _teamtailor(token, name)
     elif kind == "remotive":
         for j in _get("https://remotive.com/api/remote-jobs?category=%s&limit=60" % token).get("jobs", []):
             loc = j.get("candidate_required_location") or ""
@@ -3039,7 +3272,7 @@ def feeds_allowed():
     """Third-party feeds the owner has explicitly switched on (default: none). See the legal notes at the top.
     A source kind is on when it is listed in "feeds" (uaply-config.json / UAPLY_CONFIG_JSON) or in UAPLY_FEEDS. "feeds_off" (a list, or
     UAPLY_FEEDS_OFF=remotive,muse) switches a kind off by name and wins over both, so one line turns a feed off without touching the others:
-    {"feeds_off": ["remotive"]}. The kinds: greenhouse, lever, ashby, smartrecruiters, workable, usajobs, jobicy, muse, remotive."""
+    {"feeds_off": ["remotive"]}. The kinds: greenhouse, lever, ashby, smartrecruiters, workable, recruitee, workday, rippling, breezy, teamtailor, usajobs, jobicy, muse, remotive."""
     cfg = _cfg()
     f, off = cfg.get("feeds"), cfg.get("feeds_off")
     on = {x for x in f if isinstance(x, str)} if isinstance(f, list) else set()
