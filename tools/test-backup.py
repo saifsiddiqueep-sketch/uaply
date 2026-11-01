@@ -163,6 +163,7 @@ try:
     t("(the test's crashed database really has a hot journal: a plain read-only backup of it fails as the one in card 053 did)",
       ("readonly" in msg, os.path.getsize(hot + "-journal") > 0), (True, True))
 
+    temp_before = set(d for d in os.listdir(tempfile.gettempdir()) if d.startswith(("uaply-recover-", "uaply-backup-")))
     CRASH = os.path.join(TMP, "crash-data")
     hot = crashed(CRASH)
     was = states(hot)
@@ -179,11 +180,13 @@ try:
     t("...the live database and its journal are left exactly as they were (nothing opened them for writing)", states(hot), was)
     t("...the manifest says the journal was rolled back in a private copy, and the journal is not in the backup",
       ("private copy" in cman.get("notes", {}).get("dev/uaply.db", ""), sorted(cman["files"])), (True, ["dev/uaply.db"]))
-    t("...and no private copy is left in the temp folder", [d for d in os.listdir(tempfile.gettempdir()) if d.startswith("uaply-recover-")], [])
+    t("...and no private copy is left in the temp folder",
+      sorted(set(d for d in os.listdir(tempfile.gettempdir()) if d.startswith(("uaply-recover-", "uaply-backup-"))) - temp_before), [])
 
     B.restore(path, CRASH, yes=True)
+    gone = not os.path.exists(hot + "-journal")        # looked at before anything opens the restored database
     t("a restore into a folder whose database has a hot journal works (the card 053 failure), and the old journal is gone",
-      (users(hot)[:2], os.path.exists(hot + "-journal")), (["a0@example.com", "a1@example.com"], False))
+      (gone, users(hot)[:2]), (True, ["a0@example.com", "a1@example.com"]))
     first = sorted(f for f in os.listdir(os.path.join(CRASH, "backups")) if B.NAME_RE.match(f))
     t("...the copy saved before it holds the crashed database as it was before the cut-off write",
       "private copy" in B.list_backup(os.path.join(CRASH, "backups", first[0])).get("notes", {}).get("dev/uaply.db", ""), True)
@@ -198,6 +201,23 @@ try:
         B._file_state = real
     t("a hot journal that keeps changing while it is copied is refused after 3 tries, and the live files are untouched",
       ("kept changing" in msg, states(hot)), (True, was))
+
+    BAD = os.path.join(TMP, "bad-data")
+    hot = crashed(BAD)
+    was = states(hot)
+    copyfile = shutil.copyfile
+    def spoil(a, b, *k, **kw):                      # the private copy of the database comes out unreadable
+        copyfile(a, b, *k, **kw)
+        if b.endswith("recover.db"):
+            with open(b, "wb") as f:
+                f.write(b"not a database " * 300)
+    shutil.copyfile = spoil
+    try:
+        msg = refused(B.make_backup, BAD, os.path.join(TMP, "bad-out"), quiet=True)
+    finally:
+        shutil.copyfile = copyfile
+    t("a hot journal whose rolled-back copy is damaged is refused with the steps to restore anyway, the live files untouched, "
+      "and no half-written archive left", ("quarantine" in msg, states(hot), os.listdir(os.path.join(TMP, "bad-out"))), (True, was, []))
 
     # ---------- damaged and hostile backups ----------
     def tamper(name, member_name, data, keep_manifest=True):
