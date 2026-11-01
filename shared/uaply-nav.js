@@ -954,7 +954,7 @@ function apply(w,host){
     return a;
   }
   var DAY=864e5,DATA_URL=/^data:[\w\/+.\-]+;base64,[A-Za-z0-9+\/=]+$/,URL_OK=/^https?:\/\//i;
-  function defAcct(){return {phone:"",linkedin:"",portfolio:"",summary:"",auth:"",notice:"",cover:"",resumeName:"",resumeSize:0,resumeData:"",plan:"trial",since:Date.now(),renews:0,canceled:false,enforce:false,pay:[],apps:{},fSal:false,fYrs:"any",fCo:"",fKw:"",fPosted:"any",fApp:false,fPerks:[],fMiles:"any",fStrict:false,fAuto:false,titles:[],fTitleOnly:true,fNoComm:false,fLevels:[],fEdu:false,fWs:true,fJt:"all",eeo:{auth:"",sponsor:"",veteran:"",hisp:"",race:[],disability:"",gender:""},addr:{street:"",unit:"",state:"",zip:""},resumeUrl:""}}
+  function defAcct(){return {phone:"",linkedin:"",portfolio:"",summary:"",auth:"",notice:"",cover:"",resumeName:"",resumeSize:0,resumeData:"",plan:"trial",since:Date.now(),renews:0,canceled:false,enforce:false,pay:[],apps:{},fSal:false,fYrs:"any",fCo:"",fKw:"",fPosted:"any",fApp:false,fPerks:[],fMiles:"any",fStrict:false,fAuto:false,titles:[],fTitleOnly:true,fNoComm:false,fLevels:[],fEdu:false,fWs:true,fJt:"all",eeo:{auth:"",sponsor:"",veteran:"",hisp:"",race:[],disability:"",gender:""},addr:{street:"",unit:"",state:"",zip:""},resumeUrl:"",resumeWas:""}}
   function loadA(){
     var a=defAcct();
     try{var r=JSON.parse(w.localStorage.getItem(AK));if(r&&typeof r==="object"){Object.keys(a).forEach(function(k){if(r[k]!==undefined&&typeof r[k]===typeof a[k])a[k]=r[k]})}}catch(e){}
@@ -964,6 +964,7 @@ function apply(w,host){
     if(!a.resumeName||!DATA_URL.test(a.resumeData)){a.resumeName="";a.resumeData="";a.resumeSize=0}
     ["fCo","fKw","phone","linkedin","portfolio","summary","cover","auth","notice","resumeUrl"].forEach(function(k){a[k]=String(a[k]).slice(0,k==="cover"?1500:600)});
     if(a.resumeUrl&&!/^https:\/\//i.test(a.resumeUrl))a.resumeUrl="";
+    a.resumeWas=a.resumeData?"":String(a.resumeWas).replace(/[\r\n\t]+/g," ").slice(0,120);   /* card 181: the name of a resume added on another device, shown until a file is added here */
     if(["any","0","1","2","3"].indexOf(a.fYrs)<0)a.fYrs="any";
     return cleanF(a);
   }
@@ -1442,7 +1443,7 @@ function apply(w,host){
       try{w.fetch("/api/profile/data",{method:"POST",credentials:"same-origin",keepalive:!!now,headers:{"Content-Type":"application/json"},body:JSON.stringify({fields:f})}).catch(function(){})}catch(e){}
     }
     function setField(k,v){if(k.indexOf("p.")===0){A.S.profile[k.slice(2)]=v;return}
-      var n=k.slice(2);if(n==="resumeName"&&!acct.resumeData&&v){acct.resumeWas=v;return}if(n==="resumeSize"&&!acct.resumeData)return;acct[n]=v}
+      var n=k.slice(2);if(n==="resumeName"&&!acct.resumeData){acct.resumeWas=String(v||"").replace(/[\r\n\t]+/g," ").slice(0,120);return}if(n==="resumeSize"&&!acct.resumeData)return;acct[n]=v}
     function pull(u){
       pulling=true;
       w.fetch("/api/profile/data",{credentials:"same-origin"}).then(function(r){return r.ok?r.json():null}).then(function(j){
@@ -1926,7 +1927,10 @@ function apply(w,host){
       var a=acct;
       d.getElementById("resNow").innerHTML=a.resumeName
         ?'<div class="todo"><span>'+E(a.resumeName)+' ('+Math.max(1,Math.round(a.resumeSize/1024))+' KB)</span><span class="acts"><a class="btn ghost" download="'+E(a.resumeName)+'" href="'+a.resumeData+'">Download</a><button type="button" class="btn ghost" id="resRm">Remove</button></span></div>'
+        :a.resumeWas?'<small class="resWas">You added '+E(a.resumeWas)+' on another device. Add it here too, or use a phone number.</small>'
         :'<small>No resume file yet.</small>';
+      /* card 181: one resume is kept and sent with every application; changing it is optional */
+      var pl=d.querySelector('label[for="pResFile"]');if(pl)pl.textContent=a.resumeName?"Replace your resume file (optional)":"Upload your resume file";
       d.getElementById("pResUrl").value=a.resumeUrl;
       d.getElementById("resMsg").textContent=m||"";
       var rm=d.getElementById("resRm");if(rm)rm.onclick=function(){acct.resumeName="";acct.resumeData="";acct.resumeSize=0;saveA();paintRes("Resume file removed.")};
@@ -1941,7 +1945,7 @@ function apply(w,host){
         if(!u||!DATA_URL.test(u)){paintRes("Could not read that file.");done(false);return}
         var prev=[acct.resumeName,acct.resumeSize,acct.resumeData];
         acct.resumeName=f.name.slice(0,120);acct.resumeSize=f.size;acct.resumeData=u;
-        if(saveA()){paintRes("Resume added.");done(true)}
+        if(saveA()){acct.resumeWas="";saveA();paintRes("Resume added.");done(true)}
         else{acct.resumeName=prev[0];acct.resumeSize=prev[1];acct.resumeData=prev[2];paintRes("Not enough browser storage for that file.");done(false)}
       });
     }
@@ -2202,7 +2206,8 @@ function apply(w,host){
   w.__uaplyAutoMsg=function(){return autoAllowed()&&!!acct.fAuto};
   /* what the application sends besides the profile: the details saved in Profile setup, Background and links (phone, LinkedIn, portfolio, summary, resume link) win over the optional profile form */
   w.__uaplyApplyExt=function(){var x=Object.assign({},XV());var ph=phoneOf(),li=linkOf("linkedin"),pf=linkOf("portfolio"),su=summaryOf(),rs=resumeLinkOf();if(ph)x.phone=ph;if(!x.start&&acct.notice)x.notice=acct.notice;if(li)x.linkedin=li;if(pf)x.portfolio=pf;if(su)x.summary=su;if(rs)x.resume=rs;var ad=acct.addr||{};if(ad.zip)x.zip=ad.zip;if(A.S.profile&&A.S.profile.reloc&&x.relocate!=="no")x.relocate="yes";if(ad.state)x.state=ad.state;x.ack=x.ack==="yes";return x};
-  w.__uaplyResume=function(){return acct.resumeData&&DATA_URL.test(acct.resumeData)?{name:acct.resumeName,size:acct.resumeSize,data:acct.resumeData}:null};   /* the file uploaded in Profile setup, Background and links */
+  w.__uaplyResume=function(){return acct.resumeData&&DATA_URL.test(acct.resumeData)?{name:acct.resumeName,size:acct.resumeSize,data:acct.resumeData}:null};
+  w.__uaplyResumeWas=function(){return acct.resumeData?"":String(acct.resumeWas||"")};   /* card 181: a resume added on another device, none here */   /* the file uploaded in Profile setup, Background and links */
   /* assisted apply (phone app, docs/assisted-apply.md): the profile shared/uaply-assist.js fills an employer's form with. Only what the
      person saved in UAply; never the voluntary self-identification answers (acct.eeo holds them next to work authorization, and only
      authorization and sponsorship are read from it), never pronouns. The example profile is never used. adult is "yes": the person
@@ -2470,6 +2475,7 @@ function apply(w,host){
     var keep=acct;acct=na;
     if(!PLANS[acct.plan])acct.plan="trial";
     if(!acct.resumeName||!DATA_URL.test(acct.resumeData)){acct.resumeName="";acct.resumeData="";acct.resumeSize=0}
+    acct.resumeWas=acct.resumeData?"":String(acct.resumeWas).replace(/[\r\n\t]+/g," ").slice(0,120);
     cleanF(acct);
     if(!saveA()){acct=keep;return "Not enough browser storage for that backup."}
     if(stubs.length&&w.__uaplyJobs)w.__uaplyJobs.add(stubs);   /* only once the restore is saved: a failed one leaves no stand-in behind */

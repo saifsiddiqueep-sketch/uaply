@@ -160,12 +160,12 @@ module.exports = async ({ ev, sleep, nav, send, logs, on }) => {
     await type(".sg-su [data-email] input", email); await type(".sg-su .sg-fn input", "Walk"); await type(".sg-su .sg-ln input", "Tester"); await type(".sg-su .sg-pw input", pw);
     await tap("d.querySelector('.sg-su .sg-ag')");
     await tap("d.querySelector('.sg-su [type=submit]')");
-    await waitFor("return /Check your email|1 of 2|What kind of work|What should employers/i.test(d.getElementById('acctSec').innerText)?1:''", 8000);
+    await waitFor("return /Check your email|1 of [0-9]|Start with your resume|What kind of work|What should employers/i.test(d.getElementById('acctSec').innerText)?1:''", 8000);
     if (/Check your email/.test(await text("#acctSec"))) {
       const c = await ev("fetch('/outbox').then(r=>r.text()).then(t=>{const m=t.replace(/<[^>]+>/g,' ').match(/([0-9]{6}) is your UAply verification code/);return m?m[1]:''})");
       await type(".sg-code input", c); await sleep(2000);
     }
-    for (let i = 0; i < 4 && (await q("return d.body.classList.contains('sgGated')?'y':''")) === "y"; i++) { await tap("d.querySelector('.sg-next')"); await sleep(700); }
+    for (let i = 0; i < 6 && (await q("return d.body.classList.contains('sgGated')?'y':''")) === "y"; i++) { await tap("d.querySelector('.sg-next')"); await sleep(700); }   // resume (skipped), work, where, phone, the last screen
     await menu("nb-prof", "account");
   } else {
     await type("#sEmail", email); await type("#sPw", pw); await type("#sPw2", pw);

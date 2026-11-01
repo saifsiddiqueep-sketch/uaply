@@ -123,6 +123,19 @@ module.exports = async ({ ev, sleep, nav, shot, logs }) => {
       /^Lancaster Avenue Coffee Co\.?$/.test(biz["px-employer"]) && biz["px-job_start"] === "2023-09" && biz["px-job_end"] === "", JSON.stringify(biz));
     check("...the accented name arrives whole and the skills have no half brackets", biz.pName === "Jordan Álvarez" && !/[()]/.test(biz.pSkills) && /Excel/.test(biz.pSkills), JSON.stringify([biz.pName, biz.pSkills]));
   }
+  // a graduation with a year and no month ("B.S. Biology, 2019"): the year-and-month box stays empty, no month is made up.
+  // The server's answer is stood in for here, so this holds whatever the parser on this server says.
+  await ev("(()=>{const w=" + W + ",d=w.document,g=d.getElementById('px-grad');if(g){g.value='';g.dispatchEvent(new w.Event('input',{bubbles:true}));g.dispatchEvent(new w.Event('change',{bubbles:true}))}" +
+    "const real=w.fetch;w.fetch=function(u,o){if(String(u).indexOf('/api/profile/resume')>-1){w.fetch=real;return Promise.resolve(new w.Response(JSON.stringify({ok:true,kind:'txt',found:1,chars:40," +
+    "fields:{grad:{value:'2019',confidence:'high',line:'B.S. Biology, 2019'}}}),{status:200,headers:{'Content-Type':'application/json'}}))}return real.apply(this,arguments)};return 1})()");
+  await choose("year-only.txt", "Sam Rivera\nEducation\nB.S. Biology, 2019\n", "text/plain"); await sleep(300); await waitMsg();
+  check("a graduation year with no month fills nothing (no month is made up)", (await val("px-grad")) === "", await val("px-grad"));
+  const kit = await ev("(()=>{const w=" + W + ",d=w.document,h=d.createElement('div');d.body.appendChild(h);const real=w.fetch;" +
+    "w.fetch=function(u){if(String(u).indexOf('/api/profile/resume')>-1){w.fetch=real;return Promise.resolve(new w.Response(JSON.stringify({ok:true,kind:'txt',found:2,chars:40," +
+    "fields:{grad:{value:'2019',confidence:'high',line:'B.S. Biology, 2019'},school:{value:'Temple University',confidence:'high',line:'Temple University'}}}),{status:200,headers:{'Content-Type':'application/json'}}))}return real.apply(this,arguments)};" +
+    "w.__uaplyResumeKit.mount(h,{});const i=h.querySelector('input[type=file]'),dt=new w.DataTransfer();dt.items.add(new w.File(['x'],'year-only.txt',{type:'text/plain'}));i.files=dt.files;i.dispatchEvent(new w.Event('change',{bubbles:true}));" +
+    "return new Promise(r=>setTimeout(()=>{const L=[...h.querySelectorAll('.rkF label')].map(l=>l.childNodes[0].textContent.trim());h.remove();r(JSON.stringify(L))},1500))})()");
+  check("...and the Check these card does not offer it", /^\[/.test(kit) && !/Graduation/.test(kit), kit);
   check("no script errors", logs.length === 0, logs.join(" / ").slice(0, 300));
   console.log(bad ? bad + " problem(s)" : "All good");
 };
