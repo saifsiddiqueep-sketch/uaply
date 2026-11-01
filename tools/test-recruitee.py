@@ -238,8 +238,8 @@ try:
     for pj, code in ((P6, 429), (P7, 403)):
         s, out = apply(PORT, a, pj, "rae@example.org")
         t("Recruitee answering HTTP %d (rate limit or blocked): a hand-off, finish on their site, not a failure" % code, (out.get("status"), out.get("via")), ("handoff", "handoff"))
-    t("...each refused board was asked once, never retried", REFUSED, ["busy-role", "blocked-role"])
-    t("...and a swipe right again is the same application, nothing re-sent", (apply(PORT, a, P6, "rae@example.org")[1].get("status"), REFUSED), ("duplicate", ["busy-role", "blocked-role"]))
+    t("...the refusing board was asked once; its next posting is a hand-off with no new post (6-hour pause, card 213)", REFUSED, ["busy-role"])
+    t("...and a swipe right again is the same application, nothing re-sent", (apply(PORT, a, P6, "rae@example.org")[1].get("status"), REFUSED), ("duplicate", ["busy-role"]))
     t("the record says where it went (the hiring system channel)", (rec[0].get("status"), rec[0].get("channels")) if rec else None, ("sent", ["hiring system"]))
     for p in PROCS:
         p.terminate()

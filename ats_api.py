@@ -651,11 +651,21 @@ def recruitee_url(company, slug):
     return "https://%s.recruitee.com/api/offers/%s/candidates" % (company.lower(), slug)
 
 
+_BLOCKED = {}           # Recruitee company -> time.monotonic() until which it is not posted to (card 213: it answered 403 or 429)
+_BLOCKED_LOCK = threading.Lock()
+BLOCK_SECONDS = 6 * 3600  # one refusal pauses that board for six hours in this process; a restart forgets it (never more posts, only fewer)
+BLOCK_MAX = 500
+
+
 def recruitee_submit(company, slug, cand, resume_meta, resume_bytes):
     """Send one application to a Recruitee offer. Returns ("sent" | "handoff" | "failed", reason or None). Never raises."""
     url = recruitee_url(company, slug)
     if not url:
         return "failed", "this posting's Recruitee address is not valid"
+    board = str(company).lower()
+    with _BLOCKED_LOCK:
+        if _BLOCKED.get(board, 0) > time.monotonic():   # card 213: this board refused an automated post a moment ago, so no new attempt
+            return "handoff", "Recruitee refused this board recently (rate limit or blocked): not posted again"
     fields = [("candidate[name]", cand.get("name") or ""), ("candidate[email]", cand.get("email") or "")]
     phone = ((cand.get("ext") or {}).get("phone") or "").strip()
     if phone:
@@ -669,6 +679,10 @@ def recruitee_submit(company, slug, cand, resume_meta, resume_bytes):
     if status in (200, 201) and isinstance(reply, dict) and (reply.get("candidate") or reply.get("id")):
         return "sent", None
     if status in (403, 429):       # card 213: the careers site is rate-limiting or blocking automated posts (about half the boards): never retried,
+        with _BLOCKED_LOCK:
+            if len(_BLOCKED) >= BLOCK_MAX:
+                _BLOCKED.pop(min(_BLOCKED, key=_BLOCKED.get))
+            _BLOCKED[board] = time.monotonic() + BLOCK_SECONDS
         return "handoff", "Recruitee answered HTTP %s (rate limit or blocked)" % status     # the person finishes on the employer's site
     return "failed", "Recruitee did not accept the application (HTTP %s) %s" % (status, _short(reply))
 
