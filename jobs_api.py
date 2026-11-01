@@ -231,6 +231,16 @@ BOARD_KINDS = ("greenhouse", "lever", "ashby", "smartrecruiters", "workable", "r
 ATS_REF_KINDS = ats_api.KINDS + ("recruitee",)
 CONNECTIONS_FILE = [""]          # the connect page's own keys (connect_api.path), set by serve.py at the start
 RECRUITEE_SUBMIT = [False]       # the owner's "recruitee_submit" switch, set by serve.py at the start (uaply_api.recruitee_on)
+# c208 send routes (off by default; nothing sets them yet): NEW_ROUTES adds "send_route" to every listed job, how a right swipe would be
+# delivered: "sends_now" (UAply sends it: the card's instant, i.e. Recruitee with RECRUITEE_SUBMIT on, an email-apply posting, a connected
+# employer's key or a partner employer), "could_send" (a Connect candidate: Greenhouse, Lever, Ashby, Workable with no key yet; a partner
+# candidate: SmartRecruiters) or "hand_off" (USAJOBS and everything else: apply on their site). Labels only: nothing about the send changes.
+NEW_ROUTES = [False]
+# READY_ONLY_DECK: meant to keep only "sends_now" jobs in the deck. TODO(c208): filtering is NOT wired and must not be without the owner's
+# word (the deck keeps every job, sendable or not); the flag exists so the switch has a name.
+READY_ONLY_DECK = [False]
+SEND_ROUTE_CONNECT = ("greenhouse", "lever", "ashby", "workable")     # an employer Connect key would make these "sends_now"
+SEND_ROUTE_PARTNER = ("smartrecruiters",)                              # a partner agreement would
 BOARD_TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$")    # a board's name in its system's address (Lever and Ashby allow dots: "thea.energy")
 
 
@@ -3303,12 +3313,23 @@ def _out_job(j, now_ms, conns, feed, blocked=frozenset(), full=False):
         out.update(apply="direct", instant=True, contact="")          # their own hiring system takes it: never also an email
     # sent in UAply (a connected system, or an email to the employer): "Ready"; a hand-off: its source's label
     out["route"] = ROUTE_READY if out.get("instant") or not isinstance(feed, str) else feed
+    if NEW_ROUTES[0]:
+        out["send_route"] = send_route(out)
     if feed and not full:
         for k in LIST_DROP:
             out.pop(k, None)
         if isinstance(out.get("ats"), dict):
             out["ats"] = {"kind": out["ats"].get("kind")}       # a new dict: the cached job keeps its whole reference
     return out
+
+
+def send_route(out):
+    """The c208 send-route label of one job as _out_job built it (after the Recruitee, bounce and Connect marks): see NEW_ROUTES."""
+    if out.get("instant"):
+        return "sends_now"
+    a = out.get("ats") if isinstance(out.get("ats"), dict) else None
+    kind = a.get("kind") if a else None
+    return "could_send" if kind in SEND_ROUTE_CONNECT + SEND_ROUTE_PARTNER else "hand_off"
 
 
 def job_full(job_id):
