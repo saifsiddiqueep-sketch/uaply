@@ -1172,6 +1172,13 @@ def submit(p, user=None, site=""):
         # version, kept on the account with the time, their address and the words' SHA-256. The page agrees again and retries once.
         if not plan_only and not consent_api.current(auth_api.consent_for(user["id"])):
             return 403, {"error": "Agree to how UAply applies for you first (the box before your first swipe), then swipe again.", "code": "consent"}
+    # the owner's switch "require_auto_consent" (off unless the owner sets it to true; card 200, the meaning of the ticks is Saif's and the
+    # lawyer's call): when on, UAply sends nothing itself (email, Recruitee, an employer's hiring system or webhook) unless the person's
+    # current record also has Automatic submit (consent_api.auto_ok). The swipe is then a hand-off, kept as one ("auto_off"), never as sent
+    auto_off = (cfg.get("require_auto_consent") is True and policy in ("direct", "email", "recruitee") and not send_off
+                and not consent_api.auto_ok(auth_api.consent_for(user["id"]) if user else None))
+    if auto_off:
+        policy, contact, hook, ats = "link", "", None, None
 
     # Autofill: read the job's real application form (Greenhouse publishes it) and answer it from the profile and saved answers.
     #   - an employer that connected its Greenhouse: anything the form requires that the profile cannot answer is asked first, then it all goes in
@@ -1180,7 +1187,7 @@ def submit(p, user=None, site=""):
     #   - an employer that connected its Ashby, SmartRecruiters or Workable: the same as Greenhouse, but read with their key, and only for a live send
     ref = known.get("ats") if isinstance(known.get("ats"), dict) else None
     gh = ats if (ats and ats.get("kind") == "greenhouse") else (ref if ref and ref.get("kind") == "greenhouse" else None)
-    preview = policy == "link" and gh is not None and form_preview(cfg) and not send_off
+    preview = policy == "link" and gh is not None and form_preview(cfg) and not send_off and not auto_off
     plan = None
     if gh and (policy in ("direct", "link") or preview) and not _redirect(cfg) and not send_off:
         form = autofill.fetch_form(gh["board"], gh["id"])
@@ -1242,6 +1249,8 @@ def submit(p, user=None, site=""):
             rec["status"] = "handoff"
             if send_off:
                 rec["why"] = "send_off"
+            elif auto_off:
+                rec["why"] = "auto_off"
             APPS.append(rec)
             _append("applications.jsonl", rec)
         elif policy == "recruitee":
@@ -1334,6 +1343,8 @@ def submit(p, user=None, site=""):
                   else "handoff" if rec["status"] == "handoff" else "")       # Job Tracker names the channel (Saif, October 24)
     if send_off:
         out["sendForMe"] = False                         # the page says the job was only saved, and why
+    if auto_off:
+        out["why"] = "auto_off"                          # sent nothing: Automatic submit is not on the person's record (require_auto_consent)
     if rec.get("preview"):
         out["preview"] = True                            # the sandbox's filled-in form went to the test inbox only: the page shows a hand-off
     if summary:
