@@ -5,6 +5,7 @@ import importlib.util
 import io
 import json
 import os
+import pathlib
 import shutil
 import sqlite3
 import sys
@@ -60,7 +61,7 @@ try:
     c.close()
     files = {"dev/applications.jsonl": '{"id": "app1"}\n', "dev/decisions.jsonl": '{"dir": "pass"}\n', "dev/feedback.jsonl": '{"rating": 5}\n',
              "dev/employers.json": '{"companies": []}', "uaply-partners.json": '{"employers": []}',
-             "jobs-cache.json": '{"_version": 8}', "jobs-cache.json.tmp": "{", "dev/uaply.db-journal": "x", ".write-check-123": "ok"}
+             "jobs-cache.json": '{"_version": 8}', "jobs-cache.json.tmp": "{", ".write-check-123": "ok"}
     for rel, body in files.items():
         with open(os.path.join(DATA, *rel.split("/")), "w", encoding="utf-8") as f:
             f.write(body)
@@ -117,6 +118,8 @@ try:
     with open(os.path.join(DATA, "dev", "new-since.txt"), "w") as f:
         f.write("made after the backup")
     t("a restore without --yes changes nothing", (bool(refused(B.restore, path, DATA)), users(db)), (True, []))
+    with open(db + "-journal", "w") as f:           # a side file left by a crash: the backup made before the restore must still work
+        f.write("x")
     B.restore(path, DATA, yes=True)
     t("after a restore the accounts are back", users(db)[:3], ["a0@example.com", "a1@example.com", "a2@example.com"])
     t("...and the applications file", open(os.path.join(DATA, "dev", "applications.jsonl"), encoding="utf-8").read(), '{"id": "app1"}\n')
@@ -125,6 +128,96 @@ try:
     before = [f for f in os.listdir(os.path.join(DATA, "backups")) if B.NAME_RE.match(f)]
     t("...and the state before the restore was backed up first", len(before), 2)
     t("...no staging folder is left on the disk", [d for d in os.listdir(DATA) if d.startswith(".restore")], [])
+
+    # ---------- a journal left by a crash (a hot journal) ----------
+    def crashed(folder):
+        """A data folder whose accounts database was cut off in the middle of a write: the database already holds part of the change,
+        its journal holds the pages as they were. Opening it for writing would roll the change back; a read-only connection may not."""
+        live = os.path.join(TMP, "crash-live.db")
+        for f in (live, live + "-journal"):
+            if os.path.exists(f):
+                os.remove(f)
+        w = sqlite3.connect(live, isolation_level=None)
+        w.execute("CREATE TABLE users(id INTEGER PRIMARY KEY, email TEXT, pad TEXT)")
+        w.execute("BEGIN")
+        w.executemany("INSERT INTO users(email, pad) VALUES (?, ?)", [("a%d@example.com" % i, "p" * 400) for i in range(300)])
+        w.execute("COMMIT")
+        w.execute("PRAGMA cache_size=2")                # a small cache makes SQLite write changed pages before the commit
+        w.execute("BEGIN")
+        w.execute("UPDATE users SET email = 'changed' || id, pad = 'q' || pad")
+        os.makedirs(os.path.join(folder, "dev"), exist_ok=True)
+        out = os.path.join(folder, "dev", "uaply.db")
+        shutil.copyfile(live, out)                      # the files as a crash at this moment leaves them
+        shutil.copyfile(live + "-journal", out + "-journal")
+        w.execute("ROLLBACK")
+        w.close()
+        return out
+    states = lambda f: (B.sha256(f), B.sha256(f + "-journal"))
+
+    hot = crashed(os.path.join(TMP, "probe"))
+    msg = ""
+    try:
+        B._online_backup(pathlib.Path(hot).as_uri() + "?mode=ro", os.path.join(TMP, "probe.db"))
+    except sqlite3.DatabaseError as e:
+        msg = "%s %s" % (getattr(e, "sqlite_errorcode", None), e)
+    t("(the test's crashed database really has a hot journal: a plain read-only backup of it fails as the one in card 053 did)",
+      ("readonly" in msg, os.path.getsize(hot + "-journal") > 0), (True, True))
+
+    temp_before = set(d for d in os.listdir(tempfile.gettempdir()) if d.startswith(("uaply-recover-", "uaply-backup-")))
+    CRASH = os.path.join(TMP, "crash-data")
+    hot = crashed(CRASH)
+    was = states(hot)
+    cpath, cman = B.make_backup(CRASH, os.path.join(TMP, "crash-out"), quiet=True)
+    with tarfile.open(cpath, "r:gz") as tar:
+        snap = os.path.join(TMP, "crash-snap.db")
+        with tar.extractfile("data/dev/uaply.db") as src, open(snap, "wb") as f:
+            shutil.copyfileobj(src, f)
+    c = sqlite3.connect(snap)
+    t("a database with a hot journal is backed up as it was before the cut-off write (integrity ok, 300 accounts, none half-changed)",
+      (c.execute("PRAGMA integrity_check").fetchone()[0], c.execute("SELECT count(*) FROM users WHERE email LIKE 'a%'").fetchone()[0],
+       c.execute("SELECT count(*) FROM users WHERE email LIKE 'changed%'").fetchone()[0]), ("ok", 300, 0))
+    c.close()
+    t("...the live database and its journal are left exactly as they were (nothing opened them for writing)", states(hot), was)
+    t("...the manifest says the journal was rolled back in a private copy, and the journal is not in the backup",
+      ("private copy" in cman.get("notes", {}).get("dev/uaply.db", ""), sorted(cman["files"])), (True, ["dev/uaply.db"]))
+    t("...and no private copy is left in the temp folder",
+      sorted(set(d for d in os.listdir(tempfile.gettempdir()) if d.startswith(("uaply-recover-", "uaply-backup-"))) - temp_before), [])
+
+    B.restore(path, CRASH, yes=True)
+    gone = not os.path.exists(hot + "-journal")        # looked at before anything opens the restored database
+    t("a restore into a folder whose database has a hot journal works (the card 053 failure), and the old journal is gone",
+      (gone, users(hot)[:2]), (True, ["a0@example.com", "a1@example.com"]))
+    first = sorted(f for f in os.listdir(os.path.join(CRASH, "backups")) if B.NAME_RE.match(f))
+    t("...the copy saved before it holds the crashed database as it was before the cut-off write",
+      "private copy" in B.list_backup(os.path.join(CRASH, "backups", first[0])).get("notes", {}).get("dev/uaply.db", ""), True)
+
+    hot = crashed(os.path.join(TMP, "busy"))
+    was = states(hot)
+    real, tick = B._file_state, iter(range(1000000))
+    B._file_state = lambda f: next(tick)            # the files change between every look, as if a writer kept working
+    try:
+        msg = refused(B.copy_sqlite, hot, os.path.join(TMP, "busy.db"))
+    finally:
+        B._file_state = real
+    t("a hot journal that keeps changing while it is copied is refused after 3 tries, and the live files are untouched",
+      ("kept changing" in msg, states(hot)), (True, was))
+
+    BAD = os.path.join(TMP, "bad-data")
+    hot = crashed(BAD)
+    was = states(hot)
+    copyfile = shutil.copyfile
+    def spoil(a, b, *k, **kw):                      # the private copy of the database comes out unreadable
+        copyfile(a, b, *k, **kw)
+        if b.endswith("recover.db"):
+            with open(b, "wb") as f:
+                f.write(b"not a database " * 300)
+    shutil.copyfile = spoil
+    try:
+        msg = refused(B.make_backup, BAD, os.path.join(TMP, "bad-out"), quiet=True)
+    finally:
+        shutil.copyfile = copyfile
+    t("a hot journal whose rolled-back copy is damaged is refused with the steps to restore anyway, the live files untouched, "
+      "and no half-written archive left", ("quarantine" in msg, states(hot), os.listdir(os.path.join(TMP, "bad-out"))), (True, was, []))
 
     # ---------- damaged and hostile backups ----------
     def tamper(name, member_name, data, keep_manifest=True):

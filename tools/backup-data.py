@@ -11,7 +11,8 @@
 What is in a backup: every file in the data folder except the saved job list (jobs-cache.json: it is rebuilt from the boards in a minute),
 earlier backups, and SQLite's side files. Each accounts database (uaply.db) is copied through SQLite's own backup, so a sign-up written
 at that moment cannot leave a half-copied database. A manifest.json inside lists every file with its size and SHA-256; a restore checks
-them all before it touches anything.
+them all before it touches anything. If a crash left a journal next to a database, it is rolled back in a private copy (the live files
+are never written) and the manifest's "notes" says so; it refuses if the files keep changing or the rolled-back copy is damaged.
 
 Restoring on Render: the server keeps running while you restore, so restart it straight after (Manual Deploy > Restart service, or
 Deploy latest commit): it reads the restored files at start. Anything people did between the restore and the restart is lost. Files that
@@ -69,15 +70,93 @@ def files_to_back_up(data):
     return out
 
 
-def copy_sqlite(src, dst):
-    """A consistent copy of a database another process may be writing to (SQLite's online backup)."""
-    a = sqlite3.connect(pathlib.Path(os.path.abspath(src)).as_uri() + "?mode=ro", uri=True, timeout=30)
+SQLITE_READONLY_ROLLBACK = 776   # a read-only connection met a hot journal it is not allowed to roll back
+
+
+def _online_backup(src_uri, dst):
+    a = sqlite3.connect(src_uri, uri=True, timeout=30)
     b = sqlite3.connect(dst)
     try:
         a.backup(b)
     finally:
         b.close()
         a.close()
+
+
+def _file_state(path):
+    """Size, mtime and SHA-256 of a file (None when it is gone): shows that nothing wrote it while it was being copied."""
+    try:
+        st = os.stat(path)
+    except FileNotFoundError:
+        return None
+    return st.st_size, st.st_mtime_ns, sha256(path)
+
+
+def _needs_rollback(err, src):
+    code = getattr(err, "sqlite_errorcode", None)
+    return code == SQLITE_READONLY_ROLLBACK or (code is None and "readonly" in str(err) and os.path.exists(src + "-journal"))
+
+
+def _recovered(copy):
+    """integrity_check of the private copy (its first read rolls the copied journal back); a copy too damaged to read says so."""
+    try:
+        c = sqlite3.connect(copy)
+        try:
+            return c.execute("PRAGMA integrity_check").fetchone()[0]
+        finally:
+            c.close()
+    except sqlite3.DatabaseError as e:
+        return "unreadable: %s" % e
+
+
+def copy_sqlite(src, dst, tries=3):
+    """A consistent copy of a database another process may be writing to (SQLite's online backup). Returns a note when a journal
+    left by a crash had to be rolled back, else None.
+
+    A crash in the middle of a write leaves a hot <db>-journal, and the read-only connection used here may not roll it back. The live
+    database is never opened for writing to fix that (rolling back a journal that belongs to another copy of the file would damage it):
+    the database and its journal are copied into a private folder, the copy is recovered and checked there, and the copy is backed up.
+    The live files stay exactly as they were; the server rolls the journal back itself the next time it opens the database."""
+    src = os.path.abspath(src)
+    uri = pathlib.Path(src).as_uri() + "?mode=ro"
+    changed = 0
+    for _ in range(tries * 3):                          # bounded: a journal that comes and goes is retried, but not forever
+        if os.path.exists(dst):
+            os.remove(dst)
+        try:
+            _online_backup(uri, dst)
+            return None
+        except sqlite3.DatabaseError as e:
+            if not _needs_rollback(e, src):
+                raise
+        work = tempfile.mkdtemp(prefix="uaply-recover-", dir=os.path.dirname(os.path.abspath(dst)))
+        try:
+            copy = os.path.join(work, "recover.db")
+            before = (_file_state(src), _file_state(src + "-journal"))
+            if before[1] is None:                       # the server rolled the journal back meanwhile: the plain way works again
+                continue                                # (not counted as a try)
+            shutil.copyfile(src, copy)
+            shutil.copyfile(src + "-journal", copy + "-journal")
+            if (_file_state(src), _file_state(src + "-journal")) != before:
+                changed += 1                            # something wrote the files while they were copied: start again
+                if changed >= tries:
+                    break
+                time.sleep(0.2)
+                continue
+            ok = _recovered(copy)
+            if ok != "ok" or os.path.exists(copy + "-journal"):
+                sys.exit("[backup] refused: %s has a journal left by a crash, and rolling it back (in a private copy) gives a damaged "
+                         "database (%s). The live files were not changed. To restore anyway: stop the server (Render: Suspend), move "
+                         "uaply.db and uaply.db-journal into a new folder such as /var/data/quarantine/, then run the --restore again "
+                         "and resume; keep the moved files for Saif." % (src, ok[:200]))
+            if os.path.exists(dst):
+                os.remove(dst)
+            _online_backup(pathlib.Path(copy).as_uri() + "?mode=ro", dst)
+            return "rolled back a journal left by a crash, in a private copy; the live database was not changed"
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+    sys.exit("[backup] refused: %s has a journal left by a crash, and it kept changing while it was copied (%d tries). "
+             "The live files were not changed; run the same command again in a minute." % (src, tries))
 
 
 def make_backup(data, out_dir, keep=4, encrypt=False, quiet=False, label=""):
@@ -87,17 +166,21 @@ def make_backup(data, out_dir, keep=4, encrypt=False, quiet=False, label=""):
     stamp = time.strftime("%Y%m%d-%H%M%SZ", time.gmtime())
     final = os.path.join(out_dir, "uaply-backup-%s.tar.gz" % stamp)
     work = tempfile.mkdtemp(prefix="uaply-backup-")
+    tmp_tar = final + ".part"
     try:
         manifest = {"made": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "from": data, "label": label,
                     "commit": (os.environ.get("RENDER_GIT_COMMIT") or "")[:7] or None, "files": {}}
-        tmp_tar = final + ".part"
         with tarfile.open(tmp_tar, "w:gz", compresslevel=6) as tar:
             for rel in files_to_back_up(data):
                 src = os.path.join(data, rel)
                 if rel.endswith(".db"):
                     snap = os.path.join(work, "db-%d" % len(manifest["files"]))
-                    copy_sqlite(src, snap)
+                    note = copy_sqlite(src, snap)
                     src = snap
+                    if note:
+                        manifest.setdefault("notes", {})[rel] = note
+                        if not quiet:
+                            print("[backup] %s: %s" % (rel, note))
                 manifest["files"][rel] = {"bytes": os.path.getsize(src), "sha256": sha256(src)}
                 tar.add(src, arcname="data/" + rel, recursive=False)
             blob = json.dumps(manifest, indent=1, sort_keys=True).encode("utf-8")
@@ -121,6 +204,8 @@ def make_backup(data, out_dir, keep=4, encrypt=False, quiet=False, label=""):
         return final, manifest
     finally:
         shutil.rmtree(work, ignore_errors=True)
+        if os.path.exists(tmp_tar):                     # a refused or failed backup leaves no half-written archive of user data
+            os.remove(tmp_tar)
 
 
 def _openssl(args, passphrase):

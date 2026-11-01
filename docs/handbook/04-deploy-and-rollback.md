@@ -76,7 +76,7 @@ Get the full id with `git rev-parse "v1.0.0-rc.13^{commit}"`. rc.13 (the release
 ## Backups and restore
 
 - First line: Render's daily disk snapshot (`uaply`, **Disks**, **Snapshots**, kept at least 7 days). Restoring one replaces the whole disk.
-- Weekly consistent copy (owner): Render, `uaply`, **Shell**, `python tools/backup-data.py --keep 4`. It writes `/var/data/backups/uaply-backup-<time>.tar.gz` with a SHA-256 manifest. Take it off Render encrypted (`--encrypt`, passphrase from `UAPLY_BACKUP_PASSPHRASE`) by magic-wormhole or to a private GitHub repo (`--upload`). Steps: `DEPLOY.md`, "Backups".
+- Weekly consistent copy (owner): Render, `uaply`, **Shell**, `python tools/backup-data.py --keep 4`. It writes `/var/data/backups/uaply-backup-<time>.tar.gz` with a SHA-256 manifest. Take it off Render encrypted (`--encrypt`, passphrase from `UAPLY_BACKUP_PASSPHRASE`) by magic-wormhole or to a private GitHub repo (`--upload`). Steps: `DEPLOY.md`, "Backups". A journal left by a crash is rolled back in a private copy only (manifest `notes` says so); a backup that keeps changing or rolls back damaged is refused, live files untouched.
 - Restore: put the file on the disk, `python tools/backup-data.py --restore <file> --yes` (it checks the manifest and backs up the current state first), then **Manual Deploy**, **Restart service** at once.
 - Backups hold password hashes, emails and applications. Never in a public place, a chat or the repository.
 

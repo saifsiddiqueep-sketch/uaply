@@ -176,6 +176,9 @@ back broken. So once a week (Sunday evening is the quietest), take a copy that i
 1. uaply → **Shell**, then `python tools/backup-data.py --keep 4`. It packs `/var/data` (accounts through SQLite's own backup, sessions,
    applications, swipes, feedback, employers, the partner list; not the job list, which rebuilds itself) into
    `/var/data/backups/uaply-backup-YYYYMMDD-HHMMSSZ.tar.gz` with a manifest of every file's SHA-256, and keeps the newest 4 there (a few MB each).
+   If a crash left `uaply.db-journal` behind, it rolls that back in a private copy (the live files are never written; the manifest's `notes`
+   says so). It refuses if the files keep changing (run the same command again in a minute) or the rolled-back copy is damaged (the message
+   gives the quarantine steps; keep the moved files for Saif).
 2. Take it off Render (free, pick one):
    - **Your Google Drive, through your computer:** in the Shell, `export UAPLY_BACKUP_PASSPHRASE='...'` (a long passphrase you keep in your
      password manager; never in a file or chat), `python tools/backup-data.py --encrypt`, then `wormhole send /var/data/backups/<the .enc file>`
