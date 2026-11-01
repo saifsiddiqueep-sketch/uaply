@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.join(HERE, ".."))
 TMP = tempfile.mkdtemp(prefix="uaply-setup-")
 os.environ["UAPLY_DATA_DIR"] = TMP
 os.environ["UAPLY_CONFIG_JSON"] = "{}"
+os.environ.pop("UAPLY_CONFIG_FILE", None)   # a fake mail connection with real host names: not a test run, so mailer.test_run_blocks stays out of the way
 
 import setup_api  # noqa: E402
 import uaply_api  # noqa: E402

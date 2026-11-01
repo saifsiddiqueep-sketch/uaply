@@ -33,6 +33,7 @@ The log line, one per problem, never the message or the full address:
 """
 import email
 import email.policy
+import ipaddress
 import json
 import os
 import re
@@ -260,8 +261,24 @@ def stamp(msg, kind):
     return msg
 
 
+def test_run_blocks(host):
+    """A test run (UAPLY_CONFIG_FILE=none) only ever talks to a mail server on this computer (tools/fake-smtp.py): SMTP does not go through
+    the closed proxy that keeps the test suite offline, so a real host such as Brevo's is refused here instead of being sent to."""
+    if os.environ.get("UAPLY_CONFIG_FILE") != "none":
+        return False
+    h = str(host or "").strip().strip("[]").lower()
+    if h == "localhost":
+        return False
+    try:
+        return not ipaddress.ip_address(h).is_loopback
+    except ValueError:
+        return True
+
+
 def _smtp(cfg, msg):
     s = cfg["smtp"]
+    if test_run_blocks(s.get("host")):
+        raise ValueError("test run: the mail server is not on this computer, nothing sent")
     with smtplib.SMTP(s["host"], int(s.get("port", 587)), timeout=20) as srv:
         if s.get("starttls", True):
             srv.starttls()
