@@ -38,6 +38,14 @@ unset ANTHROPIC_API_KEY
 # never read uaply-config.json (your real email login, keys and copy address): every server and test below uses only its own settings
 export UAPLY_CONFIG_FILE=none
 export PYTHONIOENCODING=utf-8                 # Windows consoles and pipes default to cp1252, which cannot print a test line with a non-ASCII character (such as the arrow)
+# offline: the servers with the job feed on serve a checked-in list of ~470 made-up postings (tools/fixtures/jobs.json), no feed is read;
+# every Python request that is not to this computer goes to a closed port, so nothing here reaches a live feed, live mail or a live site
+FIX="$PWD/tools/fixtures/jobs.json"
+export HTTP_PROXY=http://127.0.0.1:9 HTTPS_PROXY=http://127.0.0.1:9 http_proxy=http://127.0.0.1:9 https_proxy=http://127.0.0.1:9 NO_PROXY=127.0.0.1,localhost,.example,.test,.invalid no_proxy=127.0.0.1,localhost,.example,.test,.invalid
+net_run() {   # net_run <label> <command...>: a check that needs the real internet (live feeds); skipped unless UAPLY_NETWORK=1
+  if [ "${UAPLY_NETWORK:-0}" = 1 ]; then (unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy; run "$@"); else printf "  SKIP  (network) %s
+" "$1"; fi
+}
 
 step "Static checks (syntax of every script, Python lint, JSON, legal pages, release flags, hosted builds)"
 run "node check.js" node check.js
@@ -61,17 +69,17 @@ mkdir -p "$TMP/sb" "$TMP/dv" "$TMP/pub" "$TMP/smtp" "$TMP/g"
 export UAPLY_CONFIG_JSON="$FEEDS"
 # both in sign-up test mode (UAPLY_SIGNUP_TEST=1, allowed because they bind 127.0.0.1): behind the sign-in gate a browser test signs a
 # fresh person up first (tools/gate-signup.js) and is confirmed at once; codes and receipts still land in the test inbox (/outbox)
-PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/sb" UAPLY_SIGNUP_TEST=1 start python serve.py 18766 sandbox --api)"
-PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/dv" UAPLY_SIGNUP_TEST=1 start python serve.py 18767 dev --api)"
+PIDS="$PIDS $(UAPLY_JOBS_FIXTURE="$FIX" UAPLY_DATA_DIR="$TMP/sb" UAPLY_SIGNUP_TEST=1 start python serve.py 18766 sandbox --api)"
+PIDS="$PIDS $(UAPLY_JOBS_FIXTURE="$FIX" UAPLY_DATA_DIR="$TMP/dv" UAPLY_SIGNUP_TEST=1 start python serve.py 18767 dev --api)"
 wait_port 18766 && wait_port 18767 && echo "  sandbox on 18766, dev on 18767" || { echo "  FAIL  servers did not start"; exit 1; }
 # sign-up v2: the sandbox shows the no-password card; this second sandbox has it off (UAPLY_CODE_SIGNIN=0), for the tests of today's password card
 mkdir -p "$TMP/sboff"
-PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/sboff" UAPLY_CODE_SIGNIN=0 start python serve.py 18770 sandbox --api)"
+PIDS="$PIDS $(UAPLY_JOBS_FIXTURE="$FIX" UAPLY_DATA_DIR="$TMP/sboff" UAPLY_CODE_SIGNIN=0 start python serve.py 18770 sandbox --api)"
 wait_port 18770 && echo "  sandbox with today's sign-in card on 18770"
 # wait for the real-jobs feed to be ready on dev
 # the job list needs an account now: one test sign-up on dev (test mode signs it in at once), and its cookie for the count
 curl -s -c "$TMP/dv.jar" -o /dev/null -H 'Content-Type: application/json' -H 'Origin: http://127.0.0.1:18767' -d '{"email":"runner.feeds@example.com","password":"Runner-feeds-pw9","first":"Run","last":"Ner","agree":true}' http://127.0.0.1:18767/api/auth/signup
-for _ in $(seq 1 120); do n=$(curl -s -b "$TMP/dv.jar" http://127.0.0.1:18767/api/jobs | python -c "import sys,json; print(len(json.load(sys.stdin)['jobs']))" 2>/dev/null); [ "${n:-0}" -gt 100 ] && break; sleep 1; done
+for _ in $(seq 1 120); do n=$(curl -s -b "$TMP/dv.jar" http://127.0.0.1:18767/api/jobs | python -c "import sys,json; print(len(json.load(sys.stdin)['jobs']))" 2>/dev/null); [ "${n:-0}" -ge 40 ] && break; sleep 1; done
 echo "  real postings on dev: ${n:-0}"
 
 step "Job feed rules (US-only, no foreign roles, classification)"
@@ -254,16 +262,16 @@ step "The after-deploy checks (live-check.py, ui-live.js), against local servers
 # one server with everything off (as the live site was before the owner's keys) and one with email, Google and payments on through stand-ins
 LP="${LIVE_CHECK_PORT:-18810}"                 # uses LP to LP+4
 mkdir -p "$TMP/lc-off" "$TMP/lc-on"
-PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/lc-off" HOST=0.0.0.0 OWNER_PASSWORD=ownerpw UAPLY_CONFIG_JSON="$FEEDS" start python serve.py "$LP" dev --api)"
+PIDS="$PIDS $(UAPLY_JOBS_FIXTURE="$FIX" UAPLY_DATA_DIR="$TMP/lc-off" HOST=0.0.0.0 OWNER_PASSWORD=ownerpw UAPLY_CONFIG_JSON="$FEEDS" start python serve.py "$LP" dev --api)"
 PIDS="$PIDS $(start python tools/mock-google.py $((LP+2)))"
 PIDS="$PIDS $(start python tools/fake-smtp.py $((LP+3)) "$TMP/lc-on/mail.jsonl")"
 PIDS="$PIDS $(start python tools/mock-stripe.py $((LP+4)))"
 LC_ON='{"feeds":["greenhouse","lever","ashby"],"delivery":"test","owner_copy":"","anthropic_api_key":"","smtp":{"host":"127.0.0.1","port":'$((LP+3))',"starttls":false,"from_addr":"uaply@example.com"},"google":{"client_id":"test.apps.googleusercontent.com","client_secret":"test-secret","auth_url":"http://127.0.0.1:'$((LP+2))'/auth","token_url":"http://127.0.0.1:'$((LP+2))'/token","certs_url":"http://127.0.0.1:'$((LP+2))'/certs"}}'
-PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/lc-on" HOST=0.0.0.0 OWNER_PASSWORD=ownerpw UAPLY_STRIPE_BASE="http://127.0.0.1:$((LP+4))" STRIPE_SECRET_KEY=sk_test_mockkey123456 STRIPE_WEBHOOK_SECRET=whsec_testsecret STRIPE_PRICE_PLUS=price_plus1 STRIPE_PRICE_PRO=price_pro1 UAPLY_CONFIG_JSON="$LC_ON" start python serve.py $((LP+1)) dev --api)"
+PIDS="$PIDS $(UAPLY_JOBS_FIXTURE="$FIX" UAPLY_DATA_DIR="$TMP/lc-on" HOST=0.0.0.0 OWNER_PASSWORD=ownerpw UAPLY_STRIPE_BASE="http://127.0.0.1:$((LP+4))" STRIPE_SECRET_KEY=sk_test_mockkey123456 STRIPE_WEBHOOK_SECRET=whsec_testsecret STRIPE_PRICE_PLUS=price_plus1 STRIPE_PRICE_PRO=price_pro1 UAPLY_CONFIG_JSON="$LC_ON" start python serve.py $((LP+1)) dev --api)"
 wait_port "$LP" && wait_port $((LP+1))
 # the job list needs an account now and these two are public (no test mode): the owner's feed health counts the postings instead
 fh() { curl -s -u owner:ownerpw "http://127.0.0.1:$1/api/feed-health" | python -c "import sys,json; print(sum(s.get('jobs',0) for s in json.load(sys.stdin)['sources']))" 2>/dev/null; }
-for _ in $(seq 1 120); do n=$(fh "$LP"); m=$(fh $((LP+1))); [ "${n:-0}" -gt 100 ] && [ "${m:-0}" -gt 100 ] && break; sleep 1; done
+for _ in $(seq 1 120); do n=$(fh "$LP"); m=$(fh $((LP+1))); [ "${n:-0}" -ge 40 ] && [ "${m:-0}" -ge 40 ] && break; sleep 1; done
 run "live-check.py, everything off: every PASS/FAIL/SKIP line as the live site gets it" python tools/live-check.py --base "http://127.0.0.1:$LP"
 run "live-check.py, email, Google and payments on (stand-ins), all of them required" python tools/live-check.py --base "http://127.0.0.1:$((LP+1))" --expect email,google,payments --google-host "127.0.0.1:$((LP+2))"
 run "ui-live.js, everything off: agreement, Got it, a swipe, Account says email is off, no Google, early access, help" node tools/cdp.js tools/ui-live.js --base "http://127.0.0.1:$LP"
