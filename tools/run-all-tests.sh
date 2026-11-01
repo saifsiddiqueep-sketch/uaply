@@ -7,8 +7,20 @@ cd "$(dirname "$0")/.." || exit 1
 TMP="${TMPDIR:-/tmp}/uaply-tests-$$"
 mkdir -p "$TMP"
 FAILS=0
+FAILED=""
 PIDS=""
-trap 'for p in $PIDS; do kill "$p" 2>/dev/null; done; rm -rf "$TMP"' EXIT
+# self-measurement (tools/lite/_common.py log_event → ~/.uaply/state/events.jsonl): start, end, duration, failing groups.
+# A marker file notices a second full suite running at the same time on this computer (CLAUDE.md: one at a time).
+SUITE_MARK="$HOME/.uaply/state/suite.running"
+SUITE_T0=$(date +%s)
+ev() { python -c 'import sys; sys.path.insert(0, "tools/lite"); from _common import log_event; a = sys.argv[1:]; log_event("suite", **dict(zip(a[::2], [int(v) if v.lstrip("-").isdigit() else v for v in a[1::2]])))' "$@" >/dev/null 2>&1 || true; }
+CONCURRENT=0
+if [ -f "$SUITE_MARK" ] && kill -0 "$(cat "$SUITE_MARK" 2>/dev/null)" 2>/dev/null; then
+  CONCURRENT=1; echo "  ⚠ another full test run is already going on this computer (pid $(cat "$SUITE_MARK")) — results may clash"
+fi
+mkdir -p "$(dirname "$SUITE_MARK")" && echo $$ > "$SUITE_MARK"
+ev action start concurrent "$CONCURRENT"
+trap 'for p in $PIDS; do kill "$p" 2>/dev/null; done; rm -rf "$TMP"; [ "$(cat "$SUITE_MARK" 2>/dev/null)" = "$$" ] && rm -f "$SUITE_MARK"' EXIT
 
 step() { printf "\n== %s\n" "$1"; }
 run() {   # run <label> <command...>: pass if exit 0
@@ -16,7 +28,7 @@ run() {   # run <label> <command...>: pass if exit 0
   if out=$(timeout 600 "$@" 2>&1); then          # no single check may hang the run (a sleeping computer once froze one for hours)
     n=$(echo "$out" | grep -Eo '^[0-9]+ / [0-9]+$' | tail -1)          # the test's own "passed / total" line, so the count here is never stale
     printf "  PASS  %s%s\n" "$label" "${n:+ ($n)}"
-  else printf "  FAIL  %s\n" "$label"; echo "$out" | tail -15 | sed 's/^/        /'; FAILS=$((FAILS+1)); fi
+  else printf "  FAIL  %s\n" "$label"; echo "$out" | tail -15 | sed 's/^/        /'; FAILS=$((FAILS+1)); FAILED="$FAILED${FAILED:+|}${label:0:30}"; fi
 }
 start() { ( "$@" >/dev/null 2>&1 & echo $! ) ; }
 wait_port() { for _ in $(seq 1 60); do curl -s -o /dev/null "http://127.0.0.1:$1/healthz" 2>/dev/null && return 0; curl -s -o /dev/null "http://127.0.0.1:$1/" 2>/dev/null && return 0; sleep 0.5; done; return 1; }
@@ -26,6 +38,14 @@ unset ANTHROPIC_API_KEY
 # never read uaply-config.json (your real email login, keys and copy address): every server and test below uses only its own settings
 export UAPLY_CONFIG_FILE=none
 export PYTHONIOENCODING=utf-8                 # Windows consoles and pipes default to cp1252, which cannot print a test line with a non-ASCII character (such as the arrow)
+# offline: the servers with the job feed on serve a checked-in list of ~470 made-up postings (tools/fixtures/jobs.json), no feed is read;
+# every Python request that is not to this computer goes to a closed port, so nothing here reaches a live feed, live mail or a live site
+FIX="$PWD/tools/fixtures/jobs.json"
+export HTTP_PROXY=http://127.0.0.1:9 HTTPS_PROXY=http://127.0.0.1:9 http_proxy=http://127.0.0.1:9 https_proxy=http://127.0.0.1:9 NO_PROXY=127.0.0.1,localhost,.example,.test,.invalid no_proxy=127.0.0.1,localhost,.example,.test,.invalid
+net_run() {   # net_run <label> <command...>: a check that needs the real internet (live feeds); skipped unless UAPLY_NETWORK=1
+  if [ "${UAPLY_NETWORK:-0}" = 1 ]; then (unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy; run "$@"); else printf "  SKIP  (network) %s
+" "$1"; fi
+}
 
 step "Static checks (syntax of every script, Python lint, JSON, legal pages, release flags, hosted builds)"
 run "node check.js" node check.js
@@ -39,6 +59,7 @@ run "assisted apply against hostile pages: a page's own UAplyAssist, a redirect 
 run "handoff: WIP commits/pushes only on its own branch, blocks keys/.env/user data, carries open decisions" python tools/test-lite-handoff.py
 run "areas: area cards never move between columns; /handoff clears this chat's finished bots" python tools/test-lite-areas.py
 run "prompt hook: long or 3+-ask prompts get the /brief line; short, / and go! don't; big-chat blocker unchanged" python tools/test-lite-prompt-hook.py
+run "lite scorecard: idle/100k/Opus/late guards, event log has no prompt text, doctor --weekly, protected rules only get stricter" python tools/test-lite-scorecard.py
 run "Google Play listing pack: picture sizes and formats, text lengths, the Data safety and App content answers" python tools/test-play-listing.py
 run "phone app permissions: iPhone location text, Android location and notifications, every plugin the web code calls" python tools/test-mobile-perms.py
 if python -m ruff --version >/dev/null 2>&1; then run "Python syntax errors and undefined names (Ruff)" python -m ruff check --select E9,F63,F7,F82 .; fi
@@ -48,17 +69,17 @@ mkdir -p "$TMP/sb" "$TMP/dv" "$TMP/pub" "$TMP/smtp" "$TMP/g"
 export UAPLY_CONFIG_JSON="$FEEDS"
 # both in sign-up test mode (UAPLY_SIGNUP_TEST=1, allowed because they bind 127.0.0.1): behind the sign-in gate a browser test signs a
 # fresh person up first (tools/gate-signup.js) and is confirmed at once; codes and receipts still land in the test inbox (/outbox)
-PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/sb" UAPLY_SIGNUP_TEST=1 start python serve.py 18766 sandbox --api)"
-PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/dv" UAPLY_SIGNUP_TEST=1 start python serve.py 18767 dev --api)"
+PIDS="$PIDS $(UAPLY_JOBS_FIXTURE="$FIX" UAPLY_DATA_DIR="$TMP/sb" UAPLY_SIGNUP_TEST=1 start python serve.py 18766 sandbox --api)"
+PIDS="$PIDS $(UAPLY_JOBS_FIXTURE="$FIX" UAPLY_DATA_DIR="$TMP/dv" UAPLY_SIGNUP_TEST=1 start python serve.py 18767 dev --api)"
 wait_port 18766 && wait_port 18767 && echo "  sandbox on 18766, dev on 18767" || { echo "  FAIL  servers did not start"; exit 1; }
 # sign-up v2: the sandbox shows the no-password card; this second sandbox has it off (UAPLY_CODE_SIGNIN=0), for the tests of today's password card
 mkdir -p "$TMP/sboff"
-PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/sboff" UAPLY_CODE_SIGNIN=0 start python serve.py 18770 sandbox --api)"
+PIDS="$PIDS $(UAPLY_JOBS_FIXTURE="$FIX" UAPLY_DATA_DIR="$TMP/sboff" UAPLY_CODE_SIGNIN=0 start python serve.py 18770 sandbox --api)"
 wait_port 18770 && echo "  sandbox with today's sign-in card on 18770"
 # wait for the real-jobs feed to be ready on dev
 # the job list needs an account now: one test sign-up on dev (test mode signs it in at once), and its cookie for the count
 curl -s -c "$TMP/dv.jar" -o /dev/null -H 'Content-Type: application/json' -H 'Origin: http://127.0.0.1:18767' -d '{"email":"runner.feeds@example.com","password":"Runner-feeds-pw9","first":"Run","last":"Ner","agree":true}' http://127.0.0.1:18767/api/auth/signup
-for _ in $(seq 1 120); do n=$(curl -s -b "$TMP/dv.jar" http://127.0.0.1:18767/api/jobs | python -c "import sys,json; print(len(json.load(sys.stdin)['jobs']))" 2>/dev/null); [ "${n:-0}" -gt 100 ] && break; sleep 1; done
+for _ in $(seq 1 120); do n=$(curl -s -b "$TMP/dv.jar" http://127.0.0.1:18767/api/jobs | python -c "import sys,json; print(len(json.load(sys.stdin)['jobs']))" 2>/dev/null); [ "${n:-0}" -ge 40 ] && break; sleep 1; done
 echo "  real postings on dev: ${n:-0}"
 
 step "Job feed rules (US-only, no foreign roles, classification)"
@@ -241,16 +262,16 @@ step "The after-deploy checks (live-check.py, ui-live.js), against local servers
 # one server with everything off (as the live site was before the owner's keys) and one with email, Google and payments on through stand-ins
 LP="${LIVE_CHECK_PORT:-18810}"                 # uses LP to LP+4
 mkdir -p "$TMP/lc-off" "$TMP/lc-on"
-PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/lc-off" HOST=0.0.0.0 OWNER_PASSWORD=ownerpw UAPLY_CONFIG_JSON="$FEEDS" start python serve.py "$LP" dev --api)"
+PIDS="$PIDS $(UAPLY_JOBS_FIXTURE="$FIX" UAPLY_DATA_DIR="$TMP/lc-off" HOST=0.0.0.0 OWNER_PASSWORD=ownerpw UAPLY_CONFIG_JSON="$FEEDS" start python serve.py "$LP" dev --api)"
 PIDS="$PIDS $(start python tools/mock-google.py $((LP+2)))"
 PIDS="$PIDS $(start python tools/fake-smtp.py $((LP+3)) "$TMP/lc-on/mail.jsonl")"
 PIDS="$PIDS $(start python tools/mock-stripe.py $((LP+4)))"
 LC_ON='{"feeds":["greenhouse","lever","ashby"],"delivery":"test","owner_copy":"","anthropic_api_key":"","smtp":{"host":"127.0.0.1","port":'$((LP+3))',"starttls":false,"from_addr":"uaply@example.com"},"google":{"client_id":"test.apps.googleusercontent.com","client_secret":"test-secret","auth_url":"http://127.0.0.1:'$((LP+2))'/auth","token_url":"http://127.0.0.1:'$((LP+2))'/token","certs_url":"http://127.0.0.1:'$((LP+2))'/certs"}}'
-PIDS="$PIDS $(UAPLY_DATA_DIR="$TMP/lc-on" HOST=0.0.0.0 OWNER_PASSWORD=ownerpw UAPLY_STRIPE_BASE="http://127.0.0.1:$((LP+4))" STRIPE_SECRET_KEY=sk_test_mockkey123456 STRIPE_WEBHOOK_SECRET=whsec_testsecret STRIPE_PRICE_PLUS=price_plus1 STRIPE_PRICE_PRO=price_pro1 UAPLY_CONFIG_JSON="$LC_ON" start python serve.py $((LP+1)) dev --api)"
+PIDS="$PIDS $(UAPLY_JOBS_FIXTURE="$FIX" UAPLY_DATA_DIR="$TMP/lc-on" HOST=0.0.0.0 OWNER_PASSWORD=ownerpw UAPLY_STRIPE_BASE="http://127.0.0.1:$((LP+4))" STRIPE_SECRET_KEY=sk_test_mockkey123456 STRIPE_WEBHOOK_SECRET=whsec_testsecret STRIPE_PRICE_PLUS=price_plus1 STRIPE_PRICE_PRO=price_pro1 UAPLY_CONFIG_JSON="$LC_ON" start python serve.py $((LP+1)) dev --api)"
 wait_port "$LP" && wait_port $((LP+1))
 # the job list needs an account now and these two are public (no test mode): the owner's feed health counts the postings instead
 fh() { curl -s -u owner:ownerpw "http://127.0.0.1:$1/api/feed-health" | python -c "import sys,json; print(sum(s.get('jobs',0) for s in json.load(sys.stdin)['sources']))" 2>/dev/null; }
-for _ in $(seq 1 120); do n=$(fh "$LP"); m=$(fh $((LP+1))); [ "${n:-0}" -gt 100 ] && [ "${m:-0}" -gt 100 ] && break; sleep 1; done
+for _ in $(seq 1 120); do n=$(fh "$LP"); m=$(fh $((LP+1))); [ "${n:-0}" -ge 40 ] && [ "${m:-0}" -ge 40 ] && break; sleep 1; done
 run "live-check.py, everything off: every PASS/FAIL/SKIP line as the live site gets it" python tools/live-check.py --base "http://127.0.0.1:$LP"
 run "live-check.py, email, Google and payments on (stand-ins), all of them required" python tools/live-check.py --base "http://127.0.0.1:$((LP+1))" --expect email,google,payments --google-host "127.0.0.1:$((LP+2))"
 run "ui-live.js, everything off: agreement, Got it, a swipe, Account says email is off, no Google, early access, help" node tools/cdp.js tools/ui-live.js --base "http://127.0.0.1:$LP"
@@ -258,5 +279,6 @@ run "ui-live.js, all on: Google button and redirect, buy buttons, sign-up by ema
 run "Plan & billing, yearly (390x844): the Monthly / Yearly toggle, 2 months free, the 7-day refund line, Choose on Yearly opens Checkout with the yearly price" env W=390 H=844 PORT=$((LP+1)) MOCK_STRIPE=$((LP+4)) node tools/cdp.js tools/ui-billing-plans.js
 
 printf "\n"
+ev action end fails "$FAILS" duration_s $(( $(date +%s) - SUITE_T0 )) failing "${FAILED:-none}" concurrent "$CONCURRENT"
 if [ "$FAILS" -eq 0 ]; then echo "ALL TESTS PASSED"; else echo "$FAILS test group(s) FAILED"; fi
 exit "$FAILS"

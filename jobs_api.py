@@ -770,7 +770,7 @@ def _save_disk():
     if _idreg["dirty"]:                 # the job ids handed out (see _claim_id), saved with the list
         with _save_lock:
             _save_ids()
-    if not _disk["dirty"]:
+    if not _disk["dirty"] or _FIXTURE[0]:          # a fixture list is never written over the saved one
         return
     with _save_lock:
         try:
@@ -3228,6 +3228,33 @@ def known_ats(job_id):
 
 
 _LOAD_SOURCE = _load_source
+_FIXTURE = [False]      # use_fixture: the job list is a checked-in file, no feed is ever read
+
+
+def use_fixture(path):
+    """Serve a fixed list of jobs from a checked-in file (tools/fixtures/jobs.json) and never read a feed: the test runner's servers start
+    this way (UAPLY_JOBS_FIXTURE), so the suite gives the same jobs every time, with no network. The file holds raw postings per source,
+    as _iter_raw makes them, and each goes through _normalize like a real read. Returns how many jobs were kept."""
+    global SOURCES
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    far = time.time() + 10 * 365 * 86400       # never stale, so no background refresh is ever started
+    now_ms = time.time() * 1000
+    srcs, n = [], 0
+    with _lock:
+        _cache.clear()
+        for s in data["sources"]:
+            src = (s["kind"], s["token"], s["name"])
+            # a posting's date is kept as days before now ("age_days"), so the file never ages past the 60-day rule (MAX_AGE_DAYS)
+            raws = [dict(r, posted=now_ms - r["age_days"] * 86400000) if "age_days" in r else r for r in s["raws"]]
+            jobs = [j for j in (_normalize(r, src[0], src[2], src[1]) for r in raws) if j]
+            _cache[src] = _entry(far, jobs, "%d jobs (fixture)" % len(jobs))
+            srcs.append(src)
+            n += len(jobs)
+        SOURCES = srcs
+        _disk.update(loaded=True, filled=True, dirty=False)
+        _FIXTURE[0] = True
+    return n
 
 
 def get_jobs():
@@ -3303,7 +3330,7 @@ def _collect(meta, now_ms):
     at once); the list's other fields (sources, merged, aged_out, pending, fetched_at) are put in `meta` once every source is through."""
     _load_disk()
     allowed = feeds_allowed()
-    sources = [s for s in SOURCES if s[0] in allowed]
+    sources = [s for s in SOURCES if s[0] in allowed or _FIXTURE[0]]
     # One after another, not a thread per source: with 80 sources and three visitors on a fresh start that was 240 threads waiting
     # (about 30 MB of the 135 MB peak, October 21, 2026). The boards themselves are read in the background (_start_refresh).
     if _load_source is _LOAD_SOURCE:                 # (a test that stands in its own _load_source reads nothing)

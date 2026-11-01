@@ -154,6 +154,53 @@ def _prune():
         pass
 
 
+# ---- self-measurement: one append-only event log (read by doctor.py --weekly) ----------------
+EVENTS_MAX = 5 * 1024 * 1024            # rotate to events.jsonl.1 at 5 MB
+_SECRETY = re.compile(r"(key|token|secret|password|prompt|text|body)", re.I)
+
+
+def events_file() -> Path:
+    return Path(os.environ.get("UAPLY_EVENTS_FILE") or STATE_DIR / "events.jsonl")
+
+
+def log_event(kind, **fields):
+    """Append {ts, founder, kind, ...} to events.jsonl. Short scalar fields only: never prompt text or secrets
+    (fields whose name looks secret/text-like are dropped, strings capped at 80 chars). Never raises."""
+    try:
+        rec = {"ts": round(time.time()), "founder": os.environ.get("FOUNDER") or founder(), "kind": str(kind)}
+        for k, v in fields.items():
+            if _SECRETY.search(k) or v is None:
+                continue
+            rec[k] = v[:80] if isinstance(v, str) else v if isinstance(v, (int, float, bool)) else str(v)[:80]
+        p = events_file()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with _Lock(p):
+            if p.exists() and p.stat().st_size > EVENTS_MAX:
+                os.replace(p, p.with_name(p.name + ".1"))
+            with p.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:
+        pass   # measuring must never break a tool
+
+
+def read_events(since=0):
+    """All events with ts >= since, oldest first (current file + the one rotated copy)."""
+    out = []
+    p = events_file()
+    for f in (p.with_name(p.name + ".1"), p):
+        try:
+            for line in f.read_text(encoding="utf-8").splitlines():
+                try:
+                    e = json.loads(line)
+                except ValueError:
+                    continue
+                if e.get("ts", 0) >= since:
+                    out.append(e)
+        except OSError:
+            pass
+    return sorted(out, key=lambda e: e.get("ts", 0))
+
+
 # ---- Trello ----------------------------------------------------------------------------------
 def trello(method, path, params=None, timeout=15):
     """Call the Trello REST API. Needs TRELLO_KEY and TRELLO_TOKEN in env or ~/.uaply/lite.env."""

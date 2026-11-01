@@ -44,6 +44,11 @@ UNPUSHED WORK: none (checked) | <what's still local and why> (from step 0)
    **NEVER move a card that is in "📍 Areas"** — the area card only gets the handoff comment, it stays in that list
    forever. Before any connector move, read the card's list; if it is "📍 Areas", skip the move. (Script path:
    `trello.py update <#> --list ...` refuses to move area cards by itself.)
+2d. Incidents: if this chat hit a workflow failure — a secret exposed, the main folder off sandbox, an area card moved,
+   two test suites at once, a merge lock stuck, a paste into the wrong chat — add ONE line under "Incidents" in
+   `docs/workflow-lite.md` (in this area's worktree/PR, never in the main folder):
+   `- <date> · <what happened, no secrets/user data> · proposed rule: <…> · test: <…> · open`.
+   The Monday review in Release & Health turns open incidents into proposals.
 2c. Bot ledger: run `bash tools/lite/run.sh jobs.py clear-mine`. It drops this chat's finished bot records (so the next
    chat isn't warned about them) and names any still RUNNING — put those under NEXT.
 3. Success → tell the user: "Posted to <card> <url>. Next time in this area (either laptop): /clear, then: Read the
