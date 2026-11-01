@@ -227,9 +227,9 @@ module.exports = async ({ ev, sleep, nav, send, logs, on }) => {
   await q("const n=d.getElementById('uaNudge');n.hidden=false;return 1");
   await tap("d.getElementById('nb-dash')");
   check("8. a tap on the Job Tracker tab closes the rating question", (await q("return d.getElementById('uaNudge').hidden")) === true);
-  const menuOpen = await q("return [...d.querySelectorAll('.nitem')].some(b=>b.offsetParent&&b.getAttribute('data-v')==='applied')");
-  check("8. ...and the Job Tracker menu opens for the next tap", menuOpen === true, menuOpen);
-  await q("d.getElementById('nb-dash').click();return 1"); await sleep(300);    // close that menu again
+  // (card 182: the Job Tracker tab has no menu; the same tap opens its Overview)
+  const ovOpen = await waitFor("const p=d.getElementById('pane-track');return !!(p&&p.offsetParent)", 3000);
+  check("8. ...and the same tap opens the Job Tracker Overview", ovOpen === true, ovOpen);
 
   // 9. quiet swipe (Oct 20): a right swipe on a job that takes applications on its own site never interrupts with "Finish on their
   //    site"; the message is the short "Saved X to Applied · N% match" with Undo, and the Applied row carries the status and both links
@@ -251,7 +251,7 @@ module.exports = async ({ ev, sleep, nav, send, logs, on }) => {
   check("9. the swiped job is a hand-off (the server says it takes applications on its own site)", st9 === "handoff", st9 + " " + JSON.stringify(j9));
   check("9. no message after the swipe says 'Finish on their site' or 'Not sent yet'", toasts9.length > 0 && !toasts9.some((t) => /finish on their site|not sent yet|finish now/i.test(t)), JSON.stringify(toasts9));
   check("9. the message is the hand-off's 'Saved <company> to Job Tracker.' (one tap is promised only where the app opens the form) with Undo", toasts9.some((t) => /^Saved [^.]+ to Job Tracker\. ?Undo$/.test(t)), JSON.stringify(toasts9));
-  await menu("nb-dash", "applied"); await sleep(500);
+  await tap("d.getElementById('nb-dash')"); await sleep(500);
   const row9 = await q("const b=d.querySelector('#track [data-finish=\"" + j9.id + "\"]')||d.querySelector('[data-finish=\"" + j9.id + "\"]');const r=b&&b.closest('.row');if(!r)return '';return JSON.stringify({txt:r.innerText.replace(/\\s+/g,' '),chip:(r.querySelector('.stchip')||{}).textContent||'',links:[...r.querySelectorAll('.joblinks .linkbtn')].map(x=>x.innerText.trim()),open:(r.querySelector('[data-open]')||{getAttribute:()=>''}).getAttribute('data-open'),url:(w.__uaply.JOBS.find(j=>j.id===" + j9.id + ")||{}).url})");
   const r9 = row9 ? JSON.parse(row9) : {};
   check("9. Applied shows the row with both links: See the job posting, Finish applying on their site (and Mark as applied)", JSON.stringify(r9.links) === JSON.stringify(["See the job posting ↗", "Finish applying on their site ↗", "Mark as applied"]), row9);
