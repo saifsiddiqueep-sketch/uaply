@@ -59,6 +59,9 @@ module.exports = async ({ ev, sleep, nav, shot }) => {
   check("the Job Tracker button opens the Overview, no menu", (await inApp("return d.querySelector('#pane-track .overview')&&d.querySelector('.nwrap[data-k=\"dash\"] .nmenu').hidden?'y':'n'")) === "y");
   const all = await rowChips();
   check("All lists the 13 applications (10 at Applied, an interview, an offer, a rejection), not the 2 passed", all.length === 13, JSON.stringify(all));
+  check("...of them exactly 1 Sent (test) and 3 not sent yet (a question to answer, one waiting for the connection, a failed send)",
+    all.filter((c) => c === "Sent (test)").length === 1 && all.filter((c) => c === "Waiting to send" || c === "Needs profile" || c === "Not sent" || c === "Not sent yet").length === 3, JSON.stringify(all));
+  check("...and the test-inbox send has no status to set (nothing reached the employer)", (await inApp("const r=[...d.querySelectorAll('#pane-track .ovapps .row')].find(r=>r.querySelector('.stchip')&&r.querySelector('.stchip').textContent==='Sent (test)');return r&&!r.querySelector('.stsel')?'y':'n'")) === "y");
   const to = await tiles();
   check("counts: Needs you 6 (3 to finish on their site, 3 not sent yet), Sent 3, Heard back 3, Passed 2", to["Needs you"] === "6" && to["Sent"] === "3" && to["Heard back"] === "3" && to["Passed"] === "2", JSON.stringify(to));
   check("...no \"Applications\", \"Applied\" or \"Waiting\" count that adds the hand-offs in", !("Applications" in to) && !("Applied" in to) && !("Waiting" in to), JSON.stringify(to));

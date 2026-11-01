@@ -89,6 +89,10 @@ module.exports = async ({ ev, sleep, nav }) => {
   r = JSON.parse(await injected());
   check("a hostile job title typed and saved runs nothing", r.xss === 0 && r.imgs === 0 && r.scripts === 0 && r.handlers === 0, JSON.stringify(r));
   await goto("nb-dash", "Overview");
+  // card 182: the Overview keeps the chip last picked (the walk above ended on Heard back): show All, so the row just sent is on screen
+  await ev("(()=>{const b=" + F + ".querySelector('#pane-track [data-filt=all]');if(b)b.click()})()"); await sleep(400);
+  const rows = +(await ev(F + ".querySelectorAll('#pane-track .ovapps .row').length"));
+  check("the Overview (All) lists the application just sent with the hostile profile (so the check below looks at it)", rows > 0, "(" + rows + " rows)");
   r = JSON.parse(await injected());
   check("the Applied list shows nothing injected", r.xss === 0 && r.imgs === 0 && r.handlers === 0, JSON.stringify(r));
   await nav("http://127.0.0.1:" + PORT + "/outbox");
