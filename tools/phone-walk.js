@@ -152,7 +152,8 @@ module.exports = async ({ ev, sleep, nav, send }) => {
   // logo), because the address bar's height above the page differs between phones and changes when the bar hides
   let dpr = 1, top = 0, left = 0;
   // the first one on show: under the sign-in gate .brand is hidden, so the card's logo (.sg-bb .sg-lg) or its heading is used
-  const calibrate = async (finder) => {
+  const calibrate = async (finder) => { try { return await calibrate0(finder); } catch (e) { fail("measure: " + String(e && e.message).slice(0, 120) + " (was the page loading?)"); return false; } };
+  const calibrate0 = async (finder) => {
     dpr = await ev("devicePixelRatio");
     await ev("window.__pd=null;const f=" + F + ";const hit=e=>{if(!window.__pd)window.__pd=[e.clientX,e.clientY,e.view===window?0:1]};addEventListener('pointerdown',hit,true);if(f&&f.contentWindow)f.contentWindow.addEventListener('pointerdown',hit,true);1");
     // (not the header's logo when the header shows: on the sandbox the logo is a link home, so every measuring tap jumped to the Jobs tab, and
@@ -169,9 +170,10 @@ module.exports = async ({ ev, sleep, nav, send }) => {
     if (!(guessTop >= 0 && guessTop < scrH)) { log("measure: an impossible guess (" + guessTop + " of " + scrH + " px): using " + (top > 0 ? "the last estimate" : "the default")); guessTop = top > 0 ? Math.round(top) : 260; }
     const X = Math.round(p.x * dpr), Y = Math.round(guessTop + p.y * dpr), pTop = top, pLeft = left;
     wake(); adb("shell", "input", "tap", String(X), String(Y)); await sleep(700);
-    const got = JSON.parse(await ev("JSON.stringify(window.__pd)") || "null");
-    if (!got) { fail("calibration: a tap on the phone did not reach the page (is the screen on and Chrome in front?)"); return false; }
-    const fr = got[2] ? JSON.parse(await ev("JSON.stringify(" + F + ".getBoundingClientRect())")) : { left: 0, top: 0 };
+    const rawPd = await ev("JSON.stringify(window.__pd)"); let got = null;
+    try { got = typeof rawPd === "string" && !rawPd.startsWith("JSERR") ? JSON.parse(rawPd || "null") : null; } catch (e) { got = null; }
+    if (!got) { fail("calibration: a tap on the phone did not reach the page (is the screen on and Chrome in front?)" + (typeof rawPd === "string" && rawPd.startsWith("JSERR") ? " [" + rawPd.slice(0, 80) + "]" : "")); return false; }
+    let fr = { left: 0, top: 0 }; if (got[2]) { try { fr = JSON.parse(await ev("JSON.stringify(" + F + ".getBoundingClientRect())")); } catch (e) {} }
     top = Y - (fr.top + got[1]) * dpr; left = X - (fr.left + got[0]) * dpr;
     if (top < 0 || top > scrH) { log("measure: the tap at " + X + "," + Y + " gave an impossible top (" + Math.round(top) + "): keeping the last estimate"); top = pTop; left = pLeft; return false; }
     log("measure: tap at " + X + "," + Y + " reached the page at " + Math.round(got[0]) + "," + Math.round(got[1]) + (got[2] ? " (app frame)" : "") + " -> top " + Math.round(top) + " left " + Math.round(left) + " dpr " + dpr + (kb ? " (keyboard open)" : ""));
@@ -190,7 +192,9 @@ module.exports = async ({ ev, sleep, nav, send }) => {
     await ev("(()=>{window.__th=null;const f=" + F + ";const rec=e=>{if(!window.__th)window.__th=e.target};const on=(t)=>{t.addEventListener('pointerdown',rec,{capture:true,once:true})};on(window);if(f&&f.contentWindow)on(f.contentWindow);return 1})()");
     const [x, y] = toScreen(p.x, p.y); wake(); adb("shell", "input", "tap", String(x), String(y)); await sleep(700);
     lastAim = "css " + Math.round(p.x) + "," + Math.round(p.y) + " -> screen " + x + "," + y;
-    return ev("(()=>{const f=" + F + ";const d=" + (inPage ? "document" : "f.contentDocument") + ";const e=(" + finder + "),h=window.__th;return !!h&&(!e||e===h||e.contains(h)||(h.closest&&h.closest('label')&&h.closest('label').contains(e)))})()");   // no pointerdown in the page (the keyboard, the address bar): a miss
+    const hit = await ev("(()=>{const f=" + F + ";const d=" + (inPage ? "document" : "f.contentDocument") + ";const e=(" + finder + "),h=window.__th;return !!h&&(!e||e===h||e.contains(h)||(h.closest&&h.closest('label')&&h.closest('label').contains(e)))})()");   // no pointerdown in the page (the keyboard, the address bar): a miss
+    if ((typeof hit === "string" && hit.startsWith("JSERR")) || (await ev("typeof window.__th==='undefined'?1:0")) === 1) { log("the tap loaded a new page (" + finder.slice(0, 40) + ")"); return true; }   // the hooks went with the old page: the finger did reach its target (Continue with Google, November 2)
+    return hit;
   };
   let lastAim = "";
   const hitWas = async () => ev("(()=>{const h=window.__th;if(!h)return 'nothing in the page';const t=h.tagName?h.tagName.toLowerCase():'?';return t+(h.id?'#'+h.id:'')+(h.className&&typeof h.className==='string'?'.'+h.className.trim().split(/\s+/).slice(0,2).join('.'):'')+(h.textContent?' \"'+h.textContent.trim().slice(0,30)+'\"':'')})()");
@@ -416,12 +420,15 @@ module.exports = async ({ ev, sleep, nav, send }) => {
               if (await q("return d.querySelector('[data-auth=sout]')?'in':''")) { await tap("d.querySelector('[data-auth=sout]')"); await sleep(1800); }
               try { await fetch("http://127.0.0.1:" + process.env.WALK_MG + "/mock/next?email=" + encodeURIComponent(EMAIL) + "&sub=walk" + Date.now() + "&verified=1"); } catch (e) {}
               await toSignIn();
-              await tap("d.querySelector('[data-sg=google]')"); await sleep(7000);
+              await waitFor("return d.querySelector('[data-sg=google]')&&d.querySelector('[data-sg=google]').offsetParent?1:0", 6000);
+              try { await tap("d.querySelector('[data-sg=google]')"); } catch (e) { log("Continue with Google tap: " + String(e && e.message).slice(0, 100)); }
+              await sleep(7000);
               await waitFor("return d.getElementById('bnav')?1:0", 20000); await calibrate(); await sleep(1500);
               const g2 = await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>j.user?j.user.email:'')");
               if (g2 === EMAIL) log("Continue with Google checked (stand-in Google): the same account, signed in");
               else fail("Sign in · Continue with Google did not sign in (" + g2 + ")");
               await step("google-back", "Back from Google");
+              if (await gated()) { if (!(await ungate("after Continue with Google"))) return; }
             }
           }
         }
