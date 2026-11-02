@@ -45,23 +45,18 @@ OK_MAIL = re.compile(r"@(example\.(com|org|net)|uaply\.(net|com)|test|localhost|
 AUDIT_SECRET = ("looks like it contains", "holds private settings")
 
 
-def run(args, cwd, timeout=120, env=None, binary=False, with_stderr=False):
-    """stdout only by default: Git prints warnings (e.g. "LF will be replaced by CRLF") on stderr, and they must
-    never be read as data such as file names. with_stderr=True is for human-facing messages (push, audit)."""
+def run(args, cwd, timeout=120, env=None, binary=False):
     r = subprocess.run(args, cwd=cwd, capture_output=True, timeout=timeout, env=env)
     if binary:
         return r.returncode, r.stdout
-    out = (r.stdout + (r.stderr if with_stderr else b"")).decode("utf-8", "replace")
+    out = (r.stdout + r.stderr).decode("utf-8", "replace")
     return r.returncode, out.strip()
 
 
 def git(cwd, *args, env=None):
-    """stdout of a git command; any non-zero exit raises (fail closed), with stderr only in the error message."""
-    r = subprocess.run(["git", *args], cwd=cwd, capture_output=True, timeout=120, env=env)
-    out = r.stdout.decode("utf-8", "replace").strip()
-    if r.returncode:
-        err = r.stderr.decode("utf-8", "replace").strip() or out
-        raise RuntimeError(f"git {' '.join(args)}: {err.splitlines()[-1] if err else r.returncode}")
+    code, out = run(["git", *args], cwd, env=env)
+    if code:
+        raise RuntimeError(f"git {' '.join(args)}: {out.splitlines()[-1] if out else code}")
     return out
 
 
@@ -145,7 +140,7 @@ def scan(cwd, commit):
                 bad.append(problem)
     audit = os.path.join(cwd, "tools", "audit-files.py")
     if os.path.isfile(audit):
-        _, out = run([sys.executable, audit], cwd, timeout=300, with_stderr=True)
+        _, out = run([sys.executable, audit], cwd, timeout=300)
         if "Traceback" in out or not re.search(r"\d+ error\(s\), \d+ warning\(s\)", out):
             bad.append("audit: tools/audit-files.py did not finish — fix it, then rerun")
         bad += [f"audit: {ln.strip()}" for ln in out.splitlines() if any(k in ln for k in AUDIT_SECRET)]
@@ -177,8 +172,7 @@ def one(cwd, area):
     # a WIP commit mid-merge would push conflict markers and the index reset would drop the merge: leave it alone
     busy = [h for h in ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply")
             if os.path.exists(git(cwd, "rev-parse", "--path-format=absolute", "--git-path", h))]
-    # unmerged index entries block even with no MERGE_HEAD (e.g. it was deleted); a git error here raises, never passes
-    if busy or git(cwd, "ls-files", "--unmerged"):
+    if busy or git(cwd, "diff", "--name-only", "--diff-filter=U"):
         what = "a merge/rebase/cherry-pick in progress" if busy else "unresolved merge conflicts"
         return None, f"{name} ({branch}): NOT pushed — {what}; finish or abort it, then rerun"
     head = git(cwd, "rev-parse", "HEAD")
@@ -190,7 +184,7 @@ def one(cwd, area):
         # exactly the tree that was scanned becomes the branch tip; then the index catches up (work files untouched)
         git(cwd, "update-ref", "-m", f"WIP: {area} handoff", "HEAD", commit, head)
         git(cwd, "reset", "-q")
-    code, out = run(["git", "push", "-q", "-u", "origin", f"HEAD:refs/heads/{branch}"], cwd, with_stderr=True)
+    code, out = run(["git", "push", "-q", "-u", "origin", f"HEAD:refs/heads/{branch}"], cwd)
     tip = git(cwd, "log", "-1", "--format=%h %s")
     if code:
         reason = out.splitlines()[-1] if out else f"exit {code}"
