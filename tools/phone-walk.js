@@ -141,7 +141,7 @@ module.exports = async ({ ev, sleep, nav, send }) => {
       // measure taken then, aimed with the shrunken height, landed on the Help bubble and opened the UAply Assistant, so every later tap
       // missed: Save and continue, Account, Sign out, November 2. The address bar's hide (about 56 CSS px) still measures again.
       if (ow === tw && th - oh > 150) { if (!kbOpen) log("the keyboard is open (" + turned + " -> " + o + "): the taps keep their measure"); kbOpen = true; return /landscape/.test(o) ? "landscape" : "portrait"; }
-      log((o.split(" ")[0] !== turned.split(" ")[0] ? "the phone was turned: " : "the page's size changed (Chrome's address bar): ") + turned + " -> " + o + " (measuring the taps again)"); turned = o; await calibrate(); }
+      log((o.split(" ")[0] !== turned.split(" ")[0] ? "the phone was turned: " : "the page's size changed (Chrome's address bar): ") + turned + " -> " + o + " (measuring the taps again)"); turned = o; kbOpen = false; await calibrate(); }
     kbOpen = false; turned = o; return /landscape/.test(o) ? "landscape" : "portrait"; };
   const step = async (name, label) => { await sleep(500); const o = await orient(); await shot(name + (o === "landscape" ? "-landscape" : "")); await fit((label || name) + (o === "landscape" ? " [landscape]" : "")); };
   // where a CSS point of the page is on the phone's screen: measured with one tap on a part of the page that does nothing (the header's
@@ -185,7 +185,7 @@ module.exports = async ({ ev, sleep, nav, send }) => {
   };
   const tap = async (finder, inPage) => {
     const ok = await tapOnce(finder, inPage); if (ok === null) return false; if (ok) return true;
-    if (await q("const c=d.getElementById('uaChat'),x=d.getElementById('uaChatX');if(c&&!c.hidden&&x){x.click();return 1}return 0") === 1) log("a tap opened the UAply Assistant by mistake: closed it");
+    if (!/uaChat/.test(finder) && await q("const c=d.getElementById('uaChat'),x=d.getElementById('uaChatX');if(c&&!c.hidden&&x){x.click();return 1}return 0") === 1) log("a tap opened the UAply Assistant by mistake: closed it");
     await calibrate(); const again = await tapOnce(finder, inPage); if (again === null) return false;
     if (!again) { fail("a tap missed twice (" + finder.slice(0, 60) + "): it reached something else, or nothing in the page"); return false; }
     return true;
