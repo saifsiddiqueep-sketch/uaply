@@ -18,9 +18,9 @@ CareerOneStop 100 per search. USAJOBS keeps every job each search lists (every p
 
 ## Coverage
 
-* **Anywhere in the US:** 5,398 employer sources: 2,254 Greenhouse, 1,409 Ashby, 424 Lever, 541 SmartRecruiters and
-  458 Workable boards, plus 1 Workday job search and 1 Rippling board. SmartRecruiters, Workable, Workday and Rippling boards (and the
-  68 Recruitee boards, not counted here) are read only when switched on: live's `UAPLY_FEEDS` in render.yaml lists greenhouse, lever
+* **Anywhere in the US:** 5,981 employer sources: 2,254 Greenhouse, 1,409 Ashby, 424 Lever, 541 SmartRecruiters, 458 Workable,
+  525 Breezy HR and 58 Teamtailor boards, plus 1 Workday job search and 1 Rippling board. SmartRecruiters, Workable, Breezy HR,
+  Teamtailor, Workday and Rippling boards (and the 68 Recruitee boards, not counted here) are read only when switched on: live's `UAPLY_FEEDS` in render.yaml lists greenhouse, lever
   and ashby only, so live reads 4,087 of these sources until Saif adds the other kinds there
   (80 of them hand-picked in `SOURCES`, the rest from `job-boards.json`) and 310 employers' own careers sites (298 on Workday, 12 on
   iCIMS); remote jobs from Jobicy (15 industries), Himalayas (all, internships, part-time) and Remote OK; internships and co-ops from
@@ -290,16 +290,19 @@ have not been reviewed yet, so each kind stays off unless the owner lists it in 
   that US state), job page. Example row: Rippling (373 jobs, 199 in the US). Risk: terms not yet reviewed, so off unless listed in
   UAPLY_FEEDS.
 - Breezy HR (`_breezy`): `GET https://{company}.breezy.hr/json`. Mapped: name, place (first US location; city, state, remote flag),
-  department, type (internship), salary text, published date, job page. No example row yet: the `breezy` site has 3 US jobs, under
-  the 5-US rule. Risk: terms not yet reviewed, so off unless listed in UAPLY_FEEDS.
+  department, type (internship), salary text, published date, job page. Example row: Drive Time Transports (`drive-time-transports`).
+  525 boards from the November 2, 2026 hunt (the Breezy tenant list, each site read live, staffing agencies left out, 5-US rule).
+  Risk: terms not yet reviewed, so off unless listed in UAPLY_FEEDS.
 - Teamtailor (`_teamtailor`): `GET https://{company}.teamtailor.com/jobs.rss`. Mapped: title, link, guid, `tt:locations` (first US
   one), `tt:department`, `remoteStatus` (fully remote, hybrid), pubDate, description. A fully remote posting with no location is
   kept as US ("Remote - United States") only when its title or description names the US (US, USA, U.S., United States); otherwise
   it is "Remote" outside the US, so the US filter leaves it out. A feed that declares a DOCTYPE or ENTITY is
-  refused before parsing. No example row yet: the `career` site has 2 US jobs, under the 5-US rule. Risk: terms not yet reviewed, so
-  off unless listed in UAPLY_FEEDS.
+  refused before parsing. Example row: Symmetry Financial Group (`allenagency.na`, read from allenagency.na.teamtailor.com). 58 boards
+  from the November 2, 2026 hunt, 52 of them on the North America region host (`{company}.na.teamtailor.com`). Risk: terms not yet
+  reviewed, so off unless listed in UAPLY_FEEDS.
 - Pacing: every `*.myworkdayjobs.com`, `*.breezy.hr` and `*.teamtailor.com` subdomain is one service (`HOST_FAMILY`: 2 at once,
-  request starts 0.5 seconds apart). A Breezy or Teamtailor token is one subdomain label (`SUBDOMAIN_RE`).
+  request starts 0.5 seconds apart). A Breezy or Teamtailor token is one subdomain label (`SUBDOMAIN_RE`); a Teamtailor token may
+  also end in the region suffix `.na` (`acme.na` is acme.na.teamtailor.com), which `_board_token_ok` strips before the label check.
 - Safety: every request of the four kinds goes through the careers-site opener (`_cp_open`: public addresses only, and a redirect is
   followed only to a public https address), and robots.txt is checked for the User-Agent the list is asked for with (`FEED_UA`,
   "UAply-jobs").

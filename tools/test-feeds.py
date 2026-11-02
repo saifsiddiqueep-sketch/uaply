@@ -539,6 +539,9 @@ t("Breezy: a site whose robots.txt disallows the list is not read, and one line 
   (closed_bz[0], NK_CALLS, "[uaply] job feed breezy/closed/Closed failed: robots.txt does not allow it" in closed_bz[2]), ([], [("robots", "closed.breezy.hr")], True))
 t("Breezy and Teamtailor: a token is one subdomain label", [J._board_token_ok(k, x) for k in ("breezy", "teamtailor") for x in ("acme-co", "a.b", "-acme", "acme/x")],
   [True, False, False, False] * 2)
+t("Teamtailor: a token may end in the North America region suffix .na, Breezy may not",
+  [J._board_token_ok("teamtailor", x) for x in ("acme.na", "acme-co.na", ".na", "acme.na.x", "acme.eu", "-acme.na")] + [J._board_token_ok("breezy", "acme.na")],
+  [True, True, False, False, False, False, False])
 
 TT = "https://acme.teamtailor.com/jobs.rss"
 TT_XML = """<?xml version="1.0" encoding="UTF-8"?>

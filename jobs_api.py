@@ -236,17 +236,19 @@ CONNECTIONS_FILE = [""]          # the connect page's own keys (connect_api.path
 RECRUITEE_SUBMIT = [False]       # the owner's "recruitee_submit" switch, set by serve.py at the start (uaply_api.recruitee_on)
 BOARD_TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$")    # a board's name in its system's address (Lever and Ashby allow dots: "thea.energy")
 WORKDAY_TOKEN_RE = re.compile(r"([a-z0-9][a-z0-9-]{0,62})\.wd([0-9]{1,2})/([A-Za-z0-9_-]{1,80})")   # "{company}.wd{n}/{SiteName}" (fullmatch): nvidia.wd5/NVIDIAExternalCareerSite
-SUBDOMAIN_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")   # (fullmatch) one label of a careers site's own subdomain (Breezy, Teamtailor)
+SUBDOMAIN_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")   # (fullmatch) one label of a careers site's own subdomain (Breezy, Teamtailor; a Teamtailor token may end in ".na")
 
 
 def _board_token_ok(kind, token):
     """Whether a board token is safe to put in its system's address: a Workday site is "{company}.wd{n}/{SiteName}", a Breezy or
-    Teamtailor careers site one subdomain label, every other board one name (BOARD_TOKEN_RE, never "..")."""
+    Teamtailor careers site one subdomain label (a Teamtailor site in the North America region adds ".na": "acme.na" is
+    acme.na.teamtailor.com), every other board one name (BOARD_TOKEN_RE, never "..")."""
     token = token if isinstance(token, str) else ""
     if kind == "workday":
         return bool(WORKDAY_TOKEN_RE.fullmatch(token))
     if kind in ("breezy", "teamtailor"):
-        return bool(SUBDOMAIN_RE.fullmatch(token))
+        label = token[:-3] if kind == "teamtailor" and token.endswith(".na") else token
+        return bool(SUBDOMAIN_RE.fullmatch(label))
     return bool(BOARD_TOKEN_RE.match(token)) and ".." not in token
 
 
