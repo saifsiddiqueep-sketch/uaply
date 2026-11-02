@@ -48786,42 +48786,6 @@
   },
   {
    "kind": "breezy",
-   "token": "drive-time-transports",
-   "name": "Drive Time Transports",
-   "total": 2097,
-   "us": 2097,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
-   "token": "c3-trucking",
-   "name": "C3 Trucking",
-   "total": 1158,
-   "us": 1158,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
-   "token": "thirdchannel-inc",
-   "name": "ThirdChannel",
-   "total": 1065,
-   "us": 1044,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
-   "token": "showami",
-   "name": "Showami",
-   "total": 808,
-   "us": 808,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
    "token": "optimindhealth",
    "name": "OptiMindHealth",
    "total": 624,
@@ -48831,28 +48795,10 @@
   },
   {
    "kind": "breezy",
-   "token": "dermafix-spa",
-   "name": "Dermafix Spa",
-   "total": 623,
-   "us": 622,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
    "token": "kare",
    "name": "KARE",
    "total": 436,
    "us": 436,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
-   "token": "home-genius-exteriors",
-   "name": "Home Genius Exteriors",
-   "total": 411,
-   "us": 411,
    "tri": 0,
    "checked": "2026-11-02"
   },
@@ -48903,37 +48849,10 @@
   },
   {
    "kind": "breezy",
-   "token": "focus-group-panel",
-   "name": "FocusGroupPanel",
-   "total": 295,
-   "us": 295,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
-   "token": "bobcat-transport",
-   "name": "Bobcat Transport",
-   "total": 292,
-   "us": 292,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
    "token": "herman-n-logistics",
    "name": "Herman N Logistics",
    "total": 289,
    "us": 289,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
-   "token": "mink-life-legacy-agency",
-   "name": "MINK Life & Legacy Agency",
-   "total": 248,
-   "us": 248,
    "tri": 0,
    "checked": "2026-11-02"
   },
@@ -48948,28 +48867,10 @@
   },
   {
    "kind": "breezy",
-   "token": "chess-wizards",
-   "name": "Chess Wizards",
-   "total": 237,
-   "us": 237,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
    "token": "ensemble-performing-arts",
    "name": "Ensemble Performing Arts",
    "total": 221,
    "us": 221,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
-   "token": "drhouse-inc",
-   "name": "DrHouse, Inc.",
-   "total": 237,
-   "us": 220,
    "tri": 0,
    "checked": "2026-11-02"
   },
@@ -49011,15 +48912,6 @@
   },
   {
    "kind": "breezy",
-   "token": "alchemy-financial-group",
-   "name": "Alchemy Financial Group",
-   "total": 183,
-   "us": 183,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
    "token": "kmg-prestige",
    "name": "KMG Prestige",
    "total": 181,
@@ -49038,15 +48930,6 @@
   },
   {
    "kind": "breezy",
-   "token": "comprehensive-rehab-consultants",
-   "name": "Comprehensive Rehab Consultants",
-   "total": 178,
-   "us": 178,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
    "token": "blue-sky-hospitality-solutions",
    "name": "Blue Sky Hospitality Solutions",
    "total": 175,
@@ -49056,37 +48939,10 @@
   },
   {
    "kind": "breezy",
-   "token": "meron-financial-agency",
-   "name": "Meron Financial Agency",
-   "total": 170,
-   "us": 170,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
    "token": "all-financial-freedom",
    "name": "All Financial Freedom",
    "total": 167,
    "us": 167,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
-   "token": "gastro-health",
-   "name": "Gastro Health",
-   "total": 161,
-   "us": 161,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
-   "token": "innovativ-pharma-inc",
-   "name": "Innovativ Pharma, Inc.",
-   "total": 151,
-   "us": 151,
    "tri": 0,
    "checked": "2026-11-02"
   },
@@ -49119,24 +48975,6 @@
   },
   {
    "kind": "breezy",
-   "token": "pan-atlantic-foundation",
-   "name": "Pan Atlantic Foundation",
-   "total": 135,
-   "us": 135,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
-   "token": "seeknow",
-   "name": "Seek Now",
-   "total": 132,
-   "us": 132,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
    "token": "dermave-spa-st-petersburg-fl",
    "name": "DermaVe Spa",
    "total": 127,
@@ -49146,37 +48984,10 @@
   },
   {
    "kind": "breezy",
-   "token": "beacon-inspection",
-   "name": "Beacon Inspection",
-   "total": 121,
-   "us": 121,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
    "token": "trueline",
    "name": "Trueline",
    "total": 118,
    "us": 118,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
-   "token": "mtm-llc",
-   "name": "MTM LLC",
-   "total": 117,
-   "us": 117,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
-   "token": "nationsbenefits",
-   "name": "NationsBenefits, LLC",
-   "total": 123,
-   "us": 105,
    "tri": 0,
    "checked": "2026-11-02"
   },
@@ -49218,33 +49029,6 @@
   },
   {
    "kind": "teamtailor",
-   "token": "allenagency.na",
-   "name": "Symmetry Financial Group",
-   "total": 100,
-   "us": 100,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "teamtailor",
-   "token": "gialegacyplanning.na",
-   "name": "GIA Legacy Planning",
-   "total": 100,
-   "us": 100,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "teamtailor",
-   "token": "kimbrellagency.na",
-   "name": "Kimbrell Agency",
-   "total": 100,
-   "us": 100,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "teamtailor",
    "token": "mediweightloss.na",
    "name": "Medi-Weightloss",
    "total": 100,
@@ -49258,15 +49042,6 @@
    "name": "Reiss",
    "total": 261,
    "us": 97,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
-   "token": "everlight-solar",
-   "name": "Everlight Solar",
-   "total": 96,
-   "us": 96,
    "tri": 0,
    "checked": "2026-11-02"
   },
@@ -49321,15 +49096,6 @@
    "name": "Oil Changers",
    "total": 83,
    "us": 83,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
-   "token": "divadance",
-   "name": "DivaDance",
-   "total": 82,
-   "us": 82,
    "tri": 0,
    "checked": "2026-11-02"
   },
@@ -49398,42 +49164,6 @@
   },
   {
    "kind": "breezy",
-   "token": "thoroughbred-express",
-   "name": "Thoroughbred Express Auto Wash",
-   "total": 69,
-   "us": 69,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
-   "token": "children-s-dental-funzone",
-   "name": "Children's Dental FunZone",
-   "total": 67,
-   "us": 67,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
-   "token": "oreganos",
-   "name": "Oregano's",
-   "total": 67,
-   "us": 67,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
-   "token": "doorstead",
-   "name": "Doorstead",
-   "total": 67,
-   "us": 66,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
    "token": "cdpcareers",
    "name": "Community Dental Partners",
    "total": 65,
@@ -49465,15 +49195,6 @@
    "name": "MINA Group",
    "total": 65,
    "us": 65,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
-   "token": "abc-imaging",
-   "name": "ABC Imaging",
-   "total": 74,
-   "us": 64,
    "tri": 0,
    "checked": "2026-11-02"
   },
@@ -49533,15 +49254,6 @@
   },
   {
    "kind": "breezy",
-   "token": "atlanta-cycling",
-   "name": "Atlanta Cycling, Trek Chattanooga, Trek South Carolina",
-   "total": 54,
-   "us": 54,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
    "token": "pathways",
    "name": "Pathways",
    "total": 62,
@@ -49555,24 +49267,6 @@
    "name": "Bitdeer Technologies Group",
    "total": 160,
    "us": 53,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
-   "token": "rose-roofing-restoration",
-   "name": "Rose Roofing & Restoration",
-   "total": 50,
-   "us": 50,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
-   "token": "prolift-rigging",
-   "name": "The Prolift Rigging Company",
-   "total": 49,
-   "us": 49,
    "tri": 0,
    "checked": "2026-11-02"
   },
@@ -49632,15 +49326,6 @@
   },
   {
    "kind": "breezy",
-   "token": "prestige-capital-group",
-   "name": "Prestige Capital Group",
-   "total": 44,
-   "us": 44,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
    "token": "ats-automation",
    "name": "ATS Companies",
    "total": 43,
@@ -49668,24 +49353,6 @@
   },
   {
    "kind": "breezy",
-   "token": "matrix-technologies-inc",
-   "name": "Matrix Technologies",
-   "total": 41,
-   "us": 41,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
-   "token": "mml-alliance",
-   "name": "MML Alliance",
-   "total": 41,
-   "us": 41,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
    "token": "assessment-intervention-management",
    "name": "Assessment Intervention Management",
    "total": 40,
@@ -49704,15 +49371,6 @@
   },
   {
    "kind": "breezy",
-   "token": "nuspine-chiropractic",
-   "name": "NuSpine Chiropractic",
-   "total": 39,
-   "us": 39,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
    "token": "german-american-chambers-of-commerce",
    "name": "German American Chambers of Commerce",
    "total": 37,
@@ -49726,15 +49384,6 @@
    "name": "AVTECH Global",
    "total": 36,
    "us": 36,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
-   "token": "a-core-concrete-specialists",
-   "name": "A-Core Concrete Specialists",
-   "total": 35,
-   "us": 35,
    "tri": 0,
    "checked": "2026-11-02"
   },
@@ -49767,15 +49416,6 @@
   },
   {
    "kind": "breezy",
-   "token": "erdman-anthony",
-   "name": "Erdman Anthony",
-   "total": 34,
-   "us": 34,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
    "token": "navaide",
    "name": "Navaide",
    "total": 33,
@@ -49798,24 +49438,6 @@
    "name": "Sentral",
    "total": 33,
    "us": 33,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "teamtailor",
-   "token": "dataforcebytransperfect.na",
-   "name": "TransPerfect",
-   "total": 100,
-   "us": 33,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
-   "token": "advantia-health",
-   "name": "Advantia Health",
-   "total": 32,
-   "us": 32,
    "tri": 0,
    "checked": "2026-11-02"
   },
@@ -49852,15 +49474,6 @@
    "name": "Mindoula Health",
    "total": 31,
    "us": 31,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
-   "token": "float-health",
-   "name": "Float Health",
-   "total": 30,
-   "us": 30,
    "tri": 0,
    "checked": "2026-11-02"
   },
@@ -49906,15 +49519,6 @@
    "name": "ROC Ventures",
    "total": 29,
    "us": 29,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
-   "token": "cardiac-study-center",
-   "name": "Cardiac Study Center",
-   "total": 28,
-   "us": 28,
    "tri": 0,
    "checked": "2026-11-02"
   },
@@ -50100,15 +49704,6 @@
   },
   {
    "kind": "breezy",
-   "token": "highprofilecannabis",
-   "name": "High Profile",
-   "total": 23,
-   "us": 23,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
    "token": "otto-engineering-inc",
    "name": "OTTO Engineering",
    "total": 23,
@@ -50201,24 +49796,6 @@
    "kind": "breezy",
    "token": "dovelewis-veterinary-emergency-and-specialty-hospital",
    "name": "DoveLewis Veterinary Emergency and Specialty Hospital",
-   "total": 21,
-   "us": 21,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
-   "token": "gpfs",
-   "name": "GP Fund Solutions",
-   "total": 36,
-   "us": 21,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "breezy",
-   "token": "keelson-strategic",
-   "name": "Keelson Strategic",
    "total": 21,
    "us": 21,
    "tri": 0,

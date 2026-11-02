@@ -120,7 +120,7 @@ Locally, never committed: `uaply-config.json` (secrets for a laptop server), `ua
 | Brevo | Sending email (SMTP relay), bounce webhook | `smtp` block in `UAPLY_CONFIG_JSON`; `email_events_secret` | Saif |
 | Google Cloud (Google Auth Platform) | "Continue with Google" | `google` block in `UAPLY_CONFIG_JSON`; `DEPLOY.md` section 3 | Saif |
 | Stripe | Plus and Pro plans | `STRIPE_*` settings in Render; `DEPLOY.md` section 4 | Saif |
-| Job boards | Postings (Greenhouse, Lever, Ashby, SmartRecruiters, USAJOBS, The Muse, Jobicy, Workable, careers sites) | `UAPLY_FEEDS`, `feeds` and `feed_keys` in `UAPLY_CONFIG_JSON`, `UAPLY_USAJOBS_KEY`; `docs/job-sources.md` | Saif |
+| Job boards | Postings (Greenhouse, Lever, Ashby, SmartRecruiters, Workable, Recruitee, Workday, Rippling, Breezy HR, Teamtailor, USAJOBS, The Muse, Jobicy, careers sites) | `UAPLY_FEEDS`, `feeds` and `feed_keys` in `UAPLY_CONFIG_JSON`, `UAPLY_USAJOBS_KEY`; `docs/job-sources.md` | Saif |
 | Employers' hiring systems | Applications for connected employers | Keys saved through `/setup` (owner only); `docs/employers/` | Saif |
 | AI provider | Optional AI answers in the help chat (off today) | `ANTHROPIC_API_KEY` | Saif |
 | UptimeRobot | Outside uptime email alerts | `docs/uptime.md` (owner sets up) | Saif |
