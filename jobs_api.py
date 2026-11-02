@@ -1127,7 +1127,8 @@ def employer_domain(addr_domain, company, board="", page_url=""):
     if page and not NOT_EMPLOYER_HOST.search(page) and _alnum(_domain_name(page)) == label:
         return True                                  # the employer's own careers page is on this domain
     # "Acme Robotics" and acmerobotics-careers.com, "Penn Medicine" and pennmedicine.org: one name starts the other, at 4 letters or more
-    return any(len(n) >= 4 and len(label) >= 4 and (label.startswith(n) or n.startswith(label)) for n in names)
+    parts = [_alnum(x) for x in re.split(r"[.\-]", _domain_name(d))]
+    return any(len(n) >= 4 and len(label) >= 4 and (n in parts or n.startswith(label)) for n in names)
 
 
 def apply_address(text, company, board="", page_url=""):
@@ -1316,6 +1317,8 @@ def _workday_posted(s, now=None):
         if not m:
             return 0
         days = int(m.group(1))
+        if "+" in m.group(0):
+            days = max(days + 1, MAX_AGE_DAYS + 1)     # "30+ Days Ago": older than the cut-off, so it ages out like other old postings
     return int((now - days * 86400) * 1000)
 
 
@@ -1468,6 +1471,8 @@ def _teamtailor_raw(item, name):
     loc = ", ".join(x for x in (p.get("city") or p.get("name") or "", "United States") if x) if us else ""
     status = get("remoteStatus").lower()
     remote = True if status in ("fully", "remote") else None
+    if remote and not places:
+        country, loc = "us", ""                  # a remote posting with no place of its own is kept, as "Remote - United States"
     if remote:
         loc = "Remote - " + (loc or "United States")
     elif status == "hybrid" and loc:
@@ -2740,6 +2745,10 @@ _links = {}                      # source -> {"at", "ok", "dead", "unknown", "de
 _link_thread = []
 
 
+LOGIN_PAGE_RE = re.compile(r"(?:login|signin|sign-in|sso|auth)", re.I)
+CLOSED_MARKERS = ("no longer accepting applications", "this job is no longer available", "job not found", "position has been filled")
+
+
 def _link_alive(url):
     """True: the page answers (a person can open it); False: it is gone (404/410, or the board's own "no longer open" page), or it is not
     a public page (an internal or metadata address, or a redirect to one: never opened or followed, _link_open); None: cannot tell
@@ -2750,7 +2759,10 @@ def _link_alive(url):
         req = urllib.request.Request(url, headers={"User-Agent": LINK_UA, "Accept": "text/html,*/*"})
         with _link_open(req, timeout=15) as r:
             final = r.geturl() or url
-            body = r.read(20000).decode("utf-8", "replace").lower()
+            body = r.read(65536).decode("utf-8", "replace").lower()
+        fp = urllib.parse.urlsplit(final)
+        if LOGIN_PAGE_RE.search(fp.path + "?" + fp.query) or any(m in body for m in CLOSED_MARKERS):
+            return False                         # a sign-in page, or a page that says the job is closed
         if re.search(r"[?&]error=true\b", final) or "job not found" in body or "no longer accepting applications" in body or \
                 "this job is no longer available" in body or "the job you are looking for is no longer open" in body or "posting has been closed" in body:
             return False                         # Greenhouse sends a closed posting to its board with ?error=true; others say so on the page
@@ -2797,6 +2809,8 @@ def check_links(src, sample=LINK_SAMPLE):
         c = _cache.get(src)
         jobs = list(c["jobs"]) if c else []
         rec = _links.setdefault(src, {"at": 0, "ok": 0, "dead": 0, "unknown": 0, "dead_ids": set(), "checked_ids": set(), "off": False})
+    with _lock:
+        rec["ok"] = rec["dead"] = rec["unknown"] = 0     # each round counts afresh: old dead links must not keep a source off for good
     fresh = [j for j in jobs if j["id"] not in rec["checked_ids"]] or jobs
     picks = [j for j in fresh if str(j.get("url") or "").startswith("https://")][:sample]
     with ThreadPoolExecutor(max_workers=4) as ex:
@@ -2954,9 +2968,7 @@ def _load_source(src):
     if _no_key(src[0]):
         return _fetch_source(src)                # no key: skipped right away, never served from an older copy
     if _disabled(src):
-        with _lock:
-            c = _cache.get(src)
-        return (c["jobs"] if c else []), "off: failed %d refreshes in a row; tried again %s" % (FAIL_LIMIT, _health[src].get("retry", ""))
+        return [], "off: failed %d refreshes in a row; tried again %s" % (FAIL_LIMIT, _health[src].get("retry", ""))
     with _lock:
         c = _cache.get(src)
         if c:
