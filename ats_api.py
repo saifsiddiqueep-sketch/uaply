@@ -58,6 +58,17 @@ def _base(kind):
     return _BASES[kind]
 
 
+def local_standin(kind):
+    """True when tests point this hiring system at a stand-in on this computer (UAPLY_ATS_BASE_<KIND>). Sign-up test mode (uaply_api.NO_MAIL)
+    sends an application into a hiring system only then: a real employer's system never gets one from a test server."""
+    return bool(re.match(r"^http://(127\.0\.0\.1|localhost)(:\d+)?$", os.environ.get("UAPLY_ATS_BASE_" + str(kind).upper(), "")))
+
+
+# A submit that timed out or lost the connection (status 0 from _call) may still have reached the employer: it is "unknown", never "failed",
+# so the same swipe is not sent again into a system that may already have the person (uaply_api dup() holds it like a sent one).
+UNCONFIRMED = "the employer's system did not answer in time, so UAply cannot tell whether the application arrived"
+
+
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *a, **k):
         return None
@@ -205,6 +216,8 @@ def _greenhouse(board, job_id, key, cand, note, resume_meta, resume_bytes):
     token = base64.b64encode((key + ":").encode("utf-8")).decode("ascii")
     status, reply = _call(urllib.request.Request("%s/v1/boards/%s/jobs/%s" % (base, board, job_id), data=body, method="POST",
                                                  headers={"Content-Type": ctype, "Authorization": "Basic " + token, "Accept": "application/json"}))
+    if status == 0:
+        return "unknown", UNCONFIRMED
     if status in (200, 201):
         return "sent", ""
     if status in (401, 403):
@@ -233,6 +246,8 @@ def _lever(site, posting_id, key, cand, note, resume_meta, resume_bytes):
     body, ctype = _multipart(fields, files)
     url = "%s/v0/postings/%s/%s?key=%s" % (base, site, posting_id, urllib.parse.quote(key, safe=""))
     status, reply = _call(urllib.request.Request(url, data=body, method="POST", headers={"Content-Type": ctype, "Accept": "application/json"}))
+    if status == 0:
+        return "unknown", UNCONFIRMED
     if status == 200:
         return "sent", ""
     if status in (401, 403):
@@ -313,6 +328,8 @@ def _ashby(posting_id, key, cand, note, resume_meta, resume_bytes):
                               ("utmData", json.dumps({"utm_source": "UAply"}))], files)
     status, reply = _call(urllib.request.Request(_base("ashby") + "/applicationForm.submit", data=body, method="POST",
                                                  headers={"Content-Type": ctype, "Authorization": _basic(key), "Accept": "application/json"}))
+    if status == 0:
+        return "unknown", UNCONFIRMED
     if status in (401, 403):
         return "failed", "Ashby refused the key (HTTP %s)" % status
     if status == 429:
@@ -427,6 +444,8 @@ def _smartrecruiters(uuid_, key, cand, note, resume_meta, resume_bytes):
     body = json.dumps(_sr_body(plan, qs, cand, note, resume_meta, resume_bytes)).encode("utf-8")
     status, reply = _call(urllib.request.Request("%s/postings/%s/candidates" % (_base("smartrecruiters"), uuid_), data=body, method="POST",
                                                  headers={"Content-Type": "application/json", "Accept": "application/json", "X-SmartToken": key}))
+    if status == 0:
+        return "unknown", UNCONFIRMED
     if status in (200, 201):
         return "sent", ""
     if status in (401, 403):
@@ -587,6 +606,8 @@ def _workable(subdomain, shortcode, key, cand, note, resume_meta, resume_bytes):
     body = json.dumps(_wk_body(plan_, qs, cand, note, resume_meta, resume_bytes)).encode("utf-8")
     status, reply = _call(urllib.request.Request("%s/jobs/%s/candidates" % (_wk_base(subdomain), shortcode), data=body, method="POST",
                                                  headers=_wk_headers(key, True)))
+    if status == 0:
+        return "unknown", UNCONFIRMED
     if status in (200, 201):
         return "sent", ""
     if status in (401, 403):
@@ -617,7 +638,8 @@ def plan(kind, job_id, key, cand, job, note, resume_meta, answers, board=""):
 
 def submit(kind, board, job_id, key, cand, note, resume_meta, resume_bytes):
     """Send one application into the employer's hiring system. Returns (status, reason): "sent", "needs_manual" (nothing was sent: the posting
-    has required questions the profile cannot answer, so the person finishes on the employer's page) or "failed"."""
+    has required questions the profile cannot answer, so the person finishes on the employer's page), "unknown" (the submit timed out or lost
+    the connection: it may have arrived, see UNCONFIRMED) or "failed"."""
     if not valid_connection(kind, board, key) or not isinstance(job_id, str) or not ID_RE.match(job_id):
         return "failed", "this connection is not set up correctly"
     try:
@@ -652,7 +674,7 @@ def recruitee_url(company, slug):
 
 
 def recruitee_submit(company, slug, cand, resume_meta, resume_bytes):
-    """Send one application to a Recruitee offer. Returns ("sent" | "failed", reason or None). Never raises."""
+    """Send one application to a Recruitee offer. Returns ("sent" | "unknown" | "failed", reason or None). Never raises."""
     url = recruitee_url(company, slug)
     if not url:
         return "failed", "this posting's Recruitee address is not valid"
@@ -666,6 +688,8 @@ def recruitee_submit(company, slug, cand, resume_meta, resume_bytes):
         status, reply = _call(urllib.request.Request(url, data=body, method="POST", headers={"Content-Type": ctype, "Accept": "application/json"}))
     except Exception as e:
         return "failed", "unexpected problem (%s)" % type(e).__name__
+    if status == 0:
+        return "unknown", UNCONFIRMED
     if status in (200, 201) and isinstance(reply, dict) and (reply.get("candidate") or reply.get("id")):
         return "sent", None
     return "failed", "Recruitee did not accept the application (HTTP %s) %s" % (status, _short(reply))

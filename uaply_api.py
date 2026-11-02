@@ -163,7 +163,10 @@ def _load():
 
 
 PUBLIC = False             # serve.py sets this on a hosted server (the live site): see _mail_ctx
-NO_MAIL = False            # serve.py sets this in test mode (UAPLY_SIGNUP_TEST, never public): no email leaves, whatever the settings say
+NO_MAIL = False            # serve.py sets this in test mode (UAPLY_SIGNUP_TEST, never public): no email leaves, whatever the settings say,
+                           # and nothing is posted to an employer's webhook or hiring system (only to a stand-in on this computer)
+UNKNOWN_HOLD = 86400       # seconds an "unknown" submit (timed out, may have arrived) blocks the same swipe being sent again (dup() in submit)
+LOCAL_URL_RE = re.compile(r"^http://(127\.0\.0\.1|localhost)(:\d+)?(/|$)")
 hide_errors = False        # serve.py sets this on a hosted server: visitors then see a plain sentence, never a mail server's or an employer's raw error text
 
 
@@ -544,6 +547,9 @@ def _deliver(cfg, target, cand, job, note, contact, resume_meta, resume_bytes, h
     """Send one application over every channel the employer opted into: email, a signed webhook, or both. The application counts as
     sent when at least one channel accepted it. Returns (status, error_text_or_None, channels_that_worked)."""
     done, errors = [], []
+    if NO_MAIL:                                # second guard (submit's test_hold is the first): a test server posts only to a stand-in on this computer
+        hook = hook if hook and LOCAL_URL_RE.match(str(hook[0])) else None
+        ats = ats if ats and ats_api.local_standin(ats.get("kind")) else None
     if target:
         try:
             _send_email(cfg, target, cand, job, note, contact, (resume_meta, resume_bytes) if resume_meta else None, stop)
@@ -556,18 +562,22 @@ def _deliver(cfg, target, cand, job, note, contact, resume_meta, resume_bytes, h
             done.append("webhook")
         else:
             errors.append("webhook: %s" % why)
-    manual = ""
+    manual = unsure = ""
     if ats:                                    # straight into the employer's own hiring system, with the key they gave us
         st, why = ats_api.submit(ats["kind"], ats["board"], ats["id"], ats["key"], cand, note, resume_meta, resume_bytes)
         if st == "sent":
             done.append("hiring system (%s)" % ats["kind"])
         elif st == "needs_manual":
             manual = why
+        elif st == "unknown":                  # timed out: it may have arrived, so it is never "failed" (a retry could apply twice)
+            unsure = "%s: %s" % (ats["kind"], why)
         else:
             errors.append("%s: %s" % (ats["kind"], why))
     if not done and manual and not errors:     # nothing was sent because the posting asks something the profile cannot answer: finish on the employer's page
         sys.stderr.write("[uaply] application %s needs a manual finish: %s\n" % (rec["id"], manual))
         return "handoff", None, []
+    if not done and unsure:
+        return "unknown", "; ".join(errors + [unsure]), []
     return ("sent" if done else "failed"), ("; ".join(errors) if errors else None), done
 
 
@@ -1145,11 +1155,17 @@ def submit(p, user=None, site=""):
         policy, contact = "link", ""
     hook = jobs_api.known_webhook(job["id"]) if policy == "direct" else None      # the HTTPS address the employer registered, if any
     ats = jobs_api.known_ats(job["id"]) if policy == "direct" else None           # the employer's own hiring system and key, if they connected
+    # sign-up test mode (NO_MAIL, never public), even with delivery "live": filler accounts must never reach a real employer's webhook or
+    # hiring system (their key is not even used to read a form), so such a swipe is simulated as in test mode; only a stand-in on this
+    # computer (a 127.0.0.1 webhook, UAPLY_ATS_BASE_<KIND>) is posted to, as for Recruitee below
+    test_hold = NO_MAIL and bool((hook and not LOCAL_URL_RE.match(str(hook[0]))) or (ats and not ats_api.local_standin(ats.get("kind"))))
     answers = autofill.clean_answers(p.get("answers"), job.get("co") or "")      # the person's own answers to questions employers' forms asked before
 
     def dup():
         for a in APPS:
-            if a["job"]["id"] == job["id"] and a["candidate"]["email"] == cand["email"] and a["status"] != "failed":
+            # an "unknown" submit (timed out: it may have arrived) holds like a sent one for UNKNOWN_HOLD, so a retry cannot apply twice
+            if a["job"]["id"] == job["id"] and a["candidate"]["email"] == cand["email"] and a["status"] != "failed" \
+                    and not (a["status"] == "unknown" and a.get("at", 0) < time.time() - UNKNOWN_HOLD):
                 # "was" is what happened the first time, so the app can show it again (after an undo, or on another device)
                 return 200, {"status": "duplicate", "id": a["id"], "to": a.get("to", ""), "mode": a["mode"], "was": a["status"], "preview": a.get("preview") is True}
         return None
@@ -1185,7 +1201,7 @@ def submit(p, user=None, site=""):
     if gh and (policy in ("direct", "link") or preview) and not _redirect(cfg) and not send_off:
         form = autofill.fetch_form(gh["board"], gh["id"])
         plan = autofill.plan_greenhouse(form, cand, job, note, resume_meta, resume_bytes, answers) if form else None
-    elif ats and ats.get("kind") in ("ashby", "smartrecruiters", "workable") and policy == "direct" and mode == "live" and not _redirect(cfg):
+    elif ats and ats.get("kind") in ("ashby", "smartrecruiters", "workable") and policy == "direct" and mode == "live" and not _redirect(cfg) and not test_hold:
         # Ashby and SmartRecruiters show a posting's form only to the employer's key, so it is read only for a live send to an employer who
         # connected (never in test mode, which must not use an employer's key). A question the app cannot ask (a file other than the resume, a
         # type UAply cannot fill) is not asked: the send then reports it and the person finishes on the employer's page.
@@ -1207,6 +1223,10 @@ def submit(p, user=None, site=""):
         out = {"status": "handoff" if (cannot and ats) or (policy not in ("direct", "email", "recruitee") and not preview) else "ready", "mode": mode, "known": bool(plan)}
         if plan:
             out.update(filled=plan["filled"], total=plan["total"])
+        if policy == "recruitee" and out["status"] == "ready" and not resume_meta:
+            # Recruitee's form is not read before the swipe, and its careers sites expect a resume: never "Ready to apply" without one.
+            # "needs_input" is not "needs_answers" (there is no question to show), so the card makes no promise either way (uaply-live.js)
+            out.update(status="needs_input", reasons=["resume"])
         return 200, out
     summary = ({"filled": plan["filled"], "total": plan["total"],
                 "items": [{"q": i["q"][:160], "a": i["a"][:200]} for i in plan["items"] if i["a"] and not i.get("skip")][:40]} if plan else None)
@@ -1260,7 +1280,7 @@ def submit(p, user=None, site=""):
                 rec["to"], rec["status"] = "%s on Recruitee" % job["co"], "sending"      # reserved now, so a double tap cannot send twice
                 APPS.append(rec)
                 rsend = (rref["board"], rref["id"])
-        elif mode == "test":
+        elif mode == "test" or test_hold:        # test_hold: sign-up test mode, a real employer's webhook or hiring system (see above)
             # the same channels the live app would use: email only when the employer gave an address (or, for an example listing, has no
             # other channel), otherwise their hiring system or their webhook. The test inbox and the Applied list then say where it would go.
             by_mail = bool(contact) or not (hook or ats)
@@ -1349,6 +1369,11 @@ def submit(p, user=None, site=""):
             out["error"] = ("UAply has sent as many emails as it can today, so your application to %s was not sent yet. Nothing is lost: "
                             "try again tomorrow (after midnight UTC)." % job["co"])
             out["code"] = "mail_quota"
+        if rec["status"] == "unknown":
+            # timed out: it may have arrived, and sending it again could apply twice (dup() holds this swipe for UNKNOWN_HOLD)
+            out["error"] = ("Your application to %s may have gone through, but %s's system did not confirm it in time. Check your email for a "
+                            "confirmation from them before applying again." % (job["co"], job["co"]))
+            out["code"] = "unconfirmed"
     if user and rec["status"] in ("delivered_test", "sent", "handoff"):
         # A real confirmation goes only to an address the person has proven is theirs (otherwise anyone could make UAply email a stranger).
         # With no real email connected nothing leaves this server: the confirmation is only saved in the test inbox, so it is made for any account.
