@@ -152,8 +152,8 @@ module.exports = async ({ ev, sleep, nav, send }) => {
   // logo), because the address bar's height above the page differs between phones and changes when the bar hides
   let dpr = 1, top = 0, left = 0;
   // the first one on show: under the sign-in gate .brand is hidden, so the card's logo (.sg-bb .sg-lg) or its heading is used
-  const calibrate = async (finder) => { try { return await calibrate0(finder); } catch (e) { fail("measure: " + String(e && e.message).slice(0, 120) + " (was the page loading?)"); return false; } };
-  const calibrate0 = async (finder) => {
+  const calibrate = async (finder) => { try { return await calibrate0(finder, false); } catch (e) { fail("measure: " + String(e && e.message).slice(0, 120) + " (was the page loading?)"); return false; } };
+  const calibrate0 = async (finder, retried) => {
     dpr = await ev("devicePixelRatio");
     await ev("window.__pd=null;const f=" + F + ";const hit=e=>{if(!window.__pd)window.__pd=[e.clientX,e.clientY,e.view===window?0:1]};addEventListener('pointerdown',hit,true);if(f&&f.contentWindow)f.contentWindow.addEventListener('pointerdown',hit,true);1");
     // (not the header's logo when the header shows: on the sandbox the logo is a link home, so every measuring tap jumped to the Jobs tab, and
@@ -172,6 +172,7 @@ module.exports = async ({ ev, sleep, nav, send }) => {
     wake(); adb("shell", "input", "tap", String(X), String(Y)); await sleep(700);
     const rawPd = await ev("JSON.stringify(window.__pd)"); let got = null;
     try { got = typeof rawPd === "string" && !rawPd.startsWith("JSERR") ? JSON.parse(rawPd || "null") : null; } catch (e) { got = null; }
+    if (!got && !retried) { log("measure: the tap did not reach the page (still loading after a navigation?): one more try"); await sleep(1500); return calibrate0(finder, true); }   // one miss right after Continue with Google loaded a new page, November 2
     if (!got) { fail("calibration: a tap on the phone did not reach the page (is the screen on and Chrome in front?)" + (typeof rawPd === "string" && rawPd.startsWith("JSERR") ? " [" + rawPd.slice(0, 80) + "]" : "")); return false; }
     let fr = { left: 0, top: 0 }; if (got[2]) { try { fr = JSON.parse(await ev("JSON.stringify(" + F + ".getBoundingClientRect())")); } catch (e) {} }
     top = Y - (fr.top + got[1]) * dpr; left = X - (fr.left + got[0]) * dpr;
