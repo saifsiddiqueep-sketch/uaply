@@ -1,0 +1,13 @@
+Arjun
+arjun.dev@example.com | +1 415 555 0102
+San Francisco, CA 94103
+
+Experience
+Machine Learning Engineer, Example Vision Labs — 2021–Present
+• Trained the defect detection models for 3 factories
+Data Scientist, Example Retail Co. — 2018–2021
+
+Education
+University of California, Berkeley — M.S. Electrical Engineering, 2018
+
+Skills: Python, PyTorch, Computer Vision, Docker

@@ -1,0 +1,14 @@
+Kenji Watanabe
+kenji.watanabe@example.com · github.com/kenjiw-example
+
+Education
+Rutgers University, New Brunswick, NJ
+Bachelor of Science in Computer Science, Expected May 2027
+GPA: 3.41
+
+Projects
+Study Buddy — a React Native app that matches classmates for study sessions (2025)
+Trail Weather Bot — a Python Discord bot with 400 users
+
+Skills
+Python, React Native, Firebase, C++, Git

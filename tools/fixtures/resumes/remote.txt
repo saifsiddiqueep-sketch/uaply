@@ -1,0 +1,13 @@
+Jamal Whitaker
+Senior Data Engineer · Remote (US) · jamal.whitaker@example.com · (470) 555-0129
+
+Experience
+Senior Data Engineer, Example Cloud Inc. (Remote)          Apr 2020 – Present
+- Built the streaming pipeline for 2 billion events a day
+Data Engineer, Example Mart, Atlanta, GA          2017 – 2020
+
+Education
+Georgia Institute of Technology — B.S. Industrial Engineering, 2017
+
+Skills
+Python | Spark | Airflow | Snowflake | dbt | Kafka

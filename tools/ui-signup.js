@@ -123,24 +123,33 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   check("the code is in the test inbox", /^[0-9]{6}$/.test(code1));
   await typeCode(code1); await sleep(1800);
   t = await text();
-  check("the right code: 'Account created, Sam.' and question 1 of 2", /Account created, Sam\./.test(t) && /1 of 2/i.test(t) && /What kind of work are you after\?/.test(t), t.slice(0, 300));
+  // October 30 (card 181): the questions start with the resume (1 of 4: resume, work, where, phone)
+  check("the right code: 'Account created, Sam.' and question 1 of 4, the resume", /Account created, Sam\./.test(t) && /1 of 4/i.test(t) && /Start with your resume/.test(t), t.slice(0, 300));
   const me = JSON.parse(await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>JSON.stringify(j.user))"));
   check("the session is real, the email is verified and the account has its password", me && me.email === email && me.emailVerified === true && me.hasPassword === true, JSON.stringify(me));
   const pv = await ev(q(".sg-pv") + ".textContent");      // on a phone the preview is folded into one line that opens
   check("the preview already shows the name and the verified email", /Sam Rivera/.test(pv) && pv.includes(email) && /Your email is confirmed/.test(pv), pv.slice(0, 300));
   check("the preview counts the app's minimum to apply (2 of 3: a phone number or a resume still needed), nothing promised for later",
     /2 of 3 needed/.test(pv) && /Phone or resume\s*Needed before UAply can apply/.test(pv) && !/only when a job needs/i.test(pv), pv.slice(0, 400));
+  check("on the resume step the main button is the skip: I don’t have one right now", (await ev(q(".sg-next") + ".textContent")) === "I don’t have one right now");
+  await click(".sg-next"); await sleep(400);
+  t = await text();
+  check("I don't have one right now: question 2 of 4, the work", /2 of 4/i.test(t) && /What kind of work are you after\?/.test(t), t.slice(0, 300));
   check("the main button reads Skip while nothing is picked", (await ev(q(".sg-next") + ".textContent")) === "Skip");
   await ev("[..." + F + ".querySelectorAll('.sg-chip')].find(b=>b.textContent==='Barista').click()"); await sleep(150);
   check("and Continue once something is picked", (await ev(q(".sg-next") + ".textContent")) === "Continue");
   await key(".sg-qs input", "Enter"); await sleep(400);
   t = await text();
-  check("Enter advances to question 2 of 2", /2 of 2/i.test(t) && /Where do you live\?/.test(t), t.slice(0, 200));
+  check("Enter advances to question 3 of 4", /3 of 4/i.test(t) && /Where do you live\?/.test(t), t.slice(0, 200));
   await key(".sg-qs input", "Escape"); await sleep(400);
   t = await text();
-  check("Esc goes back to question 1, with the pick kept", /1 of 2/i.test(t) && (await ev("[..." + F + ".querySelectorAll('.sg-chip')].find(b=>b.textContent==='Barista').getAttribute('aria-pressed')")) === "true");
+  check("Esc goes back to question 2 of 4, with the pick kept", /2 of 4/i.test(t) && (await ev("[..." + F + ".querySelectorAll('.sg-chip')].find(b=>b.textContent==='Barista').getAttribute('aria-pressed')")) === "true");
   await click(".sg-next"); await sleep(400);
   await typeIn(".sg-qs input", "Austin, TX"); await click(".sg-rem"); await sleep(100);
+  await click(".sg-next"); await sleep(400);
+  t = await text();
+  check("then question 4 of 4, the phone (optional), with Skip while it is empty", /4 of 4/i.test(t) && /What number can employers call\?/.test(t) && /Optional\./.test(t) &&
+    (await ev(q(".sg-next") + ".textContent")) === "Skip", t.slice(0, 300));
   await click(".sg-next"); await sleep(400);
   t = await text();
   check("then 'Almost ready': a phone number or a resume before UAply can apply, one tap from each, and the line about employers' own sites",
@@ -229,13 +238,17 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
     await click("[data-sg=google]"); await sleep(6000);
     await openAccount(); await sleep(800);
     t = await text();
-    check("Google, new Gmail account: 'Account created with Google.' and the name asked (Google is not asked for it)",
-      /Account created with Google\./.test(t) && /What should employers call you\?/.test(t) && (await ev(q(".sg-fn input") + ".value")) === "", t.slice(0, 400));
+    // October 30 (card 181): the resume comes first, then the name
+    check("Google, new Gmail account: 'Account created with Google.' and the resume first", /Account created with Google\./.test(t) && /Start with your resume/.test(t), t.slice(0, 400));
     check("the note says what UAply keeps from Google: the email and the account number only", /UAply keeps only your email \(.*\) and your Google account number from Google/.test(t) && !/your name and your Google/.test(t), t.slice(0, 400));
     check("Google skipped the code (Gmail is vouched for by Google)", !/Check your email/.test(t));
+    await click(".sg-next"); await sleep(400);
+    t = await text();
+    check("...then the name asked, empty (Google is not asked for it)", /What should employers call you\?/.test(t) && (await ev(q(".sg-fn input") + ".value")) === "", t.slice(0, 400));
     await typeIn(".sg-fn input", "Gabi"); await typeIn(".sg-ln input", "Lopez");
     await key(".sg-qs input", "Enter"); await sleep(300);
-    await click(".sg-next"); await sleep(300); await click(".sg-next"); await sleep(300); await click(".sg-next"); await sleep(800);
+    for (let i = 0; i < 3; i++) { await click(".sg-next"); await sleep(300); }   // work, where, phone
+    await click(".sg-next"); await sleep(800);
     await ev("fetch('/api/auth/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})");
 
     // a Google account whose address Google does not vouch for: the code first
@@ -250,7 +263,10 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
     check("Google with a non-Google address: the 6-digit code first", /Google signed you in, but it vouches only for Gmail/.test(t), t.slice(0, 300));
     await typeCode(await codeFromInbox()); await sleep(1800);
     t = await text();
-    check("then 'Account created with Google.' and straight to the work question (the name was typed on the card)", /Account created with Google\./.test(t) && /What kind of work/.test(t), t.slice(0, 300));
+    check("then 'Account created with Google.' and the resume first", /Account created with Google\./.test(t) && /Start with your resume/.test(t), t.slice(0, 300));
+    await click(".sg-next"); await sleep(400);
+    t = await text();
+    check("...then straight to the work question (the name was typed on the card)", /What kind of work/.test(t) && !/What should employers call you\?/.test(t), t.slice(0, 300));
     await ev("fetch('/api/auth/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})");
 
     // a new person pressing Google on "Welcome back" (no tick): the server refuses, the card sends them to Create your account

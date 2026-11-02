@@ -1,0 +1,22 @@
+Name: Ananya Krishnan
+Email: ananya.krishnan@example.in
+Phone: +91-55555-01234
+Location: Bengaluru, India
+
+Career Objective
+To work as a software tester in a growing company where I can use my skills in manual and automation testing.
+
+Work Experience
+QA Engineer | Example Infotech Pvt. Ltd. | Jun 2022 - Till Date
+- Wrote 600 test cases for a banking app
+Trainee Test Engineer | Example Soft Solutions | Jan 2021 - May 2022
+
+Educational Qualifications
+B.Tech in Computer Science and Engineering, Example Institute of Technology, Bengaluru, 2020 - CGPA 8.4/10
+Class XII, Example Public School, 2016 - 91%
+
+Technical Skills
+Selenium, Java, TestNG, Postman, JIRA, SQL
+
+Declaration
+I hereby declare that the above information is true to the best of my knowledge.

@@ -118,7 +118,7 @@ run "autofill: real employers' forms answered from the profile, questions asked 
 run "Hiring mode: company, postings, feed, applicants (sandbox only)" python tools/test-employers.py
 run "job feeds: USAJOBS, City of Philadelphia, keys, feeds_off, via credit" python tools/test-feeds.py 18784
 run "swipe learning: the math, the worked example, the replay test" python tools/test-learn.py
-run "fill from your resume: six resumes, layouts, dates, refused files, the endpoint" python tools/test-resume.py 18798
+run "fill from your resume: 42 made-up resumes, per-field accuracy, no crash on junk files, only what is on the resume, bad files, the endpoint" python tools/test-resume.py 18798
 run "the server as Render runs it: start, stop mid-request, restart on the same disk" python tools/test-render.py 18782
 run "the owner's self-check in /api/status: last job board read, last email sent, disk room, warnings; owner only" python tools/test-self-check.py 18960
 run "reading every job board stays under 110 MB, the first visitor never waits for every board, a redeploy answers from the saved list at once" python tools/test-feed-memory.py
@@ -278,6 +278,7 @@ run "live-check.py, email, Google and payments on (stand-ins), all of them requi
 run "ui-live.js, everything off: agreement, Got it, a swipe, Account says email is off, no Google, early access, help" node tools/cdp.js tools/ui-live.js --base "http://127.0.0.1:$LP"
 run "ui-live.js, all on: Google button and redirect, buy buttons, sign-up by email code, Applied list" node tools/cdp.js tools/ui-live.js --base "http://127.0.0.1:$((LP+1))" --google-host "127.0.0.1:$((LP+2))" --email live.check+one@example.com --code-file "$TMP/lc-on/mail.jsonl"
 run "Plan & billing, yearly (390x844): the Monthly / Yearly toggle, 2 months free, the 7-day refund line, Choose on Yearly opens Checkout with the yearly price" env W=390 H=844 PORT=$((LP+1)) MOCK_STRIPE=$((LP+4)) node tools/cdp.js tools/ui-billing-plans.js
+run "sandbox: resume-first onboarding (resume first, skip to phone, a reload resumes the step, the swipe sheet sends after a phone, Check these lists only what was found)" env W=390 H=844 PORT=18766 node tools/cdp.js tools/ui-onboard.js
 
 printf "\n"
 ev action end fails "$FAILS" duration_s $(( $(date +%s) - SUITE_T0 )) failing "${FAILED:-none}" concurrent "$CONCURRENT"
