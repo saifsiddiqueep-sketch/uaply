@@ -162,6 +162,120 @@ sh(work, "checkout", "-q", "--detach"); write(os.path.join(work, "a.txt"), "thre
 w, u = handoff_wip.one(work, "Feeds")
 check(w is None and u and "detached HEAD" in u, "detached: reported, not pushed")
 
+
+
+def fresh(name, branch):
+    """A disposable bare remote + clone on `branch` with one LF file committed; returns (remote, clone)."""
+    base = tempfile.mkdtemp(prefix=f"uaply-{name}-")
+    rem, wd = os.path.join(base, "remote.git"), os.path.join(base, "work")
+    sh(base, "init", "-q", "--bare", "-b", "sandbox", rem)
+    sh(base, "clone", "-q", rem, wd)
+    for k, v in (("user.name", "Test"), ("user.email", "test@example.com"), ("commit.gpgsign", "false")):
+        sh(wd, "config", k, v)
+    write(os.path.join(wd, "a.txt"), "one\n")
+    sh(wd, "add", "-A"); sh(wd, "commit", "-q", "-m", "base"); sh(wd, "push", "-q", "-u", "origin", "sandbox")
+    sh(wd, "checkout", "-q", "-b", branch)
+    return rem, wd
+
+
+def write_lf(path, text):
+    open(path, "wb").write(text.encode())  # raw LF bytes (text mode on Windows would write CRLF and hide the warning)
+
+
+def tip(rem, branch):
+    r = subprocess.run(["git", "log", "-1", "--format=%s", branch], cwd=rem, capture_output=True, text=True)
+    return r.stdout.strip() if r.returncode == 0 else None
+
+
+# c220: Git's "LF will be replaced by CRLF" warnings (stderr) are not conflicts — the WIP commits and pushes
+rem, wd = fresh("crlf", "c1-crlf")
+sh(wd, "config", "core.autocrlf", "true")
+write_lf(os.path.join(wd, "a.txt"), "changed\n"); write_lf(os.path.join(wd, "new.txt"), "lf only\n")
+warn = subprocess.run(["git", "diff", "--name-only", "--diff-filter=U"], cwd=wd, capture_output=True, text=True)
+check("CRLF" in warn.stderr and not warn.stdout.strip(), "crlf: precondition — git warns on stderr, no unmerged files")
+w, u = handoff_wip.one(wd, "Feeds")
+check(u is None and w and "WIP: Feeds handoff" in w, f"crlf: warnings ignored, committed + pushed ({u or w})")
+check(tip(rem, "c1-crlf") == "WIP: Feeds handoff", "crlf: reached the remote")
+check(not sh(wd, "status", "--porcelain"), "crlf: nothing left uncommitted")
+
+# a real conflict with CRLF warnings around it → still blocked, merge state kept, remote untouched
+sh(wd, "checkout", "-q", "-b", "side"); write(os.path.join(wd, "a.txt"), "side\n"); sh(wd, "commit", "-q", "-am", "side")
+sh(wd, "checkout", "-q", "c1-crlf"); write(os.path.join(wd, "a.txt"), "mine\n"); sh(wd, "commit", "-q", "-am", "mine")
+subprocess.run(["git", "merge", "-q", "side"], cwd=wd, capture_output=True)
+w, u = handoff_wip.one(wd, "Feeds")
+check(w is None and u and "NOT pushed" in u and "in progress" in u, "crlf conflict: blocked")
+check(tip(rem, "c1-crlf") == "WIP: Feeds handoff", "crlf conflict: remote untouched")
+
+# unmerged index with MERGE_HEAD gone (a deleted/broken merge state) → still blocked as a conflict
+os.remove(sh(wd, "rev-parse", "--path-format=absolute", "--git-path", "MERGE_HEAD"))
+check(bool(sh(wd, "ls-files", "--unmerged")), "no MERGE_HEAD: precondition — index still unmerged")
+w, u = handoff_wip.one(wd, "Feeds")
+check(w is None and u and "unresolved merge conflicts" in u, "no MERGE_HEAD: unmerged index still blocked")
+check(tip(rem, "c1-crlf") == "WIP: Feeds handoff" and bool(sh(wd, "ls-files", "--unmerged")),
+      "no MERGE_HEAD: remote untouched, conflict left for the owner")
+sh(wd, "reset", "-q", "--hard", "HEAD")
+
+# cherry-pick conflict → blocked; and again once CHERRY_PICK_HEAD is gone (unmerged index alone)
+subprocess.run(["git", "cherry-pick", "side"], cwd=wd, capture_output=True)
+w, u = handoff_wip.one(wd, "Feeds")
+check(w is None and u and "in progress" in u, "cherry-pick conflict: blocked")
+os.remove(sh(wd, "rev-parse", "--path-format=absolute", "--git-path", "CHERRY_PICK_HEAD"))
+w, u = handoff_wip.one(wd, "Feeds")
+check(w is None and u and "unresolved merge conflicts" in u, "cherry-pick, no CHERRY_PICK_HEAD: unmerged index blocked")
+sh(wd, "reset", "-q", "--hard", "HEAD")
+
+# rebase conflict → not pushed (rebase leaves HEAD detached), remote untouched
+subprocess.run(["git", "rebase", "side"], cwd=wd, capture_output=True)
+w, u = handoff_wip.one(wd, "Feeds")
+check(w is None and u and "NOT" in u.upper() and tip(rem, "c1-crlf") == "WIP: Feeds handoff", f"rebase conflict: blocked ({u})")
+subprocess.run(["git", "rebase", "--abort"], cwd=wd, capture_output=True)
+
+# a rebase stopped on a named branch (rebase-merge present, HEAD not detached) → blocked as "in progress"
+rb = sh(wd, "rev-parse", "--path-format=absolute", "--git-path", "rebase-merge")
+os.makedirs(rb); write_lf(os.path.join(wd, "a.txt"), "mid-rebase\n")
+w, u = handoff_wip.one(wd, "Feeds")
+check(w is None and u and "in progress" in u and tip(rem, "c1-crlf") == "WIP: Feeds handoff", "rebase-merge on a branch: blocked")
+os.rmdir(rb); sh(wd, "checkout", "-q", "--", "a.txt")
+
+# the conflict check itself failing → raises, never read as "no conflicts"
+real_git = handoff_wip.git
+def failing_git(cwd, *a, **k):
+    if a[:1] == ("ls-files",):
+        raise RuntimeError("git ls-files --unmerged: simulated failure")
+    return real_git(cwd, *a, **k)
+handoff_wip.git = failing_git
+write_lf(os.path.join(wd, "a.txt"), "dirty\n")
+try:
+    handoff_wip.one(wd, "Feeds")
+    raised = ""
+except RuntimeError as e:
+    raised = str(e)
+handoff_wip.git = real_git
+check("ls-files" in raised and tip(rem, "c1-crlf") == "WIP: Feeds handoff", "ls-files failure: raises, nothing pushed")
+sh(wd, "checkout", "-q", "--", "a.txt")
+
+# a git command that fails → raises (fail closed: wip() reports it as unpushed), never treated as "no conflicts"
+idx = sh(wd, "rev-parse", "--path-format=absolute", "--git-path", "index")
+good = open(idx, "rb").read()
+write_lf(os.path.join(wd, "a.txt"), "dirty again\n")
+open(idx, "wb").write(b"not an index")
+try:
+    handoff_wip.one(wd, "Feeds")
+    raised = ""
+except RuntimeError as e:
+    raised = str(e)
+check(raised.startswith("git ") and tip(rem, "c1-crlf") == "WIP: Feeds handoff", f"git failure: raises, nothing pushed ({raised[:80]})")
+open(idx, "wb").write(good)
+warn = subprocess.run(["git", "diff", "--name-only", "--diff-filter=U"], cwd=wd, capture_output=True, text=True)
+check("CRLF" in warn.stderr, "run(): precondition — git warns on stderr")
+try:
+    handoff_wip.git(wd, "rev-parse", "--verify", "no-such-ref")
+    check(False, "git(): non-zero exit raises")
+except RuntimeError:
+    check(True, "git(): non-zero exit raises")
+check(handoff_wip.run(["git", "diff", "--name-only", "--diff-filter=U"], wd) == (0, ""),
+      "run(): stdout only by default (CRLF warning not read as a file name)")
+
 # OPEN DECISIONS carried forward
 note = """AREA: Job Feeds   BY: Saif   DATE: Oct 29
 GOAL: more feeds
