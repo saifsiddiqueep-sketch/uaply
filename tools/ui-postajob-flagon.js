@@ -72,12 +72,15 @@ module.exports = async ({ ev, sleep, nav, shot }) => {
 
   // the other inputs: a bare domain is a link; a word without a dot and real text are job text
   const reset = () => ev("(()=>{const w=" + FW + ";w.__f.n=0;w.__f.urls=[];return true})()");
-  await paste("acme.com"); await reset();
+  const clear = () => ev("(()=>{const m=(" + F + ").getElementById('impMsg');if(m)m.textContent='';return true})()");
+  await paste("acme.com"); await reset(); await clear();
   await ev(btn("impAuto") + ".click()"); await sleep(400);
   check("2 a bare domain (acme.com) is a link", /can't open that website/.test(await msg()), (await msg()).slice(0, 80));
-  await paste("notalink"); await ev(btn("impAuto") + ".click()"); await sleep(300);
+  await paste("jobs@acme.com"); await clear(); await ev(btn("impAuto") + ".click()"); await sleep(300);
+  check("2 an email address is job text, not a link", /Paste the whole job post/.test(await msg()));
+  await paste("notalink"); await clear(); await ev(btn("impAuto") + ".click()"); await sleep(300);
   check("2 one word without a dot is job text", /Paste the whole job post/.test(await msg()));
-  await paste("Software Engineer at acme.com, remote, $120k"); await ev(btn("impAuto") + ".click()"); await sleep(300);
+  await paste("Software Engineer at acme.com, remote, $120k"); await clear(); await ev(btn("impAuto") + ".click()"); await sleep(300);
   check("2 text with spaces is job text", /Paste the whole job post/.test(await msg()));
 
   console.log(n - bad + " / " + n);

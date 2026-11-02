@@ -787,7 +787,7 @@ function apply(w,host){
     say("Filled "+n+" fields from "+from+". Check them, then publish.","good");
   }
   function linkIn(raw){       /* a pasted link, with or without https:// and with or without a path; anything with spaces is job text */
-    if(!raw||/\s/.test(raw))return "";var u=/^https?:\/\//i.test(raw)?raw:"https://"+raw;
+    if(!raw||/[\s@]/.test(raw))return "";   /* an email address is not a job link */var u=/^https?:\/\//i.test(raw)?raw:"https://"+raw;
     try{var x=new URL(u);if(/^https?:$/.test(x.protocol)&&/^[^.]+(\.[^.]+)*\.[a-z]{2,}$/i.test(x.hostname))return u}catch(e){}return "";
   }
   function runImport(kind){
@@ -802,8 +802,9 @@ function apply(w,host){
     var no=IMP.blocked(host);
     if(no){toText(no+" doesn't let other sites read its pages. Open your post on "+no+", select all of it, copy, and paste it here.");return}
     impSay("Reading your job post…");
-    var btns=hub.querySelectorAll('[data-act="impLink"],[data-act="impAuto"]');H.importing=true;btns.forEach(function(b){b.disabled=true});   /* one request per click, however fast the clicks */
-    function done(){H.importing=false;btns.forEach(function(b){b.disabled=false})}
+    var btns=hub.querySelectorAll('[data-act="impLink"],[data-act="impAuto"]');var me=H.importing=Date.now();btns.forEach(function(b){b.disabled=true});   /* one request per click, however fast the clicks */
+    function done(){if(H.importing===me)H.importing=0;btns.forEach(function(b){b.disabled=false})}
+    setTimeout(done,20000);       /* a request that never answers frees the buttons after 20s */
     var feed=IMP.feedFor(url);
     function viaServer(){
       if(H.mode!=="server"){done();toText("This preview copy can't open that website. Copy the job text from it and paste it here (on the UAply server, links like this are read for you).");return}
