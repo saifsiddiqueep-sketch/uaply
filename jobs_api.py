@@ -1126,8 +1126,14 @@ def employer_domain(addr_domain, company, board="", page_url=""):
         page = ""
     if page and not NOT_EMPLOYER_HOST.search(page) and _alnum(_domain_name(page)) == label:
         return True                                  # the employer's own careers page is on this domain
-    # "Acme Robotics" and acmerobotics-careers.com, "Penn Medicine" and pennmedicine.org: one name starts the other, at 4 letters or more
-    return any(len(n) >= 4 and len(label) >= 4 and (label.startswith(n) or n.startswith(label)) for n in names)
+    # "Acme Robotics" and acmerobotics-careers.com, "Penn Medicine" and penn.org: one name starts the other, at 4 letters or more;
+    # "Acme" and acmejobs.com / acme-careers.com: the name then a hiring word (never any other word: "Meta" is not metabase.com,
+    # meta-base.com or meta-analysis.org)
+    return any(len(n) >= 4 and len(label) >= 4 and (n.startswith(label) or
+                                                     (label.startswith(n) and label[len(n):] in DOMAIN_NAME_SUFFIX)) for n in names)
+
+
+DOMAIN_NAME_SUFFIX = frozenset(("careers", "career", "jobs", "job", "hr", "inc", "corp", "co", "hiring", "talent"))
 
 
 def apply_address(text, company, board="", page_url=""):
@@ -1316,6 +1322,8 @@ def _workday_posted(s, now=None):
         if not m:
             return 0
         days = int(m.group(1))
+        if "+" in m.group(0):
+            days = max(days + 1, MAX_AGE_DAYS + 1)     # "30+ Days Ago": older than the cut-off, so it ages out like other old postings
     return int((now - days * 86400) * 1000)
 
 
@@ -1451,6 +1459,23 @@ def _local(tag):
     return tag.rsplit("}", 1)[-1] if isinstance(tag, str) else ""
 
 
+TT_US_TEXT = re.compile(r"\bU\.S\.(?:A\.)?|\bUSA\b|(?i:\bunited states\b)")     # "U.S.", "U.S.A.", "USA", "United States"
+TT_US_WORD = re.compile(r"\bUS\b")                                                  # "US" itself: the country only in context (_tt_names_us)
+TT_US_AFTER = re.compile(r"(?i)(?:-based|\s*only\b|\s+citizens?\b|\s+remote\b|\s+time\s*zones?\b)")
+TT_US_NOT_BEFORE = re.compile(r"(?i)\b(?:about|join|contact|follow|with|for|to|at)\s*$")   # "JOIN US", "about us", "contact us at"
+
+
+def _tt_names_us(text):
+    """True when a posting's text names the US: U.S., USA, United States, or "US" that is not "join us" / "about us" and the like
+    (unless it goes on "US-based", "US only", "US citizens", "US remote", "US time zones")."""
+    if TT_US_TEXT.search(text):
+        return True
+    for m in TT_US_WORD.finditer(text):
+        if TT_US_AFTER.match(text, m.end()) or not TT_US_NOT_BEFORE.search(text, 0, m.start()):
+            return True
+    return False
+
+
 def _teamtailor_raw(item, name):
     """One <item> of a Teamtailor careers site's RSS feed as a raw posting, or None. Its places are tt:location elements (city and
     country, no state): it is placed in its first US one; one with none in the US is left out."""
@@ -1468,7 +1493,12 @@ def _teamtailor_raw(item, name):
     loc = ", ".join(x for x in (p.get("city") or p.get("name") or "", "United States") if x) if us else ""
     status = get("remoteStatus").lower()
     remote = True if status in ("fully", "remote") else None
-    if remote:
+    if remote and not places:                    # a remote posting with no place of its own: US only when its text names the US
+        if _tt_names_us(title + " " + _text(get("description"))):
+            country, loc = "us", "Remote - United States"
+        else:
+            country, loc = "other", "Remote"     # kept, but the US filter leaves it out
+    elif remote:
         loc = "Remote - " + (loc or "United States")
     elif status == "hybrid" and loc:
         loc += " (hybrid)"
@@ -2730,6 +2760,16 @@ def _disabled(src):
     return True
 
 
+def _off_status(src):
+    """Why a switched-off source serves nothing: the link check's own reason (dead apply links), or the failed refreshes."""
+    h = _health.get(src) or {}
+    if (_links.get(src) or {}).get("off") and h.get("error"):
+        why = h["error"]
+    else:
+        why = "failed %d refreshes in a row" % FAIL_LIMIT
+    return "off: %s; will be tried again %s" % (why, h.get("retry", ""))
+
+
 LINK_SAMPLE = 20                 # links of one source checked per round
 LINK_FAIL_LIMIT = 0.10           # more than this share of a source's checked links dead (with at least 10 checked): the source is switched off
 LINK_EVERY = 24 * 3600           # each source's links are checked again after this long
@@ -2738,6 +2778,10 @@ LINK_UA = "Mozilla/5.0 (compatible; UAplyLinkCheck/1.0; +https://uaply.net)"
 link_check_on = False            # serve.py turns the background check on for a hosted server (UAPLY_LINK_CHECK=0 keeps it off)
 _links = {}                      # source -> {"at", "ok", "dead", "unknown", "dead_ids": set of job ids, "off": bool}
 _link_thread = []
+
+
+LOGIN_PAGE_RE = re.compile(r"(?:^|/)(?:log[-_]?in|sign[-_]?in|sso|auth|oauth2?|authorize)(?:$|/|\.[a-z0-9]{1,5}$)", re.I)   # whole path segment (/login, /sso/start, /sign-in.html, /users/sign_in; never /login-help or /jobs/auth-platform-engineer)
+CLOSED_MARKERS = ("no longer accepting applications", "this job is no longer available", "job not found", "position has been filled")
 
 
 def _link_alive(url):
@@ -2750,7 +2794,10 @@ def _link_alive(url):
         req = urllib.request.Request(url, headers={"User-Agent": LINK_UA, "Accept": "text/html,*/*"})
         with _link_open(req, timeout=15) as r:
             final = r.geturl() or url
-            body = r.read(20000).decode("utf-8", "replace").lower()
+            body = r.read(65536).decode("utf-8", "replace").lower()
+        moved = final != url                     # a real redirect: only then can the page be a sign-in page we were sent to
+        if (moved and LOGIN_PAGE_RE.search(urllib.parse.urlsplit(final).path)) or any(m in body for m in CLOSED_MARKERS):
+            return False                         # a redirect to a sign-in page (its path, never the query), or a page that says the job is closed
         if re.search(r"[?&]error=true\b", final) or "job not found" in body or "no longer accepting applications" in body or \
                 "this job is no longer available" in body or "the job you are looking for is no longer open" in body or "posting has been closed" in body:
             return False                         # Greenhouse sends a closed posting to its board with ?error=true; others say so on the page
@@ -2797,6 +2844,8 @@ def check_links(src, sample=LINK_SAMPLE):
         c = _cache.get(src)
         jobs = list(c["jobs"]) if c else []
         rec = _links.setdefault(src, {"at": 0, "ok": 0, "dead": 0, "unknown": 0, "dead_ids": set(), "checked_ids": set(), "off": False})
+    with _lock:
+        rec["ok"] = rec["dead"] = rec["unknown"] = 0     # each round counts afresh: old dead links must not keep a source off for good
     fresh = [j for j in jobs if j["id"] not in rec["checked_ids"]] or jobs
     picks = [j for j in fresh if str(j.get("url") or "").startswith("https://")][:sample]
     with ThreadPoolExecutor(max_workers=4) as ex:
@@ -2856,10 +2905,13 @@ def feed_health():
         for src in SOURCES:
             h = dict(_health.get(src) or {})
             c = _cache.get(src)
-            out.append({"source": "/".join(src[:2]), "name": src[2], "jobs": _count(c) if c else 0, "status": c["status"] if c else "",
+            off = bool(h.get("off_until")) and time.time() < h["off_until"]
+            dead_off = off and bool((_links.get(src) or {}).get("off"))      # off for dead apply links: nothing is served, whatever is cached
+            out.append({"source": "/".join(src[:2]), "name": src[2], "jobs": _count(c) if c and not dead_off else 0,
+                        "status": _off_status(src) if off else (c["status"] if c else ""),
                         "ok": h.get("ok", 0), "failures": h.get("fail", 0), "inARow": h.get("streak", 0), "lastOk": int(h.get("last_ok", 0)),
                         "lastError": int(h.get("last_error", 0)), "error": h.get("error", ""), "ms": h.get("ms", 0),
-                        "off": bool(h.get("off_until")) and time.time() < h["off_until"], "retry": h.get("retry", ""),
+                        "off": off, "retry": h.get("retry", ""),
                         "applyPath": ("assisted hand-off (the employer's own careers site)" if src[0] == "careerpage" else "hand-off (the employer's own page)"),
                         "humanCheck": (_human(src) or ("unknown",))[0], "formKind": (_human(src) or ("", "unknown"))[1],
                         "checkSampled": (_human(src) or ("", "", ""))[2], "checkPages": (_human(src) or (0, 0, 0, 0))[3],
@@ -2953,10 +3005,11 @@ def _load_source(src):
     ttl = _ttl(src)
     if _no_key(src[0]):
         return _fetch_source(src)                # no key: skipped right away, never served from an older copy
-    if _disabled(src):
-        with _lock:
-            c = _cache.get(src)
-        return (c["jobs"] if c else []), "off: failed %d refreshes in a row; tried again %s" % (FAIL_LIMIT, _health[src].get("retry", ""))
+    if _disabled(src):                          # dead apply links: nothing served; failed refreshes: the cached copy, as before
+        if (_links.get(src) or {}).get("off"):
+            return [], _off_status(src)
+        c = _cache.get(src)
+        return (c["jobs"] if c else []), _off_status(src)
     with _lock:
         c = _cache.get(src)
         if c:

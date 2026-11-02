@@ -439,7 +439,7 @@ t("Workday: the link is the posting on the careers site", by_wd["/job/US-TX-Aust
   "https://acme.wd5.myworkdayjobs.com/AcmeCareers/job/US-TX-Austin/Data-Analyst-Intern_JR1")
 now = time.time()
 t("Workday: 'Posted Today', 'Yesterday', 'N Days Ago' and '30+ Days Ago' are dates", [round((now * 1000 - J._workday_posted(s, now)) / 86400000) for s in
-  ("Posted Today", "Posted Yesterday", "Posted 4 Days Ago", "Posted 30+ Days Ago", "soon")], [0, 1, 4, 30, round(now / 86400)])
+  ("Posted Today", "Posted Yesterday", "Posted 4 Days Ago", "Posted 30+ Days Ago", "soon")], [0, 1, 4, J.MAX_AGE_DAYS + 1, round(now / 86400)])
 wjobs, wstatus, werr = nk_fetch(WDS)
 t("Workday: the Taipei posting is left out; the rest are kept up to the per-board cap, credited 'on Workday'",
   (len(wjobs), any("Taipei" in j["loc"] for j in wjobs), wjobs[0]["via"], werr), (J.PER_SOURCE, False, "Acme Corp on Workday", ""))
@@ -828,6 +828,87 @@ def http_checks(port):
             srv.kill()
         log.close()
 
+
+# ---- c191 feed fixes ----
+class _Resp:
+    def __init__(self, url, body): self._u, self._b = url, body.encode()
+    def geturl(self): return self._u
+    def read(self, n=-1): return self._b[:n]
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+_real_lopen, _real_public = J._link_open, J._public_link
+J._public_link = lambda u: True
+try:
+    def _alive(final, body="<html>Senior Analyst. Apply now.</html>"):
+        J._link_open = lambda req, timeout=15: _Resp(final, body)
+        return J._link_alive("https://jobs.acme.example/j/1")
+    t("dead-link check: a redirect to a sign-in page is dead; a closed-job page is dead; an ordinary page stays alive",
+      [_alive("https://acme.okta.com/login?next=x"), _alive("https://jobs.acme.example/sso/start"), _alive("https://jobs.acme.example/j/1", "<p>Position has been filled</p>"),
+       _alive("https://jobs.acme.example/j/1")], [False, False, False, True])
+
+    def _alive_at(url, final=None):
+        J._link_open = lambda req, timeout=15: _Resp(final or url, "<html>Apply now.</html>")
+        return J._link_alive(url)
+    t("dead-link check: sign-in words only count on a redirect, as whole path segments, never in the query",
+      [_alive_at("https://jobs.acme.example/j/1", "https://jobs.acme.example/login?next=/j/1"), _alive_at("https://jobs.acme.example/j/1", "https://x.com/sso/start"),
+       _alive_at("https://jobs.acme.example/j/1", "https://jobs.acme.example/j/1/?utm_source=sso"), _alive_at("https://jobs.acme.example/auth/j/1")],
+      [False, False, True, True])
+
+    def _moved(path):                        # an ordinary redirect (http to https) that ends on this path
+        return _alive_at("http://jobs.acme.example" + path, "https://jobs.acme.example" + path)
+    _ok_paths = ["/job/Senior-Associate_JR1", "/careers/author-relations", "/jobs/123/professor-of-law", "/job/Kansas-City-Missouri/Analyst",
+                 "/jobs/auth-platform-engineer", "/job/SSO-Engineer_R123", "/jobs/Login-Experience-Designer", "/jobs/sign-in-flow-dev", "/login-help"]
+    t("dead-link check: after a redirect, a page whose path only contains a sign-in word (a job's slug, /login-help) stays alive",
+      [_moved(p) for p in _ok_paths], [True] * len(_ok_paths))
+    _login_paths = ["/login", "/sso/start", "/sign-in.html", "/auth?next=x", "/oauth2/authorize", "/users/sign_in", "/log_in"]
+    t("dead-link check: after a redirect, a whole sign-in path segment (/login, /sso/start, /sign-in.html, /auth?next=x, /oauth2/authorize, /users/sign_in) is dead",
+      [_moved(p) for p in _login_paths], [False] * len(_login_paths))
+    t("dead-link check: the same sign-in paths with no redirect stay alive (the rule is redirect-only)",
+      [_alive_at("https://jobs.acme.example" + p) for p in _login_paths], [True] * len(_login_paths))
+finally:
+    J._link_open, J._public_link = _real_lopen, _real_public
+_fsrc = ("lever", "freshco", "FreshCo")
+J._cache[_fsrc] = {"at": time.time(), "status": "12 jobs", "jobs": [dict(id="f%d" % i, url="https://jobs.lever.co/freshco/%d" % i) for i in range(12)]}
+J._links[_fsrc] = {"at": 0, "ok": 2, "dead": 9, "unknown": 0, "dead_ids": set(), "checked_ids": set(), "off": True}
+_real_alive = J.job_alive
+J.job_alive = lambda j: True
+try:
+    _rec = J.check_links(_fsrc)
+    J._health[_fsrc] = {"ok": 0, "fail": 0, "streak": 0, "last_ok": 0, "last_error": 0, "error": "", "jobs": 0, "ms": 0, "off_until": time.time() + 3600}
+    t("link check: counters reset each round (old dead count gone, source back on)", (_rec["dead"], _rec["ok"], _rec["off"]), (0, 12, False))
+    t("a source switched off after failed refreshes (links fine) keeps serving its cached copy", len(J._load_source(_fsrc)[0]), 12)
+    J._links[_fsrc]["off"] = True
+    t("a source switched off by the link check serves no jobs, not its cached list", J._load_source(_fsrc)[0], [])
+    J._health[_fsrc]["error"] = "9 of 11 apply links checked were dead (over 10%)"
+    t("a source switched off by the link check says the link check's reason, not failed refreshes",
+      J._load_source(_fsrc)[1].startswith("off: 9 of 11 apply links checked were dead"), True)
+finally:
+    J.job_alive = _real_alive
+    for d in (J._cache, J._links, J._health):
+        d.pop(_fsrc, None)
+t("employer_domain: 'Meta' does not match metabase.com; a whole label (acmerobotics-careers.com) still does",
+  (J.employer_domain("metabase.com", "Meta"), J.employer_domain("acmerobotics-careers.com", "Acme Robotics"), J.employer_domain("meta.com", "Meta")), (False, True, True))
+t("employer_domain: the name then a hiring word (acmejobs.com, acmecareers.com) matches; coca-cola.com and penn.org still do; metabase.com does not",
+  [J.employer_domain(dm, co) for dm, co in (("acmejobs.com", "Acme"), ("acmecareers.com", "Acme"), ("coca-cola.com", "Coca-Cola"),
+                                            ("penn.org", "Penn Medicine"), ("metabase.com", "Meta"), ("acmebase.com", "Acme"))],
+  [True, True, True, True, False, False])
+t("employer_domain: 'Meta' is not meta-analysis.org, meta-base.com or metabase.com; 'Acme' is acmejobs.com and acme-careers.com",
+  [J.employer_domain(dm, co) for dm, co in (("meta-analysis.org", "Meta"), ("meta-base.com", "Meta"), ("metabase.com", "Meta"),
+                                            ("acmejobs.com", "Acme"), ("acme-careers.com", "Acme"))],
+  [False, False, False, True, True])
+t("Teamtailor US text: 'JOIN US' and 'Contact us at' are not the US; 'US only', 'US-based', 'United States' are",
+  [J._tt_names_us(x) for x in ("JOIN US", "Remote - US only", "US-based", "Contact us at jobs@acme.example", "United States",
+                               "ABOUT US", "FOLLOW US on LinkedIn", "open to US citizens", "work with US time zones", "Work in the U.S.A.")],
+  [False, True, True, False, True, False, False, True, True, True])
+_tt = J._teamtailor_raw(J.ET.fromstring('<item><title>T</title><link>https://a.teamtailor.com/jobs/1</link><guid>abc-1</guid>'
+                                        '<description>Work from anywhere in the U.S.</description><remoteStatus>fully</remoteStatus></item>'), "A")
+t("Teamtailor: a remote posting with no location element whose text names the US is kept as US remote",
+  ((_tt or {}).get("loc"), (_tt or {}).get("country")), ("Remote - United States", "us"))
+_tt2 = J._teamtailor_raw(J.ET.fromstring('<item><title>T</title><link>https://a.teamtailor.com/jobs/2</link><guid>abc-2</guid>'
+                                         '<description>Work from anywhere in the EU. Tell us about you.</description><remoteStatus>fully</remoteStatus></item>'), "A")
+t("Teamtailor: a remote posting with no location and no US in its text is kept as 'Remote', outside the US (the US filter drops it)",
+  ((_tt2 or {}).get("loc"), (_tt2 or {}).get("country")), ("Remote", "other"))
+t("Workday: '30+ Days Ago' is older than the staleness cut-off (ages out)", (now * 1000 - J._workday_posted("Posted 30+ Days Ago", now)) / 86400000 > J.MAX_AGE_DAYS, True)
 
 if len(sys.argv) > 1:
     http_checks(int(sys.argv[1]))

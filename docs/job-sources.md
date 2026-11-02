@@ -40,6 +40,11 @@ domains (`--names tools/data/board-seeds.txt`, slugs tried on every system) and 
 the counts on the day they were checked); the app reads that file at start, after the hand-picked boards in `jobs_api.SOURCES`, and reads
 each of those boards every 2 hours (spread out). The owner page `/api/feed-health` (owner password) lists every source with its jobs,
 successes and failures; a source that fails 3 refreshes in a row is switched off for a day and then tried again by itself.
+A source is also switched off for a day when more than 10% of its apply links checked in one round (at least 10 checked) are dead;
+that source shows no jobs until it is tried again, while a source switched off after failed refreshes keeps showing its last cached copy.
+A dead link is a 404/410, a redirect to a sign-in page, or a page saying the job is closed or filled. A sign-in page counts as dead only
+after a redirect, and only when a whole path segment is the sign-in word (`/login`, `/sso/start`, `/sign-in.html`; not `/login-help` or a
+job's own slug such as `/jobs/auth-platform-engineer`).
 
 How the reading scales to hundreds of boards: 8 reader threads (not one per board), and 20 more for careers sites (they mostly wait out crawl delays, on places of their own), boards queued round-robin across hiring systems; a Greenhouse board's list is read without
 descriptions (about an eighth of the size) and only the postings that will be kept get their description read, once, and again only
@@ -269,7 +274,9 @@ have not been reviewed yet, so each kind stays off unless the owner lists it in 
 - Workday (`_workday`): `POST https://{company}.wd{n}.myworkdayjobs.com/wday/cxs/{company}/{site}/jobs` with the fixed body
   `{"limit": 20, "offset": 0, "searchText": ""}`, 20 a page, at most 200 postings a refresh. Token `{company}.wd{n}/{site}` (checked by
   `WORKDAY_TOKEN_RE`). Mapped: title, place (`locationsText`, or the first place in the posting's address when it says "3 Locations"),
-  posted date ("Posted 3 Days Ago"), the posting's own page. No description in the list. A US place ("US, CA, Santa Clara" in the list
+  posted date ("Posted 3 Days Ago"; "Posted 30+ Days Ago" counts as older than the 60-day cut-off, so it is dropped: Workday says
+  "30+ Days Ago" for anything over 30 days, so its postings age out at 30 days rather than 60), the posting's
+  own page. No description in the list. A US place ("US, CA, Santa Clara" in the list
   or "US-CA-Santa-Clara" in the address) is stored as "Santa Clara, CA" so the map and distance filter can place it. Example row:
   NVIDIA (2,000 total, 1,910 US). Workday's reported total appears to stop at 2,000: NVIDIA's first page says 2,000 and its second
   page says 0, so the total is a ceiling, not a count. We read at most 200 postings (10 searches, and no more than 120 seconds across
@@ -286,7 +293,9 @@ have not been reviewed yet, so each kind stays off unless the owner lists it in 
   department, type (internship), salary text, published date, job page. No example row yet: the `breezy` site has 3 US jobs, under
   the 5-US rule. Risk: terms not yet reviewed, so off unless listed in UAPLY_FEEDS.
 - Teamtailor (`_teamtailor`): `GET https://{company}.teamtailor.com/jobs.rss`. Mapped: title, link, guid, `tt:locations` (first US
-  one), `tt:department`, `remoteStatus` (fully remote, hybrid), pubDate, description. A feed that declares a DOCTYPE or ENTITY is
+  one), `tt:department`, `remoteStatus` (fully remote, hybrid), pubDate, description. A fully remote posting with no location is
+  kept as US ("Remote - United States") only when its title or description names the US (US, USA, U.S., United States); otherwise
+  it is "Remote" outside the US, so the US filter leaves it out. A feed that declares a DOCTYPE or ENTITY is
   refused before parsing. No example row yet: the `career` site has 2 US jobs, under the 5-US rule. Risk: terms not yet reviewed, so
   off unless listed in UAPLY_FEEDS.
 - Pacing: every `*.myworkdayjobs.com`, `*.breezy.hr` and `*.teamtailor.com` subdomain is one service (`HOST_FAMILY`: 2 at once,

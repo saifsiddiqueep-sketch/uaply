@@ -39,7 +39,9 @@ when all of these hold:
   "to apply, email ..."), as the place to send them (right after "to", "at", "email", "here" or a colon);
 - the sentence is not about accommodations, questions, agencies, privacy, fraud or "do not";
 - the address's domain is the employer's own: the domain's name (the part before `.com`, `.org`, `.co.uk`) is the company's name or the
-  board's name (one may start the other, at four letters or more), or the domain of the employer's own careers page. A free mailbox
+  board's name (one may start the other, at four letters or more), or the company's name followed by a hiring word, with or without a
+  dash (acmejobs.com, acme-careers.com for "Acme"; the hiring words are careers, career, jobs, job, hr, inc, corp, co, hiring and talent;
+  any other word does not count, so "Meta" is not metabase.com or meta-analysis.org), or the domain of the employer's own careers page. A free mailbox
   (gmail.com and the like), a hiring system's or job board's domain, `noreply@`, `privacy@`, `accommodations@` and the like never count;
 - the posting names only one such address.
 
