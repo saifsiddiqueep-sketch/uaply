@@ -88,7 +88,7 @@ it; the full output in the file says why.
 USB debugging on, Chrome on the phone, the phone awake and unlocked. adb is not on this computer's PATH, so name it:
 `ADB=<path to platform-tools>/adb.exe node tools/phone-walk.js live` (Git Bash; in PowerShell set `$env:ADB` first). If adb is gone,
 unzip https://dl.google.com/android/repository/platform-tools-latest-windows.zip and use the `adb.exe` in it. The walk is read only on
-the live site: screens and fit checks, no swipes, no sign-up. It opens **one** Chrome tab of its own and leaves the phone's other tabs alone. Never run `adb forward --remove-all` (it
+the live site: screens and fit checks, no swipes, no sign-up. It opens **one** Chrome tab of its own and leaves the phone's other tabs alone. Chrome's install bar is kept off (the walk blocks the web app manifest for its tab); Back is pressed only when Chrome's own UI holds the focus. Never run `adb forward --remove-all` (it
 cuts every other tool's connection to the phone); remove only a forward you added yourself. Good: the summary has 0 FAIL; screenshots are in `phone-walk/live-<time>/`. Look
 at the first screen, the card, Profile and Job Tracker shots yourself.
 

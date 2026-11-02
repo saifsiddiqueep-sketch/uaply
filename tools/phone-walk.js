@@ -121,10 +121,30 @@ module.exports = async ({ ev, sleep, nav, send }) => {
   const log = (s) => { steps.push(s); console.log(s); };
   const fail = (s) => { problems.push(s); console.log("FAIL " + s); };
   const wake = () => { try { adb("shell", "input", "keyevent", "KEYCODE_WAKEUP"); } catch (e) {} };
-  // Chrome's own "Install UAply" sheet (the PWA is installable) slides over the bottom of the page a minute or so in and swallows every
-  // tap there: the page keeps the event instead, so the sheet never shows, and the walk notes that Chrome offered the install
+  // Chrome's own "Install UAply" bar (the PWA is installable) slides over the bottom of the page a minute or so in and swallows every
+  // tap there. Chrome 156 shows it even when the page keeps the beforeinstallprompt event (walk 2, November 2: the bar covered the
+  // agreement's Agree button and the bottom tabs, 38 taps reached nothing), so the walk blocks the web app manifest instead: without it
+  // Chrome never finds the site installable. The event hook stays as a note in case a Chrome shows the bar anyway.
+  log("Chrome's install bar is kept off (the web app manifest is blocked for this tab); real phones get it over the Agree button and the bottom tabs, a known front-end finding");
+  for (const [m, prm] of [["Network.enable", {}], ["Network.setBlockedURLs", { urls: ["*/uaply.webmanifest*"] }]]) {
+    const r = await send(m, prm); if (r && r.error) log("could not block the manifest (" + m + "): " + String(r.error.message || r.error).slice(0, 100));
+  }
   const NO_SHEET = "addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__installPrompt=e})";
   await send("Page.addScriptToEvaluateOnNewDocument", { source: NO_SHEET }); await ev(NO_SHEET + ";1");
+  // when a tap lands on Chrome's own UI (the address bar opened with the keyboard in walk 2, November 2, and every later tap reached
+  // nothing) the page loses the focus; Back closes that UI. Back is pressed only while the page has no focus: with the page focused
+  // it would go back a page, or leave Chrome
+  const unfocus = async () => {
+    try {
+      for (let i = 0; i < 2; i++) {
+        if ((await ev("document.hasFocus()?1:0")) !== 0) return i > 0;    // only a clear 0 means Chrome's UI holds the focus; a page error or an empty answer does not
+        log(i ? "the page still has no focus: pressing Back once more (the first Back closed the keyboard?)" : "Chrome's own UI has the focus (the address bar?): pressing Back");
+        adb("shell", "input", "keyevent", "4"); await sleep(900);
+      }
+      if ((await ev("document.hasFocus()?1:0")) === 0) log("the page still has no focus after two Backs");
+      return true;
+    } catch (e) { log("unfocus: " + String(e && e.message).slice(0, 100)); return false; }
+  };
   // a screenshot of the phone's real screen (status bar, Chrome's address bar and Android's buttons included)
   const shot = async (name) => { wake(); await sleep(250); n++; const f = path.join(OUT, String(n).padStart(2, "0") + "-" + name + ".png");
     fs.writeFileSync(f, execFileSync(ADB, ["-s", SERIAL, "exec-out", "screencap", "-p"], { maxBuffer: 64 * 1024 * 1024, timeout: 30000 })); return f; };
@@ -172,7 +192,7 @@ module.exports = async ({ ev, sleep, nav, send }) => {
     wake(); adb("shell", "input", "tap", String(X), String(Y)); await sleep(700);
     const rawPd = await ev("JSON.stringify(window.__pd)"); let got = null;
     try { got = typeof rawPd === "string" && !rawPd.startsWith("JSERR") ? JSON.parse(rawPd || "null") : null; } catch (e) { got = null; }
-    if (!got && !retried) { log("measure: the tap did not reach the page (still loading after a navigation?): one more try"); await sleep(1500); return calibrate0(finder, true); }   // one miss right after Continue with Google loaded a new page, November 2
+    if (!got && !retried) { log("measure: the tap did not reach the page (still loading after a navigation?): one more try"); await unfocus(); await sleep(1500); return calibrate0(finder, true); }   // one miss right after Continue with Google loaded a new page, November 2
     if (!got) { fail("calibration: a tap on the phone did not reach the page (is the screen on and Chrome in front?)" + (typeof rawPd === "string" && rawPd.startsWith("JSERR") ? " [" + rawPd.slice(0, 80) + "]" : "")); return false; }
     let fr = { left: 0, top: 0 }; if (got[2]) { try { fr = JSON.parse(await ev("JSON.stringify(" + F + ".getBoundingClientRect())")); } catch (e) {} }
     top = Y - (fr.top + got[1]) * dpr; left = X - (fr.left + got[0]) * dpr;
@@ -203,7 +223,7 @@ module.exports = async ({ ev, sleep, nav, send }) => {
     const ok = await tapOnce(finder, inPage); if (ok === null) return false; if (ok) return true;
     log("a tap missed: " + finder.slice(0, 50) + " aimed at " + lastAim + ", the finger reached " + await hitWas());
     const closeChat = async () => { if (!/uaChat/.test(finder) && await q("const c=d.getElementById('uaChat'),x=d.getElementById('uaChatX');if(c&&!c.hidden&&x){x.click();return 1}return 0") === 1) log("a tap opened the UAply Assistant by mistake: closed it"); };
-    await closeChat(); await calibrate(); await closeChat(); const again = await tapOnce(finder, inPage); if (again === null) return false;
+    await closeChat(); await unfocus(); await calibrate(); await closeChat(); const again = await tapOnce(finder, inPage); if (again === null) return false;
     if (!again) { fail("a tap missed twice (" + finder.slice(0, 60) + "): it reached something else, or nothing in the page"); return false; }
     return true;
   };
@@ -243,6 +263,7 @@ module.exports = async ({ ev, sleep, nav, send }) => {
   if (!LIVE) await send("Storage.clearDataForOrigin", { origin, storageTypes: "all" });
   await send("Emulation.clearDeviceMetricsOverride");
   await nav(URL); await sleep(4000);
+  { const m = await send("Page.getAppManifest"); if (m && m.data) log("manifest block did not take: Chrome read " + String(m.url || "").slice(0, 80) + " (the install bar may cover the page)"); }
   if (!(await calibrate())) return;
   await orient();
   log("phone: " + (await ev("JSON.stringify({css:[innerWidth,innerHeight],dpr:devicePixelRatio,ua:navigator.userAgent.match(/Chrome\\/[\\d.]+/)[0]})")) + " · " + T + " " + URL);
@@ -437,7 +458,11 @@ module.exports = async ({ ev, sleep, nav, send }) => {
               await waitFor("return d.querySelector('[data-sg=google]')&&d.querySelector('[data-sg=google]').offsetParent?1:0", 6000);
               try { await tap("d.querySelector('[data-sg=google]')"); } catch (e) { log("Continue with Google tap: " + String(e && e.message).slice(0, 100)); }
               await sleep(7000);
-              await waitFor("return d.getElementById('bnav')&&document.readyState==='complete'?1:0", 20000); await sleep(1500); await calibrate();
+              await waitFor("return d.getElementById('bnav')&&document.readyState==='complete'?1:0", 20000);
+              for (let i = 0, last = ""; i < 7; i++) {      // the sign-in goes start -> callback -> /?signed_in=google: measure once the address holds still
+                const href = String(await ev("location.href")); if (href === last) break; last = href; await sleep(2000);
+              }
+              await calibrate();
               const g2 = await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>j.user?j.user.email:'')");
               if (g2 === EMAIL) log("Continue with Google checked (stand-in Google): the same account, signed in");
               else fail("Sign in · Continue with Google did not sign in (" + g2 + ")");
@@ -494,7 +519,7 @@ module.exports = async ({ ev, sleep, nav, send }) => {
     log("offline screen: " + what);
     if (!/offline|can.t reach|cannot reach|starting|no connection/i.test(what)) fail("Offline screen · with the server stopped the page shows no offline screen: " + what);
   }
-  if (await ev("window.__installPrompt?1:0") === 1) log("Chrome offered to install UAply as an app (the install sheet was kept off the screen)");
+  if (await ev("window.__installPrompt?1:0") === 1) log("Chrome offered to install UAply as an app although its manifest was blocked (the page kept the event)");
   console.log("\n" + steps.length + " notes, " + n + " screenshots, " + problems.length + " fit problems");
   console.log((problems.length ? "FIT PROBLEMS" : "NO FIT PROBLEMS") + " on " + T);
   fs.writeFileSync(path.join(OUT, "walk.txt"), steps.concat(problems.map((p) => "FAIL " + p)).join("\n") + "\n");
