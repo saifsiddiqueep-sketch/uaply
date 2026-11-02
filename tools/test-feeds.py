@@ -372,6 +372,234 @@ for kind, name, want in (("greenhouse", "Stripe", "Stripe on Greenhouse"), ("lev
       (want, "via USAJOBS; apply on the official announcement" if kind == "usajobs" else "via " + want))
 t("partner and Hiring mode jobs carry no feed credit", [j for j in J.partner_jobs() if j.get("via")], [])
 
+# ---------------- Workday, Rippling, Breezy HR, Teamtailor: each careers site's own public list (answers built inline, no network) ----------------
+NK_CALLS = []
+NK_ANS = {}
+NK_OPENERS = []
+real_get, real_robots = J._get, J._robots_for
+
+
+def nk_get(url, headers=None, as_text=False, opener=None, data=None):
+    NK_CALLS.append((url, dict(headers or {}), json.loads(data) if data else None))
+    NK_OPENERS.append(opener)
+    ans = NK_ANS.get(url)
+    if callable(ans):
+        return ans(json.loads(data) if data else None)
+    if ans is None:
+        raise OSError("unexpected request " + url)
+    return ans
+
+
+def nk_robots(host):
+    NK_CALLS.append(("robots", host))
+    rp = J.RobotsTxt()
+    rp.parse(["User-agent: *", "Disallow: /private/"] if host not in ("closed.breezy.hr", "uaonly.breezy.hr") else
+             ["User-agent: UAply-jobs", "Disallow: /"] if host == "uaonly.breezy.hr" else ["User-agent: *", "Disallow: /"])
+    return rp
+
+
+def nk_fetch(src):
+    err = io.StringIO()
+    with contextlib.redirect_stderr(err):
+        got = J._fetch_source(src)
+    return got[0], got[1], err.getvalue()
+
+
+J._get, J._robots_for = nk_get, nk_robots
+WD = "https://acme.wd5.myworkdayjobs.com/wday/cxs/acme/AcmeCareers/jobs"
+
+
+def wd_page(body):
+    off = body["offset"]
+    rows = [dict(title="Software Engineer %d" % i, externalPath="/job/US-CA-Santa-Clara/Software-Engineer-%d_JR%d" % (i, i),
+                 locationsText="US, CA, Santa Clara", postedOn="Posted %d Days Ago" % (i % 9 + 2)) for i in range(off, min(off + 20, 25))]
+    if off == 0:
+        rows[0] = dict(title="Data Analyst Intern", externalPath="/job/US-TX-Austin/Data-Analyst-Intern_JR1", locationsText="3 Locations", postedOn="Posted Today")
+        rows[1] = dict(title="Network Engineer", externalPath="/job/US-NC-Remote/Network-Engineer_JR2", locationsText="2 Locations", postedOn="Posted Yesterday")
+        rows[2] = dict(title="Software Engineer", externalPath="/job/Taiwan-Taipei/Software-Engineer_JR3", locationsText="Taiwan, Taipei", postedOn="Posted 30+ Days Ago")
+        return {"total": 25, "jobPostings": rows}
+    rows[0] = dict(rows[0], externalPath="/job/US-TX-Austin/Data-Analyst-Intern_JR1")     # a posting repeated on the next page: read once
+    return {"jobPostings": rows}          # Workday gives the total on the first page only
+
+
+NK_ANS[WD] = wd_page
+WDS = ("workday", "acme.wd5/AcmeCareers", "Acme Corp")
+wraw = list(J._iter_raw(*WDS))
+t("Workday: robots.txt first, then a POST of the job search, 20 at a time, until the first page's total",
+  [c if c[0] == "robots" else (c[0], c[1].get("User-Agent"), c[1].get("Content-Type"), c[2]) for c in NK_CALLS],
+  [("robots", "acme.wd5.myworkdayjobs.com"),
+   (WD, "UAply-jobs/1.0 (+https://uaply.net)", "application/json", {"limit": 20, "offset": 0, "searchText": ""}),
+   (WD, "UAply-jobs/1.0 (+https://uaply.net)", "application/json", {"limit": 20, "offset": 20, "searchText": ""})])
+t("Workday: every posting once (one repeated on page 2 is not read twice)", len(wraw), 24)
+by_wd = {r["id"]: r for r in wraw}
+t("Workday: a posting in '3 Locations' is placed in the place its address names; Remote in its address is remote",
+  (by_wd["/job/US-TX-Austin/Data-Analyst-Intern_JR1"]["loc"], by_wd["/job/US-NC-Remote/Network-Engineer_JR2"]["loc"], by_wd["/job/US-NC-Remote/Network-Engineer_JR2"]["remote"]),
+  ("Austin, TX", "Remote, NC", True))
+t("Workday: the link is the posting on the careers site", by_wd["/job/US-TX-Austin/Data-Analyst-Intern_JR1"]["url"],
+  "https://acme.wd5.myworkdayjobs.com/AcmeCareers/job/US-TX-Austin/Data-Analyst-Intern_JR1")
+now = time.time()
+t("Workday: 'Posted Today', 'Yesterday', 'N Days Ago' and '30+ Days Ago' are dates", [round((now * 1000 - J._workday_posted(s, now)) / 86400000) for s in
+  ("Posted Today", "Posted Yesterday", "Posted 4 Days Ago", "Posted 30+ Days Ago", "soon")], [0, 1, 4, 30, round(now / 86400)])
+wjobs, wstatus, werr = nk_fetch(WDS)
+t("Workday: the Taipei posting is left out; the rest are kept up to the per-board cap, credited 'on Workday'",
+  (len(wjobs), any("Taipei" in j["loc"] for j in wjobs), wjobs[0]["via"], werr), (J.PER_SOURCE, False, "Acme Corp on Workday", ""))
+NK_CALLS.clear()
+NK_ANS[WD] = lambda body: {"total": 5000, "jobPostings": [dict(title="Software Engineer", externalPath="/job/US-CA-X/SE_%d" % (body["offset"] + i),
+                                                                locationsText="US, CA, X", postedOn="Posted Today") for i in range(20)]}
+t("Workday: at most 200 postings (10 searches) per site per refresh", (len(list(J._iter_raw(*WDS))), len([c for c in NK_CALLS if c[0] == WD])), (200, 10))
+t("Workday: a site token is '{company}.wd{n}/{site}'; anything else is refused before an address is built",
+  [J._board_token_ok("workday", x) for x in ("acme.wd5/AcmeCareers", "acme", "acme.wd5/../x", "evil.com/x", "acme.wd5/a/b", "acme.wd5.evil.com/x")],
+  [True, False, False, False, False, False])
+NK_CALLS.clear()
+bad = nk_fetch(("workday", "acme", "Bad Token"))
+t("Workday: a bad token asks for nothing and logs one failure line", (bad[0], NK_CALLS, bad[2].strip()),
+  ([], [], "[uaply] job feed workday/acme/Bad Token failed: not a Workday site"))
+t("Workday: a token with a trailing newline or a non-ASCII digit is refused (fullmatch, [0-9])",
+  [J._board_token_ok("workday", x) for x in ("acme.wd5/AcmeCareers\n", "acme.wd\u0665/AcmeCareers")] + [J._board_token_ok("breezy", "acme\n")],
+  [False, False, False])
+WD2 = "https://geo.wd1.myworkdayjobs.com/wday/cxs/geo/Ext/jobs"
+NK_ANS[WD2] = {"total": 2, "jobPostings": [
+    dict(title="Analyst", externalPath="/job/Santa-Clara/Analyst_JR10", locationsText="US, CA, Santa Clara", postedOn="Posted Today"),
+    dict(title="Nurse", externalPath="/job/US-PA-Philadelphia/Nurse_JR11", locationsText="2 Locations", postedOn="Posted Today")]}
+geo_raw = list(J._iter_raw("workday", "geo.wd1/Ext", "Geo"))
+t("Workday: 'US, CA, Santa Clara' (list text) and 'US-PA-Philadelphia' (address) become 'City, ST' and get a map point",
+  [(r["loc"], bool(J.job_geo(r["loc"]))) for r in geo_raw], [("Santa Clara, CA", True), ("Philadelphia, PA", True)])
+t("Workday: job_geo has a point for 'Santa Clara, CA' and 'Philadelphia, PA'", [J.job_geo(x) is not None for x in ("Santa Clara, CA", "Philadelphia, PA")], [True, True])
+NK_CALLS.clear()
+NK_ANS[WD] = lambda body: {"jobPostings": [dict(title="Engineer", externalPath="/job/US-CA-X/E_%d" % (body["offset"] + i), locationsText="US, CA, X",
+                                                 postedOn="Posted Today") for i in range(20 if body["offset"] < 40 else 5)]}
+t("Workday: a first page with no total is read on until a short page (still at most 10 searches)",
+  (len(list(J._iter_raw(*WDS))), [c[2]["offset"] for c in NK_CALLS if c[0] == WD]), (45, [0, 20, 40]))
+NK_CALLS.clear()
+real_deadline, J.WORKDAY_DEADLINE = J.WORKDAY_DEADLINE, -1
+t("Workday: past WORKDAY_DEADLINE no further search is started (what was read is kept)",
+  (len(list(J._iter_raw(*WDS))), len([c for c in NK_CALLS if c[0] == WD])), (20, 1))
+J.WORKDAY_DEADLINE = real_deadline
+NK_ANS["https://bad.wd1.myworkdayjobs.com/wday/cxs/bad/Ext/jobs"] = lambda body: (
+    {"jobPostings": [dict(title="E", externalPath="/job/US-CA-X/E_%d" % i, locationsText="US, CA, X") for i in range(20)]} if body["offset"] == 0
+    else {"errorCode": "HTTP_500"})
+bad_wd = nk_fetch(("workday", "bad.wd1/Ext", "Bad WD"))
+t("Workday: a full first page with no total, then an answer with no jobPostings: the source is marked failed, nothing raised",
+  (bad_wd[0], bad_wd[1].startswith("error:"), "[uaply] job feed workday/bad.wd1/Ext/Bad WD failed: the answer has no jobPostings list" in bad_wd[2]),
+  ([], True, True))
+
+RP = "https://api.rippling.com/platform/api/ats/v1/board/acme/jobs"
+NK_ANS[RP] = [
+    {"uuid": "11111111-aaaa", "name": " Account Executive (Arkansas) ", "department": {"id": "Sales", "label": "Sales"},
+     "url": "https://ats.rippling.com/acme/jobs/11111111-aaaa", "workLocation": {"label": "AR", "id": "AR"}},
+    {"uuid": "11111111-aaaa", "name": " Account Executive (Arkansas) ", "department": {"id": "Sales", "label": "Sales"},
+     "url": "https://ats.rippling.com/acme/jobs/11111111-aaaa", "workLocation": {"label": "Boston, MA", "id": "x"}},
+    {"uuid": "22222222-bbbb", "name": "Software Engineer", "department": {"label": "Engineering"},
+     "url": "https://ats.rippling.com/acme/jobs/22222222-bbbb", "workLocation": {"label": "Hybrid (New York, New York, US)"}},
+    {"uuid": "33333333-cccc", "name": "Software Engineer", "department": {"label": "Engineering"},
+     "url": "https://ats.rippling.com/acme/jobs/33333333-cccc", "workLocation": {"label": "London, UK"}},
+    {"uuid": "bad uuid!", "name": "Bad", "url": "https://ats.rippling.com/acme/jobs/x", "workLocation": {"label": "Boston, MA"}}]
+NK_CALLS.clear()
+rraw = list(J._iter_raw("rippling", "acme", "Acme"))
+t("Rippling: robots.txt, then one GET of the board's jobs", [c if c[0] == "robots" else (c[0], c[1].get("User-Agent"), c[2]) for c in NK_CALLS],
+  [("robots", "api.rippling.com"), (RP, "UAply-jobs/1.0 (+https://uaply.net)", None)])
+t("Rippling: one posting per uuid with all its places (a bare state code is that state); a bad uuid is skipped",
+  [(r["id"], r["title"], r["loc"], r["fallback"]) for r in rraw],
+  [("11111111-aaaa", "Account Executive (Arkansas)", "AR, United States; Boston, MA", "Sales"),
+   ("22222222-bbbb", "Software Engineer", "Hybrid (New York, New York, US)", "Engineering"),
+   ("33333333-cccc", "Software Engineer", "London, UK", "Engineering")])
+rjobs2, _, rerr = nk_fetch(("rippling", "acme", "Acme"))
+t("Rippling: the London posting is left out; the US ones kept, credited 'on Rippling', with the ats reference",
+  (sorted(j["loc"] for j in rjobs2), rjobs2[0]["via"], rjobs2[0]["ats"]["kind"], rerr),
+  (["AR, United States; Boston, MA", "Hybrid (New York, New York, US)"], "Acme on Rippling", "rippling", ""))
+t("Rippling: an unsafe board token is refused", J._board_token_ok("rippling", "../acme"), False)
+
+BZ = "https://acme.breezy.hr/json"
+loc_us = {"country": {"name": "United States", "id": "US"}, "state": {"id": "FL", "name": "Florida"}, "city": "Jacksonville", "is_remote": False, "name": "Jacksonville, FL"}
+NK_ANS[BZ] = [
+    {"id": "aaa111", "name": "Flight Instructor", "url": "https://acme.breezy.hr/p/aaa111-flight-instructor", "published_date": "2026-10-20T14:37:22.684Z",
+     "type": {"id": "fullTime", "name": "Full-Time"}, "location": loc_us, "locations": [loc_us], "department": "Training", "salary": "$25 - $30 / hour"},
+    {"id": "bbb222", "name": "Marketing Intern", "url": "https://acme.breezy.hr/p/bbb222-marketing-intern", "published_date": "2026-10-21T10:00:00Z",
+     "type": {"id": "internship", "name": "Internship"}, "location": dict(loc_us, is_remote=True, city="", state=None, name="United States"),
+     "locations": [{"country": {"id": "CA", "name": "Canada"}, "city": "Toronto"}, dict(loc_us, is_remote=True, city="", state=None, name="United States")]},
+    {"id": "ccc333", "name": "Software Engineer", "url": "https://acme.breezy.hr/p/ccc333", "published_date": "2026-10-22T10:00:00Z",
+     "type": {"id": "fullTime", "name": "Full-Time"}, "location": {"country": {"id": "GB", "name": "United Kingdom"}, "city": "London"}},
+    {"id": "../x", "name": "Bad id", "url": "https://acme.breezy.hr/p/x"}]
+NK_CALLS.clear()
+braw = list(J._iter_raw("breezy", "acme", "Acme Flight"))
+t("Breezy: robots.txt, then one GET of the careers site's /json", [c if c[0] == "robots" else (c[0], c[1].get("User-Agent")) for c in NK_CALLS],
+  [("robots", "acme.breezy.hr"), (BZ, "UAply-jobs/1.0 (+https://uaply.net)")])
+t("Breezy: place (first US one), country, remote, type, pay text, date; a bad id is skipped",
+  [(r["id"], r["loc"], r["country"], r["remote"], r["emp"], r["force_type"], r["salary_text"], r["posted"]) for r in braw],
+  [("aaa111", "Jacksonville, FL", "us", None, "Full-Time", None, "$25 - $30 / hour", J._ts("2026-10-20T14:37:22.684Z")),
+   ("bbb222", "Remote - United States", "us", True, "Internship", "internship", "", J._ts("2026-10-21T10:00:00Z")),
+   ("ccc333", "London", "gb", None, "Full-Time", None, "", J._ts("2026-10-22T10:00:00Z"))])
+bjobs, _, berr = nk_fetch(("breezy", "acme", "Acme Flight"))
+t("Breezy: the London position is left out; the rest credited 'on Breezy HR', the hourly pay read",
+  (sorted(j["role"] for j in bjobs), bjobs[0]["via"], [j["sal"] for j in bjobs if j["role"] == "Flight Instructor"], berr),
+  (["Flight Instructor", "Marketing Intern"], "Acme Flight on Breezy HR", [[25.0, 30.0]], ""))
+NK_CALLS.clear()
+closed_bz = nk_fetch(("breezy", "closed", "Closed"))
+t("Breezy: a site whose robots.txt disallows the list is not read, and one line says so",
+  (closed_bz[0], NK_CALLS, "[uaply] job feed breezy/closed/Closed failed: robots.txt does not allow it" in closed_bz[2]), ([], [("robots", "closed.breezy.hr")], True))
+t("Breezy and Teamtailor: a token is one subdomain label", [J._board_token_ok(k, x) for k in ("breezy", "teamtailor") for x in ("acme-co", "a.b", "-acme", "acme/x")],
+  [True, False, False, False] * 2)
+
+TT = "https://acme.teamtailor.com/jobs.rss"
+TT_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:tt="https://teamtailor.com/locations"><channel><title>Acme</title><link>https://acme.teamtailor.com/jobs</link>
+<item><title>Head of Marketing</title><description>&lt;p&gt;Lead &lt;b&gt;marketing&lt;/b&gt; and SEO.&lt;/p&gt;</description>
+<pubDate>Wed, 28 Oct 2026 22:13:17 +0100</pubDate><link>https://acme.teamtailor.com/jobs/1-head-of-marketing</link><remoteStatus>hybrid</remoteStatus>
+<guid>5c189e36-797b-4e58-8540-defb85b3668a</guid><tt:locations><tt:location><tt:name>Chicago</tt:name><tt:city>Chicago</tt:city><tt:country>United States</tt:country></tt:location></tt:locations>
+<tt:department>Marketing</tt:department></item>
+<item><title>Data Engineer</title><description>Python and SQL.</description><pubDate>Thu, 29 Oct 2026 13:25:57 +0100</pubDate>
+<link>https://acme.teamtailor.com/jobs/2-data-engineer</link><remoteStatus>fully</remoteStatus><guid>6c189e36-797b-4e58-8540-defb85b3668b</guid>
+<tt:locations><tt:location><tt:city>Stockholm</tt:city><tt:country>Sweden</tt:country></tt:location><tt:location><tt:city>Austin</tt:city><tt:country>United States</tt:country></tt:location></tt:locations></item>
+<item><title>Solution Architect</title><description>Sales.</description><pubDate>Thu, 29 Oct 2026 13:25:57 +0100</pubDate>
+<link>https://acme.teamtailor.com/jobs/3-solution-architect</link><remoteStatus>none</remoteStatus><guid>7c189e36-797b-4e58-8540-defb85b3668c</guid>
+<tt:locations><tt:location><tt:city>Paris</tt:city><tt:country>France</tt:country></tt:location></tt:locations></item>
+</channel></rss>"""
+NK_ANS[TT] = TT_XML
+NK_CALLS.clear()
+traw = list(J._iter_raw("teamtailor", "acme", "Acme"))
+t("Teamtailor: robots.txt, then one GET of the careers site's jobs.rss as text", [c if c[0] == "robots" else (c[0], c[1].get("User-Agent")) for c in NK_CALLS],
+  [("robots", "acme.teamtailor.com"), (TT, "UAply-jobs/1.0 (+https://uaply.net)")])
+t("Teamtailor: place (first US one), hybrid and fully remote, date, text and department read from the RSS",
+  [(r["id"], r["loc"], r["country"], r["remote"], r["posted"], r["fallback"]) for r in traw],
+  [("5c189e36-797b-4e58-8540-defb85b3668a", "Chicago, United States (hybrid)", "us", None, J._ts("2026-10-28T22:13:17+01:00"), "Marketing"),
+   ("6c189e36-797b-4e58-8540-defb85b3668b", "Remote - Austin, United States", "us", True, J._ts("2026-10-29T13:25:57+01:00"), None),
+   ("7c189e36-797b-4e58-8540-defb85b3668c", "", "other", None, J._ts("2026-10-29T13:25:57+01:00"), None)])
+t("Teamtailor: the description's HTML is turned into text", traw[0]["text"], "Lead marketing and SEO.")
+tjobs, _, terr = nk_fetch(("teamtailor", "acme", "Acme"))
+t("Teamtailor: the Paris posting is left out; the US ones credited 'on Teamtailor'", (sorted(j["role"] for j in tjobs), tjobs[0]["via"], terr),
+  (["Data Engineer", "Head of Marketing"], "Acme on Teamtailor", ""))
+NK_ANS["https://evil.teamtailor.com/jobs.rss"] = ('<?xml version="1.0"?><!DOCTYPE r [<!ENTITY x SYSTEM "file:///etc/passwd">]>'
+                                                   '<rss><channel><item><title>&x;</title></item></channel></rss>')
+NK_ANS["https://lol.teamtailor.com/jobs.rss"] = '<rss><!ENTITY a "aaaa"><channel/></rss>'
+xx, xe = nk_fetch(("teamtailor", "evil", "Evil")), nk_fetch(("teamtailor", "lol", "Lol"))
+t("Teamtailor: a feed with an external entity or any <!ENTITY / <!DOCTYPE is refused before parsing, one failure line each",
+  (xx[0], xe[0], xx[2].strip(), xe[2].strip()),
+  ([], [], "[uaply] job feed teamtailor/evil/Evil failed: the feed declares entities; refused",
+   "[uaply] job feed teamtailor/lol/Lol failed: the feed declares entities; refused"))
+NK_ANS["https://broken.teamtailor.com/jobs.rss"] = "<rss><channel><item><title>Half"
+NK_ANS["https://api.rippling.com/platform/api/ats/v1/board/notalist/jobs"] = {"jobs": []}
+NK_ANS["https://notjson.breezy.hr/json"] = lambda body: json.loads("<html>not json</html>")
+bad_kinds = [nk_fetch(s) for s in (("teamtailor", "broken", "Broken TT"), ("rippling", "notalist", "Not A List"), ("breezy", "notjson", "Not JSON"))]
+t("Teamtailor bad XML, Rippling JSON that is not a list, Breezy non-JSON: each source marked failed with one line, nothing raised",
+  [(b[0], b[1].startswith("error:"), b[2].count("[uaply] job feed ")) for b in bad_kinds], [([], True, 1)] * 3)
+t("Teamtailor: a pubDate ending '-0000' (no zone given) is read as UTC",
+  J._teamtailor_raw(J.ET.fromstring('<item><title>T</title><link>https://a.teamtailor.com/jobs/1</link><guid>abc-1</guid>'
+                                    '<pubDate>Thu, 29 Oct 2026 13:25:57 -0000</pubDate></item>'), "A")["posted"], J._ts("2026-10-29T13:25:57Z"))
+NK_CALLS.clear()
+uaonly = nk_fetch(("breezy", "uaonly", "UA Only"))
+t("robots.txt is checked for the User-Agent the list is asked for with (UAply-jobs), not the careers-site crawler's",
+  (uaonly[0], NK_CALLS, "robots.txt does not allow it" in uaonly[2]), ([], [("robots", "uaonly.breezy.hr")], True))
+t("Workday, Rippling, Breezy, Teamtailor: every list is asked for with the careers-site opener (public hosts and redirects only)",
+  (len(NK_OPENERS) > 20, set(NK_OPENERS)), (True, {J._cp_open}))
+J._get, J._robots_for = real_get, real_robots
+t("the four new kinds are board kinds with an ats reference and a 'via' credit",
+  [(k in J.BOARD_KINDS, k in J.ATS_REF_KINDS, k in J.VIA) for k in ("workday", "rippling", "breezy", "teamtailor")], [(True, True, True)] * 4)
+cfg()
+t("the four new kinds are off unless listed in feeds", [k for k in ("workday", "rippling", "breezy", "teamtailor") if k in J.feeds_allowed()], [])
+cfg(feeds=["workday", "teamtailor"])
+t("listing a new kind in feeds turns that kind (and only it) on", sorted(J.feeds_allowed()), ["teamtailor", "workday"])
+cfg()
+
 # ---------------- feeds_off ----------------
 cfg(feeds=["greenhouse", "remotive", "smartrecruiters"])
 t("a kind listed in feeds is on", "remotive" in J.feeds_allowed(), True)

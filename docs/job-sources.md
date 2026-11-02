@@ -18,7 +18,9 @@ CareerOneStop 100 per search. USAJOBS keeps every job each search lists (every p
 
 ## Coverage
 
-* **Anywhere in the US:** 4,485 employer sources: 2,254 Greenhouse, 1,409 Ashby, 230 Lever, 184 SmartRecruiters and 98 Workable boards
+* **Anywhere in the US:** 4,487 employer sources (4,485 read on live): 2,254 Greenhouse, 1,409 Ashby, 230 Lever, 184 SmartRecruiters and
+  98 Workable boards, plus 1 Workday job search and 1 Rippling board read only when switched on (live's `UAPLY_FEEDS` in render.yaml
+  does not list them; the same holds for the 68 Recruitee boards, which are not counted here)
   (80 of them hand-picked in `SOURCES`, the rest from `job-boards.json`) and 310 employers' own careers sites (298 on Workday, 12 on
   iCIMS); remote jobs from Jobicy (15 industries), Himalayas (all, internships, part-time) and Remote OK; internships and co-ops from
   the Simplify / Pitt CSC lists. A remote job open to the US is shown to everyone; the distance filter never hides it (except "remote
@@ -248,3 +250,37 @@ unknown user id, a rate limit) and `tools/check-careeronestop.py` to check the k
   Another 59 boards with 1 to 4 US jobs (128 jobs) are left out by the 5-US rule. Recruitee alone cannot reach 50k US jobs.
 - Switched on with the others: `"feeds"` must list `"recruitee"` (uaply-config.json or UAPLY_CONFIG_JSON / UAPLY_FEEDS).
 
+## Workday, Rippling, Breezy HR and Teamtailor careers sites (October 31, 2026)
+
+Four more board kinds read each careers site's own public list, no key. Each is read with the other job-boards.json boards (every
+2 hours, the shared feed readers), after the site's robots.txt allows it, with the usual feed timeout and size limit. Their terms
+have not been reviewed yet, so each kind stays off unless the owner lists it in `"feeds"` / `UAPLY_FEEDS`.
+
+- Workday (`_workday`): `POST https://{company}.wd{n}.myworkdayjobs.com/wday/cxs/{company}/{site}/jobs` with the fixed body
+  `{"limit": 20, "offset": 0, "searchText": ""}`, 20 a page, at most 200 postings a refresh. Token `{company}.wd{n}/{site}` (checked by
+  `WORKDAY_TOKEN_RE`). Mapped: title, place (`locationsText`, or the first place in the posting's address when it says "3 Locations"),
+  posted date ("Posted 3 Days Ago"), the posting's own page. No description in the list. A US place ("US, CA, Santa Clara" in the list
+  or "US-CA-Santa-Clara" in the address) is stored as "Santa Clara, CA" so the map and distance filter can place it. Example row:
+  NVIDIA (2,000 total, 1,910 US). Workday's reported total appears to stop at 2,000: NVIDIA's first page says 2,000 and its second
+  page says 0, so the total is a ceiling, not a count. We read at most 200 postings (10 searches, and no more than 120 seconds across
+  them, `WORKDAY_DEADLINE`) in Workday's own order; when the first page gives no total, searches go on until a short page. Like every
+  board, each Workday site then keeps at most `PER_SOURCE` = 14 roles (internships, co-ops and part-time roles first, up to 10) plus up
+  to 10 in Pennsylvania, New Jersey or Delaware (`jobs_api.py`, `PER_SOURCE` to `LOCAL_PER_SOURCE`). The internships-first and
+  PA/NJ/DE-first picks only see those first 200 postings, so a big site's later internships or local roles are not found.
+  Risk: terms not yet reviewed, so off unless listed in UAPLY_FEEDS.
+- Rippling (`_rippling`): `GET https://api.rippling.com/platform/api/ats/v1/board/{slug}/jobs`. One row per place a job is open in:
+  rows are merged by `uuid` and keep every place. Mapped: name, department, place (`workLocation.label`, a bare state code read as
+  that US state), job page. Example row: Rippling (373 jobs, 199 in the US). Risk: terms not yet reviewed, so off unless listed in
+  UAPLY_FEEDS.
+- Breezy HR (`_breezy`): `GET https://{company}.breezy.hr/json`. Mapped: name, place (first US location; city, state, remote flag),
+  department, type (internship), salary text, published date, job page. No example row yet: the `breezy` site has 3 US jobs, under
+  the 5-US rule. Risk: terms not yet reviewed, so off unless listed in UAPLY_FEEDS.
+- Teamtailor (`_teamtailor`): `GET https://{company}.teamtailor.com/jobs.rss`. Mapped: title, link, guid, `tt:locations` (first US
+  one), `tt:department`, `remoteStatus` (fully remote, hybrid), pubDate, description. A feed that declares a DOCTYPE or ENTITY is
+  refused before parsing. No example row yet: the `career` site has 2 US jobs, under the 5-US rule. Risk: terms not yet reviewed, so
+  off unless listed in UAPLY_FEEDS.
+- Pacing: every `*.myworkdayjobs.com`, `*.breezy.hr` and `*.teamtailor.com` subdomain is one service (`HOST_FAMILY`: 2 at once,
+  request starts 0.5 seconds apart). A Breezy or Teamtailor token is one subdomain label (`SUBDOMAIN_RE`).
+- Safety: every request of the four kinds goes through the careers-site opener (`_cp_open`: public addresses only, and a redirect is
+  followed only to a public https address), and robots.txt is checked for the User-Agent the list is asked for with (`FEED_UA`,
+  "UAply-jobs").

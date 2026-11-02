@@ -40566,6 +40566,24 @@
    "us": 5,
    "tri": 0,
    "checked": "2026-10-30"
+  },
+  {
+   "kind": "workday",
+   "token": "nvidia.wd5/NVIDIAExternalCareerSite",
+   "name": "NVIDIA",
+   "total": 2000,
+   "us": 1910,
+   "tri": 0,
+   "checked": "2026-10-31"
+  },
+  {
+   "kind": "rippling",
+   "token": "rippling",
+   "name": "Rippling",
+   "total": 373,
+   "us": 199,
+   "tri": 2,
+   "checked": "2026-10-31"
   }
  ],
  "note": "Employer boards found and checked live with tools/find-boards.py (Recruitee: tools/find-recruitee.py) (counts on the day checked). Read by jobs_api.py after the hand-picked boards in SOURCES. Remove a row to stop reading a board."

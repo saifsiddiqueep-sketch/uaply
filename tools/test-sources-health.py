@@ -37,7 +37,7 @@ with open(J.BOARDS_FILE, encoding="utf-8") as f:
     rows = json.load(f)["boards"]
 t("job-boards.json: every row names a supported system (or a careers site with a public sitemap), a safe board token, a name and its counts",
   [r for r in rows if not ((r.get("kind") in J.BOARD_KINDS or (r.get("kind") == "careerpage" and J._public_https(r.get("sitemap", ""))))
-                           and J.BOARD_TOKEN_RE.match(r.get("token", "")) and r.get("name") and r.get("us", 0) >= 5)], [])
+                           and J._board_token_ok(r.get("kind"), r.get("token", "")) and r.get("name") and r.get("us", 0) >= 5)], [])
 keys = [(k, t_.lower()) for k, t_, _ in J.SOURCES]
 t("no board is listed twice (hand-picked and file boards together)", len(keys), len(set(keys)))
 t("the file's boards come after the hand-picked boards and before the public lists (so an employer's own copy wins)",
