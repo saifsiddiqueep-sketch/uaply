@@ -159,7 +159,7 @@ module.exports = async ({ ev, sleep, nav, send }) => {
       "let best=null,prev=hr.left;for(const c of cs){if(c.left-prev>(best?best.w:0))best={x:(prev+c.left)/2,w:c.left-prev};prev=Math.max(prev,c.right)}if(hr.right-prev>(best?best.w:0))best={x:(prev+hr.right)/2,w:hr.right-prev};" +
       "if(best&&best.w>=16)return JSON.stringify({x:o.left+best.x,y:o.top+hr.top+hr.height/2})}}";
     const p = JSON.parse(await ev("(()=>{const f=" + F + ";const d=f?f.contentDocument:document;const o=f?f.getBoundingClientRect():{left:0,top:0};const k=d.getElementById('kcH');" + gap + "const e=" + (finder || "[k,d.querySelector('.sg-bb .sg-lg'),d.querySelector('.sg-card h1,.sg-card h2'),d.querySelector('h1')].find(e=>e&&e.getClientRects().length&&e.getBoundingClientRect().width>0)") + ";const r=e.getBoundingClientRect();return JSON.stringify({x:o.left+r.left+Math.min(r.width/2,30),y:o.top+r.top+r.height/2})})()"));
-    const kb = kbOpen || (await ev("visualViewport.height<innerHeight*0.85||innerHeight<screen.height/devicePixelRatio*0.6?1:0"));
+    const kb = kbOpen || (await ev("visualViewport.height<innerHeight*0.85||innerHeight<screen.height*0.6?1:0"));
     const guessTop = top && kb ? Math.round(top) : Math.round((await ev("screen.height")) * dpr - (await ev("innerHeight")) * dpr - 134);
     const X = Math.round(p.x * dpr), Y = Math.round(guessTop + p.y * dpr);
     wake(); adb("shell", "input", "tap", String(X), String(Y)); await sleep(700);
@@ -185,8 +185,8 @@ module.exports = async ({ ev, sleep, nav, send }) => {
   };
   const tap = async (finder, inPage) => {
     const ok = await tapOnce(finder, inPage); if (ok === null) return false; if (ok) return true;
-    if (!/uaChat/.test(finder) && await q("const c=d.getElementById('uaChat'),x=d.getElementById('uaChatX');if(c&&!c.hidden&&x){x.click();return 1}return 0") === 1) log("a tap opened the UAply Assistant by mistake: closed it");
-    await calibrate(); const again = await tapOnce(finder, inPage); if (again === null) return false;
+    const closeChat = async () => { if (!/uaChat/.test(finder) && await q("const c=d.getElementById('uaChat'),x=d.getElementById('uaChatX');if(c&&!c.hidden&&x){x.click();return 1}return 0") === 1) log("a tap opened the UAply Assistant by mistake: closed it"); };
+    await closeChat(); await calibrate(); await closeChat(); const again = await tapOnce(finder, inPage); if (again === null) return false;
     if (!again) { fail("a tap missed twice (" + finder.slice(0, 60) + "): it reached something else, or nothing in the page"); return false; }
     return true;
   };
