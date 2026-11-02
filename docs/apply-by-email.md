@@ -102,7 +102,8 @@ channel available for that job (the employer's hiring system, its application fo
 accurate." (no age: the sign-up tick asked it) `POST /api/consent` refuses an agreement without both (400 `consent_ticks`) and keeps each tick on the
 record with the version and the time (`auth_api.record_consent`); anyone whose record is version 5 sees the box again. The owner's switches
 `counsel_approved` and `recruitee_submit` are on by default (either can be set to false in the config), and the receipt and Job Tracker
-name the channel used: Submitted into their hiring system, Sent by email, or Finish on their site.
+name the channel used: Submitted into their hiring system, Sent by email, or Finish on their site. Unconfirmed: the employer's system did
+not answer in time; the application may have arrived, so UAply waits 24 h before letting you send it again.
 
 ## Phase B (October 23, 2026)
 

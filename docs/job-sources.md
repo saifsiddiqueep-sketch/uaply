@@ -238,9 +238,10 @@ unknown user id, a rate limit) and `tools/check-careeronestop.py` to check the k
   An application goes to `POST https://{company}.recruitee.com/api/offers/{slug}/candidates` (no employer key, `ats_api.recruitee_submit`):
   while the owner's switch `"recruitee_submit"` is on (the default; `uaply_api.recruitee_on`) a Recruitee job is an instant apply (the
   card says Ready); with it set to false the job is a hand-off like every other feed job.
-- Sign-up test mode (`UAPLY_SIGNUP_TEST=1`, mail off) never posts to a real employer: a Recruitee application is recorded as simulated
-  unless it goes to a stand-in on this computer (`UAPLY_ATS_BASE_RECRUITEE` at 127.0.0.1 or localhost); delivery mode "test"
-  simulates every one.
+- Sign-up test mode (`UAPLY_SIGNUP_TEST=1`, mail off) never posts to a real employer: an application to a Recruitee posting, an
+  employer's webhook or any hiring system (Greenhouse, Lever, Ashby, SmartRecruiters, Workable and the rest) is recorded as simulated
+  unless it goes to a stand-in on this computer (a 127.0.0.1 or localhost webhook, `UAPLY_ATS_BASE_<KIND>` at 127.0.0.1 or localhost),
+  and the employer's form is not read either (no request at all); delivery mode "test" simulates every one.
 - Offers outside the US are left out (one open in several places is placed in its first US one); pay is shown only in US dollars
   (hourly or yearly ranges); drafts and offers with an unsafe slug are skipped.
 - 68 boards with at least 5 US jobs are in job-boards.json (found with a web search limited to recruitee.com and a Common Crawl
