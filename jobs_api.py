@@ -2780,7 +2780,7 @@ _links = {}                      # source -> {"at", "ok", "dead", "unknown", "de
 _link_thread = []
 
 
-LOGIN_PAGE_RE = re.compile(r"(?:^|/)(?:log-?in|sign-?in|sso|auth|oauth2?|authorize)(?:$|/|\.[a-z0-9]{1,5}$)", re.I)   # whole path segment (/login, /sso/start, /sign-in.html; never /login-help or /jobs/auth-platform-engineer)
+LOGIN_PAGE_RE = re.compile(r"(?:^|/)(?:log[-_]?in|sign[-_]?in|sso|auth|oauth2?|authorize)(?:$|/|\.[a-z0-9]{1,5}$)", re.I)   # whole path segment (/login, /sso/start, /sign-in.html, /users/sign_in; never /login-help or /jobs/auth-platform-engineer)
 CLOSED_MARKERS = ("no longer accepting applications", "this job is no longer available", "job not found", "position has been filled")
 
 

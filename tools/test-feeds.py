@@ -860,8 +860,8 @@ try:
                  "/jobs/auth-platform-engineer", "/job/SSO-Engineer_R123", "/jobs/Login-Experience-Designer", "/jobs/sign-in-flow-dev", "/login-help"]
     t("dead-link check: after a redirect, a page whose path only contains a sign-in word (a job's slug, /login-help) stays alive",
       [_moved(p) for p in _ok_paths], [True] * len(_ok_paths))
-    _login_paths = ["/login", "/sso/start", "/sign-in.html", "/auth?next=x", "/oauth2/authorize"]
-    t("dead-link check: after a redirect, a whole sign-in path segment (/login, /sso/start, /sign-in.html, /auth?next=x, /oauth2/authorize) is dead",
+    _login_paths = ["/login", "/sso/start", "/sign-in.html", "/auth?next=x", "/oauth2/authorize", "/users/sign_in", "/log_in"]
+    t("dead-link check: after a redirect, a whole sign-in path segment (/login, /sso/start, /sign-in.html, /auth?next=x, /oauth2/authorize, /users/sign_in) is dead",
       [_moved(p) for p in _login_paths], [False] * len(_login_paths))
     t("dead-link check: the same sign-in paths with no redirect stay alive (the rule is redirect-only)",
       [_alive_at("https://jobs.acme.example" + p) for p in _login_paths], [True] * len(_login_paths))
