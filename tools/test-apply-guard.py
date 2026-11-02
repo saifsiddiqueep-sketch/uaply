@@ -4,6 +4,8 @@ leaves this computer: any attempt to open a connection is recorded and refused):
      recorded as a simulated test delivery instead (a stand-in on this computer is still posted to, as for Recruitee)
   2. a submit that times out is "unknown", never "failed", and dup() holds it like a sent one for a day, so a retry cannot apply twice
   3. a Recruitee plan (POST /api/apply/plan) without a resume says "needs_input", never "ready"
+  4. an "unknown" send counts toward the daily limit (it may have reached the employer)
+  5. a webhook that times out is "unknown" and held the same way; a real HTTP error from it stays "failed"
   python tools/test-apply-guard.py"""
 import json
 import os
@@ -12,6 +14,7 @@ import socket
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -143,6 +146,9 @@ try:
     reset(policy="link", info={"ats": {"kind": "recruitee", "board": "acme", "id": "marketing-intern"}})
     s, out = swipe(500004)
     t("test mode, Recruitee: simulated, nothing posted (the guard that was already there)", (s, out.get("status"), NET), (200, "delivered_test", []))
+    reset(policy="direct", ats={"kind": "greenhouse", "board": "acmegh", "id": "4001", "key": "gh-key-321"})
+    s, out = swipe(500008)
+    t("test mode, Greenhouse: simulated, and not even its public form is read (no GET)", (s, out.get("status"), NET), (200, "delivered_test", []))
     # the second guard, in _deliver itself (in case another caller ever reaches it in test mode)
     reset()
     rec = {"id": "guard-direct", "at": int(time.time()), "candidate": {"name": "Sam Lee", "email": "sam@example.com", "ext": {}},
@@ -199,6 +205,61 @@ try:
     uaply_api.APPS.append(dict(rec, id="failed-one", status="failed", at=int(time.time()), job=dict(rec["job"], id=500011)))
     s, out = swipe(500011)
     t("a plain 'failed' one is still retried at once (unchanged)", out.get("status"), "sent")
+
+    # ---------- 4. an "unknown" send counts toward the daily limit (it may have reached the employer) ----------
+    saved = list(uaply_api.APPS)
+    del uaply_api.APPS[:]
+    CFG["daily_limit"] = 1
+    MODE["ats"] = "ok"
+    reset(policy="direct", ats=LEVER)
+    uaply_api.APPS.append(dict(rec, id="unknown-today", mode="live", status="unknown", at=int(time.time()), job=dict(rec["job"], id=500030)))
+    s, out = swipe(500031)
+    t("daily limit 1 with one 'unknown' send today: the next swipe is refused (429), nothing posted", (s, NET), (429, []))
+    uaply_api.APPS[0]["status"] = "failed"
+    s, out = swipe(500031)
+    t("...a 'failed' one does not count: the same swipe is sent", (s, out.get("status")), (200, "sent"))
+    CFG["daily_limit"] = 50
+    del uaply_api.APPS[:]
+    uaply_api.APPS.extend(saved)
+
+    # ---------- 5. a webhook that times out is "unknown" too; a real HTTP error stays "failed" ----------
+    HOOKNET = {"mode": "timeout"}
+
+    def _fake_hook_open(self, req, data=None, timeout=None):
+        NET.append(("webhook", req.get_method(), req.full_url))
+        if HOOKNET["mode"] == "timeout":
+            raise urllib.error.URLError(socket.timeout("timed out"))
+        if HOOKNET["mode"] == "raw-timeout":
+            raise TimeoutError("timed out")
+        raise urllib.error.HTTPError(req.full_url, 500, "Server Error", {}, None)
+
+    real_sleep = time.sleep
+    urllib.request.OpenerDirector.open = _fake_hook_open
+    time.sleep = lambda s: None
+    try:
+        reset(policy="direct", hook=HOOK)
+        s, out = swipe(500040)
+        t("webhook timeout (URLError wrapping a timeout): 'unknown', the person is told it is unconfirmed", (s, out.get("status"), out.get("code")),
+          (200, "unknown", "unconfirmed"))
+        t("...posted once, not tried again", [n[:2] for n in NET], [("webhook", "POST")])
+        hrec = next(a for a in uaply_api.APPS if a["job"]["id"] == 500040)
+        t("...the stored record says 'unknown' with the unconfirmed reason", (hrec["status"], hrec.get("error")), ("unknown", "webhook: " + ats_api.UNCONFIRMED))
+        s, out = swipe(500040)
+        t("...a retry at once is a duplicate of it (held for a day), nothing more posted", (out.get("status"), out.get("was"), len(NET)), ("duplicate", "unknown", 1))
+        hrec["at"] -= uaply_api.UNKNOWN_HOLD + 60
+        HOOKNET["mode"] = "raw-timeout"
+        reset(policy="direct", hook=HOOK)
+        s, out = swipe(500040)
+        t("after the hold the swipe may be sent again; a bare TimeoutError is 'unknown' too", (out.get("status"), len(NET)), ("unknown", 1))
+        HOOKNET["mode"] = "500"
+        reset(policy="direct", hook=HOOK)
+        s, out = swipe(500041)
+        t("webhook answers HTTP 500: 'failed' (a real answer), tried three times", (out.get("status"), len(NET)), ("failed", 3))
+        s, out = swipe(500041)
+        t("...and a 'failed' one may be retried at once (posted again)", (out.get("status"), len(NET)), ("failed", 6))
+    finally:
+        urllib.request.OpenerDirector.open = _fake_open
+        time.sleep = real_sleep
 
     # ---------- 3. a Recruitee plan without a resume is never "ready" ----------
     MODE["ats"] = "refuse"
