@@ -97,6 +97,13 @@ try:
     h = {x["source"]: x for x in J.feed_health()["sources"]}["greenhouse/brokenco"]
     t("switched off by the link check: its row says the link check's reason and 0 jobs (none are served)",
       (h["off"], h["jobs"], h["status"].startswith("off: 9 of 11 apply links checked were dead")), (True, 0, True))
+    t("...and _load_source serves nothing for it", J._load_source(bad_src)[0], [])
+    J._links[bad_src]["off"] = False
+    J._health[bad_src].update(error="boom")
+    h = {x["source"]: x for x in J.feed_health()["sources"]}["greenhouse/brokenco"]
+    t("switched off after failed refreshes (links fine): it keeps serving its cached copy, and says why it is off",
+      (h["off"], h["jobs"], h["status"].startswith("off: failed 3 refreshes in a row; will be tried again"), len(J._load_source(bad_src)[0])),
+      (True, 1, True, 1))
     t("the health list holds counts and names only (no key, no address)", any("http" in json.dumps(x) for x in J.feed_health()["sources"]), False)
 finally:
     J._iter_raw = real_iter
