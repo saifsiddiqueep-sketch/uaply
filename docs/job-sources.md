@@ -18,9 +18,10 @@ CareerOneStop 100 per search. USAJOBS keeps every job each search lists (every p
 
 ## Coverage
 
-* **Anywhere in the US:** 5,417 employer sources (5,415 read on live): 2,254 Greenhouse, 1,409 Ashby, 426 Lever, 548 SmartRecruiters and
-  468 Workable boards, plus 1 Workday job search and 1 Rippling board read only when switched on (live's `UAPLY_FEEDS` in render.yaml
-  does not list them; the same holds for the 68 Recruitee boards, which are not counted here)
+* **Anywhere in the US:** 5,398 employer sources: 2,254 Greenhouse, 1,409 Ashby, 424 Lever, 541 SmartRecruiters and
+  458 Workable boards, plus 1 Workday job search and 1 Rippling board. SmartRecruiters, Workable, Workday and Rippling boards (and the
+  68 Recruitee boards, not counted here) are read only when switched on: live's `UAPLY_FEEDS` in render.yaml lists greenhouse, lever
+  and ashby only, so live reads 4,087 of these sources until Saif adds the other kinds there
   (80 of them hand-picked in `SOURCES`, the rest from `job-boards.json`) and 310 employers' own careers sites (298 on Workday, 12 on
   iCIMS); remote jobs from Jobicy (15 industries), Himalayas (all, internships, part-time) and Remote OK; internships and co-ops from
   the Simplify / Pitt CSC lists. A remote job open to the US is shown to everyone; the distance filter never hides it (except "remote
@@ -86,6 +87,14 @@ listed (Harry's brands such as Lume Deodorant and Flamingo, Artefact, The Orchar
 Ventures, Montauk Capital), 5 internal or referral-only boards (Misfits Market, Sprout, Thoughtworks), 3 recruiting boards and
 talent pools (Birgo, a dev talent network, an internship pool), 11 names already listed (SingleStore, Coursera, Charlie Health)
 and Ashby's demo board.
+
+Round 3, stage 2 (November 2, 2026): the Workable, SmartRecruiters and Lever boards found in round 3 were checked against their public
+feeds and the rows already listed. Stage 2 adds 911 of them: 360 Workable, 357 SmartRecruiters and 194 Lever boards (71,660 US jobs),
+so the employer sources went from 4,487 to 5,398. Left out after review: a SmartRecruiters test board (McWane - Sandbox) and Lever's demo
+board; 12 staffing agencies, recruiting pools and job aggregators (Jobsbridge, Jobs for Humanity, ApexFocusGroup, Blue United Sourcing,
+Abramson Labor Group, Enerstaff, Edgility Search, Boss Search Group, p3 Human Capital, HelloKindred, Avomind, Ace IT Careers, apply2day);
+and 4 venture fund or accelerator boards (AI Fund, Capital Factory, Deep Science Ventures, Cache Ventures). Workable boards share one
+host, so `HOST_FAMILY` now reads them two at a time with half a second between request starts (its API answers 429 quickly).
 
 ## Where a job is
 

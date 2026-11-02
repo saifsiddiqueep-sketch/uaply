@@ -40650,15 +40650,6 @@
   },
   {
    "kind": "smartrecruiters",
-   "token": "Jobsbridge1",
-   "name": "Jobsbridge",
-   "total": 1617,
-   "us": 1607,
-   "tri": 81,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "smartrecruiters",
    "token": "360ITProfessionals1",
    "name": "360 IT Professionals",
    "total": 1590,
@@ -40745,15 +40736,6 @@
    "total": 885,
    "us": 884,
    "tri": 83,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "smartrecruiters",
-   "token": "JobsForHumanity",
-   "name": "Jobs for Humanity",
-   "total": 3091,
-   "us": 793,
-   "tri": 15,
    "checked": "2026-11-02"
   },
   {
@@ -40916,15 +40898,6 @@
    "total": 371,
    "us": 371,
    "tri": 21,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "workable",
-   "token": "afg",
-   "name": "ApexFocusGroup",
-   "total": 1466,
-   "us": 362,
-   "tri": 6,
    "checked": "2026-11-02"
   },
   {
@@ -41249,15 +41222,6 @@
    "total": 158,
    "us": 158,
    "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "workable",
-   "token": "blue-united-sourcing",
-   "name": "Blue United Sourcing",
-   "total": 157,
-   "us": 157,
-   "tri": 6,
    "checked": "2026-11-02"
   },
   {
@@ -41639,15 +41603,6 @@
    "checked": "2026-11-02"
   },
   {
-   "kind": "smartrecruiters",
-   "token": "AbramsonLaborGroup",
-   "name": "Abramson Labor Group",
-   "total": 88,
-   "us": 88,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
    "kind": "workable",
    "token": "eminence-home-care",
    "name": "Eminence Home Care",
@@ -41690,15 +41645,6 @@
    "total": 97,
    "us": 84,
    "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "smartrecruiters",
-   "token": "McWane-Sandbox",
-   "name": "McWane - Sandbox",
-   "total": 88,
-   "us": 83,
-   "tri": 3,
    "checked": "2026-11-02"
   },
   {
@@ -42122,15 +42068,6 @@
    "total": 53,
    "us": 53,
    "tri": 5,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "workable",
-   "token": "cache",
-   "name": "Cache Ventures",
-   "total": 105,
-   "us": 51,
-   "tri": 2,
    "checked": "2026-11-02"
   },
   {
@@ -42647,15 +42584,6 @@
    "checked": "2026-11-02"
   },
   {
-   "kind": "lever",
-   "token": "AIFund",
-   "name": "career",
-   "total": 39,
-   "us": 36,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
    "kind": "smartrecruiters",
    "token": "AcumenSolutions",
    "name": "Acumen Solutions",
@@ -42806,15 +42734,6 @@
    "total": 45,
    "us": 34,
    "tri": 1,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "workable",
-   "token": "apply2day",
-   "name": "apply2day",
-   "total": 111,
-   "us": 33,
-   "tri": 0,
    "checked": "2026-11-02"
   },
   {
@@ -43072,7 +42991,7 @@
   {
    "kind": "workable",
    "token": "ecareers",
-   "name": "e",
+   "name": "e-Careers Limited",
    "total": 191,
    "us": 28,
    "tri": 0,
@@ -43129,15 +43048,6 @@
    "name": "Care Partners",
    "total": 28,
    "us": 28,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "workable",
-   "token": "avomind",
-   "name": "Avomind",
-   "total": 332,
-   "us": 27,
    "tri": 0,
    "checked": "2026-11-02"
   },
@@ -43277,15 +43187,6 @@
    "checked": "2026-11-02"
   },
   {
-   "kind": "workable",
-   "token": "enerstaff",
-   "name": "Enerstaff",
-   "total": 25,
-   "us": 25,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
    "kind": "lever",
    "token": "ans",
    "name": "ANS",
@@ -43364,15 +43265,6 @@
    "total": 25,
    "us": 25,
    "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "workable",
-   "token": "ace-it-careers-1",
-   "name": "Ace IT Careers",
-   "total": 24,
-   "us": 24,
-   "tri": 2,
    "checked": "2026-11-02"
   },
   {
@@ -45771,15 +45663,6 @@
   },
   {
    "kind": "smartrecruiters",
-   "token": "p3HumanCapital",
-   "name": "p3 Human Capital",
-   "total": 10,
-   "us": 10,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "smartrecruiters",
    "token": "PDDNINC",
    "name": "PDDN INC.",
    "total": 10,
@@ -46329,15 +46212,6 @@
   },
   {
    "kind": "workable",
-   "token": "capital-factory",
-   "name": "Capital Factory",
-   "total": 8,
-   "us": 8,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "workable",
    "token": "coursedog-1",
    "name": "Coursedog",
    "total": 8,
@@ -46424,15 +46298,6 @@
    "total": 9,
    "us": 8,
    "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "workable",
-   "token": "edgility-search",
-   "name": "Edgility Search",
-   "total": 8,
-   "us": 8,
-   "tri": 1,
    "checked": "2026-11-02"
   },
   {
@@ -46566,15 +46431,6 @@
    "token": "cyara",
    "name": "Cyara",
    "total": 15,
-   "us": 8,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "lever",
-   "token": "leverdemo",
-   "name": "Lever Demo 2",
-   "total": 10,
    "us": 8,
    "tri": 0,
    "checked": "2026-11-02"
@@ -47751,15 +47607,6 @@
   },
   {
    "kind": "workable",
-   "token": "deep-science-ventures",
-   "name": "Deep Science Ventures",
-   "total": 13,
-   "us": 6,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "workable",
    "token": "drop-zero-digital",
    "name": "Drop Zero Digital",
    "total": 22,
@@ -47976,15 +47823,6 @@
   },
   {
    "kind": "smartrecruiters",
-   "token": "BossSearchGroup",
-   "name": "Boss Search Group",
-   "total": 6,
-   "us": 6,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "smartrecruiters",
    "token": "Endava",
    "name": "Endava",
    "total": 142,
@@ -48006,15 +47844,6 @@
    "token": "HealthXPartners",
    "name": "HealthX Partners",
    "total": 38,
-   "us": 6,
-   "tri": 0,
-   "checked": "2026-11-02"
-  },
-  {
-   "kind": "smartrecruiters",
-   "token": "HelloKindred",
-   "name": "HelloKindred",
-   "total": 71,
    "us": 6,
    "tri": 0,
    "checked": "2026-11-02"
