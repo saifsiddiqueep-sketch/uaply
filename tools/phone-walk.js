@@ -121,6 +121,10 @@ module.exports = async ({ ev, sleep, nav, send }) => {
   const log = (s) => { steps.push(s); console.log(s); };
   const fail = (s) => { problems.push(s); console.log("FAIL " + s); };
   const wake = () => { try { adb("shell", "input", "keyevent", "KEYCODE_WAKEUP"); } catch (e) {} };
+  // Chrome's own "Install UAply" sheet (the PWA is installable) slides over the bottom of the page a minute or so in and swallows every
+  // tap there: the page keeps the event instead, so the sheet never shows, and the walk notes that Chrome offered the install
+  const NO_SHEET = "addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__installPrompt=e})";
+  await send("Page.addScriptToEvaluateOnNewDocument", { source: NO_SHEET }); await ev(NO_SHEET + ";1");
   // a screenshot of the phone's real screen (status bar, Chrome's address bar and Android's buttons included)
   const shot = async (name) => { wake(); await sleep(250); n++; const f = path.join(OUT, String(n).padStart(2, "0") + "-" + name + ".png");
     fs.writeFileSync(f, execFileSync(ADB, ["-s", SERIAL, "exec-out", "screencap", "-p"], { maxBuffer: 64 * 1024 * 1024, timeout: 30000 })); return f; };
@@ -428,6 +432,7 @@ module.exports = async ({ ev, sleep, nav, send }) => {
     log("offline screen: " + what);
     if (!/offline|can.t reach|cannot reach|starting|no connection/i.test(what)) fail("Offline screen · with the server stopped the page shows no offline screen: " + what);
   }
+  if (await ev("window.__installPrompt?1:0") === 1) log("Chrome offered to install UAply as an app (the install sheet was kept off the screen)");
   console.log("\n" + steps.length + " notes, " + n + " screenshots, " + problems.length + " fit problems");
   console.log((problems.length ? "FIT PROBLEMS" : "NO FIT PROBLEMS") + " on " + T);
   fs.writeFileSync(path.join(OUT, "walk.txt"), steps.concat(problems.map((p) => "FAIL " + p)).join("\n") + "\n");
