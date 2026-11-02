@@ -59,7 +59,8 @@ simulated payments (paid plans appear only once live Stripe keys are set, sectio
    open, sign-up with a code from a stand-in inbox, Plan, Applied, Help, the legal pages with the address bar shown and hidden, and the
    offline screen with the server stopped), takes a screenshot of each into `phone-walk/<target>-<time>/`, and checks each screen's fit
    (44 px targets, nothing off the edge or under the keyboard, Help covering nothing, dialogs that fit). The live walk is read only. It
-   installs nothing and changes no phone setting; it reports which way the phone was held for each screenshot. Any FAIL line is a
+   installs nothing and changes no phone setting; it reports which way the phone was held for each screenshot. Chrome's install bar is kept
+   off (the walk blocks the web app manifest for its tab); Back is pressed only when Chrome's own UI holds the focus. Any FAIL line is a
    release blocker until fixed or written down with its cause.
 
 
