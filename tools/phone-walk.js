@@ -132,8 +132,17 @@ module.exports = async ({ ev, sleep, nav, send }) => {
     for (const s of small) if (!notes.has(s)) { notes.add(s); log("note: small text " + label + " · " + s); }
     return list;
   };
-  let turned = "";
-  const orient = async () => { const o = await ev("(screen.orientation&&screen.orientation.type||'')+' '+innerWidth+'x'+innerHeight"); if (turned && o !== turned) { log((o.split(" ")[0] !== turned.split(" ")[0] ? "the phone was turned: " : "the page's size changed (Chrome's address bar): ") + turned + " -> " + o + " (measuring the taps again)"); turned = o; await calibrate(); } turned = o; return /landscape/.test(o) ? "landscape" : "portrait"; };
+  let turned = "", kbOpen = false;
+  const size = (o) => o.split(" ")[1].split("x").map(Number);
+  const orient = async () => { const o = await ev("(screen.orientation&&screen.orientation.type||'')+' '+innerWidth+'x'+innerHeight");
+    if (turned && o !== turned) {
+      const [tw, th] = size(turned), [ow, oh] = size(o);
+      // Android's keyboard shrinks the page from the bottom (384x692 -> 384x318): the page's top does not move, so the measure is kept. A
+      // measure taken then, aimed with the shrunken height, landed on the Help bubble and opened the UAply Assistant, so every later tap
+      // missed: Save and continue, Account, Sign out, November 2. The address bar's hide (about 56 CSS px) still measures again.
+      if (ow === tw && th - oh > 150) { if (!kbOpen) log("the keyboard is open (" + turned + " -> " + o + "): the taps keep their measure"); kbOpen = true; return /landscape/.test(o) ? "landscape" : "portrait"; }
+      log((o.split(" ")[0] !== turned.split(" ")[0] ? "the phone was turned: " : "the page's size changed (Chrome's address bar): ") + turned + " -> " + o + " (measuring the taps again)"); turned = o; await calibrate(); }
+    kbOpen = false; turned = o; return /landscape/.test(o) ? "landscape" : "portrait"; };
   const step = async (name, label) => { await sleep(500); const o = await orient(); await shot(name + (o === "landscape" ? "-landscape" : "")); await fit((label || name) + (o === "landscape" ? " [landscape]" : "")); };
   // where a CSS point of the page is on the phone's screen: measured with one tap on a part of the page that does nothing (the header's
   // logo), because the address bar's height above the page differs between phones and changes when the bar hides
@@ -150,7 +159,8 @@ module.exports = async ({ ev, sleep, nav, send }) => {
       "let best=null,prev=hr.left;for(const c of cs){if(c.left-prev>(best?best.w:0))best={x:(prev+c.left)/2,w:c.left-prev};prev=Math.max(prev,c.right)}if(hr.right-prev>(best?best.w:0))best={x:(prev+hr.right)/2,w:hr.right-prev};" +
       "if(best&&best.w>=16)return JSON.stringify({x:o.left+best.x,y:o.top+hr.top+hr.height/2})}}";
     const p = JSON.parse(await ev("(()=>{const f=" + F + ";const d=f?f.contentDocument:document;const o=f?f.getBoundingClientRect():{left:0,top:0};const k=d.getElementById('kcH');" + gap + "const e=" + (finder || "[k,d.querySelector('.sg-bb .sg-lg'),d.querySelector('.sg-card h1,.sg-card h2'),d.querySelector('h1')].find(e=>e&&e.getClientRects().length&&e.getBoundingClientRect().width>0)") + ";const r=e.getBoundingClientRect();return JSON.stringify({x:o.left+r.left+Math.min(r.width/2,30),y:o.top+r.top+r.height/2})})()"));
-    const guessTop = Math.round((await ev("screen.height")) * dpr - (await ev("innerHeight")) * dpr - 134);
+    const kb = kbOpen || (await ev("visualViewport.height<innerHeight*0.85||innerHeight<screen.height/devicePixelRatio*0.6?1:0"));
+    const guessTop = top && kb ? Math.round(top) : Math.round((await ev("screen.height")) * dpr - (await ev("innerHeight")) * dpr - 134);
     const X = Math.round(p.x * dpr), Y = Math.round(guessTop + p.y * dpr);
     wake(); adb("shell", "input", "tap", String(X), String(Y)); await sleep(700);
     const got = JSON.parse(await ev("JSON.stringify(window.__pd)") || "null");
@@ -175,6 +185,7 @@ module.exports = async ({ ev, sleep, nav, send }) => {
   };
   const tap = async (finder, inPage) => {
     const ok = await tapOnce(finder, inPage); if (ok === null) return false; if (ok) return true;
+    if (await q("const c=d.getElementById('uaChat'),x=d.getElementById('uaChatX');if(c&&!c.hidden&&x){x.click();return 1}return 0") === 1) log("a tap opened the UAply Assistant by mistake: closed it");
     await calibrate(); const again = await tapOnce(finder, inPage); if (again === null) return false;
     if (!again) { fail("a tap missed twice (" + finder.slice(0, 60) + "): it reached something else, or nothing in the page"); return false; }
     return true;
@@ -201,6 +212,7 @@ module.exports = async ({ ev, sleep, nav, send }) => {
     const kb = await ev("JSON.stringify({vv:Math.round(visualViewport.height),ih:innerHeight})");
     await step(name, label + " (keyboard open " + kb + ")");
     await q("if(d.activeElement)d.activeElement.blur();return 1"); await sleep(700);   // closes the keyboard (Back could leave Chrome)
+    for (const end = Date.now() + 3000; Date.now() < end && turned && (await ev("innerHeight")) < size(turned)[1] - 5;) await sleep(200);   // the page grows back
   };
   const frames = async (fn) => {                                  // frames during a real swipe: how many took longer than two at 60 fps
     await q("w.__fr=[];let l=performance.now();w.__frOn=true;(function f(t){if(!w.__frOn)return;w.__fr.push(t-l);l=t;w.requestAnimationFrame(f)})(l);return 1");
