@@ -669,6 +669,7 @@ function apply(w,host){
         '<small class="sent todo">Needs profile: complete your profile to send it. <button type="button" class="linkbtn" data-act="complete-profile" data-id="'+o.j.id+'">Complete profile</button></small>';
       if(x.status==="failed")return '<small class="sent todo">Not sent: UAply could not deliver it to '+e(o.j.co)+'. '+again+'Try again</button></small>';
       if(x.status==="needs_answers")return '<small class="sent todo">Not sent yet: '+e(o.j.co)+'\'s form asks something only you can answer. '+again+'Answer now</button></small>';
+      if(x.status==="unknown")return '<small class="sent todo">Not confirmed: '+e(o.j.co)+'\'s system did not answer. Check your email before applying again.</small>';
       return "";
     }
     /* the date beside the status (October 23): "Sent" only for an application that went (UAply's send, a test send, the person's own on the
@@ -682,7 +683,7 @@ function apply(w,host){
       if(st==="interview"){k="interview";t="Interview"}else if(st==="accepted"){k="accepted";t="Accepted"}else if(st==="rejected"){k="rejected";t="Rejected"}
       else if(x&&x.status==="sent"){k="sent";t="Sent"}else if(x&&x.status==="self"){k="sent";t="Sent (by you)"}else if(x&&x.status==="delivered_test"){k="sent";t="Sent (test)"}
       else if(x&&x.status==="pending"){k="wait";t="Waiting to send"}else if(x&&x.status==="needs_profile"){k="wait";t="Needs profile"}else if(x&&x.status==="failed"){k="wait";t="Not sent"}
-      else if(x&&x.status==="needs_answers"){k="wait";t="Not sent yet"}else{k="finish";t="Finish on their site"}
+      else if(x&&x.status==="needs_answers"){k="wait";t="Not sent yet"}else if(x&&x.status==="unknown"){k="wait";t="Unconfirmed"}else{k="finish";t="Finish on their site"}
       return '<span class="stchip st-'+k+'">'+t+'</span>';
     }
     /* two separate actions on a hand-off (a later version can make "Finish applying" a prefilled link); a sent application only links the posting */
@@ -1640,7 +1641,7 @@ function apply(w,host){
      else is a hand-off, "Finish on their site". So the counts always equal the rows the list labels the same way */
   function sentCounts(list){
     var c={sent:0,finish:0,notyet:0,test:0};
-    list.forEach(function(o){var t=o.x.sent&&o.x.sent.status;c[t==="sent"||t==="self"?"sent":t==="delivered_test"?"test":t==="pending"||t==="needs_profile"||t==="failed"||t==="needs_answers"?"notyet":"finish"]++});
+    list.forEach(function(o){var t=o.x.sent&&o.x.sent.status;c[t==="sent"||t==="self"?"sent":t==="delivered_test"?"test":t==="pending"||t==="needs_profile"||t==="failed"||t==="needs_answers"||t==="unknown"?"notyet":"finish"]++});
     return c;
   }
   function statsHTML(tiles,cls){return '<div class="stats big'+(cls?" "+cls:"")+'">'+tiles.map(function(p){return '<div class="stat"><b>'+p[0]+'</b><small>'+p[1]+'</small></div>'}).join("")+'</div>'}
@@ -2440,7 +2441,7 @@ function apply(w,host){
        pending: the next start would send it to the employer with nobody tapping anything (retryPending in uaply-live.js), from a file that
        can be months old or not the person's own. It comes back as "Not sent" with Try again, so only a tap sends it. Anything else unknown
        comes back as a hand-off (Finish on their site, Mark as applied). "prev" (what Undo of Mark as applied goes back to) the same way */
-    var SENT_OK={sent:1,self:1,delivered_test:1,handoff:1,failed:1,needs_answers:1};
+    var SENT_OK={sent:1,self:1,delivered_test:1,handoff:1,failed:1,needs_answers:1,unknown:1};
     function sentSt(v){v=str(v,20);return v==="pending"?"failed":SENT_OK[v]?v:""}
     function prevSt(v){v=sentSt(v);return v==="handoff"||v==="failed"||v==="needs_answers"?v:""}
     var known={};A.JOBS.forEach(function(j){known[j.id]=1});

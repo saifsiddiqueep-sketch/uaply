@@ -394,6 +394,7 @@ function kitApply(w,host){
         else if(j.status==="duplicate")setStatus("You already sent this application.");
         else if(j.status==="handoff")setStatus("This employer takes applications on its own page. Use the button below.");
         else if(j.status==="failed"){setStatus(j.error||"The email could not be sent.",true);if(sendBtn)sendBtn.disabled=false;return}
+        else if(j.status==="unknown")setStatus(j.error||"Not confirmed yet. Check your email before applying again.",true);
         else setStatus("Done.");
         var rc=j.receipt,au=w.__uaplyAuth?w.__uaplyAuth():null;
         if(rc)statusEl.textContent+=" "+({digest:"The steps to finish it come by email, once a day with any others.",sent:"Confirmation emailed to "+rc.to+".",delivered_test:testInboxNote(),not_configured:(isRelease?"":"No confirmation email: email sending is not set up yet."),failed:"The confirmation email to "+rc.to+" could not be sent.",held:"Your confirmation email is queued and will arrive later (UAply's email is busy).",bounced:"No confirmation email: emails to "+rc.to+" bounce back.",unverified:"Verify your email (Profile, Account) to get confirmation emails."}[rc.status]||"");
@@ -945,6 +946,7 @@ function kitApply(w,host){
              taps Submit there. On the website, or a system the app does not fill, it stays quiet: Applied has Finish on their site */
           savedToast(!!(w.__uaplyOneTap&&w.__uaplyOneTap(job)))}}
         else if(j.status==="failed")toast(j.error||"The application could not be sent.","Try again",deliver,9000);
+        else if(j.status==="unknown"||j.code==="unconfirmed")toast(j.error||"Not confirmed yet. Check your email before applying again.","","",12000);
         else toast("Done.");
       }).catch(function(){
         /* offline or the server did not answer: kept as waiting, and sent once the connection is back (said once, not on every new try) */
