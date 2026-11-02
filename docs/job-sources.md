@@ -18,8 +18,8 @@ CareerOneStop 100 per search. USAJOBS keeps every job each search lists (every p
 
 ## Coverage
 
-* **Anywhere in the US:** 4,487 employer sources (4,485 read on live): 2,254 Greenhouse, 1,409 Ashby, 230 Lever, 184 SmartRecruiters and
-  98 Workable boards, plus 1 Workday job search and 1 Rippling board read only when switched on (live's `UAPLY_FEEDS` in render.yaml
+* **Anywhere in the US:** 5,417 employer sources (5,415 read on live): 2,254 Greenhouse, 1,409 Ashby, 426 Lever, 548 SmartRecruiters and
+  468 Workable boards, plus 1 Workday job search and 1 Rippling board read only when switched on (live's `UAPLY_FEEDS` in render.yaml
   does not list them; the same holds for the 68 Recruitee boards, which are not counted here)
   (80 of them hand-picked in `SOURCES`, the rest from `job-boards.json`) and 310 employers' own careers sites (298 on Workday, 12 on
   iCIMS); remote jobs from Jobicy (15 industries), Himalayas (all, internships, part-time) and Remote OK; internships and co-ops from
