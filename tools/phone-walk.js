@@ -164,13 +164,17 @@ module.exports = async ({ ev, sleep, nav, send }) => {
       "if(best&&best.w>=16)return JSON.stringify({x:o.left+best.x,y:o.top+hr.top+hr.height/2})}}";
     const p = JSON.parse(await ev("(()=>{const f=" + F + ";const d=f?f.contentDocument:document;const o=f?f.getBoundingClientRect():{left:0,top:0};const k=d.getElementById('kcH');" + gap + "const e=" + (finder || "[k,d.querySelector('.sg-bb .sg-lg'),d.querySelector('.sg-card h1,.sg-card h2'),d.querySelector('h1')].find(e=>e&&e.getClientRects().length&&e.getBoundingClientRect().width>0)") + ";const r=e.getBoundingClientRect();return JSON.stringify({x:o.left+r.left+Math.min(r.width/2,30),y:o.top+r.top+r.height/2})})()"));
     const kb = kbOpen || (await ev("visualViewport.height<innerHeight*0.85||innerHeight<screen.height*0.6?1:0"));
-    const guessTop = top && kb ? Math.round(top) : Math.round((await ev("screen.height")) * dpr - (await ev("innerHeight")) * dpr - 134);
-    const X = Math.round(p.x * dpr), Y = Math.round(guessTop + p.y * dpr);
+    const scrH = Math.round((await ev("screen.height")) * dpr), defTop = Math.round(scrH - (await ev("innerHeight")) * dpr - 134);
+    let guessTop = top && kb ? Math.round(top) : defTop;
+    if (!(guessTop >= 0 && guessTop < scrH)) { log("measure: an impossible guess (" + guessTop + " of " + scrH + " px): using " + (top > 0 ? "the last estimate" : "the default")); guessTop = top > 0 ? Math.round(top) : 260; }
+    const X = Math.round(p.x * dpr), Y = Math.round(guessTop + p.y * dpr), pTop = top, pLeft = left;
     wake(); adb("shell", "input", "tap", String(X), String(Y)); await sleep(700);
     const got = JSON.parse(await ev("JSON.stringify(window.__pd)") || "null");
     if (!got) { fail("calibration: a tap on the phone did not reach the page (is the screen on and Chrome in front?)"); return false; }
     const fr = got[2] ? JSON.parse(await ev("JSON.stringify(" + F + ".getBoundingClientRect())")) : { left: 0, top: 0 };
     top = Y - (fr.top + got[1]) * dpr; left = X - (fr.left + got[0]) * dpr;
+    if (top < 0 || top > scrH) { log("measure: the tap at " + X + "," + Y + " gave an impossible top (" + Math.round(top) + "): keeping the last estimate"); top = pTop; left = pLeft; return false; }
+    log("measure: tap at " + X + "," + Y + " reached the page at " + Math.round(got[0]) + "," + Math.round(got[1]) + (got[2] ? " (app frame)" : "") + " -> top " + Math.round(top) + " left " + Math.round(left) + " dpr " + dpr + (kb ? " (keyboard open)" : ""));
     return true;
   };
   const toScreen = (x, y) => [Math.round(left + x * dpr), Math.round(top + y * dpr)];
@@ -185,10 +189,14 @@ module.exports = async ({ ev, sleep, nav, send }) => {
     await orient(); let p = await where(finder, inPage); if (!p) return null; await sleep(250); p = await where(finder, inPage); if (!p) return null;
     await ev("(()=>{window.__th=null;const f=" + F + ";const rec=e=>{if(!window.__th)window.__th=e.target};const on=(t)=>{t.addEventListener('pointerdown',rec,{capture:true,once:true})};on(window);if(f&&f.contentWindow)on(f.contentWindow);return 1})()");
     const [x, y] = toScreen(p.x, p.y); wake(); adb("shell", "input", "tap", String(x), String(y)); await sleep(700);
+    lastAim = "css " + Math.round(p.x) + "," + Math.round(p.y) + " -> screen " + x + "," + y;
     return ev("(()=>{const f=" + F + ";const d=" + (inPage ? "document" : "f.contentDocument") + ";const e=(" + finder + "),h=window.__th;return !!h&&(!e||e===h||e.contains(h)||(h.closest&&h.closest('label')&&h.closest('label').contains(e)))})()");   // no pointerdown in the page (the keyboard, the address bar): a miss
   };
+  let lastAim = "";
+  const hitWas = async () => ev("(()=>{const h=window.__th;if(!h)return 'nothing in the page';const t=h.tagName?h.tagName.toLowerCase():'?';return t+(h.id?'#'+h.id:'')+(h.className&&typeof h.className==='string'?'.'+h.className.trim().split(/\s+/).slice(0,2).join('.'):'')+(h.textContent?' \"'+h.textContent.trim().slice(0,30)+'\"':'')})()");
   const tap = async (finder, inPage) => {
     const ok = await tapOnce(finder, inPage); if (ok === null) return false; if (ok) return true;
+    log("a tap missed: " + finder.slice(0, 50) + " aimed at " + lastAim + ", the finger reached " + await hitWas());
     const closeChat = async () => { if (!/uaChat/.test(finder) && await q("const c=d.getElementById('uaChat'),x=d.getElementById('uaChatX');if(c&&!c.hidden&&x){x.click();return 1}return 0") === 1) log("a tap opened the UAply Assistant by mistake: closed it"); };
     await closeChat(); await calibrate(); await closeChat(); const again = await tapOnce(finder, inPage); if (again === null) return false;
     if (!again) { fail("a tap missed twice (" + finder.slice(0, 60) + "): it reached something else, or nothing in the page"); return false; }
@@ -234,6 +242,30 @@ module.exports = async ({ ev, sleep, nav, send }) => {
   log("phone: " + (await ev("JSON.stringify({css:[innerWidth,innerHeight],dpr:devicePixelRatio,ua:navigator.userAgent.match(/Chrome\\/[\\d.]+/)[0]})")) + " · " + T + " " + URL);
   // the sign-in gate (October 22, Saif; the sandbox): signed out, the card is the whole screen. The walk's person signs up through it
   // first (the card's own boxes, the code from the stand-in inbox, the two questions); section 4 signs out and walks the card by touch
+  const gated = () => q("return d.body.classList.contains('sgGated')?'yes':''");
+  const inboxN = () => { try { return fs.readFileSync(process.env.WALK_MAIL, "utf8").trim().split(/\n/).filter(Boolean).length; } catch (e) { return 0; } };
+  const codeSince = async (seen) => { for (let k = 0; k < 30; k++) { await sleep(500); try { const rows = fs.readFileSync(process.env.WALK_MAIL, "utf8").trim().split(/\n/).map((l) => JSON.parse(l));
+    if (rows.length > seen) { const m = rows.slice(seen).reverse().map((r) => JSON.stringify(r).match(/\b(\d{6})\b/)).find(Boolean); if (m) return m[1]; } } catch (e) {} } return ""; };
+  const setv = (sel, v) => q("const e=d.querySelector(" + JSON.stringify(sel) + ");if(!e)return '';e.value=" + JSON.stringify(v) + ";e.dispatchEvent(new Event('input',{bubbles:true}));return 'ok'");
+  // signed out with the gate up: sign back in through the gate's card with an emailed code (the walk's own account), so the
+  // screens after Account can still be walked; false when that is not possible
+  const ungate = async (why) => {
+    if (!(await gated())) return true;
+    if (LIVE || !process.env.WALK_MAIL) { fail("Gate · signed out " + why + " and no stand-in inbox to sign back in with: the rest needs an account"); return false; }
+    const E0 = "uaplytechnologies+phone0@gmail.com", n0 = inboxN();
+    log("the gate is up " + why + ": signing back in through it with an emailed code");
+    await q("const b=d.querySelector('.sg-to-in');if(b)b.click();return 1"); await sleep(600);
+    await q("const b=d.querySelector('.sg-codeinst');if(b)b.click();return 1"); await sleep(600);
+    if ((await setv("#acctSec [data-email] input", E0)) !== "ok") { fail("Gate · the sign-in card has no email box to sign back in with"); return false; }
+    await q("const b=d.querySelector('.sg-si [type=submit]');if(b)b.click();return 1"); await sleep(2000);
+    const c = await codeSince(n0);
+    if (!c) { fail("Gate · no sign-in code arrived in the stand-in inbox"); return false; }
+    await setv(".sg-code input", c); await sleep(2500);
+    for (let k = 0; k < 3 && (await gated()); k++) { await q("const b=d.querySelector('.sg-next');if(b)b.click();return 1"); await sleep(900); }
+    await waitFor("return d.getElementById('bnav')&&!d.body.classList.contains('sgGated')?1:0", 10000);
+    if (await gated()) { fail("Gate · could not sign back in through the gate: " + (await q("return (d.getElementById('acctSec')||{innerText:''}).innerText")).slice(0, 120).replace(/\s+/g, " ")); return false; }
+    await calibrate(); log("signed back in through the gate (" + E0 + ")"); return true;
+  };
   await waitFor("return d.getElementById('kcYes')||d.querySelector('.card.top')||(d.body.classList.contains('sgGated')&&d.querySelector('.sg-su'))", 20000);
   if (await q("return d.body.classList.contains('sgGated')?'yes':''")) {
     await step("gate", "the sign-in gate (signed out)");
@@ -315,6 +347,13 @@ module.exports = async ({ ev, sleep, nav, send }) => {
       const blur = () => q("if(d.activeElement)d.activeElement.blur();return 1");
       const typeCode = async (code, label) => { await tap("d.querySelector('.sg-code input')"); await sleep(600); wake(); adb("shell", "input", "text", code); await sleep(500);
         await step(label + "-typed", label + ", typing the code (keyboard open)"); await blur(); await sleep(2200); };
+      // a tap on "Sign in" / "Create an account" only when the card is not already that card
+      const toSignIn = async () => { if (await q("const b=d.querySelector('.sg-to-in');return b&&b.offsetParent?'y':''")) { await tap("d.querySelector('.sg-to-in')"); await sleep(700); } };
+      if (!(await q("return d.querySelector('.sg-su')?'v2':''")) && (await q("const b=d.querySelector('.sg-to-up');return b&&b.offsetParent?'y':''"))) {
+        log("the gate after Sign out shows the sign-in card: tapping Create an account");
+        await tap("d.querySelector('.sg-to-up')"); await sleep(700);
+        if (!(await waitFor("return d.querySelector('.sg-su')?1:0", 4000))) { log("sign-up: the tap on Create an account did not open the sign-up card; clicking it"); await q("const b=d.querySelector('.sg-to-up');if(b)b.click();return 1"); await sleep(700); }
+      }
       if (await q("return d.querySelector('.sg-su')?'v2':''")) {
         // ---- the sandbox's sign-up card (shared/uaply-signup.js): Continue with Google, Email, First name, Last name, the 18+ tick ----
         const g = await q("const b=d.querySelector('[data-sg=google]');return b&&b.offsetParent?'shown':''");
@@ -350,7 +389,7 @@ module.exports = async ({ ev, sleep, nav, send }) => {
             await menu("nb-prof", "account"); await sleep(800);
             await tap("d.querySelector('[data-auth=sout]')"); await sleep(1800);
             if (await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>j.user?'in':'')")) fail("Sign out · a tap on Sign out did not sign out");
-            await tap("d.querySelector('.sg-to-in')"); await sleep(700);
+            await toSignIn();
             await step("signin-card", "Sign in, the card");
             if ((await typeInto("d.querySelector('#acctSec [data-email] input')", EMAIL, "Sign-in email")) && (await typeInto("d.querySelector('.sg-si .sg-pw input')", PW1, "Sign-in password"))) {
               await blur(); await sleep(600);
@@ -360,7 +399,7 @@ module.exports = async ({ ev, sleep, nav, send }) => {
               await menu("nb-prof", "account"); await sleep(800);
               await tap("d.querySelector('[data-auth=sout]')"); await sleep(1800);
             }
-            await tap("d.querySelector('.sg-to-in')"); await sleep(700);
+            await toSignIn();
             await tap("d.querySelector('.sg-codeinst')"); await sleep(600);
             await step("signin-code-card", "Sign in, Email me a code instead");
             if (await typeInto("d.querySelector('#acctSec [data-email] input')", EMAIL, "Sign-in email (code)")) {
@@ -376,7 +415,7 @@ module.exports = async ({ ev, sleep, nav, send }) => {
               await menu("nb-prof", "account"); await sleep(800);
               if (await q("return d.querySelector('[data-auth=sout]')?'in':''")) { await tap("d.querySelector('[data-auth=sout]')"); await sleep(1800); }
               try { await fetch("http://127.0.0.1:" + process.env.WALK_MG + "/mock/next?email=" + encodeURIComponent(EMAIL) + "&sub=walk" + Date.now() + "&verified=1"); } catch (e) {}
-              await tap("d.querySelector('.sg-to-in')"); await sleep(600);
+              await toSignIn();
               await tap("d.querySelector('[data-sg=google]')"); await sleep(7000);
               await waitFor("return d.getElementById('bnav')?1:0", 20000); await calibrate(); await sleep(1500);
               const g2 = await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>j.user?j.user.email:'')");
@@ -401,6 +440,7 @@ module.exports = async ({ ev, sleep, nav, send }) => {
         } else fail("Sign up · no code arrived in the stand-in inbox");
       } else fail("Sign up · neither the sign-up card nor the password form was found on Account: sign-up was not checked");
     }
+    if (!(await ungate("after the Account checks"))) return;
     await menu("nb-prof", "plan"); await sleep(800); await step("plan", "Plan & billing");
     await menu("nb-prof", "data"); await step("data", "Data & privacy");
     // ---- 5. Applied and its rows -------------------------------------------------------------------------------------------------------
