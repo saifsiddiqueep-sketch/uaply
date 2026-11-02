@@ -652,7 +652,7 @@ def recruitee_url(company, slug):
 
 
 def recruitee_submit(company, slug, cand, resume_meta, resume_bytes):
-    """Send one application to a Recruitee offer. Returns ("sent" | "failed", reason or None). Never raises."""
+    """Send one application to a Recruitee offer. Returns ("sent" | "handoff" | "failed", reason or None). Never raises."""
     url = recruitee_url(company, slug)
     if not url:
         return "failed", "this posting's Recruitee address is not valid"
@@ -668,6 +668,8 @@ def recruitee_submit(company, slug, cand, resume_meta, resume_bytes):
         return "failed", "unexpected problem (%s)" % type(e).__name__
     if status in (200, 201) and isinstance(reply, dict) and (reply.get("candidate") or reply.get("id")):
         return "sent", None
+    if status in (403, 429):       # card 213: the careers site is rate-limiting or blocking automated posts (about half the boards): never retried,
+        return "handoff", "Recruitee answered HTTP %s (rate limit or blocked)" % status     # the person finishes on the employer's site
     return "failed", "Recruitee did not accept the application (HTTP %s) %s" % (status, _short(reply))
 
 

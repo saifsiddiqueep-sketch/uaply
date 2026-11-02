@@ -1303,6 +1303,9 @@ def submit(p, user=None, site=""):
             status, err = ats_api.recruitee_submit(rsend[0], rsend[1], cand, resume_meta, resume_bytes)
         except Exception as e:     # never leave the record on "sending" (as for the other paths)
             status, err = "failed", "unexpected problem (%s)" % type(e).__name__
+        if status == "handoff":    # rate-limited or blocked (card 213): saved, the person finishes on their site; no Try again, no retry
+            sys.stderr.write("[uaply] application %s to %s became a hand-off: %s\n" % (rec["id"], job["co"], err))
+            rec["why"], err = "saved to Job Tracker: finish on their site", None
         with _lock:
             rec["status"], rec["channels"] = status, (["hiring system"] if status == "sent" else [])
             if err:
