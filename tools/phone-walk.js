@@ -220,6 +220,7 @@ module.exports = async ({ ev, sleep, nav, send }) => {
       if (!(await q("return " + shown + "?'yes':''"))) { await tap("d.getElementById('" + tab + "')"); await sleep(500); }
       if (await q("return " + shown + "?'yes':''")) return tap(shown);
     }
+    if (await agree("before the " + item + " menu")) { await tap("d.getElementById('" + tab + "')"); await sleep(500); if (await q("return " + shown + "?'yes':''")) return tap(shown); }
     fail("menu · " + tab.replace("nb-", "") + " › " + item + " did not open"); return false;
   };
   const keyboardShot = async (name, finder, label) => {           // tap a field so Android's keyboard opens, check it, then close the keyboard
@@ -247,6 +248,18 @@ module.exports = async ({ ev, sleep, nav, send }) => {
   // the sign-in gate (October 22, Saif; the sandbox): signed out, the card is the whole screen. The walk's person signs up through it
   // first (the card's own boxes, the code from the stand-in inbox, the two questions); section 4 signs out and walks the card by touch
   const gated = () => q("return d.body.classList.contains('sgGated')?'yes':''");
+  // the agreement comes back for an account that has not agreed on this device (a fresh sign-in, Continue with Google): it covers the
+  // whole page, so it is agreed again before the next tap; LIVE leaves it unanswered (read only)
+  const agree = async (why) => {
+    await waitFor("return d.getElementById('kcYes')||d.querySelector('.card.top')?1:0", 8000);
+    if (!(await q("return d.getElementById('kcYes')&&d.getElementById('kcYes').offsetParent?'yes':''"))) return true;
+    if (LIVE) { log("live: the agreement is up again " + why + " and is left unanswered (read only)"); return false; }
+    log("the agreement is up again " + why + ": agreeing again");
+    await tap("(()=>{d.querySelectorAll('.kcTick').forEach(c=>{c.checked=true;c.dispatchEvent(new Event('change'))});return d.getElementById('kcYes')})()");
+    await sleep(900);
+    if (await q("return d.getElementById('kcYes')&&d.getElementById('kcYes').offsetParent?'yes':''")) { fail("Agreement · still up " + why + " after Agree"); return false; }
+    return true;
+  };
   const inboxN = () => { try { return fs.readFileSync(process.env.WALK_MAIL, "utf8").trim().split(/\n/).filter(Boolean).length; } catch (e) { return 0; } };
   const codeSince = async (seen) => { for (let k = 0; k < 30; k++) { await sleep(500); try { const rows = fs.readFileSync(process.env.WALK_MAIL, "utf8").trim().split(/\n/).map((l) => JSON.parse(l));
     if (rows.length > seen) { const m = rows.slice(seen).reverse().map((r) => JSON.stringify(r).match(/\b(\d{6})\b/)).find(Boolean); if (m) return m[1]; } } catch (e) {} } return ""; };
@@ -268,7 +281,7 @@ module.exports = async ({ ev, sleep, nav, send }) => {
     for (let k = 0; k < 3 && (await gated()); k++) { await q("const b=d.querySelector('.sg-next');if(b)b.click();return 1"); await sleep(900); }
     await waitFor("return d.getElementById('bnav')&&!d.body.classList.contains('sgGated')?1:0", 10000);
     if (await gated()) { fail("Gate · could not sign back in through the gate: " + (await q("return (d.getElementById('acctSec')||{innerText:''}).innerText")).slice(0, 120).replace(/\s+/g, " ")); return false; }
-    await calibrate(); log("signed back in through the gate (" + E0 + ")"); return true;
+    await calibrate(); log("signed back in through the gate (" + E0 + ")"); await agree("after signing back in"); return true;
   };
   await waitFor("return d.getElementById('kcYes')||d.querySelector('.card.top')||(d.body.classList.contains('sgGated')&&d.querySelector('.sg-su'))", 20000);
   if (await q("return d.body.classList.contains('sgGated')?'yes':''")) {
@@ -423,12 +436,13 @@ module.exports = async ({ ev, sleep, nav, send }) => {
               await waitFor("return d.querySelector('[data-sg=google]')&&d.querySelector('[data-sg=google]').offsetParent?1:0", 6000);
               try { await tap("d.querySelector('[data-sg=google]')"); } catch (e) { log("Continue with Google tap: " + String(e && e.message).slice(0, 100)); }
               await sleep(7000);
-              await waitFor("return d.getElementById('bnav')?1:0", 20000); await calibrate(); await sleep(1500);
+              await waitFor("return d.getElementById('bnav')&&document.readyState==='complete'?1:0", 20000); await sleep(1500); await calibrate();
               const g2 = await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>j.user?j.user.email:'')");
               if (g2 === EMAIL) log("Continue with Google checked (stand-in Google): the same account, signed in");
               else fail("Sign in · Continue with Google did not sign in (" + g2 + ")");
               await step("google-back", "Back from Google");
               if (await gated()) { if (!(await ungate("after Continue with Google"))) return; }
+              await agree("after Continue with Google");
             }
           }
         }
