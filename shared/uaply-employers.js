@@ -430,7 +430,8 @@ function apply(w,host){
   /* ================= data ================= */
   /* card 108: the new "Post a job" start (one paste box, then the live swipe card on Review). Off until the server checks the
      employer behind a posting; ?postajob=1 previews it. */
-  var POST_A_JOB=false;try{POST_A_JOB=/[?&]postajob=1(&|$)/.test(w.location.search+((w.parent!==w&&w.parent.location.search)||""))}catch(e){}
+  var POST_A_JOB=false,PJ=/[?&]postajob=1(&|$)/;try{POST_A_JOB=PJ.test(w.location.search)}catch(e){}       /* the page's own address first */
+  if(!POST_A_JOB)try{POST_A_JOB=w.parent!==w&&PJ.test(w.parent.location.search)}catch(e){}       /* a cross-origin parent throws here and leaves it off */
   var H={mode:"loading",company:null,jobs:[],apps:[],verified:false,email:"",view:"overview",edit:null,appJob:"all",mustOnly:false,sort:"match",pendingLogo:null,L:null};
   function api(path,body){
     var o=body?{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}:{credentials:"same-origin"};
@@ -606,13 +607,12 @@ function apply(w,host){
   /* Post a job in four named steps. Every field stays in one form, so moving between steps never loses what was typed. */
   var STEP_NAME={1:"Import",2:"The role",3:"Pay and rules",4:"Review"};
   function postSteps(editing){return editing?[2,3,4]:[1,2,3,4]}
-  var ATS_CONNECT='<a href="/employers/connect">';
   function startBox(){
     if(POST_A_JOB)return '<div class="box imp" id="impBox"><div id="impLinkWrap" hidden><input type="hidden" id="impUrl"></div>'+
       '<div id="impTextWrap" class="f"><label for="impText">Paste your job link or description</label><textarea id="impText" rows="5" maxlength="30000" placeholder="https://… or paste the job text">'+esc(H.impText||"")+'</textarea></div>'+
       '<div><button type="button" class="btn" data-act="impAuto">Post a job</button></div><small class="vsub">We fill in the form for you. You check it before it goes live.</small>'+
       '<p class="msg" id="impMsg" role="status" aria-live="polite"></p></div>'+
-      '<div class="orline"><span>already use an ATS?</span></div><p class="note">'+ATS_CONNECT+'Connect Greenhouse, Lever, Ashby or Workable</a> so applications land there.</p>'+
+      /* no "already use an ATS?" link here until a signed invite flow exists: /employers/connect needs an invite */
       '<div><button type="button" class="btn ghost" data-act="manual">Fill it in myself</button></div>';
     return importBox();
   }
@@ -786,7 +786,12 @@ function apply(w,host){
     H.edit=jobFromFields(res.fields);H.filled=res.got;H.impFrom=from;H.manual=true;H.step=2;render();
     say("Filled "+n+" fields from "+from+". Check them, then publish.","good");
   }
+  function linkIn(raw){       /* a pasted link, with or without https:// and with or without a path; anything with spaces is job text */
+    if(!raw||/\s/.test(raw))return "";var u=/^https?:\/\//i.test(raw)?raw:"https://"+raw;
+    try{var x=new URL(u);if(/^https?:$/.test(x.protocol)&&/^[^.]+(\.[^.]+)*\.[a-z]{2,}$/i.test(x.hostname))return u}catch(e){}return "";
+  }
   function runImport(kind){
+    if(H.importing)return;
     if(kind==="text"){
       var txt=(hub.querySelector("#impText")||{}).value||"";
       if(txt.trim().length<80){impSay("Paste the whole job post: title, location, pay, description and requirements.","bad");return}
@@ -797,8 +802,8 @@ function apply(w,host){
     var no=IMP.blocked(host);
     if(no){toText(no+" doesn't let other sites read its pages. Open your post on "+no+", select all of it, copy, and paste it here.");return}
     impSay("Reading your job post…");
-    var btn=hub.querySelector('[data-act="impLink"]');if(btn)btn.disabled=true;
-    function done(){if(btn)btn.disabled=false}
+    var btns=hub.querySelectorAll('[data-act="impLink"],[data-act="impAuto"]');H.importing=true;btns.forEach(function(b){b.disabled=true});   /* one request per click, however fast the clicks */
+    function done(){H.importing=false;btns.forEach(function(b){b.disabled=false})}
     var feed=IMP.feedFor(url);
     function viaServer(){
       if(H.mode!=="server"){done();toText("This preview copy can't open that website. Copy the job text from it and paste it here (on the UAply server, links like this are read for you).");return}
@@ -976,7 +981,7 @@ function apply(w,host){
     if(act==="impLink"){runImport("link");return}
     if(act==="impText"){runImport("text");return}
     if(act==="impAuto"){var raw=((hub.querySelector("#impText")||{}).value||"").trim();       /* POST_A_JOB: one box takes a link or the job text */
-      if(/^(https?:\/\/)?[^\s\/]+\.[a-z]{2,}(\/\S*)?$/i.test(raw)){hub.querySelector("#impUrl").value=raw;runImport("link")}else runImport("text");return}
+      var link=linkIn(raw);if(link){hub.querySelector("#impUrl").value=link;runImport("link")}else runImport("text");return}
     if(act==="apps"){H.appJob=String(id);H.view="applicants";render();return}
     if(act==="rmlogo"){H.pendingLogo=null;H.removeLogo=true;var box=hub.querySelector(".logoup .hlogo");if(box)box.textContent=((H.company||{}).name||"?").charAt(0).toUpperCase();b.remove();say("Logo will be removed when you save.");return}
     if(act==="status"||act==="del"){
