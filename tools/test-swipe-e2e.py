@@ -158,7 +158,8 @@ CFG = {"feeds": ["greenhouse"], "delivery": "live", "grace_seconds": 0, "daily_l
        "smtp": {"host": "127.0.0.1", "port": SMTP, "starttls": False, "from_addr": "uaply@example.com"}}
 ENV = dict(os.environ, UAPLY_DATA_DIR=DATA, UAPLY_CONFIG_FILE="none", UAPLY_DNS_CHECK="off", UAPLY_REQUEST_LOG="off",
            **{"UAPLY_ATS_BASE_" + k: "http://127.0.0.1:%d" % MOCK for k in ("GREENHOUSE", "LEVER", "ASHBY", "SMARTRECRUITERS", "WORKABLE")})
-for k in ("STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_PRICE_PLUS", "STRIPE_PRICE_PRO", "ANTHROPIC_API_KEY", "OWNER_PASSWORD"):
+for k in ("STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_PRICE_PLUS", "STRIPE_PRICE_PRO", "ANTHROPIC_API_KEY", "OWNER_PASSWORD",
+          "UAPLY_SIGNUP_TEST", "RENDER"):      # (a shell in test mode would hold back the emails this run checks; as test-email-route.py does)
     ENV.pop(k, None)
 procs = []
 
