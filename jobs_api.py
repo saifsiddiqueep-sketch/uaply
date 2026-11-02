@@ -1126,9 +1126,14 @@ def employer_domain(addr_domain, company, board="", page_url=""):
         page = ""
     if page and not NOT_EMPLOYER_HOST.search(page) and _alnum(_domain_name(page)) == label:
         return True                                  # the employer's own careers page is on this domain
-    # "Acme Robotics" and acmerobotics-careers.com, "Penn Medicine" and pennmedicine.org: one name starts the other, at 4 letters or more
+    # "Acme Robotics" and acmerobotics-careers.com, "Penn Medicine" and penn.org: one name starts the other, at 4 letters or more;
+    # "Acme" and acmejobs.com / acmecareers.com: the name then a hiring word (never any other word: "Meta" is not metabase.com)
     parts = [_alnum(x) for x in re.split(r"[.\-]", _domain_name(d))]
-    return any(len(n) >= 4 and len(label) >= 4 and (n in parts or n.startswith(label)) for n in names)
+    return any(len(n) >= 4 and len(label) >= 4 and (n in parts or n.startswith(label) or
+                                                     (label.startswith(n) and label[len(n):] in DOMAIN_NAME_SUFFIX)) for n in names)
+
+
+DOMAIN_NAME_SUFFIX = frozenset(("careers", "career", "jobs", "job", "hr", "inc", "corp", "co", "hiring", "talent"))
 
 
 def apply_address(text, company, board="", page_url=""):
@@ -1454,6 +1459,9 @@ def _local(tag):
     return tag.rsplit("}", 1)[-1] if isinstance(tag, str) else ""
 
 
+TT_US_TEXT = re.compile(r"\bU\.S\.(?:A\.)?|\bUSA?\b|(?i:\bunited states\b)")     # "US", "USA", "U.S.", "US-based", "United States"
+
+
 def _teamtailor_raw(item, name):
     """One <item> of a Teamtailor careers site's RSS feed as a raw posting, or None. Its places are tt:location elements (city and
     country, no state): it is placed in its first US one; one with none in the US is left out."""
@@ -1471,9 +1479,12 @@ def _teamtailor_raw(item, name):
     loc = ", ".join(x for x in (p.get("city") or p.get("name") or "", "United States") if x) if us else ""
     status = get("remoteStatus").lower()
     remote = True if status in ("fully", "remote") else None
-    if remote and not places:
-        country, loc = "us", ""                  # a remote posting with no place of its own is kept, as "Remote - United States"
-    if remote:
+    if remote and not places:                    # a remote posting with no place of its own: US only when its text names the US
+        if TT_US_TEXT.search(title + " " + _text(get("description"))):
+            country, loc = "us", "Remote - United States"
+        else:
+            country, loc = "other", "Remote"     # kept, but the US filter leaves it out
+    elif remote:
         loc = "Remote - " + (loc or "United States")
     elif status == "hybrid" and loc:
         loc += " (hybrid)"
@@ -2735,6 +2746,16 @@ def _disabled(src):
     return True
 
 
+def _off_status(src):
+    """Why a switched-off source serves nothing: the link check's own reason (dead apply links), or the failed refreshes."""
+    h = _health.get(src) or {}
+    if (_links.get(src) or {}).get("off") and h.get("error"):
+        why = h["error"]
+    else:
+        why = "failed %d refreshes in a row" % FAIL_LIMIT
+    return "off: %s; tried again %s" % (why, h.get("retry", ""))
+
+
 LINK_SAMPLE = 20                 # links of one source checked per round
 LINK_FAIL_LIMIT = 0.10           # more than this share of a source's checked links dead (with at least 10 checked): the source is switched off
 LINK_EVERY = 24 * 3600           # each source's links are checked again after this long
@@ -2745,7 +2766,7 @@ _links = {}                      # source -> {"at", "ok", "dead", "unknown", "de
 _link_thread = []
 
 
-LOGIN_PAGE_RE = re.compile(r"(?:login|signin|sign-in|sso|auth)", re.I)
+LOGIN_PAGE_RE = re.compile(r"(?:^|/)(?:log-?in|sign-?in|sso|auth|oauth2?|authorize)(?:$|[/._-])", re.I)   # whole path segments only
 CLOSED_MARKERS = ("no longer accepting applications", "this job is no longer available", "job not found", "position has been filled")
 
 
@@ -2760,9 +2781,9 @@ def _link_alive(url):
         with _link_open(req, timeout=15) as r:
             final = r.geturl() or url
             body = r.read(65536).decode("utf-8", "replace").lower()
-        fp = urllib.parse.urlsplit(final)
-        if LOGIN_PAGE_RE.search(fp.path + "?" + fp.query) or any(m in body for m in CLOSED_MARKERS):
-            return False                         # a sign-in page, or a page that says the job is closed
+        moved = final != url                     # a real redirect: only then can the page be a sign-in page we were sent to
+        if (moved and LOGIN_PAGE_RE.search(urllib.parse.urlsplit(final).path)) or any(m in body for m in CLOSED_MARKERS):
+            return False                         # a redirect to a sign-in page (its path, never the query), or a page that says the job is closed
         if re.search(r"[?&]error=true\b", final) or "job not found" in body or "no longer accepting applications" in body or \
                 "this job is no longer available" in body or "the job you are looking for is no longer open" in body or "posting has been closed" in body:
             return False                         # Greenhouse sends a closed posting to its board with ?error=true; others say so on the page
@@ -2870,10 +2891,12 @@ def feed_health():
         for src in SOURCES:
             h = dict(_health.get(src) or {})
             c = _cache.get(src)
-            out.append({"source": "/".join(src[:2]), "name": src[2], "jobs": _count(c) if c else 0, "status": c["status"] if c else "",
+            off = bool(h.get("off_until")) and time.time() < h["off_until"]     # switched off: nothing is served, whatever is cached
+            out.append({"source": "/".join(src[:2]), "name": src[2], "jobs": _count(c) if c and not off else 0,
+                        "status": _off_status(src) if off else (c["status"] if c else ""),
                         "ok": h.get("ok", 0), "failures": h.get("fail", 0), "inARow": h.get("streak", 0), "lastOk": int(h.get("last_ok", 0)),
                         "lastError": int(h.get("last_error", 0)), "error": h.get("error", ""), "ms": h.get("ms", 0),
-                        "off": bool(h.get("off_until")) and time.time() < h["off_until"], "retry": h.get("retry", ""),
+                        "off": off, "retry": h.get("retry", ""),
                         "applyPath": ("assisted hand-off (the employer's own careers site)" if src[0] == "careerpage" else "hand-off (the employer's own page)"),
                         "humanCheck": (_human(src) or ("unknown",))[0], "formKind": (_human(src) or ("", "unknown"))[1],
                         "checkSampled": (_human(src) or ("", "", ""))[2], "checkPages": (_human(src) or (0, 0, 0, 0))[3],
@@ -2968,7 +2991,7 @@ def _load_source(src):
     if _no_key(src[0]):
         return _fetch_source(src)                # no key: skipped right away, never served from an older copy
     if _disabled(src):
-        return [], "off: failed %d refreshes in a row; tried again %s" % (FAIL_LIMIT, _health[src].get("retry", ""))
+        return [], _off_status(src)
     with _lock:
         c = _cache.get(src)
         if c:

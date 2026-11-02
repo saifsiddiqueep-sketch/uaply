@@ -845,6 +845,16 @@ try:
     t("dead-link check: a redirect to a sign-in page is dead; a closed-job page is dead; an ordinary page stays alive",
       [_alive("https://acme.okta.com/login?next=x"), _alive("https://jobs.acme.example/sso/start"), _alive("https://jobs.acme.example/j/1", "<p>Position has been filled</p>"),
        _alive("https://jobs.acme.example/j/1")], [False, False, False, True])
+
+    def _alive_at(url, final=None):
+        J._link_open = lambda req, timeout=15: _Resp(final or url, "<html>Apply now.</html>")
+        return J._link_alive(url)
+    t("dead-link check: sign-in words only count on a redirect, as whole path segments, never in the query",
+      [_alive_at("https://acme.wd1.myworkdayjobs.com/job/Senior-Associate_JR1"), _alive_at("https://jobs.acme.example/careers/author-relations"),
+       _alive_at("https://jobs.acme.example/jobs/123/professor-of-law"), _alive_at("https://jobs.acme.example/job/Kansas-City-Missouri/Analyst"),
+       _alive_at("https://jobs.acme.example/j/1", "https://jobs.acme.example/login?next=/j/1"), _alive_at("https://jobs.acme.example/j/1", "https://x.com/sso/start"),
+       _alive_at("https://jobs.acme.example/j/1", "https://jobs.acme.example/j/1/?utm_source=sso"), _alive_at("https://jobs.acme.example/auth/j/1")],
+      [True, True, True, True, False, False, True, True])
 finally:
     J._link_open, J._public_link = _real_lopen, _real_public
 _fsrc = ("lever", "freshco", "FreshCo")
@@ -857,15 +867,28 @@ try:
     J._health[_fsrc] = {"ok": 0, "fail": 0, "streak": 0, "last_ok": 0, "last_error": 0, "error": "", "jobs": 0, "ms": 0, "off_until": time.time() + 3600}
     t("link check: counters reset each round (old dead count gone, source back on)", (_rec["dead"], _rec["ok"], _rec["off"]), (0, 12, False))
     t("a source switched off serves no jobs, not its frozen cached list", J._load_source(_fsrc)[0], [])
+    J._links[_fsrc]["off"] = True
+    J._health[_fsrc]["error"] = "9 of 11 apply links checked were dead (over 10%)"
+    t("a source switched off by the link check says the link check's reason, not failed refreshes",
+      J._load_source(_fsrc)[1].startswith("off: 9 of 11 apply links checked were dead"), True)
 finally:
     J.job_alive = _real_alive
     for d in (J._cache, J._links, J._health):
         d.pop(_fsrc, None)
 t("employer_domain: 'Meta' does not match metabase.com; a whole label (acmerobotics-careers.com) still does",
   (J.employer_domain("metabase.com", "Meta"), J.employer_domain("acmerobotics-careers.com", "Acme Robotics"), J.employer_domain("meta.com", "Meta")), (False, True, True))
+t("employer_domain: the name then a hiring word (acmejobs.com, acmecareers.com) matches; coca-cola.com and penn.org still do; metabase.com does not",
+  [J.employer_domain(dm, co) for dm, co in (("acmejobs.com", "Acme"), ("acmecareers.com", "Acme"), ("coca-cola.com", "Coca-Cola"),
+                                            ("penn.org", "Penn Medicine"), ("metabase.com", "Meta"), ("acmebase.com", "Acme"))],
+  [True, True, True, True, False, False])
 _tt = J._teamtailor_raw(J.ET.fromstring('<item><title>T</title><link>https://a.teamtailor.com/jobs/1</link><guid>abc-1</guid>'
-                                        '<remoteStatus>fully</remoteStatus></item>'), "A")
-t("Teamtailor: a remote posting with no location element is kept as remote", (_tt or {}).get("loc"), "Remote - United States")
+                                        '<description>Work from anywhere in the U.S.</description><remoteStatus>fully</remoteStatus></item>'), "A")
+t("Teamtailor: a remote posting with no location element whose text names the US is kept as US remote",
+  ((_tt or {}).get("loc"), (_tt or {}).get("country")), ("Remote - United States", "us"))
+_tt2 = J._teamtailor_raw(J.ET.fromstring('<item><title>T</title><link>https://a.teamtailor.com/jobs/2</link><guid>abc-2</guid>'
+                                         '<description>Work from anywhere in the EU. Tell us about you.</description><remoteStatus>fully</remoteStatus></item>'), "A")
+t("Teamtailor: a remote posting with no location and no US in its text is kept as 'Remote', outside the US (the US filter drops it)",
+  ((_tt2 or {}).get("loc"), (_tt2 or {}).get("country")), ("Remote", "other"))
 t("Workday: '30+ Days Ago' is older than the staleness cut-off (ages out)", (now * 1000 - J._workday_posted("Posted 30+ Days Ago", now)) / 86400000 > J.MAX_AGE_DAYS, True)
 
 if len(sys.argv) > 1:
