@@ -833,7 +833,8 @@ HOST_PARALLEL_BY = {"boards-api.greenhouse.io": 10, "api.lever.co": 8, "api.ashb
 #                                      subdomains share one family's places, and request starts are spaced (seconds apart), so hundreds of its
 #                                      boards are read one after another at a steady pace instead of eight at once on a fresh start
 HOST_FAMILY = {"recruitee.com": (2, 1.0),                  # family -> (places at the same time, seconds between request starts)
-               "myworkdayjobs.com": (2, 0.5), "breezy.hr": (2, 0.5), "teamtailor.com": (2, 0.5)}   # (spaced less: they share the boards' readers)
+               "myworkdayjobs.com": (2, 0.5), "breezy.hr": (2, 0.5), "teamtailor.com": (2, 0.5),    # (spaced less: they share the boards' readers)
+               "workable.com": (2, 0.5)}                      # hundreds of boards behind www/apply.workable.com, which answers 429 quickly
 _host_sems, _host_sems_lock, _host_next = {}, threading.Lock(), {}
 
 
