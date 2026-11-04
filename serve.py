@@ -87,10 +87,13 @@ SIGNUP_TEST = False      # UAPLY_SIGNUP_TEST=1: sign-up makes a verified account
 GATED_GET = ("/api/jobs",)
 GATED_GET_PREFIX = ("/api/employer/logo/", "/api/jobs/")
 GATED_POST = ("/api/apply", "/api/apply/plan", "/api/apply/mark", "/api/decision", "/api/chat", "/api/feedback", "/api/profile/resume", "/api/consent",
-              "/api/employer/company", "/api/employer/job", "/api/employer/job/status", "/api/employer/applicant", "/api/employer/import")
+              "/api/employer/company", "/api/employer/job", "/api/employer/job/status", "/api/employer/applicant", "/api/employer/import",
+              "/api/legal/accept")
 SIGNIN_FIRST = {"error": "Sign in first.", "code": "signin"}
 VERIFY_FIRST = {"error": "Confirm your email first.", "code": "verify"}
 CODE_PATHS = ("/api/auth/code/send", "/api/auth/code/verify")      # sign-up v2: POST routes that exist only while CODE_SIGNIN is on
+# Canada (legal_ca.py): POST routes that exist only while CANADA_ENABLED is on; off, they answer 404 like any unknown address
+LEGAL_CA_POST = ("/api/legal/accept", "/api/legal/quebec-waitlist")
 # browsers and crawlers ask for /favicon.ico whatever the page says: answer with the instance's own icon (a PNG; every browser takes it)
 alias.setdefault("/favicon.ico", next((f for f in (os.path.join(root, "favicon-32.png"), os.path.join(HERE, "legal", "favicon-32.png"))
                                        if os.path.isfile(f)), os.path.join(HERE, "legal", "favicon-32.png")))
@@ -143,7 +146,7 @@ if api:
                      ("/uaply-icon-maskable-192.png", "shared/uaply-icon-maskable-192.png"),
                      ("/uaply-icon-maskable-512.png", "shared/uaply-icon-maskable-512.png")):
         alias.setdefault(url, os.path.join(HERE, rel))
-    import jobs_api, uaply_api, auth_api, chat_api, google_auth, setup_api, billing_api, employers_api, resume_parse, consent_api
+    import jobs_api, uaply_api, auth_api, chat_api, google_auth, setup_api, billing_api, employers_api, resume_parse, consent_api, legal_ca
     uaply_api.init(os.path.basename(root))
     try:
         import billing_api as _b
@@ -418,7 +421,8 @@ MAX_APPLY_BODY = 1500000
 MAX_COMPANY_BODY = 200000
 
 # Swipes per visitor per minute. A person swipes a few times a minute; a script hammering the server would otherwise fill its disk and memory.
-SWIPE_LIMITS = {"/api/apply": 40, "/api/apply/plan": 120, "/api/apply/mark": 120, "/api/decision": 150, "/api/profile/resume": 12}   # a person reads a resume once or twice
+SWIPE_LIMITS = {"/api/apply": 40, "/api/apply/plan": 120, "/api/apply/mark": 120, "/api/decision": 150, "/api/profile/resume": 12,   # a person reads a resume once or twice
+                "/api/legal/accept": 30, "/api/legal/quebec-waitlist": 10}
 _swipes, _swipes_lock = {}, threading.Lock()
 _resume_count, _resume_count_lock = [0], threading.Lock()          # resumes read since the start: the only thing the log says about them
 
@@ -520,6 +524,34 @@ def client_ip(peer, headers, public=None):
     if is_cloudflare(last):
         return _ip_or_none(headers.get("CF-Connecting-IP")) or last
     return last
+
+
+def geo_hint(peer, headers):
+    """Cloudflare's guess at where the visitor is (CF-IPCountry, CF-Region-Code), only when the request really came through Cloudflare (the
+    last hop, read as client_ip reads it, is a Cloudflare server); (None, None) otherwise. A hint for legal_ca.region only: it never decides."""
+    if not PUBLIC or not is_cloudflare(client_ip(peer, {"X-Forwarded-For": headers.get("X-Forwarded-For")})):
+        return None, None
+    return (headers.get("CF-IPCountry") or "")[:2] or None, (headers.get("CF-Region-Code") or "")[:3] or None
+
+
+def legal_accept(user, payload):
+    """POST /api/legal/accept {doc, version, method, country, province} for the signed-in account `user`: a Canadian document (legal_ca.DOCS)
+    at its current version, kept on the legal ledger (auth_api.record_acceptance). Returns (status, body)."""
+    if not user:
+        return 401, SIGNIN_FIRST
+    doc, version, method = payload.get("doc"), payload.get("version"), payload.get("method")
+    if not isinstance(doc, str) or doc not in legal_ca.DOCS:
+        return 400, {"error": "Unknown document.", "code": "doc"}
+    if isinstance(version, bool) or not isinstance(version, int) or version != legal_ca.DOCS[doc]["version"]:
+        return 409, {"error": "This page is out of date. Reload UAply and accept the current version.", "code": "doc_old"}
+    if method not in legal_ca.METHODS:
+        return 400, {"error": "Say how it was accepted.", "code": "method"}
+    country = legal_ca.country_code(payload.get("country")) if isinstance(payload.get("country"), str) else ""
+    province = legal_ca.province_code(payload.get("province")) if isinstance(payload.get("province"), str) else ""
+    if country != "CA" or not province:
+        return 400, {"error": "Choose your province or territory.", "code": "province"}
+    row = auth_api.record_acceptance(user["id"], doc, version, country, province, method)
+    return 200, {"ok": True, "acceptance": row}
 
 
 def too_fast(path, ip):
@@ -1067,6 +1099,10 @@ class H(http.server.SimpleHTTPRequestHandler):
                     if self._owner_ok():          # the owner (this computer, or OWNER_PASSWORD): which questions employers asked, by kind,
                         facts = dict(facts, questions=uaply_api.question_stats(), selfCheck=self_check())   # and the self-check
                     return self._send(200, facts)
+                if p == "/api/legal/region" and legal_ca.enabled():              # Canada (legal_ca.region); switched off: 404 as before
+                    qs = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+                    one = lambda k: (qs.get(k) or [""])[0][:60]
+                    return self._send(200, legal_ca.region(one("country"), one("province"), *geo_hint(self.client_address[0], self.headers)))
                 if p == "/api/profile/data":                                       # the profile kept on the account (auth_api.profile_get)
                     me = auth_api.user_for(self._token())
                     if not me:
@@ -1189,7 +1225,7 @@ class H(http.server.SimpleHTTPRequestHandler):
                                 "/api/setup/test-mail", "/api/setup/save-mail", "/api/setup/save-google", "/api/setup/save-ats", "/api/setup/remove-ats", "/api/setup/test-ats", "/api/setup/save-stripe", "/api/setup/save-feed-keys", "/api/auth/google/token", "/api/auth/verify", "/api/auth/resend", "/api/chat", "/api/feedback", "/api/billing/checkout", "/api/billing/portal",
                                 "/api/employer/company", "/api/employer/job", "/api/employer/job/status", "/api/employer/applicant",
                                 "/api/employer/import", "/api/profile/resume", "/api/profile/data", "/api/consent", "/api/employer/stop",
-                                "/api/employer/connect/test", "/api/employer/connect/save", "/api/setup/connect-invite") + (CODE_PATHS if CODE_SIGNIN else ()):
+                                "/api/employer/connect/test", "/api/employer/connect/save", "/api/setup/connect-invite") + (CODE_PATHS if CODE_SIGNIN else ()) + (LEGAL_CA_POST if legal_ca.enabled() else ()):
             return self._refuse(404, {"error": "not found"})
         # Only accept requests made by this site's own pages (blocks cross-site forms and scripts).
         origin = self.headers.get("Origin")
@@ -1405,6 +1441,12 @@ class H(http.server.SimpleHTTPRequestHandler):
             elif p == "/api/consent":
                 # the first-swipe agreement, kept on the account with the time, this visitor's address and the words' SHA-256 (consent_api.py)
                 code, out = consent_api.post(auth_api.user_for(self._token()), payload, ip, auth_api.record_consent)
+            elif p == "/api/legal/accept":
+                # Canada (legal_ca.py): one document accepted, kept on the legal ledger with its version, the time, the country and province
+                code, out = legal_accept(auth_api.user_for(self._token()), payload)
+            elif p == "/api/legal/quebec-waitlist":
+                # Canada (legal_ca.py): an address for when UAply opens in Quebec; only the address, the time and the words' version are kept
+                code, out = auth_api.waitlist_add(payload.get("email"), payload.get("optin"), legal_ca.WAITLIST_WORDING)
             elif p == "/api/employer/stop":
                 # the link at the end of an application emailed to a posting's address: its owner asks UAply to stop (uaply_api.employer_stop)
                 code, out = uaply_api.employer_stop(payload.get("a"), payload.get("s"))
