@@ -108,8 +108,8 @@ module.exports = async ({ ev, sleep, nav, send, logs }) => {
   const PW = "Sam-" + stamp + "-pw9";
   await typeIn("[data-email] input", email); await typeIn(".sg-fn input", "Sam"); await typeIn(".sg-ln input", "Rivera"); await typeIn(".sg-pw input", PW);
   await key(".sg-ln input", "Enter");     // a real Enter submits the form; dispatching keydown does not, so press the button like Enter would
-  await click(".sg-su [type=submit]"); await sleep(1500);
-  t = await text();
+  await click(".sg-su [type=submit]");
+  for (let i = 0; i < 20; i++) { await sleep(400); t = await text(); if (/Check your email/.test(t)) break; }   // the password hash can take a few seconds; wait up to 8 s
   check("Create my account goes to the code step", /Check your email/.test(t) && t.includes(email), t.slice(0, 300));
   check("the sandbox says where the code is (test inbox)", /test inbox/.test(t));
   const me0 = JSON.parse(await ev("fetch('/api/auth/me').then(r=>r.json()).then(j=>JSON.stringify(j.user))"));
